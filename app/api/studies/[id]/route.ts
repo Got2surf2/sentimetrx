@@ -39,9 +39,9 @@ export async function PATCH(req: NextRequest, props: Params) {
   const orgData = userData?.organizations
   const isAdmin = Array.isArray(orgData)
     ? orgData[0]?.is_admin_org
-    : (orgData as any)?.is_admin_org
+    : (orgData as unknown as { is_admin_org?: boolean } | null)?.is_admin_org
 
-  let body: any
+  let body: Record<string, unknown>
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
 
   // Check ownership — creator or admin can update (including close/reopen)
@@ -99,9 +99,9 @@ export async function PATCH(req: NextRequest, props: Params) {
     }
     const svc = createServiceRoleClient()
     const { data: cur } = await svc.from('studies').select('org_id, name').eq('id', params.id).single()
-    prevOrgId = (cur as any)?.org_id ?? null
-    resourceName = (cur as any)?.name ?? null
-    const check = await checkTransferTarget(svc, prevOrgId, body.org_id)
+    prevOrgId = (cur as { org_id?: string | null; name?: string | null } | null)?.org_id ?? null
+    resourceName = (cur as { org_id?: string | null; name?: string | null } | null)?.name ?? null
+    const check = await checkTransferTarget(svc, prevOrgId, body.org_id as string)
     if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status || 400 })
     updates.org_id = body.org_id
     isTransfer = true
@@ -157,7 +157,7 @@ export async function DELETE(_req: NextRequest, props: Params) {
   const orgData = userData?.organizations
   const isAdmin = Array.isArray(orgData)
     ? orgData[0]?.is_admin_org
-    : (orgData as any)?.is_admin_org
+    : (orgData as unknown as { is_admin_org?: boolean } | null)?.is_admin_org
 
   if (!isAdmin && study.created_by !== user.id) {
     return NextResponse.json({ error: 'You can only delete your own studies' }, { status: 403 })

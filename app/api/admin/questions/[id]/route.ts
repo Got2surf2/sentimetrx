@@ -10,7 +10,14 @@ import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
-async function getOrgAndCustomQ(supabase: any, userId: string) {
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
+
+interface CustomQuestion {
+  id: string
+  [key: string]: unknown
+}
+
+async function getOrgAndCustomQ(supabase: SupabaseServerClient, userId: string) {
   const { data: userData } = await supabase
     .from('users').select('org_id').eq('id', userId).single()
   const orgId = userData?.org_id
@@ -38,11 +45,11 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 
   const updated = { ...customQ }
   if (type === 'demo') {
-    updated.demo = (customQ.demo || []).map(function(q: any) {
+    updated.demo = (customQ.demo || []).map(function(q: CustomQuestion) {
       return q.id === params.id ? { ...q, ...qData, id: params.id } : q
     })
   } else if (type === 'psycho') {
-    updated.psycho = (customQ.psycho || []).map(function(q: any) {
+    updated.psycho = (customQ.psycho || []).map(function(q: CustomQuestion) {
       return q.id === params.id ? { ...q, ...qData, id: params.id } : q
     })
   } else {
@@ -73,9 +80,9 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
 
   const updated = { ...customQ }
   if (type === 'demo') {
-    updated.demo = (customQ.demo || []).filter(function(q: any) { return q.id !== params.id })
+    updated.demo = (customQ.demo || []).filter(function(q: CustomQuestion) { return q.id !== params.id })
   } else if (type === 'psycho') {
-    updated.psycho = (customQ.psycho || []).filter(function(q: any) { return q.id !== params.id })
+    updated.psycho = (customQ.psycho || []).filter(function(q: CustomQuestion) { return q.id !== params.id })
   } else {
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
   }

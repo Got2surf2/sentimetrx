@@ -75,13 +75,19 @@ let mapsInFlight: Promise<MapInfo[]> | null = null
 let pmsInFlight: Promise<Placemark[]> | null = null
 const svgCache = new Map<string, { at: number; svg: string }>()
 
+// Shape of the goaa.aero content responses. Each item is an opaque
+// property-bag keyed by id; individual fields are read defensively below.
+interface MeridianContentResponse {
+  data?: { content?: { items?: Record<string, Record<string, unknown>> } }
+}
+
 async function loadMaps(): Promise<MapInfo[]> {
   const res = await fetch(GOAA_BASE + '/content/meridian_map?lang=en-US', { headers: goaaHeaders, signal: AbortSignal.timeout(8000) })
   if (!res.ok) throw new Error('meridian_map ' + res.status)
-  const json = await res.json() as any
+  const json = await res.json() as MeridianContentResponse
   const items = json?.data?.content?.items || {}
   const out: MapInfo[] = []
-  for (const v of Object.values<any>(items)) {
+  for (const v of Object.values(items)) {
     out.push({
       id: String(v.id),
       name: String(v.name || ''),
@@ -98,10 +104,10 @@ async function loadMaps(): Promise<MapInfo[]> {
 async function loadPlacemarks(): Promise<Placemark[]> {
   const res = await fetch(GOAA_BASE + '/content/meridian_placemark?lang=en-US', { headers: goaaHeaders, signal: AbortSignal.timeout(15000) })
   if (!res.ok) throw new Error('meridian_placemark ' + res.status)
-  const json = await res.json() as any
+  const json = await res.json() as MeridianContentResponse
   const items = json?.data?.content?.items || {}
   const out: Placemark[] = []
-  for (const v of Object.values<any>(items)) {
+  for (const v of Object.values(items)) {
     out.push({
       id: String(v.id),
       name: String(v.name || ''),

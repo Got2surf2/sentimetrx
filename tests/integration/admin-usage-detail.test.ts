@@ -6,8 +6,38 @@ vi.mock('@/lib/auth/requireAdmin', () => ({
   requireAdmin: () => requireAdminMock(),
 }))
 
+// Shape of the rows the route reads from `usage_logs`.
+interface UsageLogRow {
+  org_id: string
+  event_type: string
+  model: string
+  tier: string
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_creation_tokens: number
+  created_at: string
+}
+
+interface UsageLogsResult {
+  data: UsageLogRow[]
+  error: null
+}
+
+// Minimal supabase-style query builder used by the usage_logs branch.
+interface UsageLogsBuilder {
+  _filters: Record<string, unknown>
+  select(): UsageLogsBuilder
+  eq(col: string, val: unknown): UsageLogsBuilder
+  gte(): UsageLogsBuilder
+  lt(): UsageLogsBuilder
+  order(): UsageLogsBuilder
+  limit(): Promise<UsageLogsResult>
+  then(resolve: (v: UsageLogsResult) => unknown): unknown
+}
+
 // Per-test override hooks for the supabase service-role client.
-let usageLogsRows: any[] = []
+let usageLogsRows: UsageLogRow[] = []
 let agentLookup: { name?: string; slug?: string } | null = null
 let orgLookup: { name?: string } | null = null
 
@@ -16,7 +46,7 @@ function makeServiceMock() {
     from(table: string) {
       // usage_logs branch — builder chain returning the prepared rows.
       if (table === 'usage_logs') {
-        const builder: any = {
+        const builder: UsageLogsBuilder = {
           _filters: {} as Record<string, unknown>,
           select() { return builder },
           eq(col: string, val: unknown) { builder._filters[col] = val; return builder },
@@ -24,7 +54,7 @@ function makeServiceMock() {
           lt() { return builder },
           order() { return builder },
           limit() { return Promise.resolve({ data: usageLogsRows, error: null }) },
-          then(resolve: (v: any) => any) { return resolve({ data: usageLogsRows, error: null }) },
+          then(resolve: (v: UsageLogsResult) => unknown) { return resolve({ data: usageLogsRows, error: null }) },
         }
         return builder
       }
@@ -142,7 +172,7 @@ describe('GET /api/admin/usage/[type]/[id] — aggregation smoke', () => {
     expect(body.by_model['claude-sonnet'].calls).toBe(1)
 
     // daily_trend: two days, sorted ascending
-    expect(body.daily_trend.map((d: any) => d.date)).toEqual(['2026-05-20', '2026-05-21'])
+    expect(body.daily_trend.map((d: { date: string }) => d.date)).toEqual(['2026-05-20', '2026-05-21'])
     expect(body.daily_trend[0].calls).toBe(2)
     expect(body.daily_trend[1].calls).toBe(1)
   })

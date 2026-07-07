@@ -7,6 +7,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { dataResponse, parseExportFormat, type ExportFormat } from '@/lib/xlsxExport'
+import type { PsychoQuestion } from '@/lib/types'
 import { resolveBrandGlossary } from '@/lib/correction/glossary'
 import { logError } from '@/lib/log'
 import { buildReplacements, normalizeText } from '@/lib/correction/normalize'
@@ -73,7 +74,7 @@ export async function GET(req: NextRequest, props: Params) {
   // glossary is empty. Only needed for exports.
   let nz: (t: string) => string = (t) => t
   if (isExport) {
-    const brandTag = String((cfg as any).brandTag ?? '').trim()
+    const brandTag = String(cfg.brandTag ?? '').trim()
     if (brandTag && study?.org_id) {
       const glossary = await resolveBrandGlossary(service, { orgId: study.org_id, brandTag, authoritativeOnly: true })
       const repl = buildReplacements(glossary)
@@ -103,7 +104,7 @@ export async function GET(req: NextRequest, props: Params) {
       if (!allRows || allRows.length < KEY_PAGE) break
       keyOffset += KEY_PAGE
     }
-    const configKeys = (cfg.psychographicBank || []).map((p: any) => p.key)
+    const configKeys = (cfg.psychographicBank || []).map((p: PsychoQuestion) => p.key)
     allPsychoKeys = [
       ...configKeys.filter((k: string) => psychoSet.has(k)),
       ...Array.from(psychoSet).filter((k: string) => !configKeys.includes(k)),
@@ -182,9 +183,9 @@ export async function GET(req: NextRequest, props: Params) {
   }
 
   const psychoLabel = (key: string): string => {
-    const pq = (cfg.psychographicBank || []).find((p: any) => p.key === key)
+    const pq = (cfg.psychographicBank || []).find((p: PsychoQuestion) => p.key === key)
     if (!pq) return key
-    const exportLabel = (pq as any).exportLabel as string | undefined
+    const exportLabel = pq.exportLabel as string | undefined
     if (labelMode === 'key') return exportLabel || key
     return exportLabel || pq.q || key
   }
@@ -193,7 +194,24 @@ export async function GET(req: NextRequest, props: Params) {
     labelMode === 'prompt' ? key.charAt(0).toUpperCase() + key.slice(1) : key
 
   // Column definitions return RAW values; CSV/XLSX writers do the escaping.
-  type Col = { header: string; value: (r: any) => unknown }
+  interface ExportRowPayload {
+    openEnded?:      Record<string, string | null | undefined>
+    psychographics?: Record<string, unknown>
+    demographics?:   Record<string, unknown>
+    agent?:          string
+    timestamp?:      string
+  }
+  interface ExportRow {
+    id:               string
+    sentiment?:       string | null
+    experience_score?: number | null
+    nps_score?:       number | null
+    status?:          string | null
+    completed_at?:    string | null
+    duration_sec?:    number | null
+    payload?:         ExportRowPayload | null
+  }
+  type Col = { header: string; value: (r: ExportRow) => unknown }
 
   const buildColumns = (forDatanautix = false): Col[] => {
     const cols: Col[] = []

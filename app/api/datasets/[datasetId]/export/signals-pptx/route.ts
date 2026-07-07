@@ -39,7 +39,7 @@ export async function POST(req: Request, props: Params) {
   const { data: dataset } = await service
     .from('datasets').select('id, name, source, row_count, org_id').eq('id', params.datasetId).single()
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
-  if (!isAdmin && (dataset as any).org_id !== orgId) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
+  if (!isAdmin && dataset.org_id !== orgId) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
 
   const source = dataset.source as string
   if (source !== 'reddit' && source !== 'substack') {
@@ -49,10 +49,10 @@ export async function POST(req: Request, props: Params) {
   // Load themes
   const { data: stateRow } = await service
     .from('dataset_state').select('theme_model').eq('dataset_id', params.datasetId).single()
-  const themes: { id: string; name: string; keywords: string[] }[] = (stateRow?.theme_model as any)?.themes || []
+  const themes: { id: string; name: string; keywords: string[] }[] = (stateRow?.theme_model as { themes?: { id: string; name: string; keywords: string[] }[] } | null)?.themes || []
 
   // Fetch rows — collections union from member datasets (cap at 10K)
-  const allRows: Record<string, any>[] = []
+  const allRows: Record<string, unknown>[] = []
   const FLAT_PAGE = 1000
 
   let flatDatasetIds: string[] = [params.datasetId]
@@ -73,7 +73,7 @@ export async function POST(req: Request, props: Params) {
         .order('row_index', { ascending: true })
         .range(offset, offset + FLAT_PAGE - 1)
       if (!flatRows || flatRows.length === 0) break
-      for (const fr of flatRows) allRows.push((fr as any).data || fr)
+      for (const fr of flatRows) allRows.push(((fr as { data?: Record<string, unknown> }).data || fr) as Record<string, unknown>)
       if (flatRows.length < FLAT_PAGE) break
       offset += FLAT_PAGE
     }
@@ -93,7 +93,7 @@ export async function POST(req: Request, props: Params) {
 
   // Count per tier
   const tierCounts: Record<string, number> = {}
-  const tierRows: Record<string, Record<string, any>[]> = {}
+  const tierRows: Record<string, Record<string, unknown>[]> = {}
   for (const t of tierOrder) { tierCounts[t] = 0; tierRows[t] = [] }
   for (const r of rows) {
     const tier = String(r.signal_tier)

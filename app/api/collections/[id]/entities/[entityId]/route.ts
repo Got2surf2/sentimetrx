@@ -19,9 +19,9 @@ export const dynamic = 'force-dynamic'
 interface Params { params: Promise<{ id: string; entityId: string }> }
 
 async function gateCollection(service: ReturnType<typeof createServiceRoleClient>, id: string, orgId: string | null, isAdmin: boolean) {
-  const { data: col } = await service.from('collections').select('id, org_id').eq('id', id).single()
+  const { data: col } = await service.from('collections').select('id, org_id').eq('id', id).single<{ id: string; org_id: string }>()
   if (!col) return { error: NextResponse.json({ error: 'Collection not found' }, { status: 404 }) }
-  if (!isAdmin && (col as any).org_id !== orgId) return { error: NextResponse.json({ error: 'Not found' }, { status: 404 }) }
+  if (!isAdmin && col.org_id !== orgId) return { error: NextResponse.json({ error: 'Not found' }, { status: 404 }) }
   return { col }
 }
 
@@ -37,7 +37,7 @@ export async function PATCH(req: NextRequest, props: Params) {
   const category = typeof body?.category === 'string' ? body.category.trim().slice(0, 40) : undefined
   const aliasesRaw = Array.isArray(body?.aliases) ? body.aliases : undefined
   const aliases = aliasesRaw
-    ? aliasesRaw.map((a: any) => String(a ?? '').trim()).filter((a: string) => a.length > 0 && a.length <= 80)
+    ? aliasesRaw.map((a: unknown) => String(a ?? '').trim()).filter((a: string) => a.length > 0 && a.length <= 80)
     : undefined
 
   if (hidden === undefined && canonical === undefined && aliases === undefined && category === undefined) {
@@ -55,16 +55,16 @@ export async function PATCH(req: NextRequest, props: Params) {
     .from('entity_catalog')
     .select('id, source, provenance')
     .eq('id', params.entityId).eq('scope_type', 'collection').eq('scope_id', params.id)
-    .single()
+    .single<{ id: string; source: string; provenance: unknown }>()
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const patch: Record<string, any> = {}
+  const patch: Record<string, unknown> = {}
   if (hidden !== undefined) patch.hidden = hidden
   if (category !== undefined) patch.category = category
   if (canonical !== undefined) { patch.canonical = canonical; patch.source = 'manual' }
   if (aliases !== undefined) { patch.aliases = aliases; patch.source = 'manual' }
   if (canonical !== undefined || aliases !== undefined) {
-    patch.provenance = mergeProvenance(((existing as any).provenance ?? {}) as Provenance, 'manual', null, 1)
+    patch.provenance = mergeProvenance((existing.provenance ?? {}) as Provenance, 'manual', null, 1)
   }
 
   const { data: updated, error } = await service
@@ -94,9 +94,9 @@ export async function DELETE(_req: NextRequest, props: Params) {
     .from('entity_catalog')
     .select('id, source')
     .eq('id', params.entityId).eq('scope_type', 'collection').eq('scope_id', params.id)
-    .single()
+    .single<{ id: string; source: string }>()
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if ((existing as any).source !== 'manual') {
+  if (existing.source !== 'manual') {
     return NextResponse.json({ error: 'Hide discovered entities instead of deleting.' }, { status: 400 })
   }
 

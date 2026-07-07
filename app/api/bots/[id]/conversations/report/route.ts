@@ -26,9 +26,10 @@ export async function POST(req: NextRequest, props: Params) {
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : (orgRel as any)?.is_admin_org
-  const userOrgId = (userData as any)?.org_id as string | null
+  type UserRow = { org_id: string | null; organizations: { is_admin_org: boolean } | { is_admin_org: boolean }[] | null }
+  const orgRel = (userData as UserRow | null)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : orgRel?.is_admin_org
+  const userOrgId = (userData as UserRow | null)?.org_id as string | null
 
   const { data: bot } = await service
     .from('agents')
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest, props: Params) {
   if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   if (!isAdmin && bot.org_id !== userOrgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  let body: any = {}
+  let body: { since?: string; extract_actions?: boolean; report_text?: string } = {}
   try { body = await req.json() } catch {}
   const since = body.since || new Date(Date.now() - 7 * 86400000).toISOString() // default: last 7 days
 
@@ -54,7 +55,8 @@ export async function POST(req: NextRequest, props: Params) {
       .gte('created_at', since)
       .order('turn_number', { ascending: true })
       .limit(1000)
-    turns = (data || []).map((r: any) => ({
+    type TurnRow = { turn_number: number; role: string; content: string; created_at: string; conversations: { session_id: string } }
+    turns = ((data || []) as unknown as TurnRow[]).map((r) => ({
       session_id: r.conversations?.session_id,
       turn_number: r.turn_number,
       role: r.role,

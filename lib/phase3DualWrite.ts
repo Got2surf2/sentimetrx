@@ -81,9 +81,9 @@ async function withRetry<T extends { error: { message: string } | null }>(
     try {
       last = await fn()
       if (!last.error || !TRANSIENT_RX.test(last.error.message)) return last
-    } catch (e: any) {
-      if (!TRANSIENT_RX.test(String(e?.message || e))) throw e
-      last = { error: { message: String(e?.message || e) } } as T
+    } catch (e) {
+      if (!TRANSIENT_RX.test(String((e as { message?: unknown })?.message || e))) throw e
+      last = { error: { message: String((e as { message?: unknown })?.message || e) } } as T
     }
     if (i < attempts - 1) await new Promise(r => setTimeout(r, 250 * (i + 1)))
   }
@@ -187,8 +187,8 @@ export async function mirrorTurns(
       void logError('phase3DualWrite.turnsInsert', turnsErr, { orgId: args.orgId })
       console.error({ at: 'phase3-dual-write', msg: 'conversation_turns insert failed', err: turnsErr.message, bot_id: args.botId, session_id: args.sessionId, count: turnRows.length })
     }
-  } catch (e: any) {
-    console.error({ at: 'phase3-dual-write', msg: 'unexpected error', err: e?.message, bot_id: args.botId, session_id: args.sessionId })
+  } catch (e) {
+    console.error({ at: 'phase3-dual-write', msg: 'unexpected error', err: (e as { message?: unknown })?.message, bot_id: args.botId, session_id: args.sessionId })
   }
 }
 
@@ -229,8 +229,8 @@ export async function mirrorFocusFlagsUpdate(
     if (error) {
       console.error({ at: 'phase3-dual-write', msg: 'conversation_turns flags update failed', err: error.message, bot_id: args.botId, session_id: args.sessionId, turn_number: args.turnNumber })
     }
-  } catch (e: any) {
-    console.error({ at: 'phase3-dual-write', msg: 'unexpected error in flags update', err: e?.message })
+  } catch (e) {
+    console.error({ at: 'phase3-dual-write', msg: 'unexpected error in flags update', err: (e as { message?: unknown })?.message })
   }
 }
 
@@ -362,7 +362,7 @@ export async function mirrorDeleteSession(
     if (error) {
       console.error({ at: 'phase3-dual-write', msg: 'conversations delete failed', err: error.message, bot_id: args.botId, session_id: args.sessionId })
     }
-  } catch (e: any) {
-    console.error({ at: 'phase3-dual-write', msg: 'unexpected error in delete', err: e?.message })
+  } catch (e) {
+    console.error({ at: 'phase3-dual-write', msg: 'unexpected error in delete', err: (e as { message?: unknown })?.message })
   }
 }

@@ -11,7 +11,12 @@ export const dynamic = 'force-dynamic'
 
 interface Params { params: Promise<{ sourceId: string }> }
 
-async function resolveOrg(supabase: any) {
+interface OrgRow {
+  features?: { analyze?: boolean } | null
+  is_admin_org?: boolean | null
+}
+
+async function resolveOrg(supabase: Awaited<ReturnType<typeof createClient>>) {
   const user = await getAuthUser(supabase)
   if (!user) return { error: 'Unauthorized', status: 401, user: null, orgId: null }
   const { data: userData } = await supabase
@@ -19,8 +24,8 @@ async function resolveOrg(supabase: any) {
     .select('org_id, organizations(features, is_admin_org)')
     .eq('id', user.id)
     .single()
-  const rawOrg  = userData?.organizations
-  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+  const rawOrg  = userData?.organizations as OrgRow | OrgRow[] | null | undefined
+  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg
   if (!orgData?.features?.analyze) return { error: 'Analyze module not enabled', status: 403, user: null, orgId: null }
   const orgId = userData?.org_id
   if (!orgId) return { error: 'Org not found', status: 403, user: null, orgId: null }
@@ -61,7 +66,7 @@ export async function GET(_req: Request, props: Params) {
     }
 
     return NextResponse.json({ source, locations: locations || [], datasetRowCount })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'reviewSources.detail')
   }
 }
@@ -109,7 +114,7 @@ export async function PATCH(req: Request, props: Params) {
     if (error) return serverError(error, 'reviewSources.update', { orgId: auth.orgId })
 
     return NextResponse.json({ ok: true })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'reviewSources.update')
   }
 }
@@ -143,7 +148,7 @@ export async function DELETE(_req: Request, props: Params) {
     }
 
     return NextResponse.json({ ok: true })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'reviewSources.delete')
   }
 }

@@ -138,7 +138,7 @@ export function buildUserMessage(input: ExtractorInput): string {
 
 // ── Parsing & validation ─────────────────────────────────────────────────────
 
-export function tryParseJSON(text: string): any {
+export function tryParseJSON(text: string): unknown {
   const trimmed = text.trim()
   // Strip Markdown fence if model emits one despite instructions.
   const m = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
@@ -164,39 +164,40 @@ function isSeverity(s: unknown): s is Severity {
  * Out-of-vocab subs are accumulated separately for triage.
  */
 export function validateAssertion(
-  a: any,
+  a: unknown,
   unmapped: { axis: string; sub: string }[],
 ): Assertion | null {
   if (!a || typeof a !== 'object') return null
-  if (!isAxis(a.axis)) return null
-  if (typeof a.sub !== 'string' || !a.sub.trim()) return null
-  const sub = a.sub.trim().toLowerCase()
+  const rec = a as Record<string, unknown>
+  if (!isAxis(rec.axis)) return null
+  if (typeof rec.sub !== 'string' || !rec.sub.trim()) return null
+  const sub = rec.sub.trim().toLowerCase()
 
-  if (!isValidAxisSub(a.axis, sub)) {
-    unmapped.push({ axis: a.axis, sub })
+  if (!isValidAxisSub(rec.axis, sub)) {
+    unmapped.push({ axis: rec.axis, sub })
     return null
   }
 
-  const polarity: Polarity = isPolarity(a.polarity) ? a.polarity : 'neu'
-  const severity: Severity = isSeverity(a.severity) ? a.severity : 'normal'
-  const confidence = typeof a.confidence === 'number'
-    ? Math.max(0, Math.min(1, a.confidence))
+  const polarity: Polarity = isPolarity(rec.polarity) ? rec.polarity : 'neu'
+  const severity: Severity = isSeverity(rec.severity) ? rec.severity : 'normal'
+  const confidence = typeof rec.confidence === 'number'
+    ? Math.max(0, Math.min(1, rec.confidence))
     : 0.7
 
   const out: Assertion = {
-    axis: a.axis,
+    axis: rec.axis,
     sub,
     polarity,
     confidence,
     severity,
     source: 'llm',
   }
-  if (typeof a.item === 'string' && a.item.trim()) {
-    const item = a.item.trim().toLowerCase()
+  if (typeof rec.item === 'string' && rec.item.trim()) {
+    const item = rec.item.trim().toLowerCase()
     if ((PRODUCT_ITEMS as readonly string[]).includes(item)) out.item = item
   }
-  if (typeof a.evidence === 'string' && a.evidence.trim()) {
-    out.evidence = a.evidence.trim()
+  if (typeof rec.evidence === 'string' && rec.evidence.trim()) {
+    out.evidence = rec.evidence.trim()
   }
   return out
 }
@@ -232,7 +233,7 @@ export function projectAxes(assertions: Assertion[]) {
 // ── Pure parser (no AI call) — scripts can call their own provider then this ─
 
 export function parseExtractorOutput(rawText: string, modelUsed: string): ExtractorResult {
-  let parsed: any
+  let parsed: unknown
   try {
     parsed = tryParseJSON(rawText)
   } catch {
@@ -240,7 +241,8 @@ export function parseExtractorOutput(rawText: string, modelUsed: string): Extrac
   }
 
   const unmapped: { axis: string; sub: string }[] = []
-  const rawList: any[] = Array.isArray(parsed?.assertions) ? parsed.assertions : []
+  const assertionsField = (parsed as { assertions?: unknown } | null | undefined)?.assertions
+  const rawList: unknown[] = Array.isArray(assertionsField) ? assertionsField : []
   const validated: Assertion[] = []
   for (const a of rawList) {
     const v = validateAssertion(a, unmapped)

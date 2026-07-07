@@ -15,6 +15,12 @@ import type {
   HistogramBucket,
 } from './analyzeTypes'
 
+// Row shape returned by the `count_field_values` RPC (field value + its count).
+interface FieldValueCountRow {
+  value: string
+  count: number | string
+}
+
 // -- Running accumulators per field type ---------------------------------
 
 interface CatAccum {
@@ -350,7 +356,7 @@ export async function computeAnalyticsSQL(
       var catRes = await service.rpc('count_field_values', { p_dataset_id: datasetId, p_field_key: f.field, p_limit: 500 })
       var counts: Record<string, number> = {}
       var nonNull = 0
-      ;(catRes.data || []).forEach(function(r: any) { counts[r.value] = Number(r.count); nonNull += Number(r.count) })
+      ;(catRes.data || []).forEach(function(r: FieldValueCountRow) { counts[r.value] = Number(r.count); nonNull += Number(r.count) })
       var sorted = Object.entries(counts).sort(function(a, b) { return b[1] - a[1] })
       return {
         type: 'categorical', nonNull: nonNull,
@@ -371,7 +377,7 @@ export async function computeAnalyticsSQL(
       // Get value counts for discrete detection + histogram
       var vcRes = await service.rpc('count_field_values', { p_dataset_id: datasetId, p_field_key: f.field, p_limit: 50 })
       var valCounts: Record<string, number> = {}
-      ;(vcRes.data || []).forEach(function(r: any) { valCounts[r.value] = Number(r.count) })
+      ;(vcRes.data || []).forEach(function(r: FieldValueCountRow) { valCounts[r.value] = Number(r.count) })
       var uniqueNumCount = Object.keys(valCounts).length
       var isDiscrete = uniqueNumCount <= 20
       // Build histogram from value counts if discrete, else approximate from stats
@@ -438,7 +444,7 @@ export async function computeAnalyticsSQL(
       var dateMin = '', dateMax = ''
       var dcRes = await service.rpc('count_field_values', { p_dataset_id: datasetId, p_field_key: f.field, p_limit: 500 })
       var dateNonNull = 0
-      ;(dcRes.data || []).forEach(function(r: any) {
+      ;(dcRes.data || []).forEach(function(r: FieldValueCountRow) {
         dateCounts[r.value] = Number(r.count)
         dateNonNull += Number(r.count)
         if (!dateMin || r.value < dateMin) dateMin = r.value
@@ -448,7 +454,7 @@ export async function computeAnalyticsSQL(
     }
 
     // Fallback for any other type
-    return { type: f.type as any, nonNull: 0, uniqueCount: 0, sample: [] } as IgnoredSummary
+    return { type: f.type as 'id' | 'ignore', nonNull: 0, uniqueCount: 0, sample: [] } as IgnoredSummary
   }
 
   // Fields are independent — run their aggregate queries with bounded concurrency

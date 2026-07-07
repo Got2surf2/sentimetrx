@@ -12,10 +12,38 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { logDeckDownload } from '@/lib/auth/logDeckDownload'
 import { buildRecordingDeck } from '@/lib/pptx/recordingDeck'
-import type { RecordingExtractionRow } from '@/lib/recordings/types'
+import type {
+  RecordingExtractionRow,
+  RecordingAnalysisSummary,
+  ProceedingsSummary,
+  MeetingProfile,
+} from '@/lib/recordings/types'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
+
+// Untyped service-role client → the selected recording row is inferred loosely;
+// this describes the columns this route reads so the deck-input build is typed.
+interface RecordingDeckRow {
+  id: string
+  org_id: string
+  name: string | null
+  meeting_date: string | null
+  location: string | null
+  status: string | null
+  analysis_summary: RecordingAnalysisSummary | null
+  proceedings_summary: ProceedingsSummary | null
+  meeting_profile: MeetingProfile | null
+  source_duration_sec: number | null
+  analysis_org: string | null
+  analysts: Array<{ name: string }> | null
+  objectives: { summary: string; questions: string[] } | null
+  confidentiality_class: string | null
+  signoff: { approved_by: string; approved_at?: string | null } | null
+  analyzed_config_version: number | null
+  draft: boolean | null
+  entity_map: unknown
+}
 
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const recording_id = (await ctx.params).id
@@ -47,23 +75,23 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     .eq('org_id', rec.org_id)
     .order('sort_order', { ascending: true })
 
-  const r = rec as Record<string, any>
+  const r = rec as RecordingDeckRow
   const buf = await buildRecordingDeck({
     name: rec.name,
     meeting_date: rec.meeting_date,
     location: rec.location,
     analysis_org: r.analysis_org ?? null,
-    analysts: (r.analysts ?? []) as Array<{ name: string }>,
-    objectives: (r.objectives ?? null) as { summary: string; questions: string[] } | null,
+    analysts: r.analysts ?? [],
+    objectives: r.objectives ?? null,
     confidentiality_class: r.confidentiality_class ?? null,
-    signoff: (r.signoff ?? null) as { approved_by: string; approved_at?: string | null } | null,
-    config_version: (r.analyzed_config_version ?? null) as number | null,
-    analysis_summary: (rec.analysis_summary ?? null) as any,
-    proceedings_summary: (rec.proceedings_summary ?? null) as any,
-    meeting_profile: (rec.meeting_profile ?? null) as any,
+    signoff: r.signoff ?? null,
+    config_version: r.analyzed_config_version ?? null,
+    analysis_summary: r.analysis_summary ?? null,
+    proceedings_summary: r.proceedings_summary ?? null,
+    meeting_profile: r.meeting_profile ?? null,
     extractions: (extractions ?? []) as unknown as RecordingExtractionRow[],
     entity_map: r.entity_map ?? null,
-    source_duration_sec: (rec as { source_duration_sec?: number | null }).source_duration_sec ?? null,
+    source_duration_sec: r.source_duration_sec ?? null,
     draft: r.draft === true,
   })
 
@@ -73,7 +101,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   const safe = (rec.name || 'recording').replace(/[^a-z0-9]/gi, '-').toLowerCase()
   const date = new Date().toISOString().slice(0, 10)
 
-  return new NextResponse(buf as any, {
+  return new NextResponse(buf as BodyInit, {
     status: 200,
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',

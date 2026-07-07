@@ -7,7 +7,9 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { expandLemma } from '@/lib/lemmas'
-import { olsRegression } from '@/lib/statsUtils'
+import { olsRegression, type RegressionResult } from '@/lib/statsUtils'
+
+type Coef = RegressionResult['coefs'][number]
 
 interface Props { params: Promise<{ datasetId: string }> }
 
@@ -173,7 +175,7 @@ export async function POST(req: Request, props: Props) {
   const themeNames = validThemeIndices.map(ti => themes[ti].name)
 
   // Run OLS regression
-  const result = olsRegression(yValues, filteredX, themeNames)
+  const result = olsRegression(yValues, filteredX, themeNames) as RegressionResult | null
 
   if (!result) {
     return NextResponse.json({ error: 'Regression failed — possible multicollinearity or insufficient variance' }, { status: 400 })
@@ -181,8 +183,8 @@ export async function POST(req: Request, props: Props) {
 
   // Build per-theme output
   const themeImpacts = result.coefs
-    .filter((c: any) => c.name !== 'Intercept')
-    .map((c: any) => {
+    .filter((c: Coef) => c.name !== 'Intercept')
+    .map((c: Coef) => {
       const ti = validThemeIndices[result.coefs.indexOf(c) - 1] // -1 for intercept
       return {
         themeId: ti !== undefined ? themes[ti]?.id : null,
@@ -194,9 +196,9 @@ export async function POST(req: Request, props: Props) {
         mentions: ti !== undefined ? themeCounts[ti] : 0,
       }
     })
-    .sort((a: any, b: any) => Math.abs(b.coefficient) - Math.abs(a.coefficient))
+    .sort((a, b) => Math.abs(b.coefficient) - Math.abs(a.coefficient))
 
-  const intercept = result.coefs.find((c: any) => c.name === 'Intercept')
+  const intercept = result.coefs.find((c: Coef) => c.name === 'Intercept')
 
   return NextResponse.json({
     themeImpacts,

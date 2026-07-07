@@ -133,3 +133,9 @@ WHY: Continue to zero.
 WHY: Continue to zero.
 
 30 files (−171): lib/ai, agentReadout, reviewSync, reddit, brandRules, serviceHealth, townhallAnalytics; settings/dataset/bot clients; review-sources/favorites/entities/compute/bots routes; unit + integration tests. Reconciled one cross-file conflict: townhallAnalytics now types computeSessionAnalytics `themes: LegacyThemeRow[]` (indexed) vs townHallAdapter's LegacyTheme (no index sig) → boundary `as unknown as LegacyThemeRow[]`. Global tsc 0 errors, 1238 tests pass, 1270→1099. Ceiling → 1099. Not pushed.
+
+## ESLint burn-down wave 7 — 32 files (Jul 7)
+
+WHY: Continue to zero.
+
+32 files (−147): townhall/chat (frozen legacy — annotation-only, allowed), studies/reviews/recordings/deck/datasets/bots/campaigns routes, usageLog, taxonomyExtractor, phase3DualWrite, entityMentionDetector, analyticsCompute, wizards. No cross-file conflicts in committed code (one incidental break in the untracked scripts/_llm-tier-prototype.ts fixed locally, gitignored/not in CI). Global tsc 0 errors, 1238 tests pass, 1099→952. Ceiling → 952. Not pushed.

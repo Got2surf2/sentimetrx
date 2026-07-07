@@ -51,21 +51,26 @@ export async function GET(req: NextRequest) {
     .from('datasets')
     .select('id, name, source')
     .eq('id', datasetId)
-    .single()
+    .single<{ id: string; name: string; source: string | null }>()
   if (!dataset) {
     return new NextResponse('Dataset not found', { status: 404 })
   }
-  const datasetName = (dataset as any).name as string
+  const datasetName = dataset.name
 
   let memberIds: string[] = [datasetId]
-  if ((dataset as any).source === 'collection') {
-    const { data: col } = await service.from('collections').select('id').eq('dataset_id', datasetId).single()
+  if (dataset.source === 'collection') {
+    const { data: col } = await service
+      .from('collections')
+      .select('id')
+      .eq('dataset_id', datasetId)
+      .single<{ id: string }>()
     if (col) {
       const { data: members } = await service
         .from('collection_members')
         .select('dataset_id')
-        .eq('collection_id', (col as any).id)
-      if (members && members.length > 0) memberIds = members.map((m: any) => m.dataset_id)
+        .eq('collection_id', col.id)
+        .returns<{ dataset_id: string }[]>()
+      if (members && members.length > 0) memberIds = members.map((m) => m.dataset_id)
     }
   }
 
@@ -81,9 +86,10 @@ export async function GET(req: NextRequest) {
         .eq('dataset_id', dsId)
         .order('row_index', { ascending: true })
         .range(offset, offset + PAGE - 1)
+        .returns<{ data: Record<string, unknown> | null }[]>()
       if (error || !rows || rows.length === 0) break
       for (const r of rows) {
-        const val = (r as any).data?.[field]
+        const val = r.data?.[field]
         if (typeof val === 'string' && val.trim()) rawValues.push(val)
       }
       if (rows.length < PAGE) break

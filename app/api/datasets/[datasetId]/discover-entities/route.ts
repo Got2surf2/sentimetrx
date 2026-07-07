@@ -5,6 +5,7 @@
 // Triggered explicitly from the Schema tab; not auto-run on sync (AI cost).
 
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { discoverEntities } from '@/lib/entityDiscovery'
@@ -16,6 +17,8 @@ export const maxDuration = 120
 
 interface Params { params: Promise<{ datasetId: string }> }
 
+interface DatasetRow { id: string; name: string; org_id: string }
+
 export async function POST(req: Request, props: Params) {
   const params = await props.params;
   const supabase = await createClient()
@@ -24,9 +27,9 @@ export async function POST(req: Request, props: Params) {
 
   const service = createServiceRoleClient()
   const { data: ds } = await service
-    .from('datasets').select('id, name, org_id').eq('id', params.datasetId).single()
+    .from('datasets').select('id, name, org_id').eq('id', params.datasetId).single<DatasetRow>()
   if (!ds) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
-  if (!isAdmin && (ds as any).org_id !== orgId) {
+  if (!isAdmin && ds.org_id !== orgId) {
     return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
   }
 
@@ -38,14 +41,14 @@ export async function POST(req: Request, props: Params) {
       triggeredByUser: userId,
     })
 
-    const ctx = eventContextFromRequest(req as any)
+    const ctx = eventContextFromRequest(req as NextRequest)
     await recordUserEvent({
       userId,
-      orgId: (ds as any).org_id,
+      orgId: ds.org_id,
       event: 'entities_discovered',
       metadata: {
         dataset_id:     params.datasetId,
-        dataset_name:   (ds as any).name,
+        dataset_name:   ds.name,
         scope_type:     result.scope_type,
         sample_size:    result.sample_size,
         entities_after: result.entities_after,
@@ -57,7 +60,7 @@ export async function POST(req: Request, props: Params) {
     })
 
     return NextResponse.json(result)
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'datasets.discoverEntities', { orgId })
   }
 }

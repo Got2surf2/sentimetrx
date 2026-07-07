@@ -14,7 +14,7 @@ async function throttle(): Promise<void> {
   lastRequest = Date.now()
 }
 
-async function substackGet(url: string): Promise<any> {
+async function substackGet(url: string): Promise<unknown> {
   await throttle()
   const res = await fetch(url, {
     headers: { 'User-Agent': USER_AGENT },
@@ -25,6 +25,49 @@ async function substackGet(url: string): Promise<any> {
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
+
+// Shapes of the raw Substack API JSON (only the fields this client reads).
+interface RawByline {
+  name?: string
+  handle?: string
+}
+
+interface RawTag {
+  name?: string
+}
+
+interface RawSubstackPost {
+  id: number
+  title?: string
+  subtitle?: string
+  slug?: string
+  post_date?: string
+  reaction_count?: number
+  comment_count?: number
+  restacks?: number
+  wordcount?: number
+  audience?: string
+  canonical_url?: string
+  cover_image?: string | null
+  publishedBylines?: RawByline[]
+  postTags?: (RawTag | string)[]
+}
+
+interface RawSubstackComment {
+  id: number | string
+  body?: string
+  deleted?: boolean
+  name?: string
+  handle?: string
+  reaction_count?: number
+  metadata?: { is_author?: boolean }
+  date?: string
+  ancestor_path?: string
+  children_count?: number
+  children?: RawSubstackComment[]
+  restacks?: number
+  edited_at?: string | null
+}
 
 export interface SubstackPost {
   id: number
@@ -111,7 +154,7 @@ export async function fetchPublication(baseUrl: string): Promise<SubstackPublica
 export async function fetchPosts(baseUrl: string, limit: number = 50, offset: number = 0): Promise<SubstackPost[]> {
   var data = await substackGet(baseUrl + '/api/v1/archive?sort=new&limit=' + limit + '&offset=' + offset)
   if (!Array.isArray(data)) return []
-  return data.map(function(d: any): SubstackPost {
+  return data.map(function(d: RawSubstackPost): SubstackPost {
     var byline = d.publishedBylines?.[0] || {}
     return {
       id: d.id,
@@ -128,7 +171,7 @@ export async function fetchPosts(baseUrl: string, limit: number = 50, offset: nu
       audience: d.audience || 'everyone',
       canonical_url: d.canonical_url || '',
       cover_image: d.cover_image || null,
-      tags: (d.postTags || []).map(function(t: any) { return t.name || t }),
+      tags: (d.postTags || []).map(function(t: RawTag | string): string { return ((t as RawTag).name || t) as string }),
     }
   })
 }
@@ -138,12 +181,12 @@ export async function fetchPosts(baseUrl: string, limit: number = 50, offset: nu
 export async function fetchPostComments(baseUrl: string, postId: number, postTitle: string, postDate: string): Promise<SubstackComment[]> {
   var data = await substackGet(baseUrl + '/api/v1/post/' + postId + '/comments?all_comments=true&sort=best_first')
   var comments: SubstackComment[] = []
-  flattenComments(data?.comments || data || [], postId, postTitle, postDate, comments, 0)
+  flattenComments((data as { comments?: RawSubstackComment[] })?.comments || (data as RawSubstackComment[]) || [], postId, postTitle, postDate, comments, 0)
   return comments
 }
 
 function flattenComments(
-  children: any[],
+  children: RawSubstackComment[],
   postId: number,
   postTitle: string,
   postDate: string,

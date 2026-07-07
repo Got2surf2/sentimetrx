@@ -52,12 +52,12 @@ interface RefreshResult { datasetId: string; name?: string; rowsScanned: number;
 function diffValuesCounts(before: SchemaConfig, after: SchemaConfig): FieldDelta[] {
   const beforeMap: Record<string, number> = {}
   for (const f of before.fields) {
-    if (Array.isArray((f as any).values)) beforeMap[f.field] = (f as any).values.length
+    if (Array.isArray(f.values)) beforeMap[f.field] = f.values.length
   }
   const grew: FieldDelta[] = []
   for (const f of after.fields) {
-    if (Array.isArray((f as any).values)) {
-      const a = (f as any).values.length
+    if (Array.isArray(f.values)) {
+      const a = f.values.length
       const b = beforeMap[f.field] || 0
       if (a > b) grew.push({ field: f.field, before: b, after: a })
     }
@@ -94,7 +94,7 @@ export async function POST(_req: Request, props: Params) {
   const service = createServiceRoleClient()
 
   // Non-collection — refresh against this dataset's own rows.
-  if ((dataset as any).source !== 'collection') {
+  if (dataset.source !== 'collection') {
     const schema = await loadSchemaConfig(service, params.datasetId)
     if (!schema) return NextResponse.json({ error: 'No schema to refresh' }, { status: 400 })
     let merged = schema

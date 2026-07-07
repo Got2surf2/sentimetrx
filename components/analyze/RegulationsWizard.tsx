@@ -22,6 +22,17 @@ interface Props {
   onBack: () => void
 }
 
+interface SearchResponse {
+  dockets: Docket[]
+  totalElements: number
+  error?: string
+}
+
+interface CreateResponse {
+  dataset_id: string
+  error?: string
+}
+
 function formatDate(iso: string): string {
   if (!iso) return ''
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -57,7 +68,7 @@ export default function RegulationsWizard({ onBack }: Props) {
         body: JSON.stringify({ query, page: p }),
       })
       var text = await res.text()
-      var data: any
+      var data: SearchResponse
       try { data = JSON.parse(text) } catch { throw new Error(text.slice(0, 200) || 'Invalid response from server') }
       if (!res.ok) throw new Error(data.error || 'Search failed')
       if (p === 1) {
@@ -69,8 +80,8 @@ export default function RegulationsWizard({ onBack }: Props) {
       setTotalResults(data.totalElements)
       setSearchPage(p)
       setHasSearched(true)
-    } catch (err: any) {
-      setError(err.message || 'Search failed')
+    } catch (err: unknown) {
+      setError((err instanceof Error ? err.message : '') || 'Search failed')
     } finally {
       setLoading(false)
     }
@@ -118,14 +129,14 @@ export default function RegulationsWizard({ onBack }: Props) {
         }),
       })
       var text = await res.text()
-      var data: any
+      var data: CreateResponse
       try { data = JSON.parse(text) } catch { throw new Error('Server error: ' + text.slice(0, 200)) }
       if (!res.ok) throw new Error(data.error || 'Failed to create dataset')
 
       // Redirect to settings — download will auto-start there
       router.push('/analyze/' + data.dataset_id + '/settings')
-    } catch (err: any) {
-      setError(err.message || 'Failed to create dataset')
+    } catch (err: unknown) {
+      setError((err instanceof Error ? err.message : '') || 'Failed to create dataset')
       setCreating(false)
     }
   }

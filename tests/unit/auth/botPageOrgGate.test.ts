@@ -9,9 +9,15 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 // ctx is read lazily inside the mock factories (deferred closures), so tests
 // can reconfigure it before invoking the page.
+type UserData = {
+  org_id: string
+  full_name: string
+  organizations: { is_admin_org: boolean }
+} | null
+type BotData = { org_id: string; name: string; slug: string } | null
 const ctx = {
-  userData: null as any,
-  bot: { data: null as any },
+  userData: null as UserData,
+  bot: { data: null as BotData },
   agentEq: [] as Array<[string, unknown]>,
 }
 
@@ -30,13 +36,21 @@ vi.mock('@/lib/supabase/server', () => ({
   createClient: () => ({
     auth: { getUser: async () => ({ data: { user: { id: 'u1', email: 'x@y.z' } } }) },
     from: () => {
-      const b: any = { select: () => b, eq: () => b, single: async () => ({ data: ctx.userData }) }
+      const b: {
+        select: () => typeof b
+        eq: () => typeof b
+        single: () => Promise<{ data: UserData }>
+      } = { select: () => b, eq: () => b, single: async () => ({ data: ctx.userData }) }
       return b
     },
   }),
   createServiceRoleClient: () => ({
     from: () => {
-      const b: any = {
+      const b: {
+        select: () => typeof b
+        eq: (col: string, val: unknown) => typeof b
+        single: () => Promise<{ data: BotData }>
+      } = {
         select: () => b,
         eq: (col: string, val: unknown) => { ctx.agentEq.push([col, val]); return b },
         single: async () => ctx.bot,

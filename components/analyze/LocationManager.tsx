@@ -49,6 +49,22 @@ interface Source {
   error_message: string | null
 }
 
+interface SyncResponse {
+  error?: string
+  synced?: number
+  total: number
+  locations_synced?: number
+  expected_reviews?: number
+  with_comments?: number
+  without_comments?: number
+  locations_errored?: number
+  locations_submitted?: number
+  locations_remaining?: number
+  errors?: string[]
+  processing_location?: string | null
+  pending_locations?: string[]
+}
+
 interface Props {
   sourceId: string
 }
@@ -110,7 +126,7 @@ export default function LocationManager({ sourceId }: Props) {
         abortRef.current = new AbortController()
         const res = await fetch('/api/review-sources/' + sourceId + '/sync', { method: 'POST', signal: abortRef.current.signal })
         const text = await res.text()
-        let data: any
+        let data: SyncResponse
         try { data = JSON.parse(text) } catch {
           setSyncResult('Sync error: Server returned non-JSON — ' + text.slice(0, 200))
           break
@@ -168,11 +184,12 @@ export default function LocationManager({ sourceId }: Props) {
 
         // Wait before next call — DataForSEO needs 30-90s to process tasks
         await new Promise(function(r) { setTimeout(r, 10000) })
-      } catch (err: any) {
-        if (err?.name === 'AbortError') {
+      } catch (err: unknown) {
+        const e = err as { name?: string; message?: string } | null
+        if (e?.name === 'AbortError') {
           setSyncResult('Download stopped.')
         } else {
-          setSyncResult('Sync error: ' + (err?.message || 'Network error'))
+          setSyncResult('Sync error: ' + (e?.message || 'Network error'))
         }
         break
       }
@@ -196,7 +213,7 @@ export default function LocationManager({ sourceId }: Props) {
     try {
       const res = await fetch('/api/review-sources/' + sourceId + '/sync', { method: 'POST' })
       const text = await res.text()
-      let data: any
+      let data: SyncResponse
       try { data = JSON.parse(text) } catch {
         setSyncResult('Sync failed: Server returned non-JSON — ' + text.slice(0, 200))
         return
@@ -208,8 +225,9 @@ export default function LocationManager({ sourceId }: Props) {
       } else {
         setSyncResult('Sync failed: ' + (data.error || 'Unknown error'))
       }
-    } catch (err: any) {
-      setSyncResult('Sync failed: ' + (err?.message || 'Unknown error'))
+    } catch (err: unknown) {
+      const e = err as { message?: string } | null
+      setSyncResult('Sync failed: ' + (e?.message || 'Unknown error'))
     } finally {
       setSyncing(false)
     }

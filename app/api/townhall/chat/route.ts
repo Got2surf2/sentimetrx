@@ -35,6 +35,33 @@ interface ChatRequest {
   debug?: boolean   // client-side debug flag (validated via password)
 }
 
+// Minimal shapes for the pulseiq_sessions row and its cohort_config JSON.
+// The service-role client is untyped, so these annotate the fields this
+// route actually reads (all cohort_config fields optional).
+interface SessionEndConfig {
+  mode?: string
+  duration_minutes?: number
+  inactivity_timeout_minutes?: number
+  closing_message?: string
+}
+interface CohortConfig {
+  session_end?: SessionEndConfig
+  closing_message?: string
+  opening_message?: string
+  max_turns_per_participant?: number
+  content_safety?: Record<string, unknown>
+}
+interface PulseiqSessionRow {
+  id: string
+  slug: string
+  org_id: string
+  bot_id: string
+  name: string
+  status: string
+  cohort_config: CohortConfig | null
+  started_at: string | null
+}
+
 // POST /api/townhall/chat — participant sends a message, gets next bot message
 export async function POST(req: NextRequest) {
   // Parse body before rate-limiting so we can throttle per-participant.
@@ -72,7 +99,7 @@ export async function POST(req: NextRequest) {
   {
     const isUUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session_id)
     const EV_COLS = 'id, slug, org_id, bot_id, name, status, cohort_config, started_at'
-    let townHall: any = null
+    let townHall: PulseiqSessionRow | null = null
     if (isUUID4) {
       const { data } = await supabase.from('pulseiq_sessions').select(EV_COLS).eq('id', session_id).single()
       townHall = data
@@ -89,13 +116,13 @@ export async function POST(req: NextRequest) {
       // agent in the Agents UI must not 404 a live room.
       const { data: agent } = await supabase.from('agents').select('*').eq('id', townHall.bot_id).single()
       if (agent) {
-        const cohortConfig = (townHall.cohort_config || {}) as any
+        const cohortConfig: CohortConfig = townHall.cohort_config || {}
         const unifiedSessionId = townHall.id + ':' + participant_id
 
         // ── Session lifecycle (convergence item 2 — ports the legacy
         // auto-end / paused / ended / turn-cap orchestration). Event ↔
         // legacy status mapping: live=active, paused=paused, closed=ended.
-        const sessionEnd = cohortConfig.session_end || {}
+        const sessionEnd: SessionEndConfig = cohortConfig.session_end || {}
         if (townHall.status === 'live' && sessionEnd.mode && sessionEnd.mode !== 'manual') {
           let shouldEnd = false
           if (sessionEnd.mode === 'timed' && townHall.started_at) {
@@ -164,7 +191,7 @@ export async function POST(req: NextRequest) {
           // detection (a Spanish-first participant's first real answer must
           // still register as the opening message). The replayed translation
           // duplicates the prior bot message anyway, so no context is lost.
-          if ((t as any).source === 'language_switch') continue
+          if (t.source === 'language_switch') continue
           if (t.role === 'assistant' || t.role === 'user') {
             messages.push({ role: t.role as 'assistant' | 'user', content: t.content })
             if (t.role === 'assistant') assistantTurnsUsed++
@@ -241,7 +268,7 @@ export async function POST(req: NextRequest) {
             ]
             const { error: swErr } = await supabase.from('bot_conversation_turns').insert(switchRows)
             if (swErr) void logError('townhall.chat.langSwitch', swErr, { orgId: townHall.org_id })
-            void mirrorTurns(supabase as any, { botId: agent.id, orgId: townHall.org_id, sessionId: unifiedSessionId, language: targetLang, rows: switchRows as any, townHallId: townHall.id, participantId: participant_id }).then(function() {})
+            void mirrorTurns(supabase, { botId: agent.id, orgId: townHall.org_id, sessionId: unifiedSessionId, language: targetLang, rows: switchRows, townHallId: townHall.id, participantId: participant_id }).then(function() {})
 
             return NextResponse.json({
               bot_message: switchBotMsg,

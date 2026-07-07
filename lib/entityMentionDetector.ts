@@ -23,6 +23,14 @@ interface CatalogEntry {
   terms: string[]   // expanded variants from canonical + aliases
 }
 
+/** Row shape selected from entity_catalog in loadCatalog. */
+interface CatalogRow {
+  slug: string
+  canonical: string
+  aliases: string[] | null
+  hidden: boolean
+}
+
 interface CacheEntry {
   loadedAt: number
   entries: CatalogEntry[]
@@ -73,11 +81,11 @@ async function loadCatalog(
   if (rowsErr) void logError('entityMentionDetector.loadCatalog', rowsErr)
 
   const entries: CatalogEntry[] = []
-  for (const r of rows || []) {
-    const slug = (r as any).slug as string
+  for (const r of (rows || []) as CatalogRow[]) {
+    const slug = r.slug
     if (!slug) continue
-    const canonical = (r as any).canonical as string
-    const aliases = Array.isArray((r as any).aliases) ? ((r as any).aliases as string[]) : []
+    const canonical = r.canonical
+    const aliases = Array.isArray(r.aliases) ? r.aliases : []
     const terms = expandEntityTerms([canonical, ...aliases].filter(Boolean))
     if (terms.length === 0) continue
     entries.push({ slug, terms })

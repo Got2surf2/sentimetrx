@@ -24,8 +24,9 @@ export async function POST(req: NextRequest, props: Params) {
     .eq('id', user.id)
     .single()
   if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+  type OrgRel = { is_admin_org?: boolean }
+  const orgRel = (userData as { organizations?: OrgRel | OrgRel[] })?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
 
   // Use service role for all campaign data reads (bypasses RLS)
   const service = createServiceRoleClient()
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest, props: Params) {
   }
 
   // Get the email template to send
-  let body: any = {}
+  let body: { sequence?: number } = {}
   try { body = await req.json() } catch { /* no body needed for initial send */ }
   const emailSequence = body.sequence ?? 0
 
@@ -137,13 +138,13 @@ export async function POST(req: NextRequest, props: Params) {
           : `${campaign.name}: We'd love your feedback! Take our survey: ${surveyUrl}`
         try {
           await smsProvider.send({ to: respondent.phone, body: smsBody })
-        } catch (smsErr: any) {
+        } catch (smsErr: unknown) {
           console.error({
             event: 'sms_send_failed',
             campaign_id: params.id,
             respondent_id: respondent.id,
             phone_tail: respondent.phone?.slice(-4),
-            error: smsErr?.message,
+            error: smsErr instanceof Error ? smsErr.message : String(smsErr),
           })
         }
       }
@@ -171,9 +172,10 @@ export async function POST(req: NextRequest, props: Params) {
         .in('status', ['pending']) // don't downgrade status
 
       sentCount++
-    } catch (err: any) {
+    } catch (err: unknown) {
       failCount++
-      errors.push({ email: respondent.email, error: err.message || 'Unknown error' })
+      const errMessage = err instanceof Error ? err.message : 'Unknown error'
+      errors.push({ email: respondent.email, error: errMessage })
 
       await service.from('campaign_send_log').insert({
         campaign_id: params.id,
@@ -181,7 +183,7 @@ export async function POST(req: NextRequest, props: Params) {
         email_id: emailTemplate.id,
         provider: campaign.email_provider,
         status: 'failed',
-        error_message: err.message || 'Unknown error',
+        error_message: errMessage,
       })
     }
   }

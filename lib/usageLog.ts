@@ -65,12 +65,12 @@ export function logUsage(context: UsageContext, usage: AIUsage | undefined): voi
       output_tokens: usage.output_tokens,
       cache_read_tokens: usage.cache_read_tokens,
       cache_creation_tokens: usage.cache_creation_tokens,
-    }).then(function(r: any) {
+    }).then(function(r: { error: { message: string } | null }) {
       if (r.error) console.error('[usage] log failed:', r.error.message)
     }))
-  } catch (e: any) {
+  } catch (e: unknown) {
     // Never block the caller
-    console.error('[usage] log error:', e?.message)
+    console.error('[usage] log error:', e instanceof Error ? e.message : e)
   }
 }
 
@@ -104,11 +104,11 @@ export function logFlatCost(
       cache_read_tokens: 0,
       cache_creation_tokens: 0,
       cost_cents: Math.round(costCents),
-    }).then(function(r: any) {
+    }).then(function(r: { error: { message: string } | null }) {
       if (r.error) console.error('[usage] flat-cost log failed:', r.error.message)
     }))
-  } catch (e: any) {
-    console.error('[usage] flat-cost log error:', e?.message)
+  } catch (e: unknown) {
+    console.error('[usage] flat-cost log error:', e instanceof Error ? e.message : e)
   }
 }
 

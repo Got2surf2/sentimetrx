@@ -10,6 +10,17 @@ export const dynamic = 'force-dynamic'
 
 interface Params { params: Promise<{ id: string }> }
 
+interface OrgRel { is_admin_org?: boolean | null }
+
+interface Intent {
+  label?: string
+  description?: string
+  keywords?: string[]
+  url?: string
+  message?: string
+  enabled?: boolean
+}
+
 export async function GET(req: NextRequest, props: Params) {
   const params = await props.params;
   const supabase = await createClient()
@@ -22,8 +33,8 @@ export async function GET(req: NextRequest, props: Params) {
     .eq('id', user.id)
     .single()
   if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+  const orgRel = (userData as { organizations?: OrgRel | OrgRel[] | null })?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
 
   const service = createServiceRoleClient()
 
@@ -31,7 +42,7 @@ export async function GET(req: NextRequest, props: Params) {
   const { data: bot } = await service.from('agents').select('id, org_id, intents').eq('id', params.id).single()
   if (!bot || (!isAdmin && bot.org_id !== userData.org_id)) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
 
-  const intents: any[] = bot.intents || []
+  const intents: Intent[] = (bot.intents as Intent[] | null) || []
   if (intents.length === 0) return NextResponse.json({ intents: [] })
 
   // Query all turns with intent flags for this bot. READ_PHASE3 switches to
@@ -47,11 +58,19 @@ export async function GET(req: NextRequest, props: Params) {
       .not('content_flags', 'is', null)
       .order('created_at', { ascending: false })
       .limit(1000)
-    flaggedTurns = (data || []).map((r: any) => ({
-      session_id: r.conversations?.session_id,
-      content_flags: r.content_flags,
-      created_at: r.created_at,
-    }))
+    const rows = (data || []) as {
+      content_flags: unknown
+      created_at: string
+      conversations?: { session_id: string } | { session_id: string }[] | null
+    }[]
+    flaggedTurns = rows.map((r) => {
+      const conv = Array.isArray(r.conversations) ? r.conversations[0] : r.conversations
+      return {
+        session_id: conv?.session_id as string,
+        content_flags: r.content_flags,
+        created_at: r.created_at,
+      }
+    })
   } else {
     const { data } = await service
       .from('bot_conversation_turns')
@@ -65,7 +84,7 @@ export async function GET(req: NextRequest, props: Params) {
   }
 
   // Build stats per intent
-  const stats = intents.map(function(intent: any) {
+  const stats = intents.map(function(intent: Intent) {
     var flag = 'intent:' + (intent.label || '').toLowerCase().replace(/\s+/g, '_')
     var detections: { session_id: string; created_at: string }[] = []
 

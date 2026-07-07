@@ -125,8 +125,12 @@ export async function detectThemesForTownHall(townHallId: string): Promise<{ ins
     ? '\n\nEXISTING THEMES (do NOT re-detect these):\n' + existingKeywords.map(t => '- ' + t.label + ' (' + t.mention_count + ' mentions, keywords: ' + t.keywords.slice(0, 5).join(', ') + ')').join('\n')
     : ''
 
-  const cohortConfig = (townHall.cohort_config || {}) as any
-  const discussionGuide = (townHall.discussion_guide || {}) as any
+  const cohortConfig = (townHall.cohort_config || {}) as {
+    industry?: string
+    event_description?: string
+    default_response_target?: number
+  }
+  const discussionGuide = (townHall.discussion_guide || {}) as { event_description?: string }
   const contextNote = discussionGuide?.event_description
     ? '\nEvent: ' + discussionGuide.event_description
     : (cohortConfig?.event_description ? '\nEvent: ' + cohortConfig.event_description : '')
@@ -148,7 +152,15 @@ export async function detectThemesForTownHall(townHallId: string): Promise<{ ins
     '\n\nRESPONSES:\n' + corpus
 
   // 6. Call AI
-  let aiThemes: any[] = []
+  interface AiTheme {
+    name?: string
+    description?: string
+    keywords?: string[]
+    question?: string
+    follow_up_angles?: string[]
+    example_quote?: string
+  }
+  let aiThemes: AiTheme[] = []
   try {
     const result = await callAI({
       tier: 'standard',
@@ -165,8 +177,8 @@ export async function detectThemesForTownHall(townHallId: string): Promise<{ ins
     const raw = result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
     const parsed = JSON.parse(raw)
     aiThemes = parsed.themes || []
-  } catch (e: any) {
-    return { inserted: 0, skipped: 0, error: 'AI error: ' + (e.message || 'unknown') }
+  } catch (e: unknown) {
+    return { inserted: 0, skipped: 0, error: 'AI error: ' + (e instanceof Error ? e.message : 'unknown') }
   }
 
   // 7. Dedup + score + insert

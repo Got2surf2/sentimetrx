@@ -7,6 +7,9 @@ import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
+import type { BotFocus } from '@/lib/focusClassifier'
+
+type OrgRel = { is_admin_org?: boolean }
 
 export const dynamic = 'force-dynamic'
 
@@ -24,8 +27,8 @@ export async function GET(req: NextRequest, props: Params) {
     .eq('id', user.id)
     .single()
   if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+  const orgRel = (userData as { organizations?: OrgRel | OrgRel[] | null })?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
 
   const service = createServiceRoleClient()
 
@@ -33,7 +36,7 @@ export async function GET(req: NextRequest, props: Params) {
   const { data: bot } = await service.from('agents').select('id, org_id, focuses').eq('id', params.id).single()
   if (!bot || (!isAdmin && bot.org_id !== userData.org_id)) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
 
-  const focuses: any[] = bot.focuses || []
+  const focuses: BotFocus[] = bot.focuses || []
   if (focuses.length === 0) return NextResponse.json({ focuses: [] })
 
   // Query assistant turns with focus flags for this bot. READ_PHASE3 switches
@@ -48,8 +51,9 @@ export async function GET(req: NextRequest, props: Params) {
       .not('content_flags', 'is', null)
       .order('created_at', { ascending: false })
       .limit(2000)
-    flaggedTurns = (data || []).map((r: any) => ({
-      session_id: r.conversations?.session_id,
+    type TurnRow = { content_flags: unknown; created_at: string; conversations: { session_id: string } | null }
+    flaggedTurns = ((data || []) as unknown as TurnRow[]).map((r) => ({
+      session_id: r.conversations?.session_id as string,
       content_flags: r.content_flags,
       created_at: r.created_at,
     }))
@@ -65,7 +69,7 @@ export async function GET(req: NextRequest, props: Params) {
     flaggedTurns = data
   }
 
-  const stats = focuses.map(function(focus: any) {
+  const stats = focuses.map(function(focus: BotFocus) {
     const flag = 'focus:' + String(focus.slug || '').toLowerCase()
     const detections: { session_id: string; created_at: string }[] = []
     const uniqueSessions = new Set<string>()

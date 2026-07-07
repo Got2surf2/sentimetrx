@@ -11,6 +11,19 @@ interface Props {
   studyId: string
 }
 
+interface DatasetSummary {
+  id: string
+  source?: string
+  study_id?: string
+}
+
+interface SyncResult {
+  synced?: number
+  error?: string
+  detail?: string
+  debug?: unknown
+}
+
 var HERMES = '#E8632A'
 
 export default function AnalyzeButton({ studyId }: Props) {
@@ -29,14 +42,14 @@ export default function AnalyzeButton({ studyId }: Props) {
       var listRes = await fetch('/api/datasets')
       var listData = await listRes.json()
       var existing = (listData.datasets || []).find(
-        function(d: any) { return d.source === 'study' && d.study_id === studyId }
+        function(d: DatasetSummary) { return d.source === 'study' && d.study_id === studyId }
       )
 
       if (existing) {
         // Dataset exists — sync new responses and navigate
         setStatus('Syncing new responses...')
         var syncRes = await fetch('/api/datasets/' + existing.id + '/sync', { method: 'POST' })
-        var syncData = await syncRes.json().catch(function() { return {} as any })
+        var syncData = await syncRes.json().catch(function(): SyncResult { return {} })
 
         if (!syncRes.ok) {
           var detail = syncData.detail ? ' — ' + syncData.detail : ''
@@ -83,7 +96,7 @@ export default function AnalyzeButton({ studyId }: Props) {
         // Sync responses into dataset rows
         setStatus('Importing responses...')
         var syncRes2 = await fetch('/api/datasets/' + datasetId + '/sync', { method: 'POST' })
-        var syncResult = await syncRes2.json().catch(function() { return {} as any })
+        var syncResult = await syncRes2.json().catch(function(): SyncResult { return {} })
         if (!syncRes2.ok) {
           var detail = syncResult.detail ? ' — ' + syncResult.detail : ''
           throw new Error((syncResult.error || 'Failed to import responses') + detail)
@@ -99,8 +112,8 @@ export default function AnalyzeButton({ studyId }: Props) {
         // Go straight to TextMine — full page load to ensure fresh server data
         window.location.href = '/analyze/' + datasetId + '/textmine?new=1'
       }
-    } catch (err: any) {
-      setError(err.message || 'Something went wrong')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Something went wrong')
       setLoading(false)
       setStatus('')
     }

@@ -88,6 +88,9 @@ function dominant(themes: { sentiment: string; count: number }[]): string {
 
 // ── AI: align synonymous theme labels across columns into unified rows ────────
 interface AlignedRow { theme: string; members: { column: string; label: string }[]; insight: string }
+// Raw, untrusted shapes as they come back from the AI's JSON before validation.
+interface RawAlignedMember { column?: unknown; label?: unknown }
+interface RawAlignedRow { theme?: unknown; members?: unknown; insight?: unknown }
 
 async function alignThemes(columns: ProjectInputModel[], selector: LensSelector, lensNoun: string, purpose: ComparePurpose, projectName: string, primary: string | null, orgId?: string): Promise<AlignedRow[]> {
   const blocks = columns.map(c =>
@@ -112,11 +115,11 @@ Every raw label must map into exactly one row. Order rows by importance.`,
   })
   try {
     const parsed = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
-    const rows = Array.isArray(parsed.rows) ? parsed.rows : []
-    return rows.filter((r: any) => r && typeof r.theme === 'string' && Array.isArray(r.members))
-      .map((r: any) => ({
+    const rows: RawAlignedRow[] = Array.isArray(parsed.rows) ? parsed.rows : []
+    return rows.filter((r: RawAlignedRow) => r && typeof r.theme === 'string' && Array.isArray(r.members))
+      .map((r: RawAlignedRow) => ({
         theme: String(r.theme).trim(),
-        members: r.members.filter((m: any) => m && m.column && m.label).map((m: any) => ({ column: String(m.column), label: String(m.label) })),
+        members: (r.members as RawAlignedMember[]).filter((m: RawAlignedMember) => m && m.column && m.label).map((m: RawAlignedMember) => ({ column: String(m.column), label: String(m.label) })),
         insight: typeof r.insight === 'string' ? r.insight.trim() : '',
       }))
   } catch { return [] }

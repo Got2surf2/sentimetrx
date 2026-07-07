@@ -21,14 +21,17 @@ export async function GET(req: NextRequest, props: Params) {
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
-  const userOrgId = (userData as any)?.org_id as string | null
+  type OrgRel = { is_admin_org: boolean | null }
+  const userRow = userData as { org_id: string | null; organizations: OrgRel | OrgRel[] | null } | null
+  const orgRel = userRow?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
+  const userOrgId = userRow?.org_id ?? null
 
   const service = createServiceRoleClient()
   const { data: bot } = await service.from('agents').select('id, org_id').eq('id', params.id).single()
-  if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
-  if (!isAdmin && (bot as any).org_id !== userOrgId) {
+  const botRow = bot as { id: string; org_id: string | null } | null
+  if (!botRow) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+  if (!isAdmin && botRow.org_id !== userOrgId) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   }
 
@@ -42,6 +45,6 @@ export async function GET(req: NextRequest, props: Params) {
     .order('created_at', { ascending: false })
     .limit(limit)
 
-  if (error) return serverError(error, 'bots.history', { orgId: (bot as any).org_id })
+  if (error) return serverError(error, 'bots.history', { orgId: botRow.org_id ?? undefined })
   return NextResponse.json({ entries: rows || [] })
 }
