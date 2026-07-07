@@ -145,7 +145,7 @@ export function buildPitchDeckV2Html(): string {
     ['20 years across platforms', 'Building data + insights products since long before this was a category — 12 of those years in NLP / NLU.'],
     ['Claude is the spine', 'The reasoning core of the stack, deeply integrated — not a thin wrapper on a model.'],
     ['Real, known problems', 'Surveys nobody answers, open-ends nobody can read, meetings nobody can mine — well-understood pain.'],
-    ['Already validated', 'Darden · Bloomin’ Brands · Orlando Magic · Harlem Globetrotters · Marriott · Orlando International Airport.'],
+    ['Already validated', 'Darden · Bloomin’ Brands · Orlando Magic · Harlem Globetrotters · Orlando International Airport.'],
   ]
   slides.push(slide(`
     ${rail(++c, '// why this is durable')}
@@ -362,7 +362,7 @@ export function buildPitchDeckV2Html(): string {
     ['Consumer AI solution', 'LLMs as the core component driving every customer interaction — conversational surveys, chat agents, live sessions.'],
     ['Harnesses Anthropic deeply', 'Claude is the spine — Opus + Sonnet across collection, moderation, extraction, synthesis.'],
     ['A category you already back', '“Customer engagement software” is in the first Anthology cohort.'],
-    ['Real traction, not a demo', 'Darden · Bloomin’ Brands · Orlando Magic · Globetrotters · Marriott · MCO.'],
+    ['Real traction, not a demo', 'Darden · Bloomin’ Brands · Orlando Magic · Globetrotters · MCO.'],
     ['Experienced, technical founder', '40 years in AI — OSU LAIR → Bell Labs → Convergys CXM → a VC-backed exit.'],
     ['Credits compound', 'Anthropic model credits go straight into deepening the AI layer.'],
   ]

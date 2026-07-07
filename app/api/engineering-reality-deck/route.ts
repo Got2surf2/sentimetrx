@@ -179,7 +179,7 @@ function slidePositioning(pptx: PptxGenJS, pg: number) {
     bullet('20 years building across data + insights platforms — 12 of them in NLP / NLU', { fontSize: 13, color: DN.navy, bold: true }),
     bullet('Claude is the spine of the stack — the reasoning core, not a thin wrapper', { fontSize: 13, color: DN.navy }),
     bullet('We solve real, well-understood problems with known pain points — not a demo in search of a use case', { fontSize: 13, color: DN.navy }),
-    bullet('Already validated by real customers: Globetrotters · JW Marriott · UCF Rosen · MCO · Orlando Magic', { fontSize: 13, color: DN.navy }),
+    bullet('Already validated by real customers: Globetrotters · UCF Rosen · MCO · Orlando Magic', { fontSize: 13, color: DN.navy }),
   ], { x: 0.8, y: 2.2, w: 5.4, h: 3.1, valign: 'top' })
 
   // RIGHT — WHERE INITIAL FUNDING GOES
@@ -207,7 +207,7 @@ function slidePositioning(pptx: PptxGenJS, pg: number) {
 
 THE BARRIER COLLAPSED (the header): say it plainly — anyone with an idea can ship a tool now. AI made building cheap. That's exactly why novelty isn't the moat.
 
-THE EDGE (left): our moat is that we're NOT chasing a novel idea. 20 years building across data + insights platforms — 12 specifically in NLP/NLU. Claude is the spine of the stack (the reasoning core, deeply integrated — not a wrapper). And we solve real, well-understood problems with KNOWN pain points — surveys nobody answers, open-ends nobody can read, meetings nobody can mine. Real customers already validate it: Globetrotters, JW Marriott, UCF Rosen, MCO, Orlando Magic. (Reconciles with the "12 yr NLP/NLU" anchor stat: 20 across platforms, 12 in NLP.)
+THE EDGE (left): our moat is that we're NOT chasing a novel idea. 20 years building across data + insights platforms — 12 specifically in NLP/NLU. Claude is the spine of the stack (the reasoning core, deeply integrated — not a wrapper). And we solve real, well-understood problems with KNOWN pain points — surveys nobody answers, open-ends nobody can read, meetings nobody can mine. Real customers already validate it: Globetrotters, UCF Rosen, MCO, Orlando Magic. (Reconciles with the "12 yr NLP/NLU" anchor stat: 20 across platforms, 12 in NLP.)
 
 WHERE INITIAL FUNDING GOES (right): this is the use-of-funds in one line — we're not raising to find product-market fit. The platform works and has customers. Initial capital shores it up on two axes: SCALABILITY (load/concurrency baselines, per-org cost caps, durable pipelines) and ENTERPRISE USABILITY (SOC 2 / GDPR, admin + onboarding, performance, polish). It maps directly to the hardening slide later.
 

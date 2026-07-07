@@ -426,7 +426,7 @@ function slideWhatWeBuilt(pptx: PptxGenJS, pg: number) {
 
   s.addShape('rect', { x: 0.6, y: 4.95, w: 12.1, h: 1.7, fill: { color: DN.navy }, rectRadius: 0.1 })
   s.addText('PROOF', { x: 0.8, y: 5.05, w: 4, h: 0.35, fontSize: 11, fontFace: 'Arial', color: DN.gold, bold: true, charSpacing: 3 })
-  s.addText('Globetrotters · Orlando Magic · JW Marriott · Red Lobster · UCF Rosen · MCO Airport', {
+  s.addText('Globetrotters · Orlando Magic · Red Lobster · UCF Rosen · MCO Airport', {
     x: 0.8, y: 5.4, w: 11.7, h: 0.5, fontSize: 16, fontFace: 'Arial', color: DN.white, bold: true,
   })
   s.addText('5 verticals · multi-tenant · white-labeled', {
@@ -443,7 +443,7 @@ function slideWhatWeBuilt(pptx: PptxGenJS, pg: number) {
 - LISTENING — Google Reviews, Reddit, Substack, Reg.gov, Meta. One pipeline.
 - CAMPAIGNS — multi-provider email + SMS with AI personalization.
 
-THE PROOF BAR: Globetrotters, Orlando Magic, JW Marriott, Red Lobster, UCF Rosen, MCO Airport. Five verticals. Real customers. Not prototype.
+THE PROOF BAR: Globetrotters, Orlando Magic, Red Lobster, UCF Rosen, MCO Airport. Real customers. Not prototype.
 
 Don't dwell. The point is "we've shipped this, customers use it, this is not a deck."`
   )
@@ -456,7 +456,7 @@ function slideWedge(pptx: PptxGenJS, pg: number) {
   s.addText('Why hospitality leads', { x: 0.6, y: 1.3, w: 6, h: 0.5, fontSize: 16, fontFace: 'Arial', color: DN.navy, bold: true })
   s.addShape('rect', { x: 0.6, y: 1.75, w: 1.2, h: 0.04, fill: { color: DN.gold } })
   s.addText([
-    bullet('Datanautix already serves Marriott, Red Lobster, Orlando resorts — reference customers ready'),
+    bullet('Datanautix already serves Red Lobster, Orlando resorts — reference customers ready'),
     bullet('Highly fragmented vendor landscape (review monitoring, MR boutiques, CX agencies)'),
     bullet('Recurring need + measurable ROI → high cross-sell room with every customer'),
     bullet('Benchmark data flywheel — proprietary dataset no incumbent can build'),
@@ -481,7 +481,7 @@ function slideWedge(pptx: PptxGenJS, pg: number) {
   s.addNotes(
 `The wedge slide. Five reasons hospitality leads.
 
-1. DATANAUTIX ALREADY SERVES the names — JW Marriott, Red Lobster, multiple Orlando resorts. Reference customers are already in the bag.
+1. DATANAUTIX ALREADY SERVES the names — Red Lobster, multiple Orlando resorts. Reference customers are already in the bag.
 
 2. HIGHLY FRAGMENTED VENDOR LANDSCAPE: review monitoring tools, MR boutiques, CX agencies. Lots of acquisition targets.
 
@@ -1017,7 +1017,7 @@ function slideProofPoints(pptx: PptxGenJS, pg: number) {
   ]
   const data = [
     ['Sports & Venues', 'Harlem Globetrotters, Orlando Magic', 'Sarina + Ana'],
-    ['Hospitality', 'JW Marriott, Red Lobster, Orlando resorts', 'Sarina + Listening + Ana'],
+    ['Hospitality', 'Red Lobster, Orlando resorts', 'Sarina + Listening + Ana'],
     ['Education', 'UCF Rosen College', 'Sarina + PulseIQ'],
     ['Airports', 'MCO Airport', 'Sarina + Listening'],
     ['Political / Civic', 'Multiple voter research engagements', 'Sarina + Ana + Reg.gov'],
@@ -1194,7 +1194,7 @@ function slideTeam(pptx: PptxGenJS, pg: number) {
     bullet('Founder / CEO — product, AI, vertical expertise', { fontSize: 12 }),
     bullet('Platform engineering team', { fontSize: 12 }),
     bullet('Existing customer relationships across 5 verticals', { fontSize: 12 }),
-    bullet('Reference customer pipeline (Marriott, Magic, Globetrotters, MCO)', { fontSize: 12 }),
+    bullet('Reference customer pipeline (Magic, Globetrotters, MCO)', { fontSize: 12 }),
   ], { x: 0.85, y: 2.05, w: 5.5, h: 4.5 })
 
   // Hiring
