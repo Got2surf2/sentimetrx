@@ -199,3 +199,11 @@ WHY: Last unprocessed no-explicit-any files.
 WHY: Owner: "make sure this type of drift doesn't happen again" — sync specs/memory and make the anti-drift rule permanent.
 
 The 16-wave no-explicit-any burn-down is done at the safe floor: total warnings 3,060 → 358, no-explicit-any 2,787 → 83 (−97%), all annotation-only, every wave tsc-clean + 1,238 tests green, ceiling ratcheted down each wave (now 358). Owner chose STOP at the floor (the 83 residual anys need behavior-risky union/narrowing refactors; the ~236 react-hooks warnings are a separate effort). Spec-drift check: the tool flagged 13 specs but all were annotation-only touches (no behavioral drift — the legitimate SKIP_SPEC_CHECK case); the one genuine content drift was docs/ENGINEERING.md's stale lint stats (--max-warnings 3900 / ~2,900 anys), now updated to 358 / 83 + the burn-down method recorded. CLAUDE.md's lint-ratchet rule rewritten as the permanent anti-drift guard (no new any → unknown+guard/real type/boundary cast only; ratchet only goes down; harness reference). 18 commits total ahead of origin, all LOCAL/unpushed.
+
+## System Health page surfaced + Sentry panel fix (Jul 7)
+
+WHY: Owner asked to "set up a daily Sentry monitor + a system-health page for all subscriptions in one place." Both already existed — the daily Sentry cron (`/api/cron/sentry-digest`, 0 13 * * *) is what emails the digest, and `/admin/health` already renders DB/vendor-credit/Sentry/study health — but the page was orphaned (linked nowhere) and its Sentry panel was silently dead.
+
+Two surgical fixes: (1) added a "System Health" card to `AdminHub` Operations so `/admin/health` is discoverable; (2) `app/admin/health/page.tsx` read `SENTRY_ORG`/`SENTRY_PROJECT` but the env only defines `SENTRY_ORG_SLUG`/`SENTRY_PROJECT_SLUG` (the names `lib/sentry.ts` + the working daily digest use) → the live-error section never rendered. Aligned to the correct env names. No new cron needed. tsc clean. LOCAL/unpushed.
+
+Also (earlier this session): applied `sql/159_research_probes.sql` to prod to clear the 201-event `agents.research_probes does not exist` Sentry error; reloaded PostgREST cache for `service_health`.

@@ -86,13 +86,13 @@ export default async function HealthPage() {
   const { count: totalComplete24h } = await service.from('responses').select('id', { count: 'exact', head: true }).eq('status', 'complete').gte('completed_at', h24)
 
   // ── Sentry health (errors over last 24h) ────────────────────────────
-  // Optional: shows live error data when SENTRY_AUTH_TOKEN, SENTRY_ORG, and
-  // SENTRY_PROJECT are configured. Without them we still know if Sentry is
-  // configured (DSN set), just no live count.
+  // Optional: shows live error data when SENTRY_AUTH_TOKEN, SENTRY_ORG_SLUG, and
+  // SENTRY_PROJECT_SLUG are configured (same env names lib/sentry.ts reads).
+  // Without them we still know if Sentry is configured (DSN set), just no count.
   const sentryDsnSet = !!process.env.NEXT_PUBLIC_SENTRY_DSN
   const sentryToken  = process.env.SENTRY_AUTH_TOKEN
-  const sentryOrg    = process.env.SENTRY_ORG
-  const sentryProject = process.env.SENTRY_PROJECT
+  const sentryOrg    = process.env.SENTRY_ORG_SLUG
+  const sentryProject = process.env.SENTRY_PROJECT_SLUG
 
   let sentryError: string | null = null
   let sentryIssues: { id: string; title: string; lastSeen: string; count: number; permalink: string }[] = []
