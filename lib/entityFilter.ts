@@ -66,20 +66,22 @@ export async function resolveEntityScope(
   if (!ds) {
     return { found: false, scopeType: 'dataset', scopeId: datasetId, memberDatasetIds: [], orgId: null }
   }
-  const orgId = (ds as any).org_id as string | null
+  const dsRow = ds as { id: string; source: string | null; org_id: string | null; brand_collection_id: string | null }
+  const orgId = dsRow.org_id
 
   // Collection virtual dataset → collection scope across its members.
-  if ((ds as any).source === 'collection') {
+  if (dsRow.source === 'collection') {
     const { data: col, error: colErr } = await service
       .from('collections').select('id').eq('dataset_id', datasetId).single()
     if (colErr) void logError('entityFilter.resolveEntityScope', colErr, { orgId: orgId ?? undefined })
     if (col) {
+      const colId = (col as { id: string }).id
       const { data: members, error: membersErr } = await service
-        .from('collection_members').select('dataset_id').eq('collection_id', (col as any).id)
+        .from('collection_members').select('dataset_id').eq('collection_id', colId)
       if (membersErr) void logError('entityFilter.resolveEntityScope', membersErr, { orgId: orgId ?? undefined })
-      const memberIds = (members || []).map((m: any) => m.dataset_id as string)
+      const memberIds = ((members || []) as Array<{ dataset_id: string }>).map(m => m.dataset_id)
       return {
-        found: true, scopeType: 'collection', scopeId: (col as any).id as string,
+        found: true, scopeType: 'collection', scopeId: colId,
         memberDatasetIds: memberIds.length > 0 ? memberIds : [datasetId],
         orgId,
       }
@@ -89,12 +91,12 @@ export async function resolveEntityScope(
   }
 
   // Branded dataset → shared brand-collection catalog across the brand's datasets.
-  const brandColId = (ds as any).brand_collection_id as string | null
+  const brandColId = dsRow.brand_collection_id
   if (brandColId) {
     const { data: siblings, error: siblingsErr } = await service
       .from('datasets').select('id').eq('brand_collection_id', brandColId)
     if (siblingsErr) void logError('entityFilter.resolveEntityScope', siblingsErr, { orgId: orgId ?? undefined })
-    const memberIds = (siblings || []).map((s: any) => s.id as string)
+    const memberIds = ((siblings || []) as Array<{ id: string }>).map(s => s.id)
     return {
       found: true, scopeType: 'collection', scopeId: brandColId,
       memberDatasetIds: memberIds.length > 0 ? memberIds : [datasetId],
@@ -307,7 +309,7 @@ export async function getEntitiesWithCounts(opts: {
     .order('triggered_at', { ascending: false })
     .limit(1)
   if (refreshErr) void logError('entityFilter.getEntitiesWithCounts', refreshErr)
-  const last_refresh = (refreshRows && (refreshRows[0] as any)) || null
+  const last_refresh = (refreshRows && (refreshRows[0] as EntitiesResult['last_refresh'])) || null
 
   if (entries.length === 0) {
     return { entities: [], categories: [], total_distinct: 0, scope_type: scope.scopeType, last_refresh }
@@ -412,12 +414,13 @@ export async function getRowsByEntity(opts: {
   if (entityRowErr) void logError('entityFilter.getRowsByEntity', entityRowErr)
   if (!entityRow) return { rows: [], entity: null, total: 0 }
 
+  const entityRowTyped = entityRow as { slug: string; canonical: string; category: string; aliases: string[] | null }
   const entity = {
-    slug:      (entityRow as any).slug as string,
-    canonical: (entityRow as any).canonical as string,
-    category:  (entityRow as any).category as string,
+    slug:      entityRowTyped.slug,
+    canonical: entityRowTyped.canonical,
+    category:  entityRowTyped.category,
   }
-  const query = buildEntityQuery(entity.canonical, (entityRow as any).aliases || [])
+  const query = buildEntityQuery(entity.canonical, entityRowTyped.aliases || [])
   if (!query) return { rows: [], entity, total: 0 }
 
   const textFields = await resolveScopeTextFields(service, scope.memberDatasetIds)

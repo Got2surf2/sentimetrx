@@ -11,6 +11,9 @@ export const dynamic = 'force-dynamic'
 
 interface Params { params: Promise<{ sourceId: string }> }
 
+type OrgRel = { is_admin_org?: boolean | null }
+type SourceRow = { id: string; org_id: string }
+
 export async function GET(_req: Request, props: Params) {
   const params = await props.params;
   try {
@@ -21,8 +24,8 @@ export async function GET(_req: Request, props: Params) {
     const { data: userData } = await supabase
       .from('users').select('org_id, role, organizations(is_admin_org)').eq('id', user.id).single()
     if (!userData?.org_id) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
-    const orgRel = (userData as any)?.organizations
-    const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+    const orgRel = (userData as { organizations?: OrgRel | OrgRel[] | null })?.organizations
+    const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
 
     // Only owners/admins can view all assignments
     if (!['owner', 'admin', 'platform_admin'].includes(userData.role || '')) {
@@ -34,7 +37,7 @@ export async function GET(_req: Request, props: Params) {
     // Verify source belongs to org (admin-org bypass)
     const { data: source } = await service
       .from('review_sources').select('id, org_id').eq('id', params.sourceId).single()
-    if (!source || (!isAdmin && (source as any).org_id !== userData.org_id)) {
+    if (!source || (!isAdmin && (source as SourceRow).org_id !== userData.org_id)) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
@@ -46,7 +49,7 @@ export async function GET(_req: Request, props: Params) {
     if (error) return serverError(error, 'reviewSources.userLocations.list', { orgId: userData.org_id })
 
     return NextResponse.json({ assignments: assignments || [] })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'reviewSources.userLocations.list')
   }
 }
@@ -61,8 +64,8 @@ export async function POST(req: Request, props: Params) {
     const { data: userData } = await supabase
       .from('users').select('org_id, role, organizations(is_admin_org)').eq('id', user.id).single()
     if (!userData?.org_id) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
-    const orgRel = (userData as any)?.organizations
-    const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+    const orgRel = (userData as { organizations?: OrgRel | OrgRel[] | null })?.organizations
+    const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
 
     if (!['owner', 'admin', 'platform_admin'].includes(userData.role || '')) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
@@ -73,10 +76,10 @@ export async function POST(req: Request, props: Params) {
     // Verify source belongs to org (admin-org bypass — admins can manage cross-org)
     const { data: source } = await service
       .from('review_sources').select('id, org_id').eq('id', params.sourceId).single()
-    if (!source || (!isAdmin && (source as any).org_id !== userData.org_id)) {
+    if (!source || (!isAdmin && (source as SourceRow).org_id !== userData.org_id)) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
-    const sourceOrgId = (source as any).org_id as string
+    const sourceOrgId = (source as SourceRow).org_id
 
     const body = await req.json()
     const { user_id, location_ids } = body
@@ -108,7 +111,7 @@ export async function POST(req: Request, props: Params) {
     if (error) return serverError(error, 'reviewSources.userLocations.assign', { orgId: userData.org_id })
 
     return NextResponse.json({ ok: true, assigned: location_ids.length }, { status: 201 })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'reviewSources.userLocations.assign')
   }
 }
@@ -150,7 +153,7 @@ export async function DELETE(req: Request, props: Params) {
     if (error) return serverError(error, 'reviewSources.userLocations.remove', { orgId: userData.org_id })
 
     return NextResponse.json({ ok: true })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'reviewSources.userLocations.remove')
   }
 }

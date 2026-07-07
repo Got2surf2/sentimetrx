@@ -113,11 +113,33 @@ type Acc = { pos: number; neg: number; total: number; exPos: Example | null; exN
 const newAcc = (): Acc => ({ pos: 0, neg: 0, total: 0, exPos: null, exNeg: null })
 const net = (a: Acc) => (a.total ? (a.pos - a.neg) / a.total : 0)
 
+// Taxonomy verdicts ride on each flat row's embedded data._tx block (sql/151):
+// one entry per classified field, each carrying axis/sub/polarity/evidence.
+type TaxAssertion = { axis: string; sub: string; polarity?: string; evidence?: string }
+
+// A dataset flat row: the numeric id plus the review JSON blob we read fields off.
+type RowData = {
+  place_id?: string
+  location_name?: string
+  location?: string
+  location_city?: string
+  location_state?: string
+  location_address?: string
+  rating?: number | string | null
+  review_text?: string
+  review_date?: string
+  _tx?: { f?: Record<string, { as?: TaxAssertion[] }> }
+}
+type FlatRow = { id: number | string; data: RowData }
+
+// One theme in the dataset's stored theme model (dataset_state.theme_model).
+type ThemeModelEntry = { id?: string; name?: string; label?: string; keywords?: string[] }
+
 // The taxonomy classifier is purely keyword-based, so the cleanliness keyword
 // "dirty" false-fires on menu items ("dirty soda", "dirty cherry cola") and the
 // idiom "dirty look(s)". Drop those from the Clean axis. (Proper fix is vocab-level.)
 const DIRTY_NOISE = /dirty\s+(soda|cola|cherry|orange|martini|chai|lemonade|fries|drink|water|horchata)|dirty\s+looks?/i
-function isNoiseAssertion(a: any): boolean {
+function isNoiseAssertion(a: TaxAssertion): boolean {
   return a?.sub === 'clean' && a?.polarity === 'neg' && DIRTY_NOISE.test(a?.evidence || '')
 }
 
@@ -192,16 +214,16 @@ function clamp(s: string): string {
   return out.charAt(0).toUpperCase() + out.slice(1)
 }
 
-async function pageAll(table: string, cols: string, datasetId: string): Promise<any[]> {
+async function pageAll<T = unknown>(table: string, cols: string, datasetId: string): Promise<T[]> {
   const sb = createServiceRoleClient()
-  const out: any[] = []
+  const out: T[] = []
   const size = 1000
   let from = 0
-   
+
   while (true) {
     const { data, error } = await sb.from(table).select(cols).eq('dataset_id', datasetId).range(from, from + size - 1)
     if (error) throw error
-    out.push(...(data || []))
+    out.push(...((data as T[] | null) || []))
     if (!data || data.length < size) break
     from += size
   }
@@ -233,13 +255,13 @@ function buildDeltas(
   const strengths = deltas
     .filter((d) => d.delta >= DELTA_THRESHOLD && d.outletNet > 0)
     .sort((a, b) => b.delta - a.delta).slice(0, 4)
-    .map((d) => ({ ...d, quote: extractSentence((d as any)._exPos) }))
-    .map(({ _exPos, _exNeg, ...s }: any) => s)
+    .map((d) => ({ ...d, quote: extractSentence(d._exPos) }))
+    .map(({ _exPos, _exNeg, ...s }) => s)
   const weaknesses = deltas
     .filter((d) => d.delta <= -DELTA_THRESHOLD)
     .sort((a, b) => a.delta - b.delta).slice(0, 4)
-    .map((d) => ({ ...d, quote: extractSentence((d as any)._exNeg) }))
-    .map(({ _exPos, _exNeg, ...w }: any) => w)
+    .map((d) => ({ ...d, quote: extractSentence(d._exNeg) }))
+    .map(({ _exPos, _exNeg, ...w }) => w)
   return { strengths, weaknesses }
 }
 
@@ -283,7 +305,7 @@ type Scan = {
   dimChain: Map<string, Acc>
   themeAvailable: boolean
   dimAvailable: boolean
-  flat: any[]
+  flat: FlatRow[]
   labelFor: (o: Outlet) => string
   themeLabels: string[]       // ordered theme labels (matchers) for the predictor
   reviewMatrix: PredReview[]  // per rated text-review: theme-membership vector
@@ -304,19 +326,18 @@ async function scanDataset(datasetId: string): Promise<Scan> {
   if (stateErr) void logError('outletReport.scanDataset', stateErr)
   // Theme labels live in `name` ("Food Quality & Taste"); older payloads used
   // `label`. Reading the wrong field collapses every theme to "Theme".
-  const themeModel: { id?: string; name?: string; label?: string; keywords: string[] }[] = (stateRow?.theme_model?.themes as any[]) || []
+  const themeModel: ThemeModelEntry[] = (stateRow?.theme_model?.themes as ThemeModelEntry[]) || []
   const themeMatchers = themeModel
     .map((t) => ({ label: t.name || t.label || 'Theme', re: themeMatcher(t.keywords || []) }))
     .filter((t): t is { label: string; re: RegExp } => !!t.re)
 
-  const flat = await pageAll('dataset_rows_flat', 'id, data', datasetId)
-  const byId = new Map<number, any>()
+  const flat = await pageAll<FlatRow>('dataset_rows_flat', 'id, data', datasetId)
+  const byId = new Map<number, RowData>()
   for (const r of flat) byId.set(Number(r.id), r.data)
 
   // Taxonomy verdicts ride on the flat rows themselves (data._tx, sql/151) —
   // one entry per classified field; same (row, field) granularity the sidecar
   // table had.
-  type TaxAssertion = { axis: string; sub: string; polarity?: string; evidence?: string }
   const tax: { row_id: number; assertions: TaxAssertion[] }[] = []
   for (const r of flat) {
     const fieldBlocks = (r.data as { _tx?: { f?: Record<string, { as?: TaxAssertion[] }> } })?._tx?.f
@@ -327,7 +348,7 @@ async function scanDataset(datasetId: string): Promise<Scan> {
   }
 
   const outlets = new Map<string, Outlet>()
-  const getOutlet = (d: any): Outlet | null => {
+  const getOutlet = (d: RowData): Outlet | null => {
     const placeId = d?.place_id
     if (!placeId) return null
     let o = outlets.get(placeId)

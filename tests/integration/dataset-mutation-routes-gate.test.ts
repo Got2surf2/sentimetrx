@@ -16,12 +16,16 @@
 // .eq('org_id', callerOrg) pairing is present.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { CallerOrgContext } from '@/lib/auth/orgAccess'
+
+type QueryResult = { data: unknown; error: unknown }
+interface AuthUser { id: string; email?: string }
 
 const ctx = {
-  authUser: null as any,
-  callerCtx: { userId: null, orgId: null, isAdmin: false } as any,
-  results: {} as Record<string, any>,
-  eqCalls: {} as Record<string, [string, any][]>,
+  authUser: null as AuthUser | null,
+  callerCtx: { userId: null, orgId: null, isAdmin: false } as CallerOrgContext,
+  results: {} as Record<string, QueryResult>,
+  eqCalls: {} as Record<string, [string, unknown][]>,
 }
 function reset() {
   ctx.authUser = null
@@ -30,14 +34,31 @@ function reset() {
   ctx.eqCalls = {}
 }
 
-function builder(table: string): any {
+interface MockBuilder {
+  select: () => MockBuilder
+  order: () => MockBuilder
+  in: () => MockBuilder
+  limit: () => MockBuilder
+  neq: () => MockBuilder
+  range: () => MockBuilder
+  lt: () => MockBuilder
+  update: () => MockBuilder
+  delete: () => MockBuilder
+  insert: () => MockBuilder
+  eq: (col: string, val: unknown) => MockBuilder
+  single: () => Promise<QueryResult>
+  maybeSingle: () => Promise<QueryResult>
+  then: (res: (v: QueryResult) => unknown, rej: (e: unknown) => unknown) => Promise<unknown>
+}
+
+function builder(table: string): MockBuilder {
   ctx.eqCalls[table] = ctx.eqCalls[table] || []
-  const b: any = {}
-  for (const m of ['select', 'order', 'in', 'limit', 'neq', 'range', 'lt', 'update', 'delete', 'insert']) b[m] = () => b
-  b.eq = (col: string, val: any) => { ctx.eqCalls[table].push([col, val]); return b }
+  const b = {} as MockBuilder
+  for (const m of ['select', 'order', 'in', 'limit', 'neq', 'range', 'lt', 'update', 'delete', 'insert']) (b as unknown as Record<string, () => MockBuilder>)[m] = () => b
+  b.eq = (col: string, val: unknown) => { ctx.eqCalls[table].push([col, val]); return b }
   b.single = async () => ctx.results[table] ?? { data: null, error: null }
   b.maybeSingle = async () => ctx.results[table] ?? { data: null, error: null }
-  b.then = (res: any, rej: any) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
+  b.then = (res, rej) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
   return b
 }
 const client = () => ({ from: (t: string) => builder(t), rpc: async () => ({ data: null, error: null }) })
@@ -62,9 +83,9 @@ import * as trim from '@/app/api/datasets/[datasetId]/trim/route'
 import * as sync from '@/app/api/datasets/[datasetId]/sync/route'
 import * as refresh from '@/app/api/datasets/[datasetId]/refresh-schema/route'
 
-const props = { params: Promise.resolve({ datasetId: 'd_1' }) } as any
-const req = (method = 'POST', body: any = {}, url = 'http://t/x') =>
-  new Request(url, { method, body: method === 'GET' ? undefined : JSON.stringify(body) }) as any
+const props = { params: Promise.resolve({ datasetId: 'd_1' }) }
+const req = (method = 'POST', body: unknown = {}, url = 'http://t/x') =>
+  new Request(url, { method, body: method === 'GET' ? undefined : JSON.stringify(body) })
 
 // users-row shapes (top-level route uses features+is_admin_org; sync uses is_admin_org)
 const analyze = (org: string | null, isAdmin = false) =>

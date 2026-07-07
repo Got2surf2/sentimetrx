@@ -10,13 +10,19 @@
 // invariant) where the route is org-scoped.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { UserContext } from '@/lib/userContext'
+import type { ModuleFeatures } from '@/lib/types'
+
+// ── Result shapes the mock builder resolves to ────────────────────────────────
+type SingleResult = { data: unknown; error: unknown }
+type ListResult = { data: unknown; error: unknown; count?: number }
 
 // ── Mutable context the mock factories read at call-time ──────────────────────
 const ctx = {
-  userCtx: null as any,        // getUserContext() result (route.ts POST/GET, [id] DELETE)
-  authUser: null as any,       // getAuthUser() result (the [id]/* sub-routes)
+  userCtx: null as Partial<UserContext> | null,  // getUserContext() result (route.ts POST/GET, [id] DELETE)
+  authUser: null as { id: string } | null,       // getAuthUser() result (the [id]/* sub-routes)
   userOrg: null as string | null, // users.org_id lookup (sub-routes)
-  results: {} as Record<string, { single?: any; list?: any }>,
+  results: {} as Record<string, { single?: SingleResult; list?: ListResult }>,
   eq: {} as Record<string, Array<[string, unknown]>>,
 }
 
@@ -28,15 +34,18 @@ function resetCtx() {
   ctx.eq = {}
 }
 
-function builder(table: string): any {
-  const b: any = {}
+interface MockBuilder {
+  [method: string]: unknown
+}
+function builder(table: string): MockBuilder {
+  const b: MockBuilder = {}
   const passthrough = ['select', 'insert', 'update', 'delete', 'order', 'range', 'in', 'neq', 'limit', 'gte', 'lte']
   for (const m of passthrough) b[m] = () => b
   b.eq = (col: string, val: unknown) => { (ctx.eq[table] ||= []).push([col, val]); return b }
   b.single = async () => ctx.results[table]?.single ?? { data: null, error: null }
   b.maybeSingle = async () => ctx.results[table]?.single ?? { data: null, error: null }
   // `await q` (list queries) resolves here.
-  b.then = (res: any, rej: any) =>
+  b.then = (res: (v: ListResult) => unknown, rej: (e: unknown) => unknown) =>
     Promise.resolve(ctx.results[table]?.list ?? { data: [], error: null, count: 0 }).then(res, rej)
   return b
 }
@@ -82,8 +91,8 @@ import * as regenerate from '@/app/api/recordings/[id]/extractions/[extractionId
 import * as documents from '@/app/api/recordings/[id]/documents/route'
 import * as documentById from '@/app/api/recordings/[id]/documents/[fileId]/route'
 
-const enabled = { analyze: true, recordings: true } as any
-function userCtx(over: Partial<any> = {}) {
+const enabled: ModuleFeatures = { analyze: true, recordings: true }
+function userCtx(over: Partial<UserContext> = {}) {
   return { userId: 'u1', orgId: 'orgA', isAdmin: false, isAdminOrg: false, features: enabled, ...over }
 }
 function req(body?: unknown, url = 'http://t/api/recordings') {

@@ -111,3 +111,9 @@ Same parallel workflow, next 26 top files — ALL to 0 no-explicit-any (412 remo
 ## Fix: service_health missing in prod — apply skipped migration 126 (Jul 6)
 
 WHY: Sentry fired `PGRST205 — Could not find the table 'public.service_health'` on `GET /api/cron/service-balance` (every 6h). Root cause: sql/126 (vendor-credit monitor) shipped in code and was recorded in the migration ledger by the 2026-07-03 bulk **backfill** (`applied_by:"backfill"`) — but the DDL was never actually run against prod, so the table didn't exist (nothing dropped it; the backfill just assumed it applied). Impact was ops-only (no customer/data/security impact): the credit-alert monitor was blind + a recurring Sentry alert. Fix: `npm run migrate sql/126_service_health.sql` (idempotent, CREATE TABLE IF NOT EXISTS) — table now queryable in prod (0 rows; cron repopulates next run). Schema snapshot refreshed. sql/126 left byte-identical (its ledger sha must stay stable; its "already applied" comment is now true). Snapshot commit isolated from an in-flight parallel eslint burn-down in the working tree. No push.
+
+## ESLint burn-down wave 4 — 26 more files (Jul 6)
+
+WHY: Continue the burn-down.
+
+Same workflow, 26 more files (−276): townhall analyze/resume/join/export routes, datasets/aggregate, ask-ana, agentStudy, entityFilter/Discovery, orgTransfer, outletReport, projectReportLoad, more route-gate tests, AskAnaPanel, recordings/m pages, admin simulator. Fixed one self-contained cast the isolated agent's tsc missed (townhall/join `projectHallAsSession(hall) as unknown as ProjectedSession`). Before running: verified the tree was clean + confirmed the ~30 session-start "dirty" files were the already-committed AI-cost sweep (064a39ed, ancestor) — no uncommitted work at risk. Global tsc 0 errors, 1238 tests pass, warnings 1782→1506. Ceiling → 1506. Not pushed.

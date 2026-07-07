@@ -109,14 +109,14 @@ async function sampleRowTexts(
     const { data: ds, error: dsErr } = await service
       .from('datasets').select('row_count').eq('id', dsId).single()
     if (dsErr) void logError('entityDiscovery.sampleRowTexts', dsErr)
-    const rowCount = ((ds as any)?.row_count as number) || 0
+    const rowCount = ((ds as { row_count: number } | null)?.row_count as number) || 0
     if (rowCount === 0) continue
 
     // Only this dataset's selected open-ended fields feed NER.
     const { data: stateRow, error: stateErr } = await service
       .from('dataset_state').select('schema_config').eq('dataset_id', dsId).single()
     if (stateErr) void logError('entityDiscovery.sampleRowTexts', stateErr)
-    const allowedKeys = new Set(eligibleEntityFields((stateRow as any)?.schema_config))
+    const allowedKeys = new Set(eligibleEntityFields((stateRow as { schema_config: unknown } | null)?.schema_config))
     if (allowedKeys.size === 0) continue
 
     let rows: Array<{ data: unknown }> | null = null
@@ -124,7 +124,7 @@ async function sampleRowTexts(
       const { data, error: rowsErr } = await service
         .from('dataset_rows_flat').select('data').eq('dataset_id', dsId).limit(perDataset)
       if (rowsErr) void logError('entityDiscovery.sampleRowTexts', rowsErr)
-      rows = data as any
+      rows = data as Array<{ data: unknown }> | null
     } else {
       const idxSet = new Set<number>()
       let guard = 0
@@ -136,7 +136,7 @@ async function sampleRowTexts(
         .from('dataset_rows_flat').select('data').eq('dataset_id', dsId)
         .in('row_index', Array.from(idxSet))
       if (sampleRowsErr) void logError('entityDiscovery.sampleRowTexts', sampleRowsErr)
-      rows = data as any
+      rows = data as Array<{ data: unknown }> | null
     }
     for (const r of rows || []) {
       const t = rowText(r.data, allowedKeys)
@@ -264,6 +264,10 @@ interface BatchResult {
   error: string | null
 }
 
+/** Loose shape of an entity object as parsed from the model's JSON — every
+ *  field is validated at runtime before use. */
+interface RawNerEntity { canonical?: unknown; category?: unknown; aliases?: unknown }
+
 async function nerBatch(texts: string[], orgId: string | null, datasetId: string, ctx: DiscoveryContext, excludeCategories: string[] = []): Promise<BatchResult> {
   try {
     const res = await callAI({
@@ -282,17 +286,17 @@ async function nerBatch(texts: string[], orgId: string | null, datasetId: string
     let entities: BatchResult['entities'] = []
     const excludeSet = new Set(excludeCategories.map(c => c.toLowerCase()))
     if (start >= 0 && end > start) {
-      const parsed = JSON.parse(text.slice(start, end + 1))
+      const parsed = JSON.parse(text.slice(start, end + 1)) as { entities?: unknown }
       if (Array.isArray(parsed?.entities)) {
-        entities = parsed.entities
-          .filter((e: any) => e && typeof e.canonical === 'string' && e.canonical.trim().length >= 2)
-          .map((e: any) => ({
+        entities = (parsed.entities as RawNerEntity[])
+          .filter((e): e is RawNerEntity & { canonical: string } => !!e && typeof e.canonical === 'string' && e.canonical.trim().length >= 2)
+          .map((e) => ({
             canonical: e.canonical.trim(),
             category: CATEGORIES.includes(String(e.category || '').toLowerCase())
               ? String(e.category).toLowerCase()
               : 'other',
             aliases: Array.isArray(e.aliases)
-              ? e.aliases.filter((a: any) => typeof a === 'string' && a.trim()).map((a: string) => a.trim().toLowerCase())
+              ? e.aliases.filter((a: unknown): a is string => typeof a === 'string' && !!a.trim()).map((a) => a.trim().toLowerCase())
               : [],
           }))
           // Defence: model occasionally hands back an excluded category despite
@@ -307,8 +311,8 @@ async function nerBatch(texts: string[], orgId: string | null, datasetId: string
       outputTokens: res.usage?.output_tokens || 0,
       error: null,
     }
-  } catch (err: any) {
-    return { entities: [], inputTokens: 0, outputTokens: 0, error: err?.message || 'NER batch failed' }
+  } catch (err: unknown) {
+    return { entities: [], inputTokens: 0, outputTokens: 0, error: err instanceof Error ? err.message : 'NER batch failed' }
   }
 }
 
@@ -380,9 +384,9 @@ async function canonicaliseDiscovered(
       const start = text.indexOf('{')
       const end = text.lastIndexOf('}')
       if (start < 0 || end <= start) continue
-      const parsed = JSON.parse(text.slice(start, end + 1))
+      const parsed = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>
       for (const [k, v] of Object.entries(parsed)) {
-        const vv = v as any
+        const vv = v as { canonical?: unknown; category?: unknown }
         if (vv && typeof vv.canonical === 'string' && vv.canonical.trim().length >= 2) {
           const entry = {
             canonical: vv.canonical.trim(),
@@ -501,7 +505,7 @@ export async function discoverEntities(opts: {
     .eq('scope_id', scope.scopeId)
   if (existingErr) void logError('entityDiscovery.discoverEntities', existingErr, { orgId: scope.orgId ?? undefined })
   const existingBySlug = new Map<string, { canonical: string; category: string; aliases: string[]; sample_count: number; source: string; hidden: boolean; provenance: Provenance }>()
-  for (const e of (existing || []) as any[]) {
+  for (const e of (existing || []) as Array<{ slug: string; canonical: string; category: string; aliases: string[] | null; sample_count: number | null; source: string | null; hidden: boolean | null; provenance: unknown }>) {
     existingBySlug.set(e.slug, {
       canonical: e.canonical, category: e.category,
       aliases: e.aliases || [], sample_count: e.sample_count || 0,

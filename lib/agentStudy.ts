@@ -28,6 +28,10 @@ import { isPhase3ReadSafe } from '@/lib/phase3Read'
 import { isSubstantive, autoFlagReasons, resolveReviewStatus, includedInReports, duplicateFingerprintSet } from '@/lib/conversationReview'
 import type { SourceSummary } from '@/lib/sourceSummary'
 
+// Service-role Supabase client (schema-untyped) — the shape the helpers below
+// receive from createServiceRoleClient(). Both in-repo callers pass exactly this.
+type ServiceClient = ReturnType<typeof createServiceRoleClient>
+
 // ── Types ───────────────────────────────────────────────────────────────────
 export interface DailyPoint { date: string; opens: number; conversations: number }
 
@@ -137,6 +141,9 @@ interface BotRow {
 // knowledge. Title + content are the raw material for the KB summary.
 interface KbChunk { title: string; content: string }
 
+// One item from the KB-summary model output, before validation/narrowing.
+interface RawKbItem { title?: unknown; body?: unknown }
+
 // Summarize the agent's knowledge base into the shared SourceSummary shape — the
 // agent's equivalent of the Town Hall presentation. One AI pass; runs only on a
 // study cache miss (the cache key folds in a KB content hash). Returns null when
@@ -168,10 +175,10 @@ Return ONLY JSON, no markdown:
     const parsed = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
     const overview = typeof parsed.overview === 'string' ? parsed.overview.trim() : ''
     const items = Array.isArray(parsed.items)
-      ? parsed.items
-          .filter((x: any) => x && typeof x.title === 'string' && x.title.trim())
+      ? (parsed.items as RawKbItem[])
+          .filter((x: RawKbItem) => x && typeof x.title === 'string' && x.title.trim())
           .slice(0, 8)
-          .map((x: any) => ({ title: String(x.title).trim(), body: typeof x.body === 'string' ? x.body.trim() : null }))
+          .map((x: RawKbItem) => ({ title: String(x.title).trim(), body: typeof x.body === 'string' ? x.body.trim() : null }))
       : []
     if (!overview && items.length === 0) return null
     return { overview, items }
@@ -204,7 +211,21 @@ function isLeakedTurn(t: Turn): boolean {
 // Exported so the Agent Conversation Readout (lib/agentReadout.ts) loads turns,
 // groups sessions, applies the review gate, and shapes exchanges through the
 // EXACT same code path — the two reports must never drift on what counts.
-export async function loadTurns(service: any, botId: string): Promise<Turn[]> {
+// Raw row shape from the phase-3 conversation_turns select (joined session_id).
+interface Phase3TurnRow {
+  turn_number: number
+  role: string
+  content: string | null
+  content_en: string | null
+  language: string | null
+  source: string | null
+  sentiment: string | null
+  content_flags: string[] | null
+  created_at: string
+  conversations?: { session_id: string | null; bot_id: string } | null
+}
+
+export async function loadTurns(service: ServiceClient, botId: string): Promise<Turn[]> {
   let rows: Turn[]
   if (isPhase3ReadSafe()) {
     const { data } = await service
@@ -213,7 +234,7 @@ export async function loadTurns(service: any, botId: string): Promise<Turn[]> {
       .eq('conversations.bot_id', botId)
       .order('turn_number', { ascending: true })
       .limit(5000)
-    rows = (data || []).map((r: any) => ({
+    rows = ((data || []) as unknown as Phase3TurnRow[]).map((r) => ({
       session_id: r.conversations?.session_id || '',
       turn_number: r.turn_number, role: r.role, content: r.content || '',
       content_en: r.content_en, language: r.language || 'en', source: r.source,
@@ -247,11 +268,11 @@ export function groupSessions(turns: Turn[]): Map<string, Turn[]> {
 // Apply the human-in-the-loop review gate: drop sessions a human excluded, or
 // that auto-flag as troll/bot/wholly-off-topic and a human hasn't approved.
 // Returns the included sessions + how many were excluded for review. One query.
-export async function partitionByReview(service: any, botId: string, sessions: Map<string, Turn[]>): Promise<{ included: Map<string, Turn[]>; flaggedExcluded: number }> {
+export async function partitionByReview(service: ServiceClient, botId: string, sessions: Map<string, Turn[]>): Promise<{ included: Map<string, Turn[]>; flaggedExcluded: number }> {
   let human = new Map<string, 'approved' | 'excluded'>()
   try {
     const { data } = await service.from('conversation_reviews').select('session_id, status').eq('bot_id', botId)
-    for (const r of (data || [])) human.set(r.session_id, r.status)
+    for (const r of ((data || []) as { session_id: string; status: 'approved' | 'excluded' }[])) human.set(r.session_id, r.status)
   } catch { /* table absent in prod yet → treat all as clean */ }
   const dup = duplicateFingerprintSet(sessions)
   const included = new Map<string, Turn[]>()
@@ -388,6 +409,9 @@ export async function runConcurrent<T, R>(items: T[], limit: number, fn: (item: 
 
 interface ExchangeTag { focus: string | null; entities: string[]; comment: string | null }
 
+// Raw per-exchange object from the classifier model output, before validation.
+interface RawExchangeTag { i?: number; focus?: unknown; entities?: unknown; comment?: unknown }
+
 async function classifyExchanges(botId: string, orgId: string, botName: string, focuses: BotRow['focuses'], exchanges: Exchange[]): Promise<ExchangeTag[]> {
   const enabled = focuses.filter(f => f.enabled !== false)
   const catalog = enabled.map(f => `- ${f.slug}: ${f.label}${f.description ? ' — ' + f.description : ''}`).join('\n')
@@ -408,16 +432,16 @@ Return ONLY a JSON array, one object per exchange index, no markdown:
 [{"i":0,"focus":"slug_or_null","entities":["Name","Name"],"comment":"verbatim_or_null"}, ...]`
     const res = await callAI({ tier: 'fast', maxTokens: 1500, timeoutMs: 40000, system, messages: [{ role: 'user', content: lines }] })
     logUsage({ org_id: orgId, resource_type: 'bot', resource_id: botId, event_type: 'agent_study_classify' }, res.usage)
-    let parsed: any[] = []
+    let parsed: RawExchangeTag[] = []
     try { parsed = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()) } catch { parsed = [] }
     // Drop URLs/domains and the agent's own name — these come from the agent's
     // replies, not from what users named (a credibility issue in entity analysis).
     const nameLc = botName.toLowerCase()
     const isJunk = (e: string) => /https?:|www\.|\.(com|org|net|gov|io|us)\b/i.test(e) || e.toLowerCase() === nameLc
     return batch.map((_e, i) => {
-      const p = parsed.find((x: any) => x && x.i === i) || {}
+      const p: RawExchangeTag = parsed.find((x: RawExchangeTag) => x && x.i === i) || {}
       const slug = typeof p.focus === 'string' && enabled.some(f => f.slug === p.focus) ? p.focus : null
-      const ents = Array.isArray(p.entities) ? p.entities.filter((s: any) => typeof s === 'string' && s.trim().length > 1 && !isJunk(s.trim())).slice(0, 6) : []
+      const ents = Array.isArray(p.entities) ? p.entities.filter((s: unknown) => typeof s === 'string' && s.trim().length > 1 && !isJunk(s.trim())).slice(0, 6) : []
       const comment = typeof p.comment === 'string' && p.comment.trim().length > 3 ? p.comment.trim() : null
       return { focus: slug, entities: ents, comment } as ExchangeTag
     })
@@ -511,6 +535,17 @@ function bucketFor(pairs: number): string {
 }
 const BUCKET_ORDER = ['1', '2', '3', '4–5', '6–9', '10+']
 
+// Row shape from the logged_questions select used below.
+interface LoggedQuestionRow {
+  session_id: string
+  user_message: string
+  classification: string
+  status: string
+  language: string | null
+  suggested_kb_addition: string | null
+  created_at: string
+}
+
 // ── Main: getAgentStudy (compute-if-stale, cached) ───────────────────────────
 export async function getAgentStudy(botId: string, opts: { force?: boolean } = {}): Promise<AgentStudy | null> {
   const service = createServiceRoleClient()
@@ -531,7 +566,7 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   // summary. Loaded up front so its content hash can gate the study cache.
   const { data: kbData } = await service
     .from('bot_knowledge_chunks').select('title, content').eq('bot_id', botId).limit(400)
-  const kbChunks: KbChunk[] = (kbData || []).map((r: any) => ({ title: r.title || '', content: r.content || '' }))
+  const kbChunks: KbChunk[] = (kbData || []).map((r: { title: string | null; content: string | null }) => ({ title: r.title || '', content: r.content || '' }))
 
   const allTurns = await loadTurns(service, botId)
   // Human-in-the-loop review gate: drop troll/bot/off-topic + human-excluded
@@ -572,7 +607,7 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   const impressions = impRes.data || []
   const allImpRes = await service.from('agent_impressions').select('id', { count: 'exact', head: true }).eq('bot_id', botId)
   const totalImpressions = allImpRes.count
-  const loggedQ = oqRes.data || []
+  const loggedQ = (oqRes.data || []) as LoggedQuestionRow[]
   // Open-question count, computed the SAME way the agent card computes it
   // (logged_questions.status='open', no time/row cap) so the two never disagree.
   // The card lives in app/api/bots/route.ts; keep these in lockstep.
@@ -664,7 +699,7 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   // true count and drives the headline metric.
   const byClass = new Map<string, number>(), byStatus = new Map<string, number>()
   for (const q of loggedQ) { byClass.set(q.classification, (byClass.get(q.classification) || 0) + 1); byStatus.set(q.status, (byStatus.get(q.status) || 0) + 1) }
-  const open: AgentStudy['openQuestions']['open'] = loggedQ.filter((q: any) => q.status === 'open').slice(0, 40).map((q: any) => ({
+  const open: AgentStudy['openQuestions']['open'] = loggedQ.filter((q) => q.status === 'open').slice(0, 40).map((q) => ({
     question: q.user_message,
     context: findPriorAgentLine(sessions, q.session_id, q.user_message),
     after: findFollowingAgentLine(sessions, q.session_id, q.user_message),
@@ -780,7 +815,7 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
 
   // ── persist cache (service-role upsert; org_id paired) ──
   await service.from('agent_study_cache').upsert({
-    bot_id: botId, org_id: bot.org_id, cache_key: cacheKey, analysis: study as any, updated_at: new Date().toISOString(),
+    bot_id: botId, org_id: bot.org_id, cache_key: cacheKey, analysis: study, updated_at: new Date().toISOString(),
   }, { onConflict: 'bot_id' })
 
   return study

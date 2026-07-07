@@ -23,6 +23,50 @@ interface RecentItem {
   ts?:       string | null
 }
 
+// Untyped service-role client → query rows come back as `any`; these
+// minimal shapes describe the columns each section actually reads.
+interface FavRow {
+  id:              string
+  name?:           string | null
+  slug?:           string | null
+  response_count?: number | null
+  row_count?:      number | null
+  source?:         string | null
+  status?:         string | null
+}
+interface DatasetRecentRow {
+  id:          string
+  name?:       string | null
+  row_count?:  number | null
+  source?:     string | null
+  created_at?: string | null
+}
+interface BotRecentRow {
+  id:          string
+  name?:       string | null
+  slug?:       string | null
+  updated_at?: string | null
+}
+interface StudyRecentRow {
+  id:              string
+  name?:           string | null
+  response_count?: number | null
+  created_at?:     string | null
+}
+interface CampaignRecentRow {
+  id:          string
+  name?:       string | null
+  status?:     string | null
+  created_at?: string | null
+}
+interface TownhallRecentRow {
+  id:          string
+  name?:       string | null
+  status?:     string | null
+  started_at?: string | null
+  created_at?: string | null
+}
+
 export default async function MobilePage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -81,21 +125,21 @@ export default async function MobilePage() {
     favsByType[f.resource_type].push(f.resource_id)
   }
   if (Object.keys(favsByType).length > 0) {
-    const FAV_LOOKUP: Record<string, { table: string; href: (id: string, row: any) => string; subtitle: (row: any) => string | undefined }> = {
+    const FAV_LOOKUP: Record<string, { table: string; href: (id: string, row: FavRow) => string; subtitle: (row: FavRow) => string | undefined }> = {
       bot:              { table: 'bots',              href: (id) => '/bots/' + id + '/conversations', subtitle: (r) => r.slug ? '/b/' + r.slug : undefined },
       study:            { table: 'studies',           href: (id) => '/studies/' + id + '/edit',       subtitle: (r) => (r.response_count || 0).toLocaleString() + ' responses' },
       dataset:          { table: 'datasets',          href: (id) => '/analyze/' + id,                 subtitle: (r) => [r.row_count ? r.row_count.toLocaleString() + ' rows' : '', r.source].filter(Boolean).join(' · ') || undefined },
       campaign:         { table: 'campaigns',         href: (id) => '/campaigns/' + id,               subtitle: (r) => r.status || 'draft' },
       townhall_session: { table: 'pulseiq_sessions',  href: (id) => '/pulseiq/' + id,                subtitle: (r) => r.status || 'draft' },
     }
-    const rowMaps: Record<string, Map<string, any>> = {}
+    const rowMaps: Record<string, Map<string, FavRow>> = {}
     await Promise.all(Object.entries(favsByType).map(async function([type, ids]) {
       const cfg = FAV_LOOKUP[type]
       if (!cfg) { rowMaps[type] = new Map(); return }
-      let q: any = service.from(cfg.table).select('*').in('id', ids)
+      let q = service.from(cfg.table).select('*').in('id', ids)
       if (!isAdmin) q = q.eq('org_id', orgId)
       const { data } = await q
-      rowMaps[type] = new Map((data || []).map((r: any) => [r.id, r]))
+      rowMaps[type] = new Map(((data || []) as FavRow[]).map((r: FavRow) => [r.id, r]))
     }))
     for (const f of (favRows?.data || []) as Array<{ resource_type: string; resource_id: string; created_at: string }>) {
       const cfg = FAV_LOOKUP[f.resource_type]
@@ -132,7 +176,7 @@ export default async function MobilePage() {
       label:  'Datasets',
       href:   '/analyze',
       count:  datasetsCount.count || 0,
-      recent: (datasetsRecent.data || []).map(function(d: any): RecentItem {
+      recent: (datasetsRecent.data || []).map(function(d: DatasetRecentRow): RecentItem {
         // Collections are container rows (brand profiles); rows live in child
         // datasets. Skip the misleading "0 rows" prefix and just show the
         // source type. Otherwise show "N rows · source".
@@ -152,7 +196,7 @@ export default async function MobilePage() {
       label:  'Agents',
       href:   '/bots',
       count:  botsCount.count || 0,
-      recent: (botsRecent.data || []).map(function(b: any): RecentItem {
+      recent: (botsRecent.data || []).map(function(b: BotRecentRow): RecentItem {
         return {
           id:       b.id,
           name:     b.name || b.slug || 'Untitled',
@@ -167,7 +211,7 @@ export default async function MobilePage() {
       label:  'Surveys',
       href:   '/dashboard',
       count:  studiesCount.count || 0,
-      recent: (studiesRecent.data || []).map(function(s: any): RecentItem {
+      recent: (studiesRecent.data || []).map(function(s: StudyRecentRow): RecentItem {
         return {
           id:       s.id,
           name:     s.name || 'Untitled',
@@ -182,7 +226,7 @@ export default async function MobilePage() {
       label:  'Campaigns',
       href:   '/campaigns',
       count:  campaignsCount.count || 0,
-      recent: (campaignsRecent.data || []).map(function(c: any): RecentItem {
+      recent: (campaignsRecent.data || []).map(function(c: CampaignRecentRow): RecentItem {
         return {
           id:       c.id,
           name:     c.name || 'Untitled',
@@ -197,7 +241,7 @@ export default async function MobilePage() {
       label:  'PulseIQ',
       href:   '/pulseiq',
       count:  townhallCount.count || 0,
-      recent: (townhallRecent.data || []).map(function(t: any): RecentItem {
+      recent: (townhallRecent.data || []).map(function(t: TownhallRecentRow): RecentItem {
         return {
           id:       t.id,
           name:     t.name || 'Untitled',

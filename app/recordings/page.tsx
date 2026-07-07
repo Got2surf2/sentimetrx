@@ -43,6 +43,26 @@ interface Row {
   flagged_count: number
 }
 
+// Raw shape of a row returned by the main `recordings` select (untyped
+// service-role client), incl. the embedded organization + entity_map JSONB.
+interface RawRecording {
+  id: string
+  org_id: string
+  created_by: string
+  dataset_id: string | null
+  name: string
+  session_type: string
+  meeting_date: string | null
+  status: string
+  cost_cents: number | null
+  source_duration_sec: number | null
+  created_at: string
+  completed_at: string | null
+  share_enabled: boolean | null
+  entity_map: { reviewed_at?: string | null } | null
+  organizations: { name: string | null } | null
+}
+
 export default async function RecordingsListPage() {
   const supabase = await createClient()
   const ctx = await getUserContext(supabase)
@@ -68,19 +88,22 @@ export default async function RecordingsListPage() {
   }
 
   const { data, error } = await q
+  // The embed makes supabase-js infer a parse-error union for `data`; the query
+  // is valid at runtime, so treat the rows as RawRecording[].
+  const recordings = (data ?? []) as unknown as RawRecording[]
 
   // recordings.created_by → auth.users, which PostgREST can't embed; look the
   // owner names up from public.users by id and map them in.
-  const ownerIds = Array.from(new Set((data ?? []).map((r: any) => r.created_by).filter(Boolean)))
+  const ownerIds = Array.from(new Set(recordings.map((r) => r.created_by).filter(Boolean)))
   const ownerById = new Map<string, { full_name: string | null; email: string | null }>()
   if (ownerIds.length > 0) {
     const { data: owners } = await service.from('users').select('id, full_name, email').in('id', ownerIds)
-    for (const u of (owners ?? []) as any[]) {
+    for (const u of (owners ?? []) as { id: string; full_name: string | null; email: string | null }[]) {
       ownerById.set(u.id as string, { full_name: u.full_name ?? null, email: u.email ?? null })
     }
   }
 
-  const ids = (data ?? []).map((r: any) => r.id)
+  const ids = recordings.map((r) => r.id)
 
   // Which recordings have a human-edited Q&A pair (§3.5d) → the "Polished edits"
   // lifecycle step. One JSONB query across the loaded recordings' extractions.
@@ -91,7 +114,7 @@ export default async function RecordingsListPage() {
       .select('recording_id')
       .in('recording_id', ids)
       .not('payload->>edited_at', 'is', null)
-    for (const e of (edits ?? []) as any[]) editedIds.add(e.recording_id as string)
+    for (const e of (edits ?? []) as { recording_id: string }[]) editedIds.add(e.recording_id as string)
   }
 
   // Per-recording Q&A pair count for the card meta row — same filter the report
@@ -107,7 +130,7 @@ export default async function RecordingsListPage() {
       .select('recording_id, flagged_for_review')
       .in('recording_id', ids)
       .eq('unit_type', 'qa_pair')
-    for (const p of (pairs ?? []) as any[]) {
+    for (const p of (pairs ?? []) as { recording_id: string; flagged_for_review: boolean | null }[]) {
       qaCountById.set(p.recording_id, (qaCountById.get(p.recording_id) ?? 0) + 1)
       if (p.flagged_for_review) flaggedCountById.set(p.recording_id, (flaggedCountById.get(p.recording_id) ?? 0) + 1)
     }
@@ -122,7 +145,7 @@ export default async function RecordingsListPage() {
       .from('recording_files')
       .select('recording_id, file_role')
       .in('recording_id', ids)
-    for (const f of (files ?? []) as any[]) {
+    for (const f of (files ?? []) as { recording_id: string; file_role: string | null }[]) {
       const m = f.file_role === 'slides' ? slideCountById : mediaCountById
       m.set(f.recording_id, (m.get(f.recording_id) ?? 0) + 1)
     }
@@ -136,7 +159,7 @@ export default async function RecordingsListPage() {
       .select('resource_id')
       .eq('user_id', ctx.userId)
       .eq('resource_type', 'recording')
-    for (const f of (favs ?? []) as any[]) favIds.add(f.resource_id as string)
+    for (const f of (favs ?? []) as { resource_id: string }[]) favIds.add(f.resource_id as string)
   }
 
   // Platform-admin only: the active orgs a recording can be transferred to.
@@ -147,10 +170,12 @@ export default async function RecordingsListPage() {
       .select('id, name, status')
       .neq('status', 'suspended')
       .order('name')
-    allOrgs = (orgs ?? []).filter((o: any) => o.id !== ctx.orgId).map((o: any) => ({ id: o.id, name: o.name }))
+    allOrgs = (orgs ?? [])
+      .filter((o: { id: string; name: string; status: string }) => o.id !== ctx.orgId)
+      .map((o: { id: string; name: string; status: string }) => ({ id: o.id, name: o.name }))
   }
 
-  const rows: Row[] = (data ?? []).map((r: any) => ({
+  const rows: Row[] = recordings.map((r) => ({
     id: r.id,
     org_id: r.org_id,
     created_by: r.created_by,

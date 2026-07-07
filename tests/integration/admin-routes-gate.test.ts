@@ -10,19 +10,31 @@
 // never gets a 2xx from any admin route+verb (status ∈ {401,403,404}).
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { NextRequest } from 'next/server'
+
+type AuthUser = { id: string; email?: string }
+type QueryResult = { data: unknown; error: unknown }
 
 const ctx = {
-  authUser: null as any,
-  results: {} as Record<string, any>,
+  authUser: null as AuthUser | null,
+  results: {} as Record<string, QueryResult>,
 }
 function reset() { ctx.authUser = null; ctx.results = {} }
 
-function builder(table: string): any {
-  const b: any = {}
+type Builder = {
+  [k: string]: (...args: unknown[]) => unknown
+} & {
+  single: () => Promise<QueryResult>
+  maybeSingle: () => Promise<QueryResult>
+  then: (res: (v: QueryResult) => unknown, rej: (e: unknown) => unknown) => Promise<unknown>
+}
+
+function builder(table: string): Builder {
+  const b = {} as Builder
   for (const m of ['select', 'eq', 'order', 'in', 'limit', 'neq', 'range', 'update', 'delete', 'insert', 'upsert']) b[m] = () => b
   b.single = async () => ctx.results[table] ?? { data: null, error: null }
   b.maybeSingle = b.single
-  b.then = (res: any, rej: any) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
+  b.then = (res: (v: QueryResult) => unknown, rej: (e: unknown) => unknown) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
   return b
 }
 const client = () => ({
@@ -60,13 +72,13 @@ import * as reoGoldSet from '@/app/api/admin/reo-gold-set/route'
 import * as usersId from '@/app/api/admin/users/[id]/route'
 import * as usersFeatures from '@/app/api/admin/users/[id]/features/route'
 
-const req = (method = 'POST', body: any = {}) =>
-  new Request('http://t/x', { method, body: method === 'GET' ? undefined : JSON.stringify(body) }) as any
-const idP = { params: Promise.resolve({ id: 'x_1' }) } as any
-const orgP = { params: Promise.resolve({ orgId: 'o_1' }) } as any
+const req = (method = 'POST', body: unknown = {}) =>
+  new Request('http://t/x', { method, body: method === 'GET' ? undefined : JSON.stringify(body) }) as unknown as NextRequest
+const idP: { params: Promise<{ id: string }> } = { params: Promise.resolve({ id: 'x_1' }) }
+const orgP: { params: Promise<{ orgId: string }> } = { params: Promise.resolve({ orgId: 'o_1' }) }
 
 // Every admin route+verb, called with its props.
-const calls: { name: string; call: () => Promise<any> }[] = [
+const calls: { name: string; call: () => Promise<Response> }[] = [
   { name: 'agent-tester GET', call: () => agentTester.GET() },
   { name: 'agent-tester POST', call: () => agentTester.POST(req('POST', {})) },
   { name: 'bulk-invite POST', call: () => bulkInvite.POST(req('POST', { org_id: 'o', users: [{ email: 'a@b.com' }] })) },

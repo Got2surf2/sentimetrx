@@ -26,6 +26,17 @@ import type { ProjectInputModel, ProjectQA, ProjectComment, ProjectSource, Proje
 
 type Svc = ReturnType<typeof createServiceRoleClient>
 
+// Minimal shape of a mined theme as persisted in dataset_state.theme_model (Json).
+interface RawTheme {
+  name?: string
+  label?: string
+  keywords?: string[]
+  count?: number
+  sentiment?: string
+  avgRating?: number
+}
+interface ThemeModel { themes?: RawTheme[] }
+
 function shortDate(s: string | null): string {
   if (!s) return ''
   try { return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) } catch { return '' }
@@ -55,7 +66,7 @@ async function loadRecordingInput(svc: Svc, datasetId: string, label: string, ro
   if (recErr) void logError('projectReportLoad.loadRecordingInput', recErr)
   if (!rec) return null
 
-  const panel: PanelMember[] = (rec.setup_inputs as any)?.panel ?? []
+  const panel: PanelMember[] = (rec.setup_inputs as { panel?: PanelMember[] } | null)?.panel ?? []
   const { data: exs, error: exsErr } = await svc
     .from('recording_extractions')
     .select('unit_type, topic, payload')
@@ -201,7 +212,17 @@ async function loadDimensionsForInput(svc: Svc, datasetId: string): Promise<Proj
 // member's text rows once and counts them against the shared themes' keywords —
 // identical labels across members → the matrix aligns by exact label, no AI.
 const ROW_TEXT_KEYS = ['review_text', 'body', 'user_message', 'comment', 'response_text'] as const
-const rowText = (d: Record<string, any>): string => {
+// Flat dataset row payload — a free-form JSON object with a few fields we read.
+interface RowData {
+  rating?: unknown
+  review_date?: unknown
+  date?: unknown
+  sentiment?: string | null
+  author?: string | null
+  reviewer?: string | null
+  [k: string]: unknown
+}
+const rowText = (d: Record<string, unknown>): string => {
   for (const k of ROW_TEXT_KEYS) { const v = d[k]; if (v && String(v).trim()) return String(v) }
   return ''
 }
@@ -219,7 +240,7 @@ async function readMemberRows(svc: Svc, datasetId: string, cap = 80000): Promise
     if (pageErr) void logError('projectReportLoad.readMemberRows', pageErr)
     if (!data || data.length === 0) break
     for (const r of data) {
-      const d = (r.data || {}) as Record<string, any>
+      const d = (r.data || {}) as RowData
       const rv = d.rating
       const rating = rv != null && rv !== '' && isFinite(Number(rv)) ? Number(rv) : null
       const rawDate = d.review_date ?? d.date ?? null
@@ -266,7 +287,7 @@ async function deriveSharedThemes(svc: Svc, memberIds: string[]): Promise<Theme[
   for (const id of memberIds) {
     const { data, error: stateErr } = await svc.from('dataset_state').select('theme_model').eq('dataset_id', id).single()
     if (stateErr && stateErr.code !== 'PGRST116') void logError('projectReportLoad.deriveSharedThemes', stateErr)
-    for (const t of (((data?.theme_model as any)?.themes ?? []) as any[])) {
+    for (const t of ((data?.theme_model as ThemeModel | null)?.themes ?? [])) {
       const name = String(t.name || t.label || '').trim()
       const keywords = Array.isArray(t.keywords) ? t.keywords.map(String) : []
       if (name && keywords.length) raw.push({ name, keywords })
@@ -332,7 +353,7 @@ function scoreSharedThemes(rows: MemberRow[], shared: Theme[]): ProjectInputThem
 async function loadGenericInput(svc: Svc, datasetId: string, label: string, rowCount: number, source: string, brandTag: string | null, sharedThemes?: Theme[]): Promise<ProjectInputModel | null> {
   const kind = source === 'google_reviews' ? 'reviews' : source === 'study' ? 'survey' : 'dataset'
   const src: ProjectSource = {
-    id: datasetId, kind: kind as any,
+    id: datasetId, kind,
     name: brandTag || label,
     date: null,
     badge: brandTag || label,
@@ -359,7 +380,7 @@ async function loadGenericInput(svc: Svc, datasetId: string, label: string, rowC
   } else {
     const { data: stateRow, error: stateRowErr } = await svc.from('dataset_state').select('theme_model').eq('dataset_id', datasetId).single()
     if (stateRowErr && stateRowErr.code !== 'PGRST116') void logError('projectReportLoad.loadGenericInput', stateRowErr)
-    const rawThemes: any[] = ((stateRow?.theme_model as any)?.themes) ?? []
+    const rawThemes: RawTheme[] = (stateRow?.theme_model as ThemeModel | null)?.themes ?? []
     themes = rawThemes.map(t => ({
       label: String(t.name || t.label || 'Theme'),
       count: typeof t.count === 'number' ? t.count : 0,
@@ -371,7 +392,7 @@ async function loadGenericInput(svc: Svc, datasetId: string, label: string, rowC
     const { data: rows, error: rowsErr } = await svc.from('dataset_rows_flat').select('data').eq('dataset_id', datasetId).limit(40)
     if (rowsErr) void logError('projectReportLoad.loadGenericInput', rowsErr)
     commentary = (rows || []).map(r => {
-      const d = (r.data || {}) as Record<string, any>
+      const d = (r.data || {}) as RowData
       const text = rowText(d)
       if (!text || text.trim().length < 8) return null
       return { quote: text.slice(0, 240), topic: null, sentiment: d.sentiment ?? null, speaker: d.author ?? d.reviewer ?? null, source: src.badge }
@@ -445,7 +466,7 @@ export async function loadProjectInputs(collectionDatasetId: string): Promise<{ 
   // named themes. Only meaningful when members are review/CSAT (generic loader).
   const { data: colState, error: colStateErr } = await svc.from('dataset_state').select('theme_model').eq('dataset_id', collectionDatasetId).single()
   if (colStateErr && colStateErr.code !== 'PGRST116') void logError('projectReportLoad.loadProjectInputs', colStateErr)
-  const sharedThemesRaw = ((colState?.theme_model as any)?.themes ?? []) as any[]
+  const sharedThemesRaw: RawTheme[] = (colState?.theme_model as ThemeModel | null)?.themes ?? []
   let sharedThemes: Theme[] | undefined = sharedThemesRaw.length
     ? sharedThemesRaw.filter(t => t && (t.keywords?.length)) as Theme[]
     : undefined

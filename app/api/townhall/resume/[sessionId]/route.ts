@@ -5,10 +5,31 @@ import { checkRateLimit } from '@/lib/rateLimit'
 import { pickNextTopic, type NextTopic } from '@/lib/pickNextTopic'
 import { serverError } from '@/lib/apiError'
 import { resolveTownHall } from '@/lib/townHallAdapter'
-import { mirrorTurns } from '@/lib/phase3DualWrite'
+import { mirrorTurns, type MirroredTurn } from '@/lib/phase3DualWrite'
 import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
+
+// Minimal shape of the pulseiq_topics columns this route selects. The
+// service-role client is untyped, so annotate the rows we read.
+interface ResumeTopicRow {
+  id: string
+  label: string
+  description: string | null
+  question: string
+  follow_up_angles: string[] | null
+  keywords: string[] | null
+  source: string
+  response_target: number
+  response_count: number | null
+  round_number: number | null
+}
+
+// A single round entry within cohort_config.rounds (round-based pacing).
+interface CohortRound {
+  number?: number
+  item_name?: string
+}
 
 // POST /api/townhall/resume/[sessionId] — round-based pacing resume probe.
 //
@@ -41,9 +62,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
   // pulseiq_topics, cohort counts via the conversations mirror. (The legacy
   // townhall_sessions branch was deleted with the tables — sql/153.)
   {
-    const hall = await resolveTownHall(db as any, sessionId)
+    const hall = await resolveTownHall(db, sessionId)
     if (!hall) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    const cohortConfig = (hall.cohort_config || {}) as any
+    const cohortConfig = (hall.cohort_config || {}) as Record<string, unknown>
 
     if (hall.status === 'closed') {
       return NextResponse.json({ holding: false, is_final: true, bot_message: cohortConfig.closing_message || 'This session has ended. Thank you for participating.' })
@@ -78,7 +99,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
     if (!topics || topics.length === 0) return NextResponse.json({ holding: true })
 
     const responseCount: Record<string, number> = {}
-    for (const t of topics) responseCount[(t as any).id] = (t as any).response_count || 0
+    for (const t of (topics as ResumeTopicRow[])) responseCount[t.id] = t.response_count || 0
     const discussed = new Set<string>()
     {
       const { data: myConv } = await db
@@ -91,13 +112,13 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
         const { data: myTurns } = await db
           .from('conversation_turns')
           .select('topic_id')
-          .eq('conversation_id', (myConv as any).id)
+          .eq('conversation_id', (myConv as { id: string }).id)
           .not('topic_id', 'is', null)
-        for (const t of (myTurns || [])) discussed.add((t as any).topic_id as string)
+        for (const t of ((myTurns || []) as Array<{ topic_id: string | null }>)) discussed.add(t.topic_id as string)
       }
     }
 
-    const pickerInput: NextTopic[] = topics.map((t: any) => ({
+    const pickerInput: NextTopic[] = (topics as ResumeTopicRow[]).map((t) => ({
       id: t.id, label: t.label, description: t.description, question: t.question,
       follow_up_angles: t.follow_up_angles, keywords: t.keywords || [], source: t.source,
       response_target: t.response_target, response_count: responseCount[t.id] || 0,
@@ -105,8 +126,8 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
     const pick = pickNextTopic(pickerInput, { discussedTopicIds: discussed })
     if (!pick.topic) return NextResponse.json({ holding: true })
 
-    const roundNum = (topics.find((t: any) => t.id === pick.topic!.id) as any)?.round_number ?? null
-    const item = roundNum != null ? (((cohortConfig.rounds || []).find((r: any) => r?.number === roundNum)?.item_name) || '') : ''
+    const roundNum = (topics as ResumeTopicRow[]).find((t) => t.id === pick.topic!.id)?.round_number ?? null
+    const item = roundNum != null ? (((cohortConfig.rounds as CohortRound[] | undefined) || []).find((r) => r?.number === roundNum)?.item_name || '') : ''
     const botMessage = item ? 'Now for ' + item + ' — ' + pick.topic.question : pick.topic.question
 
     // Serve the question as a real assistant turn in the synchronous store so
@@ -123,9 +144,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
     // mirror on the participant's next message — a fire-and-forget write
     // here could lose the served topic from budgets/coverage.
     try {
-      await mirrorTurns(db as any, {
+      await mirrorTurns(db, {
         botId: hall.bot_id, orgId: hall.org_id, sessionId: unifiedSessionId,
-        language: body.language || 'en', rows: [{ ...turnRow, topic_id: pick.topic.id }] as any,
+        language: body.language || 'en', rows: [{ ...turnRow, topic_id: pick.topic.id }] as unknown as MirroredTurn[],
         townHallId: hall.id, participantId: participant_id,
       })
     } catch (e) { void logError('townhall.resume.mirror', e, { orgId: hall.org_id }) }

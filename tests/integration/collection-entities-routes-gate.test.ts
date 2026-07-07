@@ -8,22 +8,32 @@
 // (route-handler org filters aren't covered by the RLS/egress suites — CLAUDE.md.)
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { NextRequest } from 'next/server'
+import type { CallerOrgContext } from '@/lib/auth/orgAccess'
+
+type QueryResult = { data: unknown; error: unknown }
+type MockBuilder = {
+  single: () => Promise<QueryResult>
+  maybeSingle: () => Promise<QueryResult>
+  then: (res: (v: QueryResult) => unknown, rej: (e: unknown) => unknown) => Promise<unknown>
+  [k: string]: unknown
+}
 
 const ctx = {
-  callerCtx: { userId: null, orgId: null, isAdmin: false } as any,
-  results: {} as Record<string, any>,
+  callerCtx: { userId: null, orgId: null, isAdmin: false } as CallerOrgContext,
+  results: {} as Record<string, QueryResult>,
 }
 function reset() {
   ctx.callerCtx = { userId: null, orgId: null, isAdmin: false }
   ctx.results = {}
 }
 
-function builder(table: string): any {
-  const b: any = {}
+function builder(table: string): MockBuilder {
+  const b = {} as MockBuilder
   for (const m of ['select', 'order', 'in', 'limit', 'neq', 'range', 'not', 'update', 'delete', 'insert', 'eq']) b[m] = () => b
   b.single = async () => ctx.results[table] ?? { data: null, error: null }
   b.maybeSingle = async () => ctx.results[table] ?? { data: null, error: null }
-  b.then = (res: any, rej: any) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
+  b.then = (res, rej) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
   return b
 }
 const client = () => ({ from: (t: string) => builder(t), rpc: async () => ({ data: null, error: null }) })
@@ -39,10 +49,10 @@ import * as list from '@/app/api/collections/[id]/entities/route'
 import * as one from '@/app/api/collections/[id]/entities/[entityId]/route'
 import * as refresh from '@/app/api/collections/[id]/entities/refresh/route'
 
-const listProps = { params: Promise.resolve({ id: 'c_1' }) } as any
-const oneProps = { params: Promise.resolve({ id: 'c_1', entityId: 'e_1' }) } as any
-const req = (method = 'POST', body: any = {}) =>
-  new Request('http://t/x', { method, body: method === 'GET' ? undefined : JSON.stringify(body) }) as any
+const listProps = { params: Promise.resolve({ id: 'c_1' }) }
+const oneProps = { params: Promise.resolve({ id: 'c_1', entityId: 'e_1' }) }
+const req = (method = 'POST', body: Record<string, unknown> = {}) =>
+  new Request('http://t/x', { method, body: method === 'GET' ? undefined : JSON.stringify(body) }) as unknown as NextRequest
 const caller = (orgId: string | null, isAdmin = false) => ({ userId: orgId ? 'u1' : null, orgId, isAdmin })
 
 beforeEach(reset)

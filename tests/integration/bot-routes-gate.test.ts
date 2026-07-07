@@ -12,11 +12,16 @@
 //   B. getAuthUser() + users  → bots/[id], conversations, knowledge
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { NextRequest } from 'next/server'
+
+type MockResult = { data: unknown; error: unknown }
+type MockAuthUser = { id: string } | null
+type MockCallerCtx = { userId: string | null; orgId: string | null; isAdmin: boolean }
 
 const ctx = {
-  authUser: null as any,
-  callerCtx: { userId: null, orgId: null, isAdmin: false } as any,
-  results: {} as Record<string, any>,   // single()/maybeSingle() result by table
+  authUser: null as MockAuthUser,
+  callerCtx: { userId: null, orgId: null, isAdmin: false } as MockCallerCtx,
+  results: {} as Record<string, MockResult>,   // single()/maybeSingle() result by table
 }
 
 function reset() {
@@ -25,12 +30,22 @@ function reset() {
   ctx.results = {}
 }
 
-function builder(table: string): any {
-  const b: any = {}
-  for (const m of ['select', 'eq', 'order', 'range', 'in', 'limit', 'neq', 'update', 'delete', 'insert']) b[m] = () => b
+type ChainMethod =
+  | 'select' | 'eq' | 'order' | 'range' | 'in' | 'limit' | 'neq' | 'update' | 'delete' | 'insert'
+
+type MockBuilder = Record<ChainMethod, () => MockBuilder> & {
+  single: () => Promise<MockResult>
+  maybeSingle: () => Promise<MockResult>
+  then: (res: (v: MockResult) => unknown, rej: (e: unknown) => unknown) => Promise<unknown>
+}
+
+function builder(table: string): MockBuilder {
+  const b = {} as MockBuilder
+  const methods: ChainMethod[] = ['select', 'eq', 'order', 'range', 'in', 'limit', 'neq', 'update', 'delete', 'insert']
+  for (const m of methods) b[m] = () => b
   b.single = async () => ctx.results[table] ?? { data: null, error: null }
   b.maybeSingle = async () => ctx.results[table] ?? { data: null, error: null }
-  b.then = (res: any, rej: any) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
+  b.then = (res, rej) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
   return b
 }
 
@@ -58,9 +73,9 @@ import * as botQuestions from '@/app/api/bots/[id]/questions/route'
 import * as botConversations from '@/app/api/bots/[id]/conversations/route'
 import * as botKnowledge from '@/app/api/bots/[id]/knowledge/route'
 
-const props = { params: Promise.resolve({ id: 'b_1' }) } as any
-const reqGet = () => new Request('http://t/x') as any
-const reqPost = () => new Request('http://t/x', { method: 'POST', body: '{}' }) as any
+const props: { params: Promise<{ id: string }> } = { params: Promise.resolve({ id: 'b_1' }) }
+const reqGet = () => new Request('http://t/x') as NextRequest
+const reqPost = () => new Request('http://t/x', { method: 'POST', body: '{}' }) as NextRequest
 
 const sameOrgUser = { org_id: 'orgA', organizations: { is_admin_org: false } }
 const adminUser = { org_id: 'orgZ', organizations: { is_admin_org: true } }

@@ -11,19 +11,29 @@
 // secure contract: cross-org non-admin → 404, admin bypass allowed.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { NextRequest } from 'next/server'
+
+type QueryResult = { data: unknown; error: unknown }
 
 const ctx = {
-  authUser: null as any,
-  results: {} as Record<string, any>,
+  authUser: null as { id: string } | null,
+  results: {} as Record<string, QueryResult>,
 }
 function reset() { ctx.authUser = null; ctx.results = {} }
 
-function builder(table: string): any {
-  const b: any = {}
-  for (const m of ['select', 'eq', 'order', 'in', 'limit', 'neq', 'update', 'delete', 'insert', 'not', 'lt', 'gt', 'gte', 'lte']) b[m] = () => b
+const chainMethods = ['select', 'eq', 'order', 'in', 'limit', 'neq', 'update', 'delete', 'insert', 'not', 'lt', 'gt', 'gte', 'lte'] as const
+type Chain = { [K in typeof chainMethods[number]]: () => Chain } & {
+  single: () => Promise<QueryResult>
+  maybeSingle: () => Promise<QueryResult>
+  then: (res: (v: QueryResult) => unknown, rej: (e: unknown) => unknown) => Promise<unknown>
+}
+
+function builder(table: string): Chain {
+  const b = {} as Chain
+  for (const m of chainMethods) b[m] = () => b
   b.single = async () => ctx.results[table] ?? { data: null, error: null }
   b.maybeSingle = async () => ctx.results[table] ?? { data: null, error: null }
-  b.then = (res: any, rej: any) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
+  b.then = (res, rej) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
   return b
 }
 
@@ -38,8 +48,8 @@ import * as duplicate from '@/app/api/townhall/sessions/[id]/duplicate/route'
 import * as round from '@/app/api/townhall/sessions/[id]/round/route'
 import * as resume from '@/app/api/townhall/resume/[sessionId]/route'
 
-const idProps = { params: Promise.resolve({ id: 'x_1' }) } as any
-const post = (body: any = {}) => new Request('http://t/x', { method: 'POST', body: JSON.stringify(body) }) as any
+const idProps = { params: Promise.resolve({ id: 'x_1' }) }
+const post = (body: Record<string, unknown> = {}) => new Request('http://t/x', { method: 'POST', body: JSON.stringify(body) }) as unknown as NextRequest
 
 const nonAdmin = (org: string) => ({ data: { org_id: org, organizations: { is_admin_org: false } }, error: null })
 const admin = { data: { org_id: 'orgZ', organizations: { is_admin_org: true } }, error: null }
@@ -122,7 +132,7 @@ describe('POST /api/townhall/sessions/[id]/duplicate — caller-org gate', () =>
 // Round-based pacing: POST /api/townhall/sessions/[id]/round advances the room
 // to round N. Same org-gate contract as the other mutating routes.
 describe('POST /api/townhall/sessions/[id]/round — caller-org gate', () => {
-  const start = (body: any = { round: 2 }) => round.POST(post(body), idProps)
+  const start = (body: Record<string, unknown> = { round: 2 }) => round.POST(post(body), idProps)
 
   it('401 unauthenticated', async () => {
     expect((await start()).status).toBe(401)
@@ -165,7 +175,7 @@ describe('POST /api/townhall/sessions/[id]/round — caller-org gate', () => {
 // Participant-facing resume probe (public, scoped by session+participant ids
 // like /chat — no user-auth/org gate). Just assert the basic guard contract.
 describe('POST /api/townhall/resume/[sessionId] — guards', () => {
-  const sidProps = { params: Promise.resolve({ sessionId: 'sess1' }) } as any
+  const sidProps = { params: Promise.resolve({ sessionId: 'sess1' }) }
 
   it('400 when participant_id is missing', async () => {
     const res = await resume.POST(post({}), sidProps)

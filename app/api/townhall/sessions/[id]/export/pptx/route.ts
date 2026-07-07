@@ -5,6 +5,7 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import type { NextRequest} from 'next/server';
+import type PptxGenJS from 'pptxgenjs'
 import { NextResponse } from 'next/server'
 import { lexiconScore, classifySentiment, buildKwRegex } from '@/lib/themeUtils'
 import { resolveTownHall, projectHallAsSession, fetchTopicsAsThemes, fetchTurnsAsLegacy } from '@/lib/townHallAdapter'
@@ -27,21 +28,42 @@ const DN = {
 
 const THEME_COLORS = ['0F7173', 'E8B84B', '7C3AED', '059669', 'E85A1A', '1A5070', '0891B2', 'DB2777', '65A30D', '9333EA']
 
-function hdr(slide: any, pptx: any, title: string) {
+// Round/pacing config carried on the projected legacy session.config blob.
+interface SessionConfig {
+  pacing_mode?: string
+  rounds?: Array<{ number?: number | null; item_name?: string }>
+}
+
+// A projected theme after keyword/quote enrichment below — the shape the
+// slide builders consume.
+interface ThemeCard {
+  id: string
+  label: string
+  keywords?: string[]
+  sentiment?: string | null
+  source: string
+  state: string
+  round_number?: number | null
+  matchCount: number
+  percentage: number
+  quotes: string[]
+}
+
+function hdr(slide: PptxGenJS.Slide, pptx: PptxGenJS, title: string) {
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: 0.06, fill: { color: DN.gold }, line: { width: 0 } })
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.06, w: W, h: HH - 0.06, fill: { color: DN.navy }, line: { width: 0 } })
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.06, w: 0.07, h: HH - 0.06, fill: { color: DN.teal }, line: { width: 0 } })
   slide.addText(title, { x: PAD, y: 0.1, w: W - PAD * 2 - 2.4, h: HH - 0.18, fontSize: 20, bold: true, color: DN.white, valign: 'middle', autoFit: true })
 }
 
-function footer(slide: any, pptx: any, sessionName: string) {
+function footer(slide: PptxGenJS.Slide, pptx: PptxGenJS, sessionName: string) {
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: FY - 0.02, w: W, h: 0.015, fill: { color: DN.teal, transparency: 62 }, line: { width: 0 } })
   slide.addText('datanautix.com  ·  ' + sessionName, {
     x: PAD, y: FY, w: W * 0.5, h: 0.26, fontSize: 7.5, color: DN.slate, valign: 'middle', wrap: false,
   })
 }
 
-function kpi(slide: any, pptx: any, x: number, y: number, w: number, h: number, value: string, label: string, bg_ = DN.slateLight, valColor = DN.navy) {
+function kpi(slide: PptxGenJS.Slide, pptx: PptxGenJS, x: number, y: number, w: number, h: number, value: string, label: string, bg_ = DN.slateLight, valColor = DN.navy) {
   slide.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: bg_ }, line: { color: DN.divider, width: 1 }, rectRadius: 0.08 })
   slide.addText(value, { x: x + 0.14, y: y + 0.06, w: w - 0.28, h: h * 0.52, fontSize: 24, bold: true, color: valColor, valign: 'middle', autoFit: true })
   slide.addText(label, { x: x + 0.14, y: y + h * 0.52 + 0.06, w: w - 0.28, h: 0.22, fontSize: 9, bold: true, color: DN.slateDark, autoFit: true })
@@ -130,9 +152,9 @@ export async function POST(req: NextRequest, props: Params) {
 
   // Round-based pacing: group theme slides by tasting round (item) for the
   // per-item roll-up. Inert in open mode (flat theme slides as before).
-  const roundsMode = (session.config as any)?.pacing_mode === 'rounds'
+  const roundsMode = (session.config as SessionConfig | undefined)?.pacing_mode === 'rounds'
   const roundItems: Record<number, string> = {}
-  for (const r of ((session.config as any)?.rounds || [])) if (r?.number != null) roundItems[r.number] = r.item_name || ''
+  for (const r of ((session.config as SessionConfig | undefined)?.rounds || [])) if (r?.number != null) roundItems[r.number] = r.item_name || ''
 
   // Overall sentiment
   let posCount = 0, negCount = 0, mixCount = 0, neuCount = 0
@@ -239,7 +261,7 @@ export async function POST(req: NextRequest, props: Params) {
   footer(s2, pptx, sessionName)
 
   // ── Slide 3+: Theme cards (2 per slide) ──
-  const renderThemeCards = (list: any[], headerTitle = 'Theme Analysis') => {
+  const renderThemeCards = (list: ThemeCard[], headerTitle = 'Theme Analysis') => {
   for (let i = 0; i < list.length; i += 2) {
     const slide = pptx.addSlide()
     bgFill(slide, pptx)
@@ -311,9 +333,9 @@ export async function POST(req: NextRequest, props: Params) {
 
   if (roundsMode) {
     // One section divider per round (tasting item) + that round's theme cards.
-    const rNums = Array.from(new Set(enrichedThemes.map((t: any) => t.round_number ?? 0))).sort((a, b) => (a as number) - (b as number)) as number[]
+    const rNums = Array.from(new Set(enrichedThemes.map((t: ThemeCard) => t.round_number ?? 0))).sort((a, b) => (a as number) - (b as number)) as number[]
     for (const rn of rNums) {
-      const list = enrichedThemes.filter((t: any) => (t.round_number ?? 0) === rn)
+      const list = enrichedThemes.filter((t: ThemeCard) => (t.round_number ?? 0) === rn)
       const item = roundItems[rn] || ''
       const sec = pptx.addSlide()
       bgFill(sec, pptx, DN.navy)

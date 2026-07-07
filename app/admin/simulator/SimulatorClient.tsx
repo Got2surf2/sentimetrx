@@ -208,6 +208,17 @@ function generatePayload(config: any, weights: number[]) {
 
 interface LogEntry { text: string; type: 'ok' | 'err' | 'info' | 'dim' }
 
+interface DemoResult {
+  error?: string
+  deleted?: number
+  generated?: number
+  flagged?: number
+  autoHidden?: number
+  autoDeleted?: number
+  flaggedForReview?: number
+  sentiment?: { positive?: number; neutral?: number; negative?: number }
+}
+
 var HERMES = '#E8632A'
 
 export default function SimulatorClient() {
@@ -219,7 +230,7 @@ export default function SimulatorClient() {
   const [demoPostText, setDemoPostText] = useState('')
   const [demoCount, setDemoCount] = useState(25)
   const [demoLoading, setDemoLoading] = useState(false)
-  const [demoResult, setDemoResult] = useState<any>(null)
+  const [demoResult, setDemoResult] = useState<DemoResult | null>(null)
 
   // Survey sim state
   const [guid, setGuid] = useState('')

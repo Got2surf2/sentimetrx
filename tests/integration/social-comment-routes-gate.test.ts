@@ -12,11 +12,14 @@
 // class behind every past CRITICAL finding), not just a simulated null result.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { NextRequest } from 'next/server'
+
+type QueryResult = { data: unknown; error: unknown }
 
 const ctx = {
-  authUser: null as any,
-  results: {} as Record<string, any>,            // single()/then() result by table
-  eqCalls: {} as Record<string, [string, any][]>, // recorded .eq(col, val) by table
+  authUser: null as { id: string } | null,
+  results: {} as Record<string, QueryResult>,      // single()/then() result by table
+  eqCalls: {} as Record<string, [string, unknown][]>, // recorded .eq(col, val) by table
 }
 
 function reset() {
@@ -25,14 +28,29 @@ function reset() {
   ctx.eqCalls = {}
 }
 
-function builder(table: string): any {
+interface MockBuilder {
+  select: () => MockBuilder
+  order: () => MockBuilder
+  in: () => MockBuilder
+  limit: () => MockBuilder
+  neq: () => MockBuilder
+  update: () => MockBuilder
+  delete: () => MockBuilder
+  insert: () => MockBuilder
+  eq: (col: string, val: unknown) => MockBuilder
+  single: () => Promise<QueryResult>
+  maybeSingle: () => Promise<QueryResult>
+  then: (res: (v: QueryResult) => unknown, rej: (e: unknown) => unknown) => Promise<unknown>
+}
+
+function builder(table: string): MockBuilder {
   ctx.eqCalls[table] = ctx.eqCalls[table] || []
-  const b: any = {}
-  for (const m of ['select', 'order', 'in', 'limit', 'neq', 'update', 'delete', 'insert']) b[m] = () => b
-  b.eq = (col: string, val: any) => { ctx.eqCalls[table].push([col, val]); return b }
+  const b = {} as unknown as MockBuilder
+  for (const m of ['select', 'order', 'in', 'limit', 'neq', 'update', 'delete', 'insert'] as const) (b as unknown as Record<string, () => MockBuilder>)[m] = () => b
+  b.eq = (col: string, val: unknown) => { ctx.eqCalls[table].push([col, val]); return b }
   b.single = async () => ctx.results[table] ?? { data: null, error: null }
   b.maybeSingle = async () => ctx.results[table] ?? { data: null, error: null }
-  b.then = (res: any, rej: any) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
+  b.then = (res, rej) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
   return b
 }
 
@@ -51,8 +69,8 @@ import * as aiReply from '@/app/api/social/comments/[id]/ai-reply/route'
 import * as dm from '@/app/api/social/comments/[id]/dm/route'
 import * as bulk from '@/app/api/social/comments/bulk/route'
 
-const idProps = { params: Promise.resolve({ id: 'cm_1' }) } as any
-const post = (body: any = {}) => new Request('http://t/x', { method: 'POST', body: JSON.stringify(body) }) as any
+const idProps: { params: Promise<{ id: string }> } = { params: Promise.resolve({ id: 'cm_1' }) }
+const post = (body: unknown = {}) => new Request('http://t/x', { method: 'POST', body: JSON.stringify(body) }) as unknown as NextRequest
 
 // Each entry: a label, the handler, and a request body valid enough to reach
 // the comment lookup (some routes validate the body first).

@@ -35,6 +35,19 @@ interface CollectionMember {
   row_count: number
 }
 
+// Minimal shape of a theme within a dataset's theme_model (mutated in place by Ana actions)
+interface AnaTheme {
+  id?: string
+  name?: string
+  label?: string
+  description?: string
+  keywords?: string[]
+  sentiment?: string
+  count?: number
+  percentage?: number
+  relatedThemes?: unknown[]
+}
+
 interface Props {
   datasetId: string
   datasetName: string
@@ -84,7 +97,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
       .then(function(r) { return r.ok ? r.json() : null })
       .then(function(data) {
         if (data && data.members) {
-          setCollectionMembers(data.members.map(function(m: any) {
+          setCollectionMembers(data.members.map(function(m: { label?: string; name?: string; row_count?: number }) {
             return { name: m.label || m.name || 'Unknown', row_count: m.row_count || 0 }
           }))
         }
@@ -143,7 +156,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
       if (!stateRes.ok) throw new Error('Failed to fetch state')
       var state = await stateRes.json()
       var themeModel = state.theme_model || { themes: [], aiGenerated: false, version: 1 }
-      var themes: any[] = themeModel.themes || []
+      var themes: AnaTheme[] = themeModel.themes || []
 
       if (action.tool === 'create_theme') {
         var newTheme = {
@@ -159,7 +172,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
         }
         themes.push(newTheme)
       } else if (action.tool === 'update_theme') {
-        var target = themes.find(function(t: any) {
+        var target = themes.find(function(t: AnaTheme) {
           return (t.name || t.label || '').toLowerCase() === (action.input.theme_name || '').toLowerCase()
         })
         if (target) {
@@ -179,12 +192,12 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
       } else if (action.tool === 'merge_themes') {
         var mergeNames = new Set((action.input.theme_names || []).map(function(n: string) { return n.toLowerCase() }))
         var mergedKeywords = new Set<string>()
-        themes.forEach(function(t: any) {
+        themes.forEach(function(t: AnaTheme) {
           if (mergeNames.has((t.name || t.label || '').toLowerCase())) {
             (t.keywords || []).forEach(function(kw: string) { mergedKeywords.add(kw) })
           }
         })
-        themes = themes.filter(function(t: any) { return !mergeNames.has((t.name || t.label || '').toLowerCase()) })
+        themes = themes.filter(function(t: AnaTheme) { return !mergeNames.has((t.name || t.label || '').toLowerCase()) })
         themes.push({
           id: 't' + Date.now(),
           name: action.input.merged_name,
@@ -198,7 +211,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
         })
       } else if (action.tool === 'delete_theme') {
         var delName = (action.input.theme_name || '').toLowerCase()
-        themes = themes.filter(function(t: any) { return (t.name || t.label || '').toLowerCase() !== delName })
+        themes = themes.filter(function(t: AnaTheme) { return (t.name || t.label || '').toLowerCase() !== delName })
       } else if (action.tool === 'generate_report') {
         var deckRes = await fetch('/api/ana/render-deck', {
           method: 'POST',
@@ -247,8 +260,8 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
       })
 
       if (onThemesChanged) onThemesChanged()
-    } catch (err: any) {
-      var errMsg = err?.message || String(err)
+    } catch (err: unknown) {
+      var errMsg = err instanceof Error ? err.message : String(err)
       setMessages(function(prev) {
         return prev.map(function(m) {
           if (m.id !== msgId) return m
@@ -617,7 +630,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
                 <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Distribution across members</div>
                 <select
                   value={samplingConfig.strategy}
-                  onChange={function(e) { setSamplingConfig(function(c) { return { ...c, strategy: e.target.value as any } }) }}
+                  onChange={function(e) { setSamplingConfig(function(c) { return { ...c, strategy: e.target.value as SamplingConfig['strategy'] } }) }}
                   style={{
                     width: '100%', fontSize: 13, padding: '8px 10px', border: '1px solid #d1d5db',
                     borderRadius: 8, background: 'white', color: '#374151', cursor: 'pointer',
@@ -926,7 +939,7 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
       {action.tool === 'generate_report' && (
         <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.5 }}>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>{inp.title}{inp.subtitle ? ' — ' + inp.subtitle : ''}</div>
-          {(inp.slides || []).map(function(s: any, si: number) {
+          {(inp.slides || []).map(function(s: { type: string; title: string }, si: number) {
             var typeIcon: Record<string, string> = { bar_chart: '\u2593', kpi_grid: '\u25A3', table: '\u2261', bullets: '\u2022', quotes: '\u201C', two_column: '\u2016' }
             return (
               <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>

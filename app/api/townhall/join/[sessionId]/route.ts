@@ -8,6 +8,50 @@ import { resolveTownHall, projectHallAsSession } from '@/lib/townHallAdapter'
 
 export const dynamic = 'force-dynamic'
 
+interface PsychoQuestion {
+  q: string
+  opts?: string[]
+  [key: string]: unknown
+}
+
+interface DemoField {
+  label: string
+  enabled?: boolean
+  [key: string]: unknown
+}
+
+interface SessionConfig {
+  opening_message?: string
+  opening_question?: string
+  closing_message?: string
+  display?: { welcome_message?: string; thank_you_message?: string }
+  session_end?: { closing_message?: string }
+  bot_name?: string
+  bot_emoji?: string
+  languages?: string[]
+  messages?: {
+    post_session_intro?: string
+    post_session_demo?: string
+    post_session_thanks?: string
+  }
+  questionPosition?: string
+  demoFields?: DemoField[]
+  psychographicBank?: PsychoQuestion[]
+  psychoCount?: number
+  testing?: boolean
+  header_color?: string
+  [key: string]: unknown
+}
+
+interface ProjectedSession {
+  id: string
+  name: string
+  status: string
+  org_id?: string
+  config?: SessionConfig
+  [key: string]: unknown
+}
+
 // Translate text to a target language (for non-English participants)
 async function translateText(text: string, targetLang: string, orgId?: string): Promise<string> {
   if (!text || targetLang === 'en') return text
@@ -34,16 +78,16 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ sessionI
 
   // Resolve on the unified substrate; project cohort_config into the classic
   // `session.config` shape so the rest of the handler is shape-agnostic.
-  let session: any = null
+  let session: ProjectedSession | null = null
   {
-    const hall = await resolveTownHall(supabase as any, identifier)
-    if (hall) session = projectHallAsSession(hall)
+    const hall = await resolveTownHall(supabase, identifier)
+    if (hall) session = projectHallAsSession(hall) as unknown as ProjectedSession
   }
   if (!session) {
     return NextResponse.json({ found: false }, { status: 404 })
   }
 
-  const config = session.config as any
+  const config = session.config
   // Legacy compat: fall back to old field names if new ones aren't set
   const openingMsg = config?.opening_message || ((config?.display?.welcome_message || '') + (config?.opening_question ? '\n\n' + config.opening_question : '')) || 'Welcome! Share your thoughts anonymously.'
   const closingMsg = config?.closing_message || config?.session_end?.closing_message || config?.display?.thank_you_message || 'Thank you for participating!'
@@ -81,10 +125,10 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
   // Resolve by slug or UUID
   const identifier = params.sessionId
 
-  let session: any = null
+  let session: ProjectedSession | null = null
   {
-    const hall = await resolveTownHall(supabase as any, identifier)
-    if (hall) session = projectHallAsSession(hall)
+    const hall = await resolveTownHall(supabase, identifier)
+    if (hall) session = projectHallAsSession(hall) as unknown as ProjectedSession
   }
   if (!session) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
@@ -99,7 +143,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
   let body: { language?: string } = {}
   try { body = await req.json() } catch { /* no body is fine */ }
 
-  const config = session.config as any
+  const config = session.config
   const language = body.language || 'en'
   // crypto.randomUUID() — unguessable. Math.random() is predictable
   // enough that a moderator with a few participant IDs could enumerate
@@ -138,13 +182,13 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
     // Translate psychographic questions + options
     const psychoBank = config?.psychographicBank || []
     if (psychoBank.length > 0) {
-      const psychoText = psychoBank.map((pq: any, i: number) =>
+      const psychoText = psychoBank.map((pq: PsychoQuestion, i: number) =>
         '[Q' + (i + 1) + '] ' + pq.q + '\n' + (pq.opts || []).map((o: string, j: number) => '[Q' + (i + 1) + 'O' + (j + 1) + '] ' + o).join('\n')
       ).join('\n')
       try {
         const tPsycho = await translateText(psychoText, language, session.org_id)
         const tLines = tPsycho.split('\n').map(l => l.trim()).filter(Boolean)
-        translatedPsychoBank = psychoBank.map((pq: any, i: number) => {
+        translatedPsychoBank = psychoBank.map((pq: PsychoQuestion, i: number) => {
           const qLine = tLines.find(l => l.startsWith('[Q' + (i + 1) + ']'))
           const translatedQ = qLine ? qLine.replace(/^\[Q\d+\]\s*/, '') : pq.q
           const translatedOpts = (pq.opts || []).map((o: string, j: number) => {
@@ -157,13 +201,13 @@ export async function POST(req: NextRequest, props: { params: Promise<{ sessionI
     }
 
     // Translate demo field labels
-    const demoFields = (config?.demoFields || []).filter((f: any) => f.enabled)
+    const demoFields = (config?.demoFields || []).filter((f: DemoField) => f.enabled)
     if (demoFields.length > 0) {
-      const demoText = demoFields.map((f: any, i: number) => '[D' + (i + 1) + '] ' + f.label).join('\n')
+      const demoText = demoFields.map((f: DemoField, i: number) => '[D' + (i + 1) + '] ' + f.label).join('\n')
       try {
         const tDemo = await translateText(demoText, language, session.org_id)
         const tLines = tDemo.split('\n').map(l => l.trim()).filter(Boolean)
-        translatedDemoFields = demoFields.map((f: any, i: number) => {
+        translatedDemoFields = demoFields.map((f: DemoField, i: number) => {
           const dLine = tLines.find(l => l.startsWith('[D' + (i + 1) + ']'))
           return { ...f, label: dLine ? dLine.replace(/^\[D\d+\]\s*/, '') : f.label, _origLabel: f.label };
         })

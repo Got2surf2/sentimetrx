@@ -19,7 +19,20 @@ export const maxDuration = 60
 
 const GRAPH_FETCH_CONCURRENCY = 4
 
-async function fetchFacebookComments(pageId: string, token: string, since?: string): Promise<any[]> {
+interface RawSocialComment {
+  post_id: string
+  post_text: string | null
+  comment_id: string
+  parent_comment_id: string | null
+  author_name: string | null
+  author_id: string | null
+  text: string
+  is_hidden: boolean
+  is_reply: boolean
+  platform_created_at: string
+}
+
+async function fetchFacebookComments(pageId: string, token: string, since?: string): Promise<RawSocialComment[]> {
   // Use /posts instead of /feed — /feed requires pages_read_engagement which needs App Review
   const sinceParam = since ? `&since=${Math.floor(new Date(since).getTime() / 1000)}` : ''
   const postsUrl = `https://graph.facebook.com/v19.0/${pageId}/posts?fields=id,message,created_time&limit=25&access_token=${token}${sinceParam}`
@@ -31,7 +44,7 @@ async function fetchFacebookComments(pageId: string, token: string, since?: stri
   }
 
   const postsData = await postsRes.json()
-  const comments: any[] = []
+  const comments: RawSocialComment[] = []
   const posts = postsData.data || []
 
   // Fetch comments for each post separately, with bounded concurrency
@@ -62,7 +75,7 @@ async function fetchFacebookComments(pageId: string, token: string, since?: stri
   return comments
 }
 
-async function fetchInstagramComments(igAccountId: string, token: string, since?: string): Promise<any[]> {
+async function fetchInstagramComments(igAccountId: string, token: string, since?: string): Promise<RawSocialComment[]> {
   // Get recent media
   const mediaUrl = `https://graph.facebook.com/v19.0/${igAccountId}/media?fields=id,caption,timestamp&limit=25&access_token=${token}`
   const mediaRes = await fetch(mediaUrl)
@@ -72,7 +85,7 @@ async function fetchInstagramComments(igAccountId: string, token: string, since?
   }
 
   const mediaData = await mediaRes.json()
-  const comments: any[] = []
+  const comments: RawSocialComment[] = []
   const mediaItems = mediaData.data || []
 
   for (let i = 0; i < mediaItems.length; i += GRAPH_FETCH_CONCURRENCY) {
@@ -153,7 +166,7 @@ export async function GET(req: NextRequest) {
 
       const since = latest?.platform_created_at || undefined
 
-      let rawComments: any[]
+      let rawComments: RawSocialComment[]
       if (conn.platform === 'facebook') {
         rawComments = await fetchFacebookComments(conn.account_id, conn.access_token, since)
       } else {
@@ -179,7 +192,7 @@ export async function GET(req: NextRequest) {
       const moderationScores = await moderateTexts(newComments.map(c => c.text), conn.org_id)
 
       // Get org's moderation sensitivity
-      const orgData = resolveOrg((conn as any).organizations) as any
+      const orgData = resolveOrg((conn as { organizations?: unknown }).organizations)
       const sensitivity = (orgData?.features?.social_auto_config?.moderation_sensitivity || 'moderate') as ModerationSensitivity
 
       // Process each comment through the shared tagging pipeline
@@ -231,7 +244,7 @@ export async function GET(req: NextRequest) {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ is_hidden: true, access_token: conn.access_token }),
             })
-          } catch (e: any) {
+          } catch (e: unknown) {
             console.error({ at: 'social-sync', msg: 'auto-hide error', commentId: c.comment_id, err: e })
           }
         }
@@ -271,8 +284,8 @@ export async function GET(req: NextRequest) {
               })
               logUsage({ org_id: conn.org_id, resource_type: 'social', event_type: 'auto_reply' }, result.usage)
               replyText = result.text.trim()
-            } catch (e: any) {
-              console.error({ at: 'social-sync', msg: "AI reply error", err: e.message })
+            } catch (e: unknown) {
+              console.error({ at: 'social-sync', msg: "AI reply error", err: e instanceof Error ? e.message : String(e) })
             }
           }
 
@@ -289,13 +302,13 @@ export async function GET(req: NextRequest) {
                 .update({ our_reply: replyText, replied_at: new Date().toISOString() })
                 .eq('comment_id', c.comment_id)
                 .eq('org_id', conn.org_id)
-            } catch (e: any) {
+            } catch (e: unknown) {
               console.error({ at: 'social-sync', msg: 'auto-reply error', commentId: c.comment_id, err: e })
             }
           }
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error({ at: 'social-sync', msg: 'error processing connection', connectionId: conn.id, err })
     }
   }

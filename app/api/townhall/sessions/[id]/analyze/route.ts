@@ -26,6 +26,49 @@ export const maxDuration = 30
 interface Params { params: Promise<{ id: string }> }
 
 type ServiceClient = ReturnType<typeof createServiceRoleClient>
+type Hall = NonNullable<Awaited<ReturnType<typeof resolveTownHall>>>
+
+interface ConvJoin {
+  id:             string
+  session_id:     string
+  participant_id: string | null
+  org_id:         string
+}
+
+interface LinkRow {
+  conversation_id: string
+  conversations:   ConvJoin | ConvJoin[]
+}
+
+interface UserTurnRow {
+  id:              string
+  conversation_id: string
+  turn_number:     number
+  content:         string
+  content_en:      string | null
+  language:        string | null
+  source:          string | null
+  sentiment:       string | null
+  sentiment_score: number | null
+  topic_id:        string | null
+  created_at:      string
+}
+
+interface AssistantTurnRow {
+  conversation_id: string
+  turn_number:     number
+  content:         string
+  content_en:      string | null
+}
+
+interface TopicRow {
+  id:          string
+  label:       string
+  description: string | null
+  keywords:    string[] | null
+  source:      string
+  state:       string
+}
 
 interface DatasetRow {
   turn_id:         string
@@ -83,14 +126,14 @@ async function syncThemeModel(
 // bot-level analyze pairing logic).
 async function runPhase3Analyze(
   service: ServiceClient,
-  hall: any,
+  hall: Hall,
   userId: string,
 ): Promise<NextResponse> {
   const orgId = hall.org_id as string
 
   // 1. Pull all conversations linked to this town hall (paged — PostgREST
   // caps a single select at 1000 rows regardless of .limit()).
-  const linkRows = await fetchAllRows<any>((from, to) => service
+  const linkRows = await fetchAllRows<LinkRow>((from, to) => service
     .from('pulseiq_session_conversations')
     .select('conversation_id, conversations!inner(id, session_id, participant_id, org_id)')
     .eq('town_hall_id', hall.id)
@@ -100,7 +143,7 @@ async function runPhase3Analyze(
   const conversations = linkRows
     .map(r => Array.isArray(r.conversations) ? r.conversations[0] : r.conversations)
     .filter(Boolean)
-  const convIds = conversations.map((c: any) => c.id)
+  const convIds = conversations.map(c => c.id)
   const partByConv: Record<string, string | null> = {}
   for (const c of conversations) partByConv[c.id] = c.participant_id ?? null
 
@@ -123,14 +166,14 @@ async function runPhase3Analyze(
   const lastSynced = existingArr?.[0]?.last_synced_at || null
 
   // 4. Pull turns since lastSynced + their priors for pairing.
-  let userTurns: any[] = []
-  let assistantTurns: any[] = []
+  let userTurns: UserTurnRow[] = []
+  let assistantTurns: AssistantTurnRow[] = []
   if (convIds.length > 0) {
     // All user turns (cutoff-filtered; paged — the unbounded select was
     // silently capped at 1000 rows by PostgREST). Filtered on the stamped
     // town_hall_id column — the old `.in(conversation_id, convIds)` broke
     // at a few hundred participants on URL length.
-    userTurns = await fetchAllRows<any>((from, to) => {
+    userTurns = await fetchAllRows<UserTurnRow>((from, to) => {
       let userQ = service
         .from('conversation_turns')
         .select('id, conversation_id, turn_number, content, content_en, language, source, sentiment, sentiment_score, topic_id, created_at')
@@ -151,7 +194,7 @@ async function runPhase3Analyze(
     // pairing map below is keyed by conversation_id, so assistants from
     // conversations without new user turns are simply never looked up.
     if (userTurns.length > 0) {
-      assistantTurns = await fetchAllRows<any>((from, to) => service
+      assistantTurns = await fetchAllRows<AssistantTurnRow>((from, to) => service
         .from('conversation_turns')
         .select('conversation_id, turn_number, content, content_en')
         .eq('town_hall_id', hall.id)
@@ -172,7 +215,7 @@ async function runPhase3Analyze(
   }
 
   const topicMap: Record<string, { label: string; source: string }> = {}
-  for (const t of topics || []) topicMap[(t as any).id] = { label: (t as any).label, source: (t as any).source }
+  for (const t of (topics || []) as TopicRow[]) topicMap[t.id] = { label: t.label, source: t.source }
 
   const rows: DatasetRow[] = []
   for (const t of userTurns) {
@@ -201,7 +244,7 @@ async function runPhase3Analyze(
   }
 
   // 6. Upsert dataset + flush rows. Theme model updates every sync.
-  const projectedTopics = (topics || []).map((t: any) => ({
+  const projectedTopics = ((topics || []) as TopicRow[]).map(t => ({
     label: t.label,
     description: t.description,
     keywords: t.keywords || [],
@@ -290,6 +333,6 @@ export async function POST(_req: Request, props: Params) {
   // slug) — the legacy townhall_sessions path is retired.
   const hall = await resolveTownHall(service, sessionId)
   if (!hall) return NextResponse.json({ error: "This session isn't available to your account." }, { status: 404 })
-  if (!isAdmin && (hall as any).org_id !== orgId) return NextResponse.json({ error: "This session isn't available to your account." }, { status: 404 })
+  if (!isAdmin && hall.org_id !== orgId) return NextResponse.json({ error: "This session isn't available to your account." }, { status: 404 })
   return await runPhase3Analyze(service, hall, user.id)
 }

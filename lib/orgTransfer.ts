@@ -14,6 +14,13 @@ import { logError } from '@/lib/log'
 
 export type TransferableResource = 'bot' | 'study' | 'dataset' | 'townhall_session' | 'recording'
 
+interface OrgNameRow { id: string; name: string }
+interface OrgStatusRow { id: string; name: string; status: string }
+
+function errMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
+}
+
 export interface TransferContext {
   service:           SupabaseClient   // service-role client
   resourceType:      TransferableResource
@@ -58,21 +65,21 @@ export async function checkTransferTarget(
   if (error) {
     const fallback = await service.from('organizations').select('id, name').eq('id', toOrgId).single()
     if (fallback.error || !fallback.data) return { ok: false, error: 'Target org not found', status: 404 }
-    return { ok: true, toOrg: { ...(fallback.data as any), status: 'active' } }
+    return { ok: true, toOrg: { ...(fallback.data as OrgNameRow), status: 'active' } }
   }
   if (!toOrg) return { ok: false, error: 'Target org not found', status: 404 }
-  if ((toOrg as any).status !== 'active') {
-    return { ok: false, error: 'Target org is ' + (toOrg as any).status + ' — only active orgs can receive transfers', status: 400 }
+  if ((toOrg as OrgStatusRow).status !== 'active') {
+    return { ok: false, error: 'Target org is ' + (toOrg as OrgStatusRow).status + ' — only active orgs can receive transfers', status: 400 }
   }
 
   let fromOrg: { id: string; name: string } | undefined
   if (fromOrgId) {
     const { data, error: fromOrgErr } = await service.from('organizations').select('id, name').eq('id', fromOrgId).single()
     if (fromOrgErr) void logError('orgTransfer.checkTransferTarget', fromOrgErr, { orgId: fromOrgId })
-    if (data) fromOrg = { id: (data as any).id, name: (data as any).name }
+    if (data) fromOrg = { id: (data as OrgNameRow).id, name: (data as OrgNameRow).name }
   }
 
-  return { ok: true, toOrg: toOrg as any, fromOrg }
+  return { ok: true, toOrg: toOrg as OrgStatusRow, fromOrg }
 }
 
 /**
@@ -135,8 +142,8 @@ export async function recordAdminAction(ctx: {
       metadata:           ctx.metadata || {},
     })
     if (error) console.warn('[adminAction] failed to record audit row: ' + error.message)
-  } catch (e: any) {
-    console.warn('[adminAction] audit log threw: ' + (e?.message || e))
+  } catch (e: unknown) {
+    console.warn('[adminAction] audit log threw: ' + errMessage(e))
   }
 }
 
@@ -148,7 +155,7 @@ export async function recordAdminCrossOrgAction(ctx: AdminActionContext): Promis
     const { data: orgRow, error: orgRowErr } = await ctx.service
       .from('organizations').select('name').eq('id', ctx.targetOrgId).single()
     if (orgRowErr) void logError('orgTransfer.recordAdminCrossOrgAction', orgRowErr, { orgId: ctx.targetOrgId })
-    targetOrgName = (orgRow as any)?.name || null
+    targetOrgName = (orgRow as { name?: string } | null)?.name || null
 
     const { error } = await ctx.service.from('admin_action_log').insert({
       action_type:        ctx.actionType,
@@ -162,8 +169,8 @@ export async function recordAdminCrossOrgAction(ctx: AdminActionContext): Promis
       metadata:           ctx.metadata || {},
     })
     if (error) console.warn('[adminAction] failed to record audit row: ' + error.message)
-  } catch (e: any) {
-    console.warn('[adminAction] audit log threw: ' + (e?.message || e))
+  } catch (e: unknown) {
+    console.warn('[adminAction] audit log threw: ' + errMessage(e))
   }
 }
 
@@ -177,11 +184,11 @@ export async function recordOrgTransfer(ctx: TransferContext): Promise<void> {
     let fromOrgName: string | null = null
     const { data: toOrg, error: toOrgErr } = await ctx.service.from('organizations').select('name').eq('id', ctx.toOrgId).single()
     if (toOrgErr) void logError('orgTransfer.recordOrgTransfer', toOrgErr, { orgId: ctx.toOrgId })
-    toOrgName = (toOrg as any)?.name || null
+    toOrgName = (toOrg as { name?: string } | null)?.name || null
     if (ctx.fromOrgId) {
       const { data: fromOrg, error: fromOrgErr } = await ctx.service.from('organizations').select('name').eq('id', ctx.fromOrgId).single()
       if (fromOrgErr) void logError('orgTransfer.recordOrgTransfer', fromOrgErr, { orgId: ctx.fromOrgId })
-      fromOrgName = (fromOrg as any)?.name || null
+      fromOrgName = (fromOrg as { name?: string } | null)?.name || null
     }
 
     const { error } = await ctx.service.from('org_transfers').insert({
@@ -198,7 +205,7 @@ export async function recordOrgTransfer(ctx: TransferContext): Promise<void> {
     // Don't fail the response if logging fails — the transfer itself
     // already succeeded by the time we get here. Just warn.
     if (error) console.warn('[orgTransfer] failed to record audit row: ' + error.message)
-  } catch (e: any) {
-    console.warn('[orgTransfer] audit log threw: ' + (e?.message || e))
+  } catch (e: unknown) {
+    console.warn('[orgTransfer] audit log threw: ' + errMessage(e))
   }
 }

@@ -16,6 +16,7 @@ import { logUsage } from '@/lib/usageLog'
 import { getSourceLabel } from '@/lib/anaContext'
 import { loadAnaSample, resolveCollectionMembers } from '@/lib/anaReportContext'
 import { serverError } from '@/lib/apiError'
+import type { SchemaConfig, SchemaFieldConfig } from '@/lib/analyzeTypes'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -30,7 +31,24 @@ interface Message {
 
 interface MessageContent {
   type: string
-  [key: string]: any
+  [key: string]: unknown
+}
+
+// Runtime shape of a theme entry in dataset_state.theme_model.themes.
+// A superset of AnaTheme — theme-mutation tools also write name/sentiment/count.
+interface ExistingTheme {
+  name?: string
+  label?: string
+  sentiment?: string
+  keywords?: string[]
+  count?: number
+}
+
+// Minimal shape of an Anthropic tool definition passed through to the API.
+interface AnthropicTool {
+  name: string
+  description: string
+  input_schema: Record<string, unknown>
 }
 
 // ── Tool definitions for theme mutations ───────────────────────────────────
@@ -157,7 +175,7 @@ export async function POST(req: Request) {
     datasetId: string
     question: string
     conversationHistory?: Message[]
-    filters?: Record<string, any>
+    filters?: Record<string, unknown>
     metadataOnly?: boolean
   }
   const sampleSize = Math.max(50, Math.min(body.sampleSize || DEFAULT_SAMPLE, CONTEXT_CAP))
@@ -196,8 +214,8 @@ export async function POST(req: Request) {
     .select('theme_model, schema_config')
     .eq('dataset_id', datasetId)
     .single()
-  const existingThemes: any[] = (stateRow?.theme_model as any)?.themes || []
-  const schemaFields: any[] = (stateRow?.schema_config as any)?.fields || []
+  const existingThemes: ExistingTheme[] = (stateRow?.theme_model as { themes?: ExistingTheme[] } | null)?.themes || []
+  const schemaFields: SchemaFieldConfig[] = (stateRow?.schema_config as SchemaConfig | null)?.fields || []
 
   // ── Pull top entities so Ana can reason about "who/what was mentioned" ──
   // Reads this dataset's entity catalog — its own, or the shared brand-/
@@ -234,8 +252,8 @@ export async function POST(req: Request) {
 
     const fieldList = schemaFields.length > 0
       ? '\n\nDataset fields: ' + schemaFields
-          .filter(function(f: any) { return f.status !== 'ignored' })
-          .map(function(f: any) { return f.label + ' (' + f.type + ')' })
+          .filter(function(f) { return f.status !== 'ignored' })
+          .map(function(f) { return f.label + ' (' + f.type + ')' })
           .join(', ')
       : ''
 
@@ -299,7 +317,7 @@ Ask the user 1-2 brief questions about what they're looking to learn, then make 
   // Build theme context for the prompt
   const themeContext = existingThemes.length > 0
     ? '\n\nCurrent analysis framework has ' + existingThemes.length + ' themes:\n' +
-      existingThemes.map(function(t: any) {
+      existingThemes.map(function(t) {
         return '- ' + (t.name || t.label) + ' (' + (t.sentiment || 'neutral') + '): ' +
           (t.keywords || []).slice(0, 6).join(', ') +
           (t.count ? ' [' + t.count + ' matches]' : '')
@@ -308,8 +326,8 @@ Ask the user 1-2 brief questions about what they're looking to learn, then make 
 
   const schemaContext = schemaFields.length > 0
     ? '\n\nDataset fields: ' + schemaFields
-        .filter(function(f: any) { return f.status !== 'ignored' })
-        .map(function(f: any) { return f.label + ' (' + f.type + (f.section ? ', ' + f.section : '') + ')' })
+        .filter(function(f) { return f.status !== 'ignored' })
+        .map(function(f) { return f.label + ' (' + f.type + (f.section ? ', ' + f.section : '') + ')' })
         .join('; ')
     : ''
 
@@ -368,7 +386,7 @@ async function streamAnthropicResponse(
   systemPrompt: string,
   question: string,
   conversationHistory: Message[] | undefined,
-  tools: any[],
+  tools: AnthropicTool[],
   orgId: string,
 ): Promise<Response> {
   // Per-org AI gate: 'off' refuses; 'byo' + anthropic uses customer key;
