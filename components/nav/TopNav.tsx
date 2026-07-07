@@ -4,13 +4,15 @@ import { useState } from 'react'
 import Link from 'next/link'
 import DatanautixAttribution from '@/components/ui/DatanautixAttribution'
 
+interface Crumb { label: string; href?: string }
+
 interface Props {
   logoUrl?:        string
   orgName?:        string
   isAdmin?:        boolean
   userEmail?:      string
   fullName?:       string
-  crumbs?:         any
+  crumbs?:         Crumb[]
   analyzeEnabled?: boolean   // legacy — use features.analyze instead
   campaignsEnabled?: boolean // legacy — use features.campaigns instead
   features?: { surveys?: boolean; analyze?: boolean; googleReviews?: boolean; reddit?: boolean; substack?: boolean; recordings?: boolean; townhall?: boolean; campaigns?: boolean; bots?: boolean; social?: boolean }

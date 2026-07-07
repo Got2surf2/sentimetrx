@@ -56,8 +56,8 @@ export async function sendInviteEmail(
       text,
     })
     return { status: 'sent' }
-  } catch (e: any) {
-    const error = e?.message || String(e)
+  } catch (e: unknown) {
+    const error = e instanceof Error ? e.message : String(e)
     console.error('invite: email send failed', { invite_id: invite.id, error })
     return { status: 'failed', error }
   }

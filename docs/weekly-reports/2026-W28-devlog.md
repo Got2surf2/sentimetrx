@@ -169,3 +169,9 @@ WHY: Continue to zero.
 WHY: Continue to zero.
 
 40 files (−67): bots pdf/questions/impression/batches routes, admin pages (usage/simulator/sentry/hub/estimator/control-reports/etc), analyze pages, unit tests, lib/vision, userContext, socialTagging, sentry, secretbox, reoExtractor, redditSync. Reconciled one cross-file: backups/page imports OrgRow from BackupsClient → exported the interface. Global tsc 0 errors, 1238 tests pass, 565→498. Ceiling → 498. Not pushed.
+
+## ESLint burn-down wave 13 — 38 files (Jul 7)
+
+WHY: Continue to zero.
+
+38 files (−39): lib tail (rateLimit, places, pdf, oauthState, nameExtractor, moderation, focusClassifier, entityAnalysis, auth/*, auditLog, anaReportContext, recordings), ui/analyze/creator/admin components, studies/settings pages. Reconciled anaReportContext loadAnaSample filters→SerializedFilters vs its ask-ana/ad-hoc-report callers (cast body.filters). Global tsc 0 errors, 1238 tests pass, 498→459. Ceiling → 459. Not pushed.

@@ -45,7 +45,7 @@ const OPTIONS: { key: keyof ContentSafetyConfigValue; label: string; desc: strin
 export default function ContentSafetyEditor({ value, onChange, compact, title, description }: Props) {
   const cs = value || {}
   const enabled = cs.enabled !== false   // default ON
-  const isOn = (key: keyof ContentSafetyConfigValue) => (cs as any)[key] !== false
+  const isOn = (key: keyof ContentSafetyConfigValue) => cs[key] !== false
 
   function masterToggle() {
     const next = !enabled

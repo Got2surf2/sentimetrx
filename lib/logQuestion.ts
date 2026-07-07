@@ -84,8 +84,8 @@ export async function logQuestion(args: LogQuestionArgs): Promise<void> {
     if (error) {
       console.error({ at: 'log-question', msg: 'insert failed', err: error.message, bot_id: args.botId, classification: args.classification })
     }
-  } catch (e: any) {
-    console.error({ at: 'log-question', msg: 'unexpected error', err: e?.message })
+  } catch (e: unknown) {
+    console.error({ at: 'log-question', msg: 'unexpected error', err: e instanceof Error ? e.message : String(e) })
   }
 }
 

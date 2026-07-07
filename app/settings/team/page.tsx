@@ -1,9 +1,20 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg } from '@/lib/resolveOrg'
+import type { ModuleFeatures } from '@/lib/types'
 import TeamClient from './TeamClient'
 
 export const dynamic = 'force-dynamic'
+
+type ResolvedOrg = {
+  id: string
+  name: string
+  slug: string
+  plan: string
+  logo_url?: string
+  is_admin_org: boolean
+  features?: ModuleFeatures
+}
 
 export default async function TeamPage() {
   const supabase = await createClient()
@@ -18,7 +29,7 @@ export default async function TeamPage() {
 
   if (!userData?.org_id) redirect('/dashboard')
 
-  const org = resolveOrg(userData.organizations) as any
+  const org = resolveOrg(userData.organizations) as ResolvedOrg
 
   const { data: members } = await supabase
     .from('users')

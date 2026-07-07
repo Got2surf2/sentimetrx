@@ -35,8 +35,9 @@ export default function SentryDigest() {
       const res = await fetch('/api/admin/sentry/issues')
       const data = await res.json()
       setDigest(data)
-    } catch (e: any) {
-      setDigest({ ok: false, configured: true, reason: e?.message || 'Fetch failed', fetchedAt: new Date().toISOString(), total: 0, issues: [] })
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Fetch failed'
+      setDigest({ ok: false, configured: true, reason: message, fetchedAt: new Date().toISOString(), total: 0, issues: [] })
     } finally {
       setLoading(false)
     }

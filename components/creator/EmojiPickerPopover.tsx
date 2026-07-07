@@ -110,7 +110,7 @@ export default function EmojiPickerPopover({
     if (!open || !pickerRef.current) return
     injectPickerCSS()
 
-    let picker: any = null
+    let picker: HTMLElement | null = null
     let cancelled = false
 
     void import('emoji-picker-element').then(({ Picker }) => {

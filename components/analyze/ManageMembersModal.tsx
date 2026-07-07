@@ -38,7 +38,7 @@ export default function ManageMembersModal({ collectionDatasetId, collectionName
       const res = await fetch('/api/collections/' + collectionDatasetId)
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Could not load members'); }
-      members = (data.members || []).map(function (m: any) { return { dataset_id: m.dataset_id, name: m.name || m.label, row_count: m.row_count || 0, source: m.source || '' } })
+      members = (data.members || []).map(function (m: { dataset_id: string; name?: string; label?: string; row_count?: number; source?: string }) { return { dataset_id: m.dataset_id, name: (m.name || m.label) as string, row_count: m.row_count || 0, source: m.source || '' } })
     } catch { setError('Could not load members') }
 
     const memberIds = new Set(members.map(function (m) { return m.dataset_id }))

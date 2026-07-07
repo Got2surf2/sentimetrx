@@ -22,7 +22,7 @@ export async function requireAdmin(): Promise<NextResponse | null> {
     .single()
   if (userDataErr) void logError('requireAdmin.requireAdmin', userDataErr)
 
-  const org = resolveOrg(userData?.organizations) as any
+  const org = resolveOrg(userData?.organizations)
   if (!org?.is_admin_org) return notFound
 
   return null

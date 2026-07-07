@@ -42,12 +42,14 @@ interface Analytics {
   theme_sentiment_trends?: ThemeSentimentTrend[]
 }
 
+interface SessionStats { joined?: number; avg_words?: number; survey_responses?: number }
+
 interface Props { sessionId: string }
 
 export default function TownHallAnalyticsPanel({ sessionId }: Props) {
   const [themes, setThemes] = useState<ThemeAnalytics[]>([])
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
-  const [stats, setStats] = useState<any>(null)
+  const [stats, setStats] = useState<SessionStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [bucketOverride, setBucketOverride] = useState<TimeBucket | 'auto'>('auto')

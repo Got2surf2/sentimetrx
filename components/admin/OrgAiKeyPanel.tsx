@@ -66,8 +66,8 @@ export default function OrgAiKeyPanel({ orgId }: Props) {
       setEditing(false); setKeyInput('')
       setFlash(successMsg)
       setTimeout(() => setFlash(null), 3000)
-    } catch (e: any) {
-      setError(e.message || 'Failed to update')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to update')
     } finally { setSaving(false) }
   }
 

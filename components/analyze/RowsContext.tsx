@@ -62,7 +62,7 @@ export function RowsProvider({ datasetId, schemaFields, datasetSource, children 
 
         // Apply value aliases to categorical fields
         var aliasMap: Record<string, Record<string, string>> = {}
-        schemaFields.forEach(function(f: any) {
+        schemaFields.forEach(function(f: SchemaField) {
           if (f.valueAliases && Object.keys(f.valueAliases).length > 0) aliasMap[f.field] = f.valueAliases
         })
         if (Object.keys(aliasMap).length > 0) {

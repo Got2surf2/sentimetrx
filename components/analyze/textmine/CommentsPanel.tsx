@@ -380,7 +380,7 @@ export default function CommentsPanel({
   const [gridCols, setGridCols] = useState(2)
   const [commRestored, setCommRestored] = useState(false)
   useEffect(function() {
-    const saved = readSession<any>(_commKey)
+    const saved = readSession<{ gridCols?: number }>(_commKey)
     if (saved?.gridCols) setGridCols(saved.gridCols)
     setCommRestored(true)
   }, [_commKey])

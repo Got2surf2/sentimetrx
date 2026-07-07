@@ -7,6 +7,7 @@
 // which the client renders as confirmation cards before writing to dataset_state.
 
 import { NextResponse } from 'next/server'
+import type { SerializedFilters } from '@/lib/filterUtils'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { checkMessage } from '@/lib/contentGuard'
@@ -287,7 +288,7 @@ Ask the user 1-2 brief questions about what they're looking to learn, then make 
 
   // ── Normal mode: fetch + filter + sample rows (shared pipeline) ─────────
   const { rows: filteredRows, dataContext, totalDatasetRows, totalFiltered, afterSignalCount, sampled, signalNote } =
-    await loadAnaSample({ service, dataset, sampleSize, samplingStrategy, filters, collectionMembers })
+    await loadAnaSample({ service, dataset, sampleSize, samplingStrategy, filters: filters as SerializedFilters | undefined, collectionMembers })
 
   if (filteredRows.length === 0) {
     return NextResponse.json({ error: 'No rows found in dataset' }, { status: 400 })

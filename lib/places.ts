@@ -219,7 +219,16 @@ async function fetchOne(placeId: string, apiKey: string): Promise<PlaceCard | nu
       }
       return null
     }
-    const j: any = await res.json()
+    const j: {
+      displayName?: { text?: string }
+      rating?: number
+      userRatingCount?: number
+      priceLevel?: string
+      currentOpeningHours?: { openNow?: boolean }
+      formattedAddress?: string
+      googleMapsUri?: string
+      primaryType?: string
+    } = await res.json()
     return {
       place_id: placeId,
       name: j?.displayName?.text || '(unknown)',

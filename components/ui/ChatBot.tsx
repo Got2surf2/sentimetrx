@@ -105,7 +105,7 @@ export interface ChatBotConfig {
   // deployment-context plumbing — e.g. BotClient sets { site: 'foundations' }
   // from the URL ?site= param so the chat handler can bias retrieval and
   // the system prompt to the deploying site.
-  extraBody?: Record<string, any>
+  extraBody?: Record<string, unknown>
   // Research-probe disclosure (BOTS.md §14.3) — REQUIRED whenever any research
   // probe is enabled on the agent; not removable while one is active. Renders
   // a one-line notice in the composer footer.

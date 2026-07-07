@@ -1,6 +1,7 @@
 'use client'
 
 import type { StudyDraft } from '@/lib/studyDraft'
+import type { StudyTheme } from '@/lib/types'
 
 interface Props { draft: StudyDraft }
 
@@ -158,7 +159,7 @@ export default function StudyPreview({ draft }: Props) {
   )
 }
 
-function BotMsg({ text, emoji, theme, P }: { text: string; emoji: string; theme: any; P: Record<string, string> }) {
+function BotMsg({ text, emoji, theme, P }: { text: string; emoji: string; theme: StudyTheme; P: Record<string, string> }) {
   return (
     <div className="flex items-end gap-2">
       <div

@@ -28,7 +28,7 @@ export default function QRCode({ url, size = 160, color = '#000000', background 
     let cancelled = false
     void import('qrcode').then(function(mod) {
       if (cancelled) return
-      const lib = (mod as any).default || mod
+      const lib = mod.default || mod
       lib.toDataURL(url, { width: size * 2, margin, color: { dark: color, light: background } })
         .then(function(dataUrl: string) { if (!cancelled) setSrc(dataUrl) })
         .catch(function() { /* leave empty src — img will show its alt */ })

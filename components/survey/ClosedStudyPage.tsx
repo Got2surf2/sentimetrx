@@ -1,13 +1,20 @@
 // components/survey/ClosedStudyPage.tsx
 // Shown when someone accesses a closed or draft study URL
 
+interface StudyConfig {
+  theme?: {
+    backgroundColor?: string
+    headerGradient?:  string
+  }
+}
+
 interface Props {
   study: {
     name:      string
     bot_name:  string
     bot_emoji: string
     status:    string
-    config?:   any
+    config?:   StudyConfig
   }
 }
 

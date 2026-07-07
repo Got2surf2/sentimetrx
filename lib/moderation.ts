@@ -54,8 +54,12 @@ export async function moderateTexts(texts: string[], orgId: string | undefined):
     return texts.map(() => emptyScore())
   }
 
+  interface ModerationResult {
+    category_scores?: Record<string, number>
+    categories?: Record<string, boolean>
+  }
   const data = await res.json()
-  return (data.results || []).map((r: any) => {
+  return ((data.results || []) as ModerationResult[]).map((r: ModerationResult) => {
     const s = r.category_scores || {}
     const cats: string[] = []
     if (r.categories) {

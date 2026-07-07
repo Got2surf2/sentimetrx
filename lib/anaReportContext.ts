@@ -10,6 +10,7 @@ import type { createServiceRoleClient } from '@/lib/supabase/server'
 import { DEFAULT_SIGNAL_CUTOFFS } from '@/lib/signalTier'
 import { formatRowsForContext } from '@/lib/anaContext'
 import { logError } from '@/lib/log'
+import type { SerializedFilters } from '@/lib/filterUtils'
 
 type Service = ReturnType<typeof createServiceRoleClient>
 
@@ -127,7 +128,7 @@ export async function loadAnaSample(opts: {
   dataset: { id: string; name: string; source: string; row_count: number | null }
   sampleSize?: number
   samplingStrategy?: 'proportional' | 'equal' | 'floor'
-  filters?: Record<string, any>
+  filters?: SerializedFilters
   collectionMembers?: CollectionMember[]   // pass if already resolved (avoids a re-query)
 }): Promise<AnaSample> {
   const { service, dataset, filters } = opts

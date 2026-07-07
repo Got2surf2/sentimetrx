@@ -50,7 +50,7 @@ OUTPUT — a single JSON object, no prose, no markdown fences:
       const res = await callAI({ tier: 'standard', maxTokens: 4000, timeoutMs: 60000, system, messages: [{ role: 'user', content: userPrompt }] })
       if (opts.usage) logUsage({ ...opts.usage, event_type: 'verbatim_polish' }, res.usage)
       const parsed = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
-      const items: any[] = Array.isArray(parsed?.items) ? parsed.items : []
+      const items: Array<{ i?: number; text?: unknown }> = Array.isArray(parsed?.items) ? parsed.items : []
       return batch.map((_t, i) => {
         const m = items.find(x => x && x.i === i)
         const cleaned = m && typeof m.text === 'string' ? m.text.trim() : ''

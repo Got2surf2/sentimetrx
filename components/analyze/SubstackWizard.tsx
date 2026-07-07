@@ -18,6 +18,13 @@ interface Publication {
   base_url: string
 }
 
+interface FetchPostsResponse {
+  posts: SubstackPost[]
+  publication?: Publication | null
+  base_url: string
+  has_more: boolean
+}
+
 type WizardStep = 1 | 2 | 3
 
 interface Props {
@@ -58,7 +65,7 @@ export default function SubstackWizard({ onBack }: Props) {
 
   // Step 1: Fetch publication + posts
   // Try fetching posts from a URL, return null on failure
-  async function tryFetchPosts(url: string): Promise<any | null> {
+  async function tryFetchPosts(url: string): Promise<FetchPostsResponse | null> {
     try {
       var res = await fetch('/api/substack-sources/fetch-posts', {
         method: 'POST',
@@ -244,8 +251,8 @@ export default function SubstackWizard({ onBack }: Props) {
 
       // Navigate to Schema page first — auto-redirects to TextMine after save
       window.location.href = '/analyze/' + datasetId + '/settings?new=1'
-    } catch (e: any) {
-      setCreateError(e.message || 'Download failed')
+    } catch (e: unknown) {
+      setCreateError((e instanceof Error ? e.message : '') || 'Download failed')
       setCreating(false)
     }
   }

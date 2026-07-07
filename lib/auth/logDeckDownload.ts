@@ -16,7 +16,7 @@ export async function logDeckDownload(deckName: string, variant?: string): Promi
       userId = user.id
       const { data, error: userRowErr } = await supabase.from('users').select('org_id').eq('id', user.id).single()
       if (userRowErr) void logError('logDeckDownload.logDeckDownload', userRowErr)
-      orgId = (data as any)?.org_id ?? null
+      orgId = (data as { org_id: string | null } | null)?.org_id ?? null
     }
 
     const service = createServiceRoleClient()

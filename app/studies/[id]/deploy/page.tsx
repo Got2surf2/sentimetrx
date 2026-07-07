@@ -19,7 +19,7 @@ export default async function DeployPage(props: Props) {
 
   if (!study) notFound()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (orgData?.features?.surveys === false) redirect('/dashboard')
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'

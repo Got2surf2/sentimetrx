@@ -379,7 +379,7 @@ export function buildStudySchema(config: StudyConfig): SchemaConfig {
     for (const q of config.questions) {
       const col  = sanitizeColumnName(q.exportLabel || q.prompt || q.id)
       const type: AnaFieldType = q.type === 'open' ? 'open-ended' : q.type === 'numeric' ? 'numeric' : 'categorical'
-      fields.push({ field: col, type, sqt: type === 'open-ended' ? 'open-text' : 'single-select', label: q.exportLabel || undefined, prompt: q.prompt, section: 'custom' as any })
+      fields.push({ field: col, type, sqt: type === 'open-ended' ? 'open-text' : 'single-select', label: q.exportLabel || undefined, prompt: q.prompt, section: 'custom' })
     }
   }
   if (config.psychographicBank) {

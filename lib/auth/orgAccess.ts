@@ -37,7 +37,8 @@ export async function getCallerOrgContext(supabase: AuthCookiedClient): Promise<
     .single()
   if (userDataErr) void logError('orgAccess.getCallerOrgContext', userDataErr)
 
-  const orgRel = (userData as any)?.organizations
+  type OrgRel = { is_admin_org?: boolean | null }
+  const orgRel = (userData as { organizations?: OrgRel | OrgRel[] | null } | null)?.organizations
   const isAdmin = Array.isArray(orgRel)
     ? orgRel[0]?.is_admin_org === true
     : orgRel?.is_admin_org === true

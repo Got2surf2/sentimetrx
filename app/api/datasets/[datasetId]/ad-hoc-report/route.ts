@@ -6,6 +6,7 @@
 // resolves a source='collection' dataset via the shared loadAnaSample).
 
 import { NextResponse } from 'next/server'
+import type { SerializedFilters } from '@/lib/filterUtils'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { checkMessage } from '@/lib/contentGuard'
@@ -57,7 +58,7 @@ export async function POST(req: Request, props: Props) {
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
   if (!isAdmin && dataset.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const sample = await loadAnaSample({ service, dataset, filters: body.filters, sampleSize: body.sampleSize })
+  const sample = await loadAnaSample({ service, dataset, filters: body.filters as SerializedFilters | undefined, sampleSize: body.sampleSize })
   if (sample.rows.length === 0) return NextResponse.json({ error: 'No analyzable rows in this dataset.' }, { status: 400 })
 
   const sourceLabel = getSourceLabel(dataset.source)

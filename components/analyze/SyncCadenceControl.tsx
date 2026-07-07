@@ -87,8 +87,8 @@ export default function SyncCadenceControl({ sourceId }: Props) {
       setSource(function(prev) { return prev ? { ...prev, sync_frequency_hours: hours } : prev })
       setSavedAt(Date.now())
       setTimeout(function() { setSavedAt(null) }, 2000)
-    } catch (e: any) {
-      setError(e.message || 'Failed to update')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to update')
     } finally {
       setSaving(false)
     }

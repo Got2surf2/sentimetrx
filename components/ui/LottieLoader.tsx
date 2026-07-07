@@ -4,6 +4,7 @@
 // Plays the Lottie animation from /public/morphing-particle-loader.json using lottie-web.
 
 import { useEffect, useRef } from 'react'
+import type { AnimationItem } from 'lottie-web'
 
 interface Props {
   size?:      number
@@ -17,7 +18,7 @@ export default function LottieLoader({ size = 140, message, className }: Props) 
   useEffect(function() {
     if (!containerRef.current) return
     var cancelled = false
-    var anim: any = null
+    var anim: AnimationItem | null = null
     // Clear any leftover SVG from a prior mount (React 18 Strict Mode race)
     containerRef.current.innerHTML = ''
     void import('lottie-web').then(function(mod) {

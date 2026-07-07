@@ -52,8 +52,9 @@ export async function checkConfiguredModels(apiKey: string): Promise<ModelHealth
       } else {
         results.push({ model, tiers, status: 'unknown', detail: 'models API returned HTTP ' + res.status })
       }
-    } catch (e: any) {
-      results.push({ model, tiers, status: 'unknown', detail: e?.message || 'fetch failed' })
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : undefined
+      results.push({ model, tiers, status: 'unknown', detail: message || 'fetch failed' })
     }
   }
 

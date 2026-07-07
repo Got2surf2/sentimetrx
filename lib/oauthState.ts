@@ -54,11 +54,13 @@ export function verifyOauthState<T extends Record<string, unknown> = Record<stri
   if (providedSig.length !== expectedSig.length) return null
   if (!timingSafeEqual(providedSig, expectedSig)) return null
 
-  let payload: any
+  let payload: unknown
   try {
     payload = JSON.parse(fromB64url(bodyB64).toString('utf8'))
   } catch { return null }
 
-  if (typeof payload?.exp !== 'number' || Date.now() > payload.exp) return null
+  if (typeof payload !== 'object' || payload === null) return null
+  const exp = (payload as { exp?: unknown }).exp
+  if (typeof exp !== 'number' || Date.now() > exp) return null
   return payload as T
 }

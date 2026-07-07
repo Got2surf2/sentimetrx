@@ -127,7 +127,7 @@ export async function suggestFocusesFromPrompt(systemPrompt: string): Promise<Su
     const jsonMatch = text.match(/\[[\s\S]*\]/)
     if (!jsonMatch) return { focuses: [], usage: result.usage }
 
-    let parsed: any
+    let parsed: unknown
     try { parsed = JSON.parse(jsonMatch[0]) } catch { return { focuses: [], usage: result.usage } }
     if (!Array.isArray(parsed)) return { focuses: [], usage: result.usage }
 

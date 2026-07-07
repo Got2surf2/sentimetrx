@@ -51,7 +51,7 @@ export async function checkRateLimit(
     })
     if (error) throw error
     if (data && typeof data === 'object') {
-      const d = data as any
+      const d = data as { limited?: unknown; remaining?: unknown }
       return {
         limited:   !!d.limited,
         remaining: Number(d.remaining) || 0,

@@ -60,7 +60,7 @@ export async function extractName(userMessages: string[], orgId?: string): Promi
     const jsonMatch = text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) return EMPTY
 
-    let parsed: any
+    let parsed: { name?: unknown; source?: unknown; confidence?: unknown }
     try { parsed = JSON.parse(jsonMatch[0]) } catch { return EMPTY }
 
     // Defense-in-depth: validate the extracted name. Single word,

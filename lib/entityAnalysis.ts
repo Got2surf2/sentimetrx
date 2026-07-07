@@ -64,8 +64,8 @@ ${batch.map(s => `- ${s}`).join('\n')}`
       const jsonEnd = text.lastIndexOf('}')
       if (jsonStart < 0 || jsonEnd < 0) continue
       const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1))
-      for (const [k, v] of Object.entries(parsed)) {
-        const vv = v as any
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        const vv = v as { canonical?: unknown; category?: unknown } | null
         if (vv && typeof vv.canonical === 'string' && typeof vv.category === 'string') {
           result[k] = { canonical: vv.canonical.trim(), category: vv.category.toLowerCase().trim() }
         }

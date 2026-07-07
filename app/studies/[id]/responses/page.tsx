@@ -19,7 +19,7 @@ export default async function ResponsesPage(props: Props) {
 
   if (!study) notFound()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (orgData?.features?.surveys === false) redirect('/dashboard')
 
   return (

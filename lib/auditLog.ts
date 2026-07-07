@@ -86,7 +86,7 @@ export async function logBotChange(args: LogBotChangeArgs): Promise<void> {
       metadata: args.metadata ?? {},
     })
     if (error) console.error('[auditLog] bot_change_log insert failed:', error.message)
-  } catch (e: any) {
-    console.error('[auditLog] bot_change_log exception:', e?.message || e)
+  } catch (e: unknown) {
+    console.error('[auditLog] bot_change_log exception:', e instanceof Error ? e.message : e)
   }
 }

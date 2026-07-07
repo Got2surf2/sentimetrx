@@ -124,8 +124,8 @@ export default function NewStudyPage() {
       const { id, guid } = await res.json()
       if (guid) setSavedGuid(guid)
       router.push(status === 'active' ? `/studies/${id}/deploy` : `/studies/${id}/edit`)
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e))
       setSaving(false)
     }
   }
