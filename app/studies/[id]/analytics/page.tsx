@@ -19,7 +19,7 @@ export default async function AnalyticsPage(props: Props) {
 
   if (!study) notFound()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (orgData?.features?.surveys === false) redirect('/dashboard')
 
   return (
@@ -28,7 +28,7 @@ export default async function AnalyticsPage(props: Props) {
       studyName={study.name}
       botEmoji={study.bot_emoji}
       botName={study.bot_name}
-      studyConfig={(study as any).config || {}}
+      studyConfig={study.config || {}}
       logoUrl={orgData?.logo_url   || ''}
       orgName={orgData?.name       || ''}
       isAdmin={!!orgData?.is_admin_org}

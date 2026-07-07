@@ -14,11 +14,11 @@ export async function isCallerSuperadmin(
   client: Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createServiceRoleClient>,
   userId: string,
 ): Promise<boolean> {
-  const { data, error: roleErr } = await (client as any)
+  const { data, error: roleErr } = await client
     .from('users')
     .select('role')
     .eq('id', userId)
     .single()
   if (roleErr) void logError('superadmin.isCallerSuperadmin', roleErr)
-  return (data as any)?.role === 'platform_admin'
+  return (data as { role?: string } | null)?.role === 'platform_admin'
 }

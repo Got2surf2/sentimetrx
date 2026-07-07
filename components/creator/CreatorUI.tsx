@@ -25,7 +25,7 @@ export function Input({ value, onChange, placeholder, hint, className = '', mult
     <div className="flex flex-col gap-1" style={{ position: 'relative' }}>
       {multiline ? (
         <textarea
-          ref={elRef as any}
+          ref={elRef as React.RefObject<HTMLTextAreaElement>}
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
@@ -34,7 +34,7 @@ export function Input({ value, onChange, placeholder, hint, className = '', mult
         />
       ) : (
         <input
-          ref={elRef as any}
+          ref={elRef as React.RefObject<HTMLInputElement>}
           type="text"
           value={value}
           onChange={e => onChange(e.target.value)}

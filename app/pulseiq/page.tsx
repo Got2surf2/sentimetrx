@@ -18,8 +18,8 @@ export default async function TownHallPage(props: { searchParams: Promise<{ org?
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
-  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  const orgData = resolveOrg(userData?.organizations)
+  const features = effectiveFeatures(orgData?.features, userData?.features)
   if (!features.townhall) redirect('/dashboard')
   const isAdmin = !!orgData?.is_admin_org
   const orgFilter = isAdmin ? (validateOrgFilter(searchParams?.org) || '') : ''

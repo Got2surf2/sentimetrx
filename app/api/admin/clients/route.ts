@@ -4,6 +4,16 @@ import { NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { serverError } from '@/lib/apiError'
 
+interface OrgRow {
+  id: string
+  name: string
+  slug: string
+  plan: string | null
+  status: string | null
+  is_admin_org: boolean | null
+  created_at: string
+}
+
 // GET /api/admin/clients - list all organizations with user and study counts
 // Supports ?activeOnly=true to restrict to status='active' orgs (used by
 // TransferOrg to gate which orgs can receive resource transfers — no point
@@ -45,7 +55,7 @@ export async function GET(req: NextRequest) {
 
   // Single RPC returns user_count / study_count / response_count for every
   // org in one round trip (replaces N×3 per-org count queries).
-  const orgIds = orgs.map((o: any) => o.id)
+  const orgIds = (orgs as OrgRow[]).map((o) => o.id)
   const countsByOrg: Record<string, { user_count: number; study_count: number; response_count: number }> = {}
   if (orgIds.length > 0) {
     const { data: rows } = await service.rpc('org_stats_for_ids', { p_org_ids: orgIds })
@@ -58,7 +68,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const result = orgs.map((org: any) => {
+  const result = (orgs as OrgRow[]).map((org) => {
     const c = countsByOrg[org.id] || { user_count: 0, study_count: 0, response_count: 0 }
     return {
       ...org,
@@ -85,7 +95,7 @@ export async function POST(req: NextRequest) {
 
   const service = createServiceRoleClient()
 
-  const features: any = {}
+  const features: { primaryIndustries?: unknown[] } = {}
   if (primaryIndustries && Array.isArray(primaryIndustries)) {
     features.primaryIndustries = primaryIndustries
   }

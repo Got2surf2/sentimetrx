@@ -34,7 +34,7 @@ export default function TransferOrg({ resourceName, resourceLabel, apiUrl, allOr
     // targets — caller would otherwise hand work to a frozen org.
     fetch('/api/admin/clients?activeOnly=true')
       .then(function(r) { if (!r.ok) throw new Error(); return r.json() })
-      .then(function(d) { setOrgs((d.orgs || d || []).map(function(o: any) { return { id: o.id, name: o.name } })); setIsAdmin(true) })
+      .then(function(d) { setOrgs((d.orgs || d || []).map(function(o: Org) { return { id: o.id, name: o.name } })); setIsAdmin(true) })
       .catch(function() { setIsAdmin(false) })
   }, [propOrgs])
 
@@ -90,8 +90,8 @@ export default function TransferOrg({ resourceName, resourceLabel, apiUrl, allOr
               }
               setDone(true)
               if (onTransferred) onTransferred()
-            } catch (e: any) {
-              setError(e.message || 'Transfer failed')
+            } catch (e: unknown) {
+              setError((e instanceof Error ? e.message : '') || 'Transfer failed')
               setTransferring(false)
             }
           })() }}

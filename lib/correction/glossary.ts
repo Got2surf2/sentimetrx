@@ -77,7 +77,7 @@ export async function resolveBrandGlossary(
           .eq('org_id', opts.orgId).eq('kind', 'brand').eq('slug', slug)
           .maybeSingle()
         if (colErr) void logError('glossary.resolveBrandGlossary', colErr, { orgId: opts.orgId })
-        collectionId = (col as any)?.id ?? null
+        collectionId = (col as { id: string } | null)?.id ?? null
       }
     }
     if (collectionId) unionInto(bySlug, await readScope(service, 'collection', collectionId))
@@ -86,7 +86,7 @@ export async function resolveBrandGlossary(
       // Verify the agent is in the caller's org before reading its catalog.
       const { data: bot, error: botErr } = await service.from('agents').select('id, org_id').eq('id', opts.agentId).maybeSingle()
       if (botErr) void logError('glossary.resolveBrandGlossary', botErr, { orgId: opts.orgId })
-      if (bot && (bot as any).org_id === opts.orgId) unionInto(bySlug, await readScope(service, 'bot', opts.agentId))
+      if (bot && (bot as { id: string; org_id: string }).org_id === opts.orgId) unionInto(bySlug, await readScope(service, 'bot', opts.agentId))
     }
 
     if (opts.datasetId) unionInto(bySlug, await readScope(service, 'dataset', opts.datasetId))

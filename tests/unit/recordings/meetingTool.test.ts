@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { resolveProfile, defaultProfile, hasPresentationPhase, PRESETS } from '@/lib/recordings/profiles'
 import { clampPhases, slicePhaseSegments, wholeTranscriptPhaseMap } from '@/lib/recordings/phases'
-import type { PhaseMap, TranscriptSegment } from '@/lib/recordings/types'
+import type { MeetingProfile, PhaseMap, TranscriptSegment } from '@/lib/recordings/types'
 
 describe('profiles — resolveProfile (backward compat)', () => {
   it('NULL meeting_profile → town_hall_qa (legacy Q&A flow)', () => {
@@ -17,11 +17,11 @@ describe('profiles — resolveProfile (backward compat)', () => {
     expect(p.phases[0].kind).toBe('qa')
   })
   it('empty phases → town_hall_qa', () => {
-    const p = resolveProfile({ meeting_profile: { preset_id: 'community_meeting', has_slides: true, phases: [] } as any })
+    const p = resolveProfile({ meeting_profile: { preset_id: 'community_meeting', has_slides: true, phases: [] } })
     expect(p.preset_id).toBe('town_hall_qa')
   })
   it('unknown preset_id is coerced to town_hall_qa but keeps its phases', () => {
-    const p = resolveProfile({ meeting_profile: { preset_id: 'bogus', has_slides: false, phases: [{ kind: 'qa', label: 'X', analysis: 'qa_extraction', expected: true }] } as any })
+    const p = resolveProfile({ meeting_profile: { preset_id: 'bogus', has_slides: false, phases: [{ kind: 'qa', label: 'X', analysis: 'qa_extraction', expected: true }] } as unknown as MeetingProfile })
     expect(p.preset_id).toBe('town_hall_qa')
   })
   it('valid community_meeting passes through', () => {

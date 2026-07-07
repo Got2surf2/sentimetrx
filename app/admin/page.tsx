@@ -5,6 +5,15 @@ import AdminClient from './AdminClient'
 
 export const dynamic = 'force-dynamic'
 
+interface OrgRow {
+  id: string
+  name: string
+  slug: string
+  plan: string
+  is_admin_org: boolean
+  created_at: string
+}
+
 export default async function AdminPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -16,7 +25,7 @@ export default async function AdminPage() {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   const isAdmin = !!orgData?.is_admin_org
   if (!isAdmin) redirect('/dashboard')
 
@@ -28,14 +37,14 @@ export default async function AdminPage() {
     .order('created_at', { ascending: false })
 
   // Per-org counts using targeted queries (not fetching all rows)
-  const enriched = await Promise.all((orgs || []).map(async (org: any) => {
+  const enriched = await Promise.all((orgs || []).map(async (org: OrgRow) => {
     const [userResult, studyResult] = await Promise.all([
       service.from('users').select('id', { count: 'exact', head: true }).eq('org_id', org.id),
       service.from('studies').select('id').eq('org_id', org.id),
     ])
 
     const orgStudies = studyResult.data || []
-    const studyIds = orgStudies.map((s: any) => s.id)
+    const studyIds = orgStudies.map((s: { id: string }) => s.id)
     let responseCount = 0
     if (studyIds.length > 0) {
       const { count } = await service.from('responses').select('id', { count: 'exact', head: true }).in('study_id', studyIds)

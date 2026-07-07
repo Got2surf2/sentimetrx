@@ -54,7 +54,7 @@ export default function UserLocationAssigner({ sourceId }: Props) {
       setMembers((teamData.members || []).filter(function(m: TeamMember) {
         return m.role === 'member' || m.role === 'viewer'
       }))
-      setLocations((sourceData.locations || []).filter(function(l: any) { return l.selected }))
+      setLocations((sourceData.locations || []).filter(function(l: Location & { selected?: boolean }) { return l.selected }))
     }).catch(function() {}).finally(function() { setLoading(false) })
   }, [sourceId])
 
@@ -110,8 +110,8 @@ export default function UserLocationAssigner({ sourceId }: Props) {
       setMessage(selectedLocations.size > 0
         ? 'Assigned ' + selectedLocations.size + ' location(s)'
         : 'Removed all location restrictions (user sees all data)')
-    } catch (err: any) {
-      setMessage('Failed: ' + (err?.message || 'Unknown error'))
+    } catch (err: unknown) {
+      setMessage('Failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
     } finally {
       setSaving(false)
     }

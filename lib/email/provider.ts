@@ -119,6 +119,13 @@ class SendGridProvider implements EmailProvider {
 
 // -- AWS SES provider ------------------------------------------
 
+interface SESModule {
+  SESClient: new (config: Record<string, unknown>) => {
+    send(command: unknown): Promise<{ MessageId?: string }>
+  }
+  SendEmailCommand: new (input: Record<string, unknown>) => unknown
+}
+
 class SESProvider implements EmailProvider {
   name = 'ses' as const
   private defaultFrom: string
@@ -129,7 +136,7 @@ class SESProvider implements EmailProvider {
 
   async send(params: SendEmailParams): Promise<SendResult> {
     // SES requires AWS SDK — lazy require to avoid webpack bundling when not installed
-    let ses: any
+    let ses: SESModule
     try { ses = require('@aws-sdk/client-ses') } catch {
       throw new Error('AWS SES provider requires @aws-sdk/client-ses — run: npm install @aws-sdk/client-ses')
     }
@@ -155,6 +162,12 @@ class SESProvider implements EmailProvider {
 
 // -- SMTP provider (via nodemailer) -----------------------------
 
+interface NodemailerModule {
+  createTransport(opts: Record<string, unknown>): {
+    sendMail(opts: Record<string, unknown>): Promise<{ messageId: string }>
+  }
+}
+
 class SMTPProvider implements EmailProvider {
   name = 'smtp' as const
   private config: Record<string, unknown>
@@ -165,7 +178,7 @@ class SMTPProvider implements EmailProvider {
 
   async send(params: SendEmailParams): Promise<SendResult> {
     // Lazy require to avoid webpack bundling when not installed
-    let nodemailer: any
+    let nodemailer: NodemailerModule
     try { nodemailer = require('nodemailer') } catch {
       throw new Error('SMTP provider requires nodemailer — run: npm install nodemailer')
     }

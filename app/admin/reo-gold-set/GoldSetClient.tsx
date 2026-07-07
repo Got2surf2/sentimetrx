@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
 import {
   REO_DOMAINS, REO_ASPECTS, REO_SENTIMENTS, REO_SEVERITIES, REO_DOMAIN_COLOR, aspectDef,
-  type ReoDomain, type ReoObservation,
+  type ReoDomain, type ReoObservation, type ReoSentiment, type ReoSeverity,
 } from '@/lib/reoVocabulary'
 
 const HERMES = '#E8632A', NAVY = '#0f172a', SLATE = '#64748b', GREEN = '#059669', RED = '#DC2626'
@@ -72,7 +72,7 @@ export default function GoldSetClient() {
   async function save(status: 'approved' | 'edited' | 'skipped') {
     if (!cur || saving) return
     setSaving(true); setErr('')
-    const body: any = { id: cur.id, status, reviewer_note: note }
+    const body: { id: string; status: typeof status; reviewer_note: string; gold?: ReoObservation[] } = { id: cur.id, status, reviewer_note: note }
     if (status === 'approved') body.gold = cur.proposed
     else if (status === 'edited') body.gold = working.filter(o => o._keep).map(({ _keep, ...o }) => o)
     const res = await fetch('/api/admin/reo-gold-set', {
@@ -180,10 +180,10 @@ export default function GoldSetClient() {
                     <select value={o.aspect} onChange={e => setObs(i, { aspect: e.target.value })} style={inputStyle}>
                       {REO_ASPECTS[o.domain].map(a => <option key={a} value={a}>{a}</option>)}
                     </select>
-                    <select value={o.sentiment} onChange={e => setObs(i, { sentiment: e.target.value as any })} style={{ ...inputStyle, fontWeight: 700, color: sentColor(o.sentiment) }}>
+                    <select value={o.sentiment} onChange={e => setObs(i, { sentiment: e.target.value as ReoSentiment })} style={{ ...inputStyle, fontWeight: 700, color: sentColor(o.sentiment) }}>
                       {REO_SENTIMENTS.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
-                    <select value={o.severity || 'none'} onChange={e => setObs(i, { severity: e.target.value as any })} title="Severity flag"
+                    <select value={o.severity || 'none'} onChange={e => setObs(i, { severity: e.target.value as ReoSeverity })} title="Severity flag"
                       style={{ ...inputStyle, color: o.severity && o.severity !== 'none' ? RED : SLATE }}>
                       {REO_SEVERITIES.map(s => <option key={s} value={s}>{s === 'none' ? '—' : s}</option>)}
                     </select>

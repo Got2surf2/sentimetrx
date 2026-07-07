@@ -37,8 +37,20 @@ export interface CheckpointWait {
   terminal: Terminal                  // derived from minGate via mapping below
 }
 
+interface GoaaWaitRow {
+  id?: unknown
+  name?: unknown
+  lane?: unknown
+  isOpen?: unknown
+  waitSeconds?: unknown
+  minWaitSeconds?: unknown
+  maxWaitSeconds?: unknown
+  lastUpdatedTimestamp?: unknown
+  attributes?: { minGate?: unknown; maxGate?: unknown }
+}
+
 interface GoaaWaitsResponse {
-  data?: { wait_times?: any[] }
+  data?: { wait_times?: GoaaWaitRow[] }
   status?: { code: number; message: string }
 }
 
@@ -62,7 +74,7 @@ function terminalFromGate(minGate: string | null): Terminal {
   return null
 }
 
-async function fetchRaw(): Promise<any[]> {
+async function fetchRaw(): Promise<GoaaWaitRow[]> {
   const key = process.env.GOAA_API_KEY || PUBLIC_GOAA_KEY
   const res = await fetch(WAITS_URL, {
     headers: {

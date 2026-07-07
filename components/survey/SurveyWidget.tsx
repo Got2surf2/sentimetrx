@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useCallback, useState } from 'react'
+import { useEffect, useRef, useCallback, useState, type CSSProperties } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useSurveyEngine } from './useSurveyEngine'
 import SanjayModal from '@/components/ui/SanjayModal'
@@ -213,7 +213,7 @@ function SurveySession({
       <div
         ref={chatRef}
         className="survey-chat"
-        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '12px 12px', display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, background: '#FFFFFF', '--scrollbar-color': 'rgba(0,0,0,0.15)' } as any}
+        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '12px 12px', display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, background: '#FFFFFF', '--scrollbar-color': 'rgba(0,0,0,0.15)' } as CSSProperties}
       />
 
       {/* Input area — fixed height, max-height to prevent psycho buttons overflowing */}
@@ -389,7 +389,7 @@ export default function SurveyWidget({ study, orgName = '' }: Props) {
   if (status === 'checking') {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: theme.backgroundColor, fontSize: baseFontSize }}>
-        <div style={{ display: 'flex', gap: 8, ['--dot-color' as any]: theme.primaryColor || '#00b4d8' }}>
+        <div style={{ display: 'flex', gap: 8, ['--dot-color']: theme.primaryColor || '#00b4d8' } as CSSProperties}>
           {[0, 150, 300].map(d => (
             <span key={d} className="typing-dot" style={{ animationDelay: `${d}ms` }} />
           ))}

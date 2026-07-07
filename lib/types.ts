@@ -46,6 +46,13 @@ export interface OrgFeatures extends ModuleFeatures {
     azureEndpoint?: string
     azureApiVersion?: string
   }
+  social_auto_config?: {
+    moderation_sensitivity?: string
+    auto_hide_enabled?: boolean
+    auto_reply_enabled?: boolean
+    auto_reply_mode?: string
+    [key: string]: unknown
+  }
 }
 
 // User-level features — subset of org features. Stored in users.features JSONB.

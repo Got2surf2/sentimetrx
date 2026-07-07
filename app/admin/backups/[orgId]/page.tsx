@@ -21,18 +21,22 @@ export default async function OrgBackupsPage(props: Params) {
     .select('full_name, org_id, organizations(is_admin_org, logo_url, name, features)')
     .eq('id', user.id)
     .single()
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (!orgData?.is_admin_org) redirect('/dashboard')
 
   const service = createServiceRoleClient()
-  const { data: org } = await service.from('organizations').select('id, name, slug').eq('id', params.orgId).single()
+  const { data: org } = await service
+    .from('organizations')
+    .select('id, name, slug')
+    .eq('id', params.orgId)
+    .single<{ id: string; name: string; slug: string }>()
   if (!org) redirect('/admin/backups')
 
   return (
     <OrgBackupsClient
       orgId={params.orgId}
-      targetOrgName={(org as any).name}
-      targetOrgSlug={(org as any).slug}
+      targetOrgName={org.name}
+      targetOrgSlug={org.slug}
       logoUrl={orgData?.logo_url}
       orgName={orgData?.name}
       userEmail={user.email!}

@@ -24,7 +24,7 @@ export default async function NewRecordingPage() {
   let agentQ = service.from('agents').select('id, name').order('name')
   if (!ctx.isAdminOrg) agentQ = agentQ.eq('org_id', ctx.orgId)
   const { data: agentRows } = await agentQ
-  const agents = (agentRows ?? []).map((a: any) => ({ id: a.id as string, name: (a.name as string) || 'Untitled' }))
+  const agents = (agentRows ?? []).map((a: { id: string; name: string | null }) => ({ id: a.id as string, name: (a.name as string) || 'Untitled' }))
 
   // §2.8 — org members for the analyst picker (pick-a-teammate OR free-text).
   const { data: memberRows } = await service
@@ -33,7 +33,7 @@ export default async function NewRecordingPage() {
     .eq('org_id', ctx.orgId)
     .order('full_name')
   const members = (memberRows ?? [])
-    .map((m: any) => ({ id: m.id as string, name: ((m.full_name as string)?.trim()) || (m.email as string) || '' }))
+    .map((m: { id: string; full_name: string | null; email: string | null }) => ({ id: m.id as string, name: ((m.full_name as string)?.trim()) || (m.email as string) || '' }))
     .filter((m: { name: string }) => m.name)
 
   return (

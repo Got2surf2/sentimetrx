@@ -1,5 +1,6 @@
 'use client'
 
+import type { ModuleFeatures } from '@/lib/types'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import TopNav from '@/components/nav/TopNav'
@@ -9,7 +10,7 @@ import type { EmailProviderType } from '@/lib/types'
 const HERMES = '#E8632A'
 
 interface Props {
-  logoUrl?: string; analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: Record<string, boolean>
+  logoUrl?: string; analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: ModuleFeatures
   user: { email: string; fullName?: string; clientName?: string; isAdmin?: boolean }
   study: { id: string; name: string; status: string; guid: string; slug?: string }
   hiddenFields: string[]

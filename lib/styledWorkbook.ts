@@ -49,7 +49,7 @@ function styleSummary(ws: ExcelJS.Worksheet, sheet: Sheet) {
   title.height = 24
   ws.addRow([]) // spacer under the title (headers[1] is blank for Summary)
   for (const r of sheet.rows) {
-    const row = ws.addRow(r as any[])
+    const row = ws.addRow(r)
     const label = String(r[0] ?? '')
     const isSection = label !== '' && !label.startsWith('  ') && (r[1] === '' || r[1] == null)
     if (isSection) {
@@ -78,7 +78,7 @@ function styleTable(ws: ExcelJS.Worksheet, sheet: Sheet) {
   })
 
   sheet.rows.forEach((r, i) => {
-    const row = ws.addRow(r as any[])
+    const row = ws.addRow(r)
     const zebra = i % 2 === 1
     row.eachCell({ includeEmpty: true }, cell => {
       cell.alignment = { vertical: 'top', wrapText: true }

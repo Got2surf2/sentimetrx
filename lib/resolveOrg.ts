@@ -1,4 +1,4 @@
-import type { ModuleFeatures } from './types'
+import type { ModuleFeatures, OrgFeatures } from './types'
 import { RESTAURANT_INDUSTRIES } from './industryDefaults'
 
 /**
@@ -27,9 +27,11 @@ const ANALYZE_CHILDREN: (keyof ModuleFeatures)[] = [
   'googleReviews', 'reddit', 'substack', 'taxonomy',
 ]
 
-export function resolveOrg(raw: unknown): { is_admin_org?: boolean; logo_url?: string; name?: string; features?: any } | null {
+type ResolvedOrg = { is_admin_org?: boolean; logo_url?: string; name?: string; features?: OrgFeatures }
+
+export function resolveOrg(raw: unknown): ResolvedOrg | null {
   if (!raw) return null
-  const org = (Array.isArray(raw) ? raw[0] : raw) as any
+  const org = (Array.isArray(raw) ? raw[0] : raw) as ResolvedOrg
   if (!org) return null
   // Admin org gets all features enabled automatically
   if (org.is_admin_org) {

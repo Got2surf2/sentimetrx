@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef } from 'react'
+import type { DragEvent } from 'react'
 import type { StepProps } from '@/lib/studyDraft'
 import { Section, NavButtons, TransitionMessagePanel } from './CreatorUI'
 import { CONTACT_BANK, type ContactField, type SectionKey } from '@/lib/types'
@@ -92,7 +93,7 @@ export default function StepContactInfo({ draft, updateConfig, onNext, onBack }:
               <div key={f.key}
                 draggable
                 onDragStart={function() { fieldDragIdx.current = idx }}
-                onDragOver={function(e: any) {
+                onDragOver={function(e: DragEvent) {
                   e.preventDefault()
                   if (fieldDragIdx.current === null || fieldDragIdx.current === idx) return
                   var next = merged.slice()
@@ -158,7 +159,7 @@ export default function StepContactInfo({ draft, updateConfig, onNext, onBack }:
               <div key={key}
                 draggable
                 onDragStart={function() { sectionDragIdx.current = idx }}
-                onDragOver={function(e: any) {
+                onDragOver={function(e: DragEvent) {
                   e.preventDefault()
                   if (sectionDragIdx.current === null || sectionDragIdx.current === idx) return
                   var next = sectionOrder.slice()

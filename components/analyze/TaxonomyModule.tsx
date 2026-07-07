@@ -179,8 +179,8 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
       const j: Rollup = await r.json()
       setData(j)
       setErr(null)
-    } catch (e: any) {
-      setErr(String(e.message || e))
+    } catch (e: unknown) {
+      setErr(String(e instanceof Error ? e.message : e))
     } finally {
       setLoading(false)
     }
@@ -228,8 +228,8 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
       }
       if (!pendingOnly) setAttempted(true)
       await load()
-    } catch (e: any) {
-      setClassifyErr(String(e.message || e))
+    } catch (e: unknown) {
+      setClassifyErr(String(e instanceof Error ? e.message : e))
     } finally {
       setClassifying(false)
     }

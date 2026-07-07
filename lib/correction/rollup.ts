@@ -139,8 +139,9 @@ export async function rollupAgentEntitiesToBrand(
         .eq('id', opts.agentId).eq('org_id', opts.orgId).maybeSingle()
       if (agentErr) void logError('rollup.rollupAgentEntitiesToBrand', agentErr, { orgId: opts.orgId })
       if (!agent) return null
-      if (!opts.brandTag) brandTag = String((agent as any).brand_tag ?? '').trim()
-      createdBy = (agent as any).created_by ?? null
+      const agentRow = agent as { brand_tag?: string | null; created_by?: string | null }
+      if (!opts.brandTag) brandTag = String(agentRow.brand_tag ?? '').trim()
+      createdBy = agentRow.created_by ?? null
     }
     if (!brandTag) return null
 

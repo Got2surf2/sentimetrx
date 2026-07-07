@@ -14,7 +14,7 @@ export interface ShareModalProps {
   title?: string
   onClose: () => void
   // Analytics-specific
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 interface ShareLink {
@@ -64,7 +64,7 @@ export default function ShareModal({ type, targetId, title, onClose, metadata }:
     setLoading(true)
     setError(null)
     try {
-      var body: any = { type: type, target_id: targetId, expires_in: expiry }
+      var body: { type: string; target_id: string; expires_in: string; metadata?: Record<string, unknown> } = { type: type, target_id: targetId, expires_in: expiry }
       if (metadata) body.metadata = metadata
       var res = await fetch('/api/share', {
         method: 'POST',

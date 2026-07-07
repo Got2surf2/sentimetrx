@@ -20,7 +20,12 @@ function getApiKey(): string {
   return key
 }
 
-async function regGet(path: string, params?: Record<string, string>): Promise<any> {
+interface RegApiResponse<T = unknown> {
+  data?: T
+  meta?: { totalElements?: number; totalPages?: number }
+}
+
+async function regGet<T = unknown>(path: string, params?: Record<string, string>): Promise<RegApiResponse<T>> {
   await throttle()
   const url = new URL(BASE + path)
   if (params) {
@@ -36,10 +41,11 @@ async function regGet(path: string, params?: Record<string, string>): Promise<an
       headers: { 'X-Api-Key': getApiKey() },
       signal: controller.signal,
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     clearTimeout(timeout)
-    if (err.name === 'AbortError') throw new Error('Regulations.gov API timed out (15s)')
-    throw new Error('Regulations.gov API network error: ' + (err.message || 'fetch failed'))
+    const e = err as { name?: string; message?: string }
+    if (e.name === 'AbortError') throw new Error('Regulations.gov API timed out (15s)')
+    throw new Error('Regulations.gov API network error: ' + (e.message || 'fetch failed'))
   }
   clearTimeout(timeout)
   if (res.status === 429) {
@@ -147,13 +153,13 @@ export async function searchDockets(query: string, page: number = 1): Promise<{ 
 
     for (var cand of candidates) {
       try {
-        var direct = await regGet('/dockets/' + encodeURIComponent(cand))
+        var direct = await regGet<RegDocket>('/dockets/' + encodeURIComponent(cand))
         if (direct?.data) return { data: [direct.data], totalElements: 1 }
       } catch {}
     }
   }
 
-  const result = await regGet('/dockets', {
+  const result = await regGet<RegDocket[]>('/dockets', {
     'filter[searchTerm]': query,
     'page[size]': '25',
     'page[number]': String(page),
@@ -175,7 +181,7 @@ export async function searchDocuments(query: string, docketId?: string, page: nu
   }
   if (docketId) params['filter[docketId]'] = docketId
   if (query) params['filter[searchTerm]'] = query
-  const result = await regGet('/documents', params)
+  const result = await regGet<RegDocument[]>('/documents', params)
   return {
     data: result.data || [],
     totalElements: result.meta?.totalElements || 0,
@@ -197,7 +203,7 @@ export async function listComments(docketId: string, page: number = 1, pageSize:
   } else {
     params['filter[docketId]'] = docketId
   }
-  const result = await regGet('/comments', params)
+  const result = await regGet<RegCommentListItem[]>('/comments', params)
   var total = result.meta?.totalElements || 0
 
   // If filter[docketId] returned 0 and we haven't tried search yet, try searchTerm fallback
@@ -217,8 +223,8 @@ export async function listComments(docketId: string, page: number = 1, pageSize:
 // ── Get single comment detail (includes full text) ─────────────────────────
 
 export async function getCommentDetail(commentId: string): Promise<RegCommentDetail> {
-  const result = await regGet('/comments/' + encodeURIComponent(commentId))
-  return result.data
+  const result = await regGet<RegCommentDetail>('/comments/' + encodeURIComponent(commentId))
+  return result.data as RegCommentDetail
 }
 
 // ── Batch fetch comment details ────────────────────────────────────────────

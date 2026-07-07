@@ -7,6 +7,7 @@
 // stubbed; the assertion is the shaping-vs-metadata comparison.
 
 import { describe, it, expect } from 'vitest'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { isAnalysisConfigDrifted, buildSnapshot } from '@/lib/recordings/configVersion'
 
 const base: Record<string, unknown> = {
@@ -19,13 +20,18 @@ const base: Record<string, unknown> = {
 
 // A fake service whose recording_config_versions lookup returns `snapshot`
 // (undefined → no row, i.e. the analyzed snapshot is missing).
-function svc(snapshot: unknown) {
-  const chain: any = {
+interface QueryChain {
+  select: () => QueryChain
+  eq: () => QueryChain
+  maybeSingle: () => Promise<{ data: { snapshot: unknown } | null; error: null }>
+}
+function svc(snapshot: unknown): SupabaseClient {
+  const chain: QueryChain = {
     select: () => chain,
     eq: () => chain,
     maybeSingle: async () => ({ data: snapshot === undefined ? null : { snapshot }, error: null }),
   }
-  return { from: () => chain } as any
+  return { from: () => chain } as unknown as SupabaseClient
 }
 
 describe('isAnalysisConfigDrifted', () => {

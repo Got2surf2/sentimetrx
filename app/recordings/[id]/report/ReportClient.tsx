@@ -2289,8 +2289,8 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
       const d = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(d?.error || `Save failed (${res.status})`)
       setLinkSaved(true)
-    } catch (e: any) {
-      setError(e?.message || 'Save failed')
+    } catch (e: unknown) {
+      setError((e as Error)?.message || 'Save failed')
     } finally {
       setLinkBusy(false)
     }
@@ -2345,8 +2345,8 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
       if (!res.ok) throw new Error(d?.error || `Send failed (${res.status})`)
       setSendResult({ sent: d.sent ?? 0, failed: d.failed ?? 0, rejected: d.rejected })
       if ((d.sent ?? 0) > 0) { setRecipients(''); setSendNote('') }
-    } catch (e: any) {
-      setSendError(e?.message || 'Send failed')
+    } catch (e: unknown) {
+      setSendError((e as Error)?.message || 'Send failed')
     } finally {
       setSendBusy(false)
     }

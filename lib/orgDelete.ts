@@ -129,8 +129,8 @@ export async function deleteOrgStorage(orgId: string): Promise<{ removed: number
         if (error) errors.push(`${bucket}: ${error.message}`)
         else removed += chunk.length
       }
-    } catch (e: any) {
-      errors.push(`${bucket}: ${e?.message || String(e)}`)
+    } catch (e) {
+      errors.push(`${bucket}: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
   return { removed, errors }
@@ -150,8 +150,8 @@ export async function purgeOrgAuthUsers(userIds: string[]): Promise<{ deleted: n
       const { error } = await service.auth.admin.deleteUser(id)
       if (error) errors.push(`${id}: ${error.message}`)
       else deleted++
-    } catch (e: any) {
-      errors.push(`${id}: ${e?.message || String(e)}`)
+    } catch (e) {
+      errors.push(`${id}: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
   return { deleted, errors }

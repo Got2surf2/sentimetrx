@@ -151,3 +151,9 @@ WHY: Continue to zero.
 WHY: Continue to zero.
 
 36 files (−106): bots/campaigns/recordings/social/collections/datasets/deck routes + clients, nora/clara/bot-chat, cron routes, admin routes. No cross-file conflicts (tsc clean first pass). Global tsc 0 errors, 1238 tests pass, 832→726. Ceiling → 726. Not pushed.
+
+## ESLint burn-down wave 10 — 38 files (Jul 7)
+
+WHY: Continue to zero.
+
+38 files (−82): admin routes/pages, resolveOrg, regulations, orgDelete, correction libs, aiKey, email/provider, survey widget, creator/analyze/analytics components, recordings/social/pulseiq pages. Reconciled resolveOrg tightening (features → OrgFeatures) surfacing 3 consumer breaks: added `social_auto_config` to OrgFeatures (real feature social-sync reads) + widened NewCampaignClient `features` prop Record<string,boolean>→ModuleFeatures. Global tsc 0 errors, 1238 tests pass, 726→644. Ceiling → 644. Not pushed.

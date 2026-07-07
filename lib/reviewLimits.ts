@@ -42,7 +42,7 @@ export async function getReviewBudget(
     .single()
   if (orgErr) void logError('reviewLimits.getReviewBudget', orgErr, { orgId })
 
-  const rawCap = (org as any)?.limits?.review_records_monthly
+  const rawCap = (org as { limits?: { review_records_monthly?: unknown } | null } | null)?.limits?.review_records_monthly
   const cap = typeof rawCap === 'number' && rawCap > 0 ? Math.floor(rawCap) : null
 
   const { data: rows, error: rowsErr } = await service
@@ -52,7 +52,7 @@ export async function getReviewBudget(
     .gte('created_at', monthStartIso())
   if (rowsErr) void logError('reviewLimits.getReviewBudget', rowsErr, { orgId })
 
-  const used = (rows || []).reduce((sum, r: any) => sum + (r.records || 0), 0)
+  const used = (rows || []).reduce((sum, r: { records?: number | null }) => sum + (r.records || 0), 0)
 
   return {
     cap,

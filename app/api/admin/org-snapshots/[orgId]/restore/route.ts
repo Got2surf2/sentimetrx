@@ -38,7 +38,7 @@ export async function POST(req: NextRequest, props: Params) {
   const denied = await requireAdmin()
   if (denied) return denied
 
-  let body: any
+  let body: { key?: unknown; mode?: unknown; tables?: unknown }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const key = String(body?.key || '')
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest, props: Params) {
   let source: SnapshotSource
   try {
     source = await openSnapshot(s3SnapshotStore(), key)
-  } catch (e: any) {
+  } catch (e: unknown) {
     return serverError(e, 'admin.orgSnapshots.restore.download', { orgId: params.orgId })
   }
 
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest, props: Params) {
   // environment's database. Includes the post-write verification pass:
   // `ok` is false if any row errored OR any claimed row is missing from
   // the target afterwards (never report success for dropped rows).
-  const { reports, totals, ok } = await restoreOrgSnapshotFromSource(service as any, source, { mode, tables: tableAllow })
+  const { reports, totals, ok } = await restoreOrgSnapshotFromSource(service, source, { mode, tables: tableAllow })
 
   // Audit: restoring a snapshot overwrites (merge) or replaces a tenant's live
   // data — the most destructive admin op there is. Always traced.

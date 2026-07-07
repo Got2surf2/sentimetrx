@@ -6,12 +6,17 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import LottieLoader from '@/components/ui/LottieLoader'
 
+interface StudyConfig {
+  npsLabel?: string
+  experienceRatingLabel?: string
+}
+
 interface Props {
   studyId:    string
   studyName:  string
   botEmoji:   string
   botName:    string
-  studyConfig?: any
+  studyConfig?: StudyConfig
   logoUrl?:   string
   orgName?:   string
   isAdmin?:   boolean
@@ -68,8 +73,8 @@ export default function AnalyticsDashboard({ studyId, studyName, botEmoji, botNa
       setSummary(json.summary)
       setNpsTrend(json.npsTrend || [])
       setVolumeByDay(json.volumeByDay || [])
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
     }

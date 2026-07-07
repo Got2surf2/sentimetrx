@@ -88,8 +88,8 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
       setSelected(sel)
       setDatasetName(keyword.trim() + ' Reviews')
       setStep(2)
-    } catch (err: any) {
-      setSearchError(err?.message || 'Search failed')
+    } catch (err: unknown) {
+      setSearchError((err instanceof Error ? err.message : '') || 'Search failed')
     } finally {
       setSearching(false)
     }
@@ -172,8 +172,8 @@ export default function GoogleReviewsWizard({ onBack }: Props) {
       setTimeout(function() {
         router.push('/analyze/' + data.dataset_id + '/settings')
       }, 1500)
-    } catch (err: any) {
-      setCreateError(err?.message || 'Failed')
+    } catch (err: unknown) {
+      setCreateError((err instanceof Error ? err.message : '') || 'Failed')
     } finally {
       setCreating(false)
     }

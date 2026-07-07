@@ -4,6 +4,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
+import type { ModuleFeatures } from '@/lib/types'
 import TopNav from '@/components/nav/TopNav'
 import SocialClient from './SocialClient'
 
@@ -20,8 +21,8 @@ export default async function SocialPage() {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
-  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  const orgData = resolveOrg(userData?.organizations)
+  const features = effectiveFeatures(orgData?.features as ModuleFeatures | null | undefined, userData?.features as ModuleFeatures | null | undefined)
   if (!features.social) redirect('/dashboard')
 
   return (

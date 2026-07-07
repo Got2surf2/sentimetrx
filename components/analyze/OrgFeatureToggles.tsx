@@ -31,7 +31,7 @@ export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
   const [status, setStatus]     = useState<'idle' | 'saved' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
 
-  async function saveFeatures(updated: any) {
+  async function saveFeatures(updated: ModuleFeatures & { primaryIndustries?: Industry[] }) {
     setSaving(true)
     setStatus('idle')
     setErrorMsg('')
@@ -50,9 +50,9 @@ export default function OrgFeatureToggles({ orgId, initialFeatures }: Props) {
 
       setStatus('saved')
       setTimeout(() => setStatus('idle'), 2500)
-    } catch (err: any) {
+    } catch (err: unknown) {
       setStatus('error')
-      setErrorMsg(err.message || 'Failed to save')
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to save')
       setTimeout(() => setStatus('idle'), 4000)
     } finally {
       setSaving(false)

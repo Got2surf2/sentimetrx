@@ -69,8 +69,8 @@ export default function RecordingsAccessPanel({ orgId, members }: Props) {
       })
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'save failed') }
       flash('Saved')
-    } catch (e: any) {
-      flash(e.message || 'Save failed')
+    } catch (e: unknown) {
+      flash((e instanceof Error ? e.message : '') || 'Save failed')
       void load()  // re-sync on failure
     } finally {
       setBusy(false)
@@ -88,8 +88,8 @@ export default function RecordingsAccessPanel({ orgId, members }: Props) {
       })
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'save failed') }
       flash('Saved')
-    } catch (e: any) {
-      flash(e.message || 'Save failed')
+    } catch (e: unknown) {
+      flash((e instanceof Error ? e.message : '') || 'Save failed')
       void load()
     } finally {
       setBusy(false)

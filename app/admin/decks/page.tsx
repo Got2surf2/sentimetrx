@@ -1,6 +1,7 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
+import type { ModuleFeatures } from '@/lib/types'
 import { deckLastModified } from '@/lib/deckLastModified'
 import TopNav from '@/components/nav/TopNav'
 import DecksClient from './DecksClient'
@@ -18,9 +19,9 @@ export default async function DecksPage() {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (!orgData?.is_admin_org) redirect('/dashboard')
-  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  const features = effectiveFeatures(orgData?.features, userData?.features as ModuleFeatures | null | undefined)
 
   // Fetch the most recent download timestamp per (deck_name, deck_variant).
   // We grab the last 200 rows and reduce in memory — simpler than a SQL view
@@ -33,7 +34,8 @@ export default async function DecksPage() {
     .limit(200)
 
   const lastDownloaded: Record<string, string> = {}
-  for (const row of (logs || []) as any[]) {
+  const logRows = (logs || []) as { deck_name: string; deck_variant: string | null; downloaded_at: string }[]
+  for (const row of logRows) {
     const key = row.deck_variant ? `${row.deck_name}:${row.deck_variant}` : row.deck_name
     if (!lastDownloaded[key]) lastDownloaded[key] = row.downloaded_at
   }

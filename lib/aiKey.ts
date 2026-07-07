@@ -18,6 +18,14 @@ import { logError } from '@/lib/log'
 export type AiMode = 'off' | 'platform' | 'byo'
 export type AiProvider = 'anthropic' | 'openai'
 
+interface OrgAiRow {
+  ai_key_mode?:        string | null
+  ai_provider?:        string | null
+  ai_api_key?:         string | null
+  ai_api_key_set_at?:  string | null
+  ai_api_key_set_by?:  string | null
+}
+
 export interface OrgAiConfig {
   mode:     AiMode
   provider: AiProvider          // BYOK provider; for platform/off this is informational only
@@ -51,7 +59,7 @@ export async function resolveOrgAiConfig(orgId: string): Promise<OrgAiConfig> {
       .eq('id', orgId)
       .single()
     if (cfgErr) void logError('aiKey.resolveOrgAiConfig', cfgErr, { orgId })
-    const row = data as any
+    const row = data as OrgAiRow | null
     const mode: AiMode = (row?.ai_key_mode as AiMode) || 'platform'
     const provider: AiProvider = (row?.ai_provider as AiProvider) || 'anthropic'
     // Stored key may be an encrypted envelope (enc:v1:…) or legacy plaintext;
@@ -96,7 +104,7 @@ export async function getOrgAiKeyStatus(orgId: string): Promise<OrgAiKeyStatus |
     .single()
   if (statusErr) void logError('aiKey.getOrgAiKeyStatus', statusErr, { orgId })
   if (!data) return null
-  const row = data as any
+  const row = data as OrgAiRow
   return {
     mode:     (row.ai_key_mode as AiMode) || 'platform',
     provider: (row.ai_provider as AiProvider) || 'anthropic',

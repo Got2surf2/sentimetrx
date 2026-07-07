@@ -120,7 +120,7 @@ export default function ThemeEditor({ onApply, onClose, onMineWithAI, initialDat
       var parsed = JSON.parse(jsonText.trim())
       if (!Array.isArray(parsed)) throw new Error('Expected a JSON array.')
       var hasName = parsed.length > 0 && parsed[0] && typeof parsed[0] === 'object' && (parsed[0].name || parsed[0].label)
-      var themes = parsed.map(function(item: any, i: number) {
+      var themes = parsed.map(function(item: Record<string, unknown>, i: number) {
         var kws: string[] = []
         if (Array.isArray(item)) kws = item.map(String).filter(Boolean)
         else kws = ((item.keywords || item.words || item.terms || []) as unknown[]).map(function(k) { return String(k).trim() }).filter(Boolean)
@@ -135,8 +135,8 @@ export default function ThemeEditor({ onApply, onClose, onMineWithAI, initialDat
       setLibraryName('Custom JSON Themes')
       setEditThemes(themes)
       setStep('edit')
-    } catch (e: any) {
-      setJsonError(e.message || 'Invalid JSON')
+    } catch (e: unknown) {
+      setJsonError(e instanceof Error ? (e.message || 'Invalid JSON') : 'Invalid JSON')
     }
   }
 

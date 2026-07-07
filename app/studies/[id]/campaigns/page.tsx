@@ -5,6 +5,14 @@ import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
+interface CampaignRow {
+  id: string
+  name: string
+  status: string
+  created_at: string
+  target_responses: number | null
+}
+
 export default async function StudyCampaignsPage(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const supabase = await createClient()
@@ -17,7 +25,7 @@ export default async function StudyCampaignsPage(props: { params: Promise<{ id: 
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
 
   const { data: study } = await supabase
     .from('studies')
@@ -61,7 +69,7 @@ export default async function StudyCampaignsPage(props: { params: Promise<{ id: 
         </div>
       ) : (
         <div className="space-y-3">
-          {campaigns.map((c: any) => (
+          {campaigns.map((c: CampaignRow) => (
             <Link key={c.id} href={'/campaigns/' + c.id}
               className="block bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md hover:border-orange-200 transition-all">
               <div className="flex items-center justify-between">

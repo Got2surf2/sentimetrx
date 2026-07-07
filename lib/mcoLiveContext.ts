@@ -18,7 +18,7 @@ import 'server-only'
 
 import { fetchFlights, findFlightByNumber, nextDepartureAtGate, parseFlightNumber, type Flight } from '@/lib/flights'
 import { fetchSecurityWaits, type CheckpointWait } from '@/lib/securityWait'
-import { fetchParkingAvailability } from '@/lib/parking'
+import { fetchParkingAvailability, type ParkingLot } from '@/lib/parking'
 import { walkLegsForGate, formatMinutes } from '@/lib/walkingTime'
 
 const ASKANA_BOT_ID = '920c571b-5a09-4d3a-a20e-904a417d20b3'
@@ -325,8 +325,8 @@ export async function buildMcoLiveContext(botId: string, userMessage: string, pr
   const needsSecurity = intent.wantsSecurity || intent.wantsFlights
   const [flights, waits, parking] = await Promise.all([
     intent.wantsFlights ? fetchFlights().catch(() => []) : Promise.resolve([] as Flight[]),
-    needsSecurity ? fetchSecurityWaits().catch(() => []) : Promise.resolve([] as any[]),
-    intent.wantsParking ? fetchParkingAvailability().catch(() => []) : Promise.resolve([] as any[]),
+    needsSecurity ? fetchSecurityWaits().catch(() => []) : Promise.resolve([] as CheckpointWait[]),
+    intent.wantsParking ? fetchParkingAvailability().catch(() => []) : Promise.resolve([] as ParkingLot[]),
   ])
 
   // Flights block
