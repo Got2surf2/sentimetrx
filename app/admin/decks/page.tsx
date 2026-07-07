@@ -68,6 +68,7 @@ export default async function DecksPage() {
     'pulseiq-deck':                      deckLastModified('app/api/pulseiq-deck/route.ts'),
     'nowocats-approach-deck':            deckLastModified('app/api/nowocats-approach-deck/route.ts'),
     'mco-listening-deck':                deckLastModified('app/api/mco-listening-deck/route.ts'),
+    'ea-nps-pitch-deck':                 deckLastModified('lib/pptx/eaNpsPitchDeck.ts'),
     'review-intelligence-deck:full':       deckLastModified('app/api/review-intelligence-deck/route.ts'),
     'review-intelligence-deck:alerts':     deckLastModified('app/api/review-intelligence-deck/route.ts'),
     'review-intelligence-deck:capability': deckLastModified('app/api/review-intelligence-deck/route.ts'),
