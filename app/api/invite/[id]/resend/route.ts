@@ -31,10 +31,14 @@ export async function POST(_req: NextRequest, props: Ctx) {
     .eq('id', user.id)
     .single()
 
-  const orgData = userData?.organizations
+  const orgData = userData?.organizations as
+    | { is_admin_org?: boolean }
+    | { is_admin_org?: boolean }[]
+    | null
+    | undefined
   const isSuperAdmin = Array.isArray(orgData)
     ? orgData[0]?.is_admin_org === true
-    : (orgData as any)?.is_admin_org === true
+    : orgData?.is_admin_org === true
   const isOrgOwner = userData?.role === 'owner' && userData?.org_id === invite.org_id
 
   if (!isSuperAdmin && !isOrgOwner) {

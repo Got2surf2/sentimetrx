@@ -4,9 +4,16 @@ import { NextResponse } from 'next/server'
 import { createClient as createBareClient } from '@supabase/supabase-js'
 import { serverError } from '@/lib/apiError'
 
+interface RegisterBody {
+  token?: string
+  email?: string
+  password?: string
+  full_name?: string | null
+}
+
 export async function POST(req: NextRequest) {
   const service = createServiceRoleClient()
-  let body: any
+  let body: RegisterBody
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
   const { token, email, password, full_name } = body
 

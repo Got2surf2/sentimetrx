@@ -30,8 +30,15 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: cors })
 }
 
+type RequestBody = {
+  terminal?: unknown
+  level?: unknown
+  gate?: unknown
+  category?: unknown
+}
+
 export async function POST(req: NextRequest) {
-  let body: any = {}
+  let body: RequestBody = {}
   try { body = await req.json() } catch {}
 
   // Sanitize inputs

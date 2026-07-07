@@ -6,6 +6,18 @@ import { serverError } from '@/lib/apiError'
 
 interface Params { params: Promise<{ id: string }> }
 
+interface StudyRow {
+  id: string
+  guid: string
+  name: string
+  bot_name: string | null
+  bot_emoji: string | null
+  status: string
+  visibility: string
+  created_at: string
+  created_by: string | null
+}
+
 // GET /api/admin/clients/[id] - org detail with users, studies, invites
 export async function GET(_req: NextRequest, props: Params) {
   const params = await props.params;
@@ -35,7 +47,7 @@ export async function GET(_req: NextRequest, props: Params) {
     .order('created_at', { ascending: false })
 
   // Per-study response counts using head queries
-  const studiesWithCounts = await Promise.all((studies || []).map(async (s: any) => {
+  const studiesWithCounts = await Promise.all(((studies || []) as StudyRow[]).map(async (s: StudyRow) => {
     const { count } = await service.from('responses').select('id', { count: 'exact', head: true }).eq('study_id', s.id)
     return { ...s, response_count: count || 0 }
   }))

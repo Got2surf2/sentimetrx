@@ -13,7 +13,9 @@ export async function GET() {
     .eq('id', user.id)
     .single()
 
-  const org = Array.isArray(userData?.organizations) ? userData.organizations[0] : userData?.organizations as any
+  type OrgAdminFlag = { is_admin_org: boolean | null }
+  const orgs = userData?.organizations as OrgAdminFlag | OrgAdminFlag[] | null | undefined
+  const org = Array.isArray(orgs) ? orgs[0] : orgs
   if (!org?.is_admin_org) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data, error } = await supabase

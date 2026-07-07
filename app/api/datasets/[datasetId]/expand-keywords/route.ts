@@ -63,8 +63,9 @@ Return a flat JSON array: ["term1", "term2", ...]`
         messages: [{ role: 'user', content: userMsg }],
         apiKey,
       })
-    } catch (e: any) {
-      return NextResponse.json({ error: e.message || 'API error' }, { status: e.status || 500 })
+    } catch (e: unknown) {
+      const err = e as { message?: string; status?: number }
+      return NextResponse.json({ error: err.message || 'API error' }, { status: err.status || 500 })
     }
 
     logUsage({ org_id: orgId ?? undefined, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'expand_keywords' }, aiResult.usage)

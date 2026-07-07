@@ -130,7 +130,7 @@ export async function POST(req: Request, props: Params) {
       has_post: post.selftext && post.selftext.trim() ? true : false,
       rows_inserted: rows.length,
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'redditSources.downloadThread', { orgId })
   }
 }

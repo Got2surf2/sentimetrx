@@ -56,7 +56,7 @@ export async function PATCH(req: NextRequest, props: Params) {
     .single()
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const patch: Record<string, any> = {}
+  const patch: Record<string, string | null> = {}
   if (status) {
     patch.status = status
     if (status === 'open') {

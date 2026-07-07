@@ -80,14 +80,14 @@ export async function GET(req: NextRequest) {
         cost_cents:     r.cost_est_cents,
         error:          r.error,
       })
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error({ at: 'cron/entity-discovery', msg: 'brand failed', brand: brand.slug, err })
       results.push({
         brand:          brand.slug || brand.id,
         entities_new:   0,
         entities_after: 0,
         cost_cents:     0,
-        error:          err?.message || 'discovery failed',
+        error:          (err instanceof Error ? err.message : undefined) || 'discovery failed',
       })
     }
   }

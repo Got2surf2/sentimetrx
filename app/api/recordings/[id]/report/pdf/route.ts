@@ -74,8 +74,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         'Cache-Control': 'no-store',
       },
     })
-  } catch (e: any) {
-    console.error({ at: 'recording-pdf', msg: 'render failed', err: e?.message })
+  } catch (e: unknown) {
+    console.error({ at: 'recording-pdf', msg: 'render failed', err: e instanceof Error ? e.message : String(e) })
     return NextResponse.json({ error: 'PDF render failed' }, { status: 500 })
   }
 }

@@ -61,7 +61,7 @@ export async function POST(req: NextRequest, props: Params) {
   const rl = await checkRateLimit('bot_chat:' + ip, 30, 60000)
   if (rl.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: cors })
 
-  let body: any
+  let body: { messages?: unknown[] } & Record<string, unknown>
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors })
   }

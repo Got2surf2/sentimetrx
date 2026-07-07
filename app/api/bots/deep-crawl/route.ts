@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
   // Support single URL (string) or multiple URLs (array or newline-separated)
   var urls: string[] = []
   if (Array.isArray(body.urls)) {
-    urls = body.urls.filter(function(u: any) { return typeof u === 'string' && u.trim() })
+    urls = body.urls.filter(function(u: unknown) { return typeof u === 'string' && u.trim() })
   } else if (typeof body.url === 'string') {
     urls = body.url.split('\n').map(function(u: string) { return u.trim() }).filter(Boolean)
   }

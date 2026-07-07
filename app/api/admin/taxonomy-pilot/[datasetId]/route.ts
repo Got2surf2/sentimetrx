@@ -14,6 +14,35 @@ export const maxDuration = 30
 
 interface Params { params: Promise<{ datasetId: string }> }
 
+interface TxAxes {
+  touchpoint?: unknown[]
+  attribute?: unknown[]
+  product?: unknown[]
+  beverage?: unknown[]
+  ambiance?: unknown[]
+  context?: unknown[]
+  outcome?: unknown[]
+}
+interface TxVerdict {
+  a?: TxAxes
+  al?: unknown[]
+  as?: unknown[]
+  by?: unknown
+  m?: unknown
+  v?: unknown
+  at?: unknown
+}
+interface RowData {
+  _tx?: { f?: Record<string, TxVerdict | undefined> }
+  description?: string
+  review_rating?: unknown
+  unit_name?: string
+  city?: string
+  state?: string
+  legacy_tags?: unknown[]
+  [key: string]: unknown
+}
+
 export async function GET(req: Request, props: Params) {
   const params = await props.params;
   const guard = await requireAdmin()
@@ -63,7 +92,7 @@ export async function GET(req: Request, props: Params) {
     alertCount = Number(c?.alerts ?? 0)
   }
 
-  const merged = (rows ?? []).map((r: any) => {
+  const merged = (rows ?? []).map((r: { id: string; row_index: number; data: RowData | null }) => {
     const t = fieldKey ? r.data?._tx?.f?.[fieldKey] : null
     const a = t?.a ?? {}
     return {

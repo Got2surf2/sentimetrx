@@ -67,7 +67,7 @@ export async function GET(req: NextRequest, props: Params) {
   //    email address (owner: "only write draft emails for people who provided an
   //    email"). Body = warm greeting + the response + warm sign-off. ──────────
   if (emailsMode) {
-    const cfg = ((bot as any).config || {}) as { emailSignoff?: string; emailSubject?: string }
+    const cfg = ((bot as { config?: unknown }).config || {}) as { emailSignoff?: string; emailSubject?: string }
     const signoff = cfg.emailSignoff || 'The Project Team'
     const subject = cfg.emailSubject || 'Thank you for your comment'
     const firstName = (full?: string) => (full || '').trim().split(/\s+/)[0] || ''

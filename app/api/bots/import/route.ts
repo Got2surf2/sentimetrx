@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
-  const userOrgId = (userData as any)?.org_id as string | null
+  const userOrgId = (userData as { org_id: string | null } | null)?.org_id ?? null
   if (!userOrgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let payload: unknown

@@ -14,7 +14,7 @@ interface Params { params: Promise<{ datasetId: string }> }
 
 async function authCheck(supabase: Awaited<ReturnType<typeof createClient>>) {
   const ctx = await getCallerOrgContext(supabase)
-  return { user: ctx.userId ? { id: ctx.userId } as any : null, orgId: ctx.orgId, isAdmin: ctx.isAdmin }
+  return { user: ctx.userId ? { id: ctx.userId } : null, orgId: ctx.orgId, isAdmin: ctx.isAdmin }
 }
 
 export async function GET(_req: Request, props: Params) {

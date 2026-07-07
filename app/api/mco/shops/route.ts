@@ -21,7 +21,7 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
-  let body: any = {}
+  let body: { context?: unknown } = {}
   try { body = await req.json() } catch {}
   const context = typeof body?.context === 'string' ? body.context.slice(0, 64) : undefined
   const shops = shopsForContext(context)

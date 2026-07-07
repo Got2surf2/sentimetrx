@@ -80,7 +80,7 @@ export async function POST(request: Request, props: Props) {
       trends[themeName] = bestTrend
     }
     return NextResponse.json({ interests, trends })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'datasets.searchInterest')
   }
 }

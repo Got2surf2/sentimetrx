@@ -42,7 +42,7 @@ export async function GET(_req: NextRequest, props: Params) {
     return NextResponse.json({ error: 'Not found' }, { status: 404, headers: cors })
   }
 
-  const cfg = (data.config || {}) as Record<string, any>
+  const cfg = (data.config || {}) as Record<string, unknown>
   const name = cfg.name || data.name || 'Assistant'
 
   return NextResponse.json(

@@ -12,7 +12,7 @@ import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
-async function getOrgAndCustomQ(supabase: any, userId: string) {
+async function getOrgAndCustomQ(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
   const { data: userData } = await supabase
     .from('users').select('org_id').eq('id', userId).single()
   const orgId = userData?.org_id

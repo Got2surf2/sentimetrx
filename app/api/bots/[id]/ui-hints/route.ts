@@ -46,7 +46,12 @@ export async function POST(req: NextRequest, props: Params) {
   const rl = await checkRateLimit('bot_chat:' + ip, 30, 60000)
   if (rl.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: cors })
 
-  let body: any
+  interface RequestBody {
+    userMessage?: unknown
+    assistantMessage?: unknown
+    context?: { activeTerminal?: unknown; lastCanvasType?: unknown }
+  }
+  let body: RequestBody
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors })
   }
@@ -71,8 +76,8 @@ export async function POST(req: NextRequest, props: Params) {
       ctx.activeTerminal = rawCtx.activeTerminal
     }
     const allowedTypes: UiHint['type'][] = ['terminal_map', 'parking', 'restaurants', 'shops', 'link_card', 'security_wait', 'indoor_map', 'flight_list', 'welcome']
-    if (typeof rawCtx.lastCanvasType === 'string' && allowedTypes.includes(rawCtx.lastCanvasType)) {
-      ctx.lastCanvasType = rawCtx.lastCanvasType
+    if (typeof rawCtx.lastCanvasType === 'string' && allowedTypes.includes(rawCtx.lastCanvasType as UiHint['type'])) {
+      ctx.lastCanvasType = rawCtx.lastCanvasType as UiHint['type']
     }
     if (ctx.activeTerminal || ctx.lastCanvasType) extractorContext = ctx
   }

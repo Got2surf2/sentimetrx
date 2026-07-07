@@ -15,7 +15,7 @@ export async function PATCH(req: NextRequest, props: Params) {
   const denied = await requireAdmin()
   if (denied) return denied
 
-  let body: any
+  let body: { org_id?: unknown }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
   const { org_id } = body
   if (!org_id || typeof org_id !== 'string') {

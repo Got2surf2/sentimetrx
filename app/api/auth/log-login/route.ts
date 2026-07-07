@@ -22,9 +22,9 @@ export async function POST(req: NextRequest) {
   const rl = await checkRateLimit('log-login:' + user.id, 20, 60 * 1000)
   if (rl.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
 
-  let body: any
+  let body: { method?: string }
   try { body = await req.json() } catch { body = {} }
-  const method: LoginMethod = VALID.includes(body?.method) ? body.method : 'password'
+  const method: LoginMethod = VALID.includes(body?.method as LoginMethod) ? (body.method as LoginMethod) : 'password'
 
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || null
   const ua = req.headers.get('user-agent') || null

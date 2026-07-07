@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     if (text.length > 50000) text = text.slice(0, 50000) + '\n\n[Truncated — content exceeds 50,000 characters]'
 
     return NextResponse.json({ text, length: text.length, url })
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (err instanceof SafeFetchError) {
       return NextResponse.json({ error: err.message }, { status: err.status })
     }

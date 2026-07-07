@@ -49,7 +49,7 @@ function timeWindow(hint: string | undefined): { startSec: number; endSec: numbe
 }
 
 export async function POST(req: NextRequest) {
-  let body: any = {}
+  let body: Record<string, unknown> = {}
   try { body = await req.json() } catch {}
 
   const airline = typeof body?.airline === 'string' && body.airline.length <= 4 ? body.airline.toUpperCase() : undefined

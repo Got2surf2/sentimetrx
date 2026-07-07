@@ -181,3 +181,9 @@ WHY: Continue to zero.
 WHY: Continue to zero.
 
 41 files (−41): s/[guid], pulseiq/mco-demo/bots/social pages+clients, studies/study/social/review-sources routes. Reconciled the `resolveOrg as any` removals cascading OrgFeatures into `Record<string,boolean>` client props (widened NewSessionClient/SessionDetailClient+its local Shell/CampaignDetailClient features props → ModuleFeatures) + dedup'd favorites EnrichedFav (exported client type, boundary-cast page's ResourceRow-backed array). Global tsc 0 errors, 1238 tests pass, 459→418. Ceiling → 418. Not pushed.
+
+## ESLint burn-down wave 15 — 46 files (Jul 7)
+
+WHY: Continue to zero.
+
+46 files (−44): mostly API routes (mco, invite, orgs, datasets, cron, bots, admin, recordings) + taxonomy page — largely catch(e:any)→unknown and org-relation/body casts. No cross-file conflicts (tsc clean first pass). Global tsc 0 errors, 1238 tests pass, 418→374. Ceiling → 374. Not pushed.

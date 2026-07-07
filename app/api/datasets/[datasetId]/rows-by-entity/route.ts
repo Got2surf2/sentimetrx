@@ -26,7 +26,7 @@ export async function GET(req: Request, props: Params) {
   const { data: ds } = await service
     .from('datasets').select('id, org_id').eq('id', params.datasetId).single()
   if (!ds) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
-  if (!isAdmin && (ds as any).org_id !== orgId) {
+  if (!isAdmin && (ds as { org_id: string | null }).org_id !== orgId) {
     return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
   }
 

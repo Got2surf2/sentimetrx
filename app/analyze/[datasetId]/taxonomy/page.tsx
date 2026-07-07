@@ -23,7 +23,7 @@ export default async function TaxonomyPage(props: Props) {
     .select('org_id, organizations(features, is_admin_org)')
     .eq('id', user.id)
     .single()
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
   return <TaxonomyModule datasetId={datasetId} />

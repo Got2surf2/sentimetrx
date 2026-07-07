@@ -116,7 +116,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ suggestion: result })
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error({ at: 'study-suggest', msg: "error", err: err })
     return NextResponse.json({ error: 'Failed to generate suggestions' }, { status: 500 })
   }

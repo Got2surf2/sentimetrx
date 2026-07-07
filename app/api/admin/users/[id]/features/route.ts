@@ -18,16 +18,22 @@ interface Params { params: Promise<{ id: string }> }
 
 const KNOWN_FEATURES = new Set(['recording'])
 
+interface FeatureRequestBody {
+  feature?: string
+  enabled?: boolean | null
+  quota_per_month?: unknown
+}
+
 export async function PUT(req: NextRequest, props: Params) {
   const params = await props.params;
   const denied = await requireAdmin()
   if (denied) return denied
 
-  let body: any
+  let body: FeatureRequestBody
   try { body = await req.json() } catch { return NextResponse.json({ error: 'invalid JSON' }, { status: 400 }) }
 
   const feature = body?.feature
-  if (!KNOWN_FEATURES.has(feature)) {
+  if (!KNOWN_FEATURES.has(feature as string)) {
     return NextResponse.json({ error: 'unknown feature' }, { status: 400 })
   }
   if (body?.enabled !== null && typeof body?.enabled !== 'boolean') {

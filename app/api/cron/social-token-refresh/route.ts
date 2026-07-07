@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
         .eq('id', conn.id)
 
       refreshed++
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error({ at: 'social-token-refresh', msg: 'connection error', connectionId: conn.id, err })
       failed++
     }

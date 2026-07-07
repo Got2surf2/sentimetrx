@@ -139,14 +139,14 @@ export async function GET(req: NextRequest) {
         }
 
         sent++
-      } catch (err: any) {
+      } catch (err: unknown) {
         await service.from('campaign_send_log').insert({
           campaign_id: campaign.id,
           respondent_id: respondent.id,
           email_id: emailTemplate.id,
           provider: campaign.email_provider,
           status: 'failed',
-          error_message: err.message || 'Unknown error',
+          error_message: (err instanceof Error ? err.message : undefined) || 'Unknown error',
           schedule_id: schedule.id,
         })
         failed++

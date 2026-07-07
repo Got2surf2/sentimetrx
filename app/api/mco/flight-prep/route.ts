@@ -54,7 +54,7 @@ export async function OPTIONS() {
 const BOARDING_BUFFER_MIN = 30
 
 export async function POST(req: NextRequest) {
-  let body: any = {}
+  let body: Record<string, unknown> = {}
   try { body = await req.json() } catch {}
   const flightStr = typeof body?.flight === 'string' ? body.flight.slice(0, 24) : ''
   const gateStr   = typeof body?.gate === 'string' ? body.gate.slice(0, 12) : ''

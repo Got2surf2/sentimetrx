@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
       sources: pageContents.map(p => p.url),
       source_count: pageContents.length,
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'bots.research')
   }
 }

@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
         errors: result.locations_errored,
       })
       consecutiveErrors = 0
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error({ at: 'cron/review-sync', msg: 'source failed', sourceId: source.id, err })
       results.push({ brand: source.brand_name, synced: 0, errors: 1 })
       consecutiveErrors++
@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
       // failures will keep logging but not silently disappear from the
       // refresh schedule.
       await service.from('review_sources').update({
-        error_message: err?.message?.slice(0, 500) || 'Cron sync failed',
+        error_message: (err instanceof Error ? err.message.slice(0, 500) : '') || 'Cron sync failed',
         next_sync_at: new Date(Date.now() + 6 * 3600 * 1000).toISOString(),
         updated_at: now,
       }).eq('id', source.id)

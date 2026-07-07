@@ -37,7 +37,7 @@ export async function GET(request: Request) {
     }
 
     return Response.json({ features: org.features || {} })
-  } catch (error: any) {
+  } catch (error: unknown) {
     return serverError(error, 'org.settings.get')
   }
 }

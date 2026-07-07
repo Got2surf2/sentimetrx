@@ -25,7 +25,7 @@ export async function GET(_req: Request, props: Params) {
 
   if (!memberships || memberships.length === 0) return NextResponse.json({})
 
-  const colDatasetId = (memberships[0].collections as any)?.dataset_id
+  const colDatasetId = (memberships[0].collections as { dataset_id?: string } | null)?.dataset_id
   if (!colDatasetId) return NextResponse.json({})
 
   // Get collection dataset name

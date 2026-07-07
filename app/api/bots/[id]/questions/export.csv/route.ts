@@ -32,7 +32,7 @@ function redactPII(text: string): string {
     .replace(ADDR_RE, '[address]')
 }
 
-function csvEscape(v: any): string {
+function csvEscape(v: unknown): string {
   if (v === null || v === undefined) return ''
   const s = String(v)
   if (s.includes('"') || s.includes(',') || s.includes('\n') || s.includes('\r')) {

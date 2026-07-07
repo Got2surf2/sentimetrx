@@ -42,7 +42,7 @@ export async function PUT(req: Request, props: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: any
+  let body: { mode?: unknown; provider?: unknown; api_key?: unknown }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
   const mode = body?.mode
   if (mode !== 'off' && mode !== 'platform' && mode !== 'byo') {

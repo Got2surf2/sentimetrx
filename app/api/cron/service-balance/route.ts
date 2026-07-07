@@ -98,8 +98,8 @@ export async function GET(req: NextRequest) {
       await Promise.all(toAlert.map(r =>
         service.from('service_health').update({ last_alerted_at: stamp }).eq('service', r.service)
       ))
-    } catch (e: any) {
-      console.error({ at: 'cron/service-balance', msg: 'email send failed', err: e?.message || e })
+    } catch (e: unknown) {
+      console.error({ at: 'cron/service-balance', msg: 'email send failed', err: e instanceof Error ? e.message : e })
     }
   }
 

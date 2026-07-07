@@ -35,7 +35,7 @@ export async function POST(req: Request) {
         'Content-Length': String(buffer.length),
       },
     })
-  } catch (err: any) {
+  } catch (err) {
     return serverError(err, 'ana.render-deck')
   }
 }

@@ -43,7 +43,7 @@ export async function PATCH(req: NextRequest, props: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: any
+  let body: Record<string, unknown>
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const allowed = ['name', 'status', 'target_responses', 'email_provider', 'email_config', 'send_thank_you', 'send_incomplete', 'study_url', 'hidden_fields']

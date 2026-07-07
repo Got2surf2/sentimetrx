@@ -17,7 +17,7 @@ export async function GET(req: NextRequest, props: Params) {
     .eq('id', user.id)
     .single()
 
-  const orgData = Array.isArray(userData?.organizations) ? userData.organizations[0] : userData?.organizations as any
+  const orgData = Array.isArray(userData?.organizations) ? userData.organizations[0] : userData?.organizations as { is_admin_org?: boolean } | null | undefined
   const isAdmin = orgData?.is_admin_org === true
   const sameOrg = userData?.org_id === params.id
 
