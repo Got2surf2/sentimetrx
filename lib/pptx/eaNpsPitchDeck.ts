@@ -31,8 +31,10 @@
 
 import type PptxGenJS from 'pptxgenjs'
 
-// Brand palette — mirrors eaMembershipDeck (Sentimetrx-forward accents) plus two
-// emotion colors: regret = violet (internal), disappointment = amber (external).
+// Brand palette — mirrors eaMembershipDeck (Sentimetrx-forward accents). The two
+// emotion colors use the Datanautix brand pairing (no purple): regret = deep
+// Sarina blue (internal), disappointment = Ana orange (external). EA’s gold
+// (≈ #f7c64d) rides through as the accent — a subtle nod to EA SPORTS.
 const DN = {
   teal: '0F7173',
   navy: '0D2B45',
@@ -46,10 +48,10 @@ const DN = {
   white: 'FFFFFF',
   sarinaBlue: '00B4D8',
   hermesOrange: 'E8632A',
-  regret: '7C3AED', // violet — internal attribution / self-blame
-  regretTint: 'EDE9FE',
-  disappoint: 'D97706', // amber — external attribution
-  disappointTint: 'FEF3C7',
+  regret: '0E63A8', // deep Sarina blue — internal attribution / self-blame
+  regretTint: 'E1EFFB',
+  disappoint: 'E85A1A', // Ana orange — external attribution
+  disappointTint: 'FCEBD8',
   green: '16A34A',
   red: 'DC2626',
 }
@@ -350,7 +352,7 @@ Quotes are representative of real public forum language (verbatims next slide).`
   const voc = [
     { tag: 'REGRET', c: DN.regret, q: '“If you’re buying the MVP bundle you might as well buy MVP+ — it’s the same price and you get the extras.”' },
     { tag: 'CONFUSION', c: DN.gold, q: '“If you buy the subscription do you get the deluxe edition stuff PLUS the stuff from the subscription?”' },
-    { tag: 'CLARITY GAP', c: DN.sarinaBlue, q: '“They just want people to sign up and forget the $150 renewal is coming.” — players want to understand what they bought.' },
+    { tag: 'CLARITY GAP', c: DN.teal, q: '“They just want people to sign up and forget the $150 renewal is coming.” — players want to understand what they bought.' },
     { tag: 'DISAPPOINTMENT', c: DN.disappoint, q: 'An EA forum thread, verbatim title: “Purchased MVP+, but not receiving early access.”' },
   ]
   voc.forEach((v, i) => {
