@@ -16,6 +16,14 @@ export const dynamic = 'force-dynamic'
 
 interface Params { params: Promise<{ id: string }> }
 
+interface OrgRow {
+  id: string
+  name: string
+  plan: string | null
+  status: string | null
+  is_admin_org: boolean | null
+}
+
 export async function PATCH(req: Request, props: Params) {
   const params = await props.params;
   const denied = await requireAdmin()
@@ -96,25 +104,26 @@ export async function DELETE(req: Request, props: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: any
+  let body: { confirm_name?: string } | null
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
   const confirmName: string | undefined = body?.confirm_name
 
   const service = createServiceRoleClient()
-  const { data: org } = await service
+  const { data } = await service
     .from('organizations')
     .select('id, name, plan, status, is_admin_org')
     .eq('id', params.id)
     .single()
+  const org = data as OrgRow | null
   if (!org) return NextResponse.json({ error: 'Org not found' }, { status: 404 })
 
-  if ((org as any).is_admin_org) {
+  if (org.is_admin_org) {
     return NextResponse.json({ error: 'Cannot delete the platform admin org' }, { status: 400 })
   }
-  if ((org as any).plan !== 'suspended' && (org as any).status !== 'suspended') {
+  if (org.plan !== 'suspended' && org.status !== 'suspended') {
     return NextResponse.json({ error: 'Suspend the org first — active orgs cannot be hard-deleted' }, { status: 400 })
   }
-  if (!confirmName || String(confirmName).trim().toLowerCase() !== String((org as any).name).trim().toLowerCase()) {
+  if (!confirmName || String(confirmName).trim().toLowerCase() !== String(org.name).trim().toLowerCase()) {
     return NextResponse.json({ error: 'confirm_name must match the org name exactly' }, { status: 400 })
   }
 
@@ -123,12 +132,12 @@ export async function DELETE(req: Request, props: Params) {
     service,
     actionType:       'org.delete',
     resourceType:     'org',
-    resourceId:       (org as any).id,
-    resourceName:     (org as any).name,
-    targetOrgId:      (org as any).id,
+    resourceId:       org.id,
+    resourceName:     org.name,
+    targetOrgId:      org.id,
     initiatedBy:      user.id,
     initiatedByEmail: user.email ?? null,
-    metadata:         { action: 'org_hard_delete', org_name: (org as any).name },
+    metadata:         { action: 'org_hard_delete', org_name: org.name },
   })
 
   // Collect the org's auth user ids BEFORE the sweep clears public.users —
@@ -142,9 +151,9 @@ export async function DELETE(req: Request, props: Params) {
   // if any table couldn't be cleared, DON'T delete the org row — leave it
   // suspended and surface which tables blocked, so we never half-erase and
   // report success. The sweep is idempotent, so the operator can re-run.
-  const sweep = await deleteOrgScopedData((org as any).id)
+  const sweep = await deleteOrgScopedData(org.id)
   if (Object.keys(sweep.failed).length > 0) {
-    console.error('[org.delete] incomplete erasure for ' + (org as any).id + ':', JSON.stringify(sweep.failed))
+    console.error('[org.delete] incomplete erasure for ' + org.id + ':', JSON.stringify(sweep.failed))
     return NextResponse.json({
       error: 'Erasure incomplete — these tables could not be cleared: ' + Object.keys(sweep.failed).join(', ') + '. Org left suspended; investigate and retry.',
       failed: sweep.failed,
@@ -156,10 +165,10 @@ export async function DELETE(req: Request, props: Params) {
   // org row; surface any leftovers as `warnings` for manual follow-up. (S3
   // org-snapshots are a documented break-glass purge — the backup role has no
   // delete permission by design.)
-  const storage = await deleteOrgStorage((org as any).id)
+  const storage = await deleteOrgStorage(org.id)
   const auth = await purgeOrgAuthUsers(userIds)
   const warnings = [...storage.errors.map(e => 'storage: ' + e), ...auth.errors.map(e => 'auth: ' + e)]
-  if (warnings.length > 0) console.error('[org.delete] cleanup warnings for ' + (org as any).id + ':', JSON.stringify(warnings))
+  if (warnings.length > 0) console.error('[org.delete] cleanup warnings for ' + org.id + ':', JSON.stringify(warnings))
 
   // Finally the org row itself (cascades the few org_id-CASCADE tables, already
   // emptied by the sweep above).
@@ -168,7 +177,7 @@ export async function DELETE(req: Request, props: Params) {
 
   return NextResponse.json({
     ok: true,
-    deleted: { id: (org as any).id, name: (org as any).name },
+    deleted: { id: org.id, name: org.name },
     tables_cleared: sweep.deleted.length,
     storage_objects_removed: storage.removed,
     auth_users_deleted: auth.deleted,

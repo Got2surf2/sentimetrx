@@ -10,9 +10,15 @@
 // when the resource belongs to orgB.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { NextRequest } from 'next/server'
+import type { CallerOrgContext } from '@/lib/auth/orgAccess'
 
-const ctx = {
-  caller: { userId: 'u1', orgId: 'orgA', isAdmin: false } as any,
+// Route-handler context shapes (Next 16 async params).
+type DsCtx = { params: Promise<{ datasetId: string }> }
+type IdCtx = { params: Promise<{ id: string }> }
+
+const ctx: { caller: CallerOrgContext; rowOrg: string; recStatus: string; recOwner: string } = {
+  caller: { userId: 'u1', orgId: 'orgA', isAdmin: false },
   rowOrg: 'orgB',          // the resource's owning org (cross-tenant by default)
   recStatus: 'complete',   // recordings.status for the export-route happy path
   recOwner: 'u1',          // recordings.created_by — share/send are org-wide now (creator no longer matters)
@@ -20,8 +26,21 @@ const ctx = {
 
 vi.mock('@/lib/auth/orgAccess', () => ({ getCallerOrgContext: async () => ctx.caller }))
 
+type QueryBuilderMock = {
+  select: () => QueryBuilderMock
+  eq: () => QueryBuilderMock
+  order: () => QueryBuilderMock
+  range: () => QueryBuilderMock
+  in: () => QueryBuilderMock
+  limit: () => QueryBuilderMock
+  update: () => QueryBuilderMock
+  single: () => Promise<{ data: unknown; error: null }>
+  maybeSingle: () => Promise<{ data: unknown; error: null }>
+  then: (res: (value: unknown) => unknown, rej: (reason: unknown) => unknown) => Promise<unknown>
+}
+
 vi.mock('@/lib/supabase/server', () => {
-  const builder = (table: string): any => {
+  const builder = (table: string): QueryBuilderMock => {
     const row =
       table === 'datasets'
         ? { id: 'ds_1', name: 'X', source: 'reddit', row_count: 1, org_id: ctx.rowOrg, studies: null }
@@ -30,11 +49,11 @@ vi.mock('@/lib/supabase/server', () => {
           : table === 'recordings'
             ? { id: 'rec_1', name: 'X', meeting_date: null, location: null, status: ctx.recStatus, analysis_summary: null, org_id: ctx.rowOrg, created_by: ctx.recOwner, share_token: null, share_enabled: false }
             : { id: 'x', org_id: ctx.rowOrg }
-    const b: any = {}
-    for (const m of ['select', 'eq', 'order', 'range', 'in', 'limit', 'update']) b[m] = () => b
+    const b = {} as QueryBuilderMock
+    for (const m of ['select', 'eq', 'order', 'range', 'in', 'limit', 'update'] as const) b[m] = () => b
     b.single = async () => ({ data: row, error: null })
     b.maybeSingle = async () => ({ data: row, error: null })
-    b.then = (res: any, rej: any) => Promise.resolve({ data: [row], error: null, count: 1 }).then(res, rej)
+    b.then = (res, rej) => Promise.resolve({ data: [row], error: null, count: 1 }).then(res, rej)
     return b
   }
   return {
@@ -70,37 +89,37 @@ function post(body: unknown, url = 'http://t/x') {
 
 describe('export routes — cross-org gate (non-admin in orgA, resource in orgB → 404)', () => {
   it('datasets signals-pptx export', async () => {
-    const res = await signals.POST(post({}), { params: { datasetId: 'ds_1' } } as any)
+    const res = await signals.POST(post({}), { params: { datasetId: 'ds_1' } } as unknown as DsCtx)
     expect(res.status).toBe(404)
   })
 
   it('datasets html export', async () => {
-    const res = await htmlExport.POST(post({ fields: ['q1'] }), { params: { datasetId: 'ds_1' } } as any)
+    const res = await htmlExport.POST(post({ fields: ['q1'] }), { params: { datasetId: 'ds_1' } } as unknown as DsCtx)
     expect(res.status).toBe(404)
   })
 
   it('datasets pptx export', async () => {
-    const res = await pptxExport.POST(post({ fields: ['q1'] }), { params: { datasetId: 'ds_1' } } as any)
+    const res = await pptxExport.POST(post({ fields: ['q1'] }), { params: { datasetId: 'ds_1' } } as unknown as DsCtx)
     expect(res.status).toBe(404)
   })
 
   it('townhall pptx export', async () => {
-    const res = await thPptx.POST(post({}) as any, { params: { id: 's_1' } } as any)
+    const res = await thPptx.POST(post({}) as unknown as NextRequest, { params: { id: 's_1' } } as unknown as IdCtx)
     expect(res.status).toBe(404)
   })
 
   it('townhall csv export', async () => {
-    const res = await thCsv.GET(new (await import('next/server')).NextRequest('http://t/x?format=csv'), { params: { id: 's_1' } } as any)
+    const res = await thCsv.GET(new (await import('next/server')).NextRequest('http://t/x?format=csv'), { params: { id: 's_1' } } as unknown as IdCtx)
     expect(res.status).toBe(404)
   })
 
   it('recording pptx export', async () => {
-    const res = await recPptx.POST(post({}), { params: Promise.resolve({ id: 'rec_1' }) } as any)
+    const res = await recPptx.POST(post({}), { params: Promise.resolve({ id: 'rec_1' }) })
     expect(res.status).toBe(404)
   })
 
   it('recording share enable (cross-org → 404, never publishes another org\'s report)', async () => {
-    const res = await recShare.POST(post({ enabled: true }), { params: Promise.resolve({ id: 'rec_1' }) } as any)
+    const res = await recShare.POST(post({ enabled: true }), { params: Promise.resolve({ id: 'rec_1' }) })
     expect(res.status).toBe(404)
   })
 
@@ -109,7 +128,7 @@ describe('export routes — cross-org gate (non-admin in orgA, resource in orgB 
     // signals-pptx proceeds past the gate; next branch is the reddit/substack
     // source check (our mock dataset.source='reddit' passes) so it does NOT 404
     // on the org gate. We only assert it's not the gate's 404.
-    const res = await signals.POST(post({}), { params: { datasetId: 'ds_1' } } as any)
+    const res = await signals.POST(post({}), { params: { datasetId: 'ds_1' } } as unknown as DsCtx)
     expect(res.status).not.toBe(404)
   })
 })
@@ -118,7 +137,7 @@ describe('recording pptx export — status + content-type', () => {
   it('same-org owner of a complete recording → 200 + pptx content-type', async () => {
     ctx.rowOrg = 'orgA'
     ctx.recStatus = 'complete'
-    const res = await recPptx.POST(post({}), { params: Promise.resolve({ id: 'rec_1' }) } as any)
+    const res = await recPptx.POST(post({}), { params: Promise.resolve({ id: 'rec_1' }) })
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toContain('presentationml.presentation')
   })
@@ -126,13 +145,13 @@ describe('recording pptx export — status + content-type', () => {
   it('409 when analysis is not finished (status != complete)', async () => {
     ctx.rowOrg = 'orgA'
     ctx.recStatus = 'transcribed'
-    const res = await recPptx.POST(post({}), { params: Promise.resolve({ id: 'rec_1' }) } as any)
+    const res = await recPptx.POST(post({}), { params: Promise.resolve({ id: 'rec_1' }) })
     expect(res.status).toBe(409)
   })
 
   it('401 when unauthenticated', async () => {
     ctx.caller = { userId: null, orgId: null, isAdmin: false }
-    const res = await recPptx.POST(post({}), { params: Promise.resolve({ id: 'rec_1' }) } as any)
+    const res = await recPptx.POST(post({}), { params: Promise.resolve({ id: 'rec_1' }) })
     expect(res.status).toBe(401)
   })
 })
@@ -141,20 +160,20 @@ describe('recording public-share toggle — org-member + status gates', () => {
   it('same-org non-creator CAN enable sharing — org-wide, not owner-gated', async () => {
     ctx.rowOrg = 'orgA'
     ctx.recOwner = 'someone_else'   // caller u1 is in the org but didn't create it
-    const res = await recShare.POST(post({ enabled: true }), { params: Promise.resolve({ id: 'rec_1' }) } as any)
+    const res = await recShare.POST(post({ enabled: true }), { params: Promise.resolve({ id: 'rec_1' }) })
     expect(res.status).toBe(200)
   })
 
   it('a member cannot enable sharing until analysis is complete (409)', async () => {
     ctx.rowOrg = 'orgA'
     ctx.recStatus = 'transcribed'
-    const res = await recShare.POST(post({ enabled: true }), { params: Promise.resolve({ id: 'rec_1' }) } as any)
+    const res = await recShare.POST(post({ enabled: true }), { params: Promise.resolve({ id: 'rec_1' }) })
     expect(res.status).toBe(409)
   })
 
   it('owner of a complete recording enables sharing → ok + token + /th path', async () => {
     ctx.rowOrg = 'orgA'
-    const res = await recShare.POST(post({ enabled: true }), { params: Promise.resolve({ id: 'rec_1' }) } as any)
+    const res = await recShare.POST(post({ enabled: true }), { params: Promise.resolve({ id: 'rec_1' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.enabled).toBe(true)

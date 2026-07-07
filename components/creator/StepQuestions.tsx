@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react'
 import type { StepProps } from '@/lib/studyDraft'
-import type { SurveyQuestion, LikertFollowUp, QuestionType, KeywordTrigger } from '@/lib/types'
+import type { SurveyQuestion, LikertFollowUp, QuestionType, KeywordTrigger, PsychoQuestion, DemoField, SkipRule } from '@/lib/types'
 import { Section, NavButtons, TransitionMessagePanel, Input as CreatorInput } from './CreatorUI'
 import { INDUSTRY_SUGGESTED_QUESTIONS, INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
 import EmojiPickerPopover, { RATING_SCALE_EMOJIS } from './EmojiPickerPopover'
@@ -10,6 +10,17 @@ import EmojiPickerPopover, { RATING_SCALE_EMOJIS } from './EmojiPickerPopover'
 // -- Helpers --------------------------------------------------
 
 const HERMES = '#E8632A'
+
+// Question augmented with the analytics display alias (persisted via JSONB, not on SurveyQuestion)
+type QuestionWithAnalytics = SurveyQuestion & { analyticsLabel?: string }
+
+// Shape of a question-bank entry returned by /api/questions/library
+interface BankQuestion {
+  prompt:           string
+  keywordTriggers:  KeywordTrigger[]
+  defaultFollowOn?: string
+  triggerType?:     string
+}
 
 const genId = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
 
@@ -427,7 +438,7 @@ function QuestionCard({
           {/* Analytics display alias */}
           <div>
             <label className={labelCls}>Analytics label <span className="text-gray-400 font-normal">(short name shown in charts &amp; PPTX)</span></label>
-            <input type="text" value={(q as any).analyticsLabel || ''} onChange={e => set({ analyticsLabel: e.target.value } as any)}
+            <input type="text" value={(q as QuestionWithAnalytics).analyticsLabel || ''} onChange={e => set({ analyticsLabel: e.target.value } as Partial<QuestionWithAnalytics>)}
               placeholder={q.prompt ? q.prompt.slice(0, 50) : 'Short label for analytics reports'}
               className={inputCls} />
           </div>
@@ -519,7 +530,7 @@ function QuestionCard({
                 return (
                   <div key={ri} className="flex items-center gap-2 mb-2 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2">
                     <span className="text-[10px] text-gray-500 flex-shrink-0">If answer</span>
-                    <select value={rule.condition} onChange={e => updateRule({ condition: e.target.value as any })}
+                    <select value={rule.condition} onChange={e => updateRule({ condition: e.target.value as SkipRule['condition'] })}
                       className="text-[10px] border border-gray-200 rounded px-1.5 py-1 outline-none focus:border-orange-400 bg-white">
                       <option value="equals">equals</option>
                       <option value="not_equals">does not equal</option>
@@ -697,7 +708,7 @@ function OpenEndedBankPanel({
   existingPrompts: Set<string>
 }) {
   const [open, setOpen] = useState(false)
-  const [bankQuestions, setBankQuestions] = useState<any[]>([])
+  const [bankQuestions, setBankQuestions] = useState<BankQuestion[]>([])
   const [loading, setLoading] = useState(false)
   const [loadedIndustry, setLoadedIndustry] = useState<string | null>(null)
 
@@ -788,11 +799,11 @@ function OpenEndedBankPanel({
 }
 
 // -- Survey Flow Panel (compact reorder view) ----------------
-function SurveyFlowPanel({ draft, onReorderQuestions, onReorderDemos }: { draft: StepProps['draft']; onReorderQuestions: (qs: SurveyQuestion[]) => void; onReorderDemos: (df: any[]) => void }) {
+function SurveyFlowPanel({ draft, onReorderQuestions, onReorderDemos }: { draft: StepProps['draft']; onReorderQuestions: (qs: SurveyQuestion[]) => void; onReorderDemos: (df: DemoField[]) => void }) {
   const [open, setOpen] = useState(false)
   const c = draft.config
   const questions: SurveyQuestion[] = c.questions ?? []
-  const psychoBank: any[] = c.psychographicBank ?? []
+  const psychoBank: PsychoQuestion[] = c.psychographicBank ?? []
   const dragIdx = useRef<number | null>(null)
   const dragGroup = useRef<string | null>(null)
 
@@ -814,20 +825,20 @@ function SurveyFlowPanel({ draft, onReorderQuestions, onReorderDemos }: { draft:
     { key: 'gender', label: 'Gender', type: 'select', enabled: true },
     { key: 'zip', label: 'ZIP Code', type: 'text', enabled: true },
   ]
-  const enabledDemos = demoFields.filter((f: any) => f.enabled)
+  const enabledDemos = demoFields.filter((f: DemoField) => f.enabled)
 
   const onDragStartD = (i: number) => { dragIdx.current = i; dragGroup.current = 'demo' }
   const onDragOverD = (e: React.DragEvent, i: number) => {
     e.preventDefault()
     if (dragGroup.current !== 'demo' || dragIdx.current === null || dragIdx.current === i) return
     // Reorder within the full demoFields array using enabled-index mapping
-    const enabledKeys = enabledDemos.map((f: any) => f.key)
+    const enabledKeys = enabledDemos.map((f: DemoField) => f.key)
     const full = [...demoFields]
     // Find actual indices in the full array
     const fromKey = enabledKeys[dragIdx.current]
     const toKey = enabledKeys[i]
-    const fromFull = full.findIndex((f: any) => f.key === fromKey)
-    const toFull = full.findIndex((f: any) => f.key === toKey)
+    const fromFull = full.findIndex((f: DemoField) => f.key === fromKey)
+    const toFull = full.findIndex((f: DemoField) => f.key === toKey)
     if (fromFull < 0 || toFull < 0) return
     const [moved] = full.splice(fromFull, 1)
     full.splice(toFull, 0, moved)
@@ -923,7 +934,7 @@ function SurveyFlowPanel({ draft, onReorderQuestions, onReorderDemos }: { draft:
           {psychoBank.length > 0 && (
             <div>
               <div className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">Psychographics ({psychoBank.length})</div>
-              {psychoBank.slice(0, 8).map((q: any) => (
+              {psychoBank.slice(0, 8).map((q: PsychoQuestion) => (
                 <Row key={q.key} icon="🧠" label={(q.exportLabel || q.q || q.key).slice(0, 50)} sub="Bank" />
               ))}
               {psychoBank.length > 8 && (
@@ -935,7 +946,7 @@ function SurveyFlowPanel({ draft, onReorderQuestions, onReorderDemos }: { draft:
           {/* Demographics — draggable */}
           <div>
             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">Demographics ({enabledDemos.length})</div>
-            {enabledDemos.map((f: any, i: number) => (
+            {enabledDemos.map((f: DemoField, i: number) => (
               <Row key={f.key} icon="👤" label={f.label || f.key} sub={f.type === 'select' ? 'Dropdown' : 'Text'}
                 draggable onDS={() => onDragStartD(i)} onDO={(e) => onDragOverD(e, i)} />
             ))}
@@ -955,7 +966,7 @@ interface Props extends StepProps { onNext: () => void; onBack: () => void }
 export default function StepQuestions({ draft, updateConfig, onNext, onBack }: Props) {
   const questions: SurveyQuestion[] = draft.config.questions ?? []
   const [addingType, setAddingType] = useState<QuestionType | null>(null)
-  const industry = ((draft as any).industry || draft.config.industry || '') as string
+  const industry = (draft.industry || draft.config.industry || '') as string
 
   const customQCount = draft.config.customQCount ?? 0
   const totalQ       = questions.length

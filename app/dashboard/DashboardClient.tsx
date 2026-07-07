@@ -11,10 +11,21 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { ModuleFeatures } from '@/lib/types'
 
+interface StudyConfig {
+  theme?: { headerGradient?: string }
+  industry?: string
+}
 interface Study {
   id: string; guid: string; slug?: string; name: string; bot_name: string; bot_emoji: string
   status: string; visibility: string; created_by: string; created_at: string
-  config: any; org_id?: string; orgName?: string; creatorName?: string
+  config?: StudyConfig | null; org_id?: string; orgName?: string; creatorName?: string
+}
+interface ResponseRow {
+  status?: string
+  sentiment?: string
+  experience_score?: number | null
+  nps_score?: number | null
+  completed_at?: string | null
 }
 interface StudyStats {
   total: number; completeCount: number; promoters: number; passives: number; detractors: number
@@ -102,8 +113,8 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
     setBusy(true)
     try {
       await onPatch(study.id, body)
-      if ('status'     in body) setStatus((body as any).status)
-      if ('visibility' in body) setVis((body as any).visibility)
+      if ('status'     in body) setStatus((body as { status: string }).status)
+      if ('visibility' in body) setVis((body as { visibility: string }).visibility)
     } finally { setBusy(false) }
   }
 
@@ -134,15 +145,15 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
         const rows = data.responses || data.data || []
         if (Array.isArray(rows)) {
           const total = rows.length
-          const completeCount = rows.filter((r: any) => r.status === 'complete' || !r.status).length
-          const promoters = rows.filter((r: any) => (r.sentiment === 'positive' || r.sentiment === 'promoter')).length
-          const passives = rows.filter((r: any) => (r.sentiment === 'neutral' || r.sentiment === 'passive')).length
-          const detractors = rows.filter((r: any) => (r.sentiment === 'negative' || r.sentiment === 'detractor')).length
-          const scoreRows = rows.filter((r: any) => r.experience_score != null)
+          const completeCount = rows.filter((r: ResponseRow) => r.status === 'complete' || !r.status).length
+          const promoters = rows.filter((r: ResponseRow) => (r.sentiment === 'positive' || r.sentiment === 'promoter')).length
+          const passives = rows.filter((r: ResponseRow) => (r.sentiment === 'neutral' || r.sentiment === 'passive')).length
+          const detractors = rows.filter((r: ResponseRow) => (r.sentiment === 'negative' || r.sentiment === 'detractor')).length
+          const scoreRows = rows.filter((r: ResponseRow) => r.experience_score != null)
           const avgScore = scoreRows.length > 0
-            ? Math.round(scoreRows.reduce((s: number, r: any) => s + (r.experience_score || 0), 0) / scoreRows.length * 10) / 10
-            : (total > 0 ? Math.round(rows.reduce((s: number, r: any) => s + (r.nps_score || 0), 0) / total * 10) / 10 : 0)
-          const dates = rows.map((r: any) => r.completed_at).filter(Boolean).sort()
+            ? Math.round(scoreRows.reduce((s: number, r: ResponseRow) => s + (r.experience_score || 0), 0) / scoreRows.length * 10) / 10
+            : (total > 0 ? Math.round(rows.reduce((s: number, r: ResponseRow) => s + (r.nps_score || 0), 0) / total * 10) / 10 : 0)
+          const dates = rows.map((r: ResponseRow) => r.completed_at).filter((d: string | null | undefined): d is string => Boolean(d)).sort()
           const lastResponse = dates.length > 0 ? dates[dates.length - 1] : stats.lastResponse
           setStats({ total, completeCount, promoters, passives, detractors, avgScore, ratingLabel: stats.ratingLabel, lastResponse })
         }
@@ -152,7 +163,7 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
   }
 
   const industryLabel = study.config?.industry
-    ? (INDUSTRY_LABELS as any)[study.config.industry] || study.config.industry
+    ? INDUSTRY_LABELS[study.config.industry as Industry] || study.config.industry
     : null
 
   return (
@@ -484,7 +495,7 @@ export default function DashboardClient({ user, studies: initialStudies, logoUrl
           currentPage="dashboard"
           analyzeEnabled={analyzeEnabled}
           campaignsEnabled={campaignsEnabled}
-          features={features as any}
+          features={features}
         />
       </div>
       <SubHeader crumbs={[{ label: 'Dashboard' }]} isAdmin={user.isAdmin} orgId={orgId} showFilters />

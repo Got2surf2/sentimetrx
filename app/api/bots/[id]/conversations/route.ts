@@ -29,9 +29,11 @@ export async function GET(req: NextRequest, props: Params) {
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : (orgRel as any)?.is_admin_org
-  const userOrgId = (userData as any)?.org_id as string | null
+  type OrgRel = { is_admin_org?: boolean } | null
+  type UserRow = { org_id: string | null; organizations: OrgRel | OrgRel[] }
+  const orgRel = (userData as UserRow | null)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : orgRel?.is_admin_org
+  const userOrgId = (userData as UserRow | null)?.org_id as string | null
 
   // Verify bot exists + access check
   const { data: bot } = await service.from('agents').select('id, org_id, config').eq('id', params.id).single()
@@ -43,14 +45,26 @@ export async function GET(req: NextRequest, props: Params) {
   // from their message content (e.g. a short first reply that happens to
   // look like a name). Mirrors components/ui/ChatBot.tsx: off only when
   // the string is explicitly 'false'.
-  const askNameOn = (bot.config as any)?.askName !== 'false'
+  const askNameOn = (bot.config as { askName?: string } | null)?.askName !== 'false'
 
   // Use service role for reads — RLS would otherwise block admin cross-org.
   // READ_PHASE3 selects the new substrate (conversations + conversation_turns)
   // vs the legacy bot_conversation_turns. Downstream aggregation is identical;
   // the new path projects session_id back into the row via the conversations
   // join so the in-JS grouping code below doesn't need to branch.
-  let turns: any[]
+  interface TurnRow {
+    session_id: string
+    turn_number: number
+    role: string
+    content: string
+    content_flags: string[] | null
+    source: string | null
+    created_at: string
+  }
+  type RawTurnRow = Omit<TurnRow, 'session_id'> & {
+    conversations?: { session_id?: string; bot_id?: string } | null
+  }
+  let turns: TurnRow[]
   if (isPhase3ReadSafe()) {
     const { data, error } = await service
       .from('conversation_turns')
@@ -59,8 +73,8 @@ export async function GET(req: NextRequest, props: Params) {
       .order('created_at', { ascending: false })
       .limit(1000)
     if (error) return serverError(error, 'bots.conversations.list', { orgId: bot.org_id })
-    turns = (data || []).map((r: any) => ({
-      session_id: r.conversations?.session_id,
+    turns = ((data || []) as unknown as RawTurnRow[]).map((r) => ({
+      session_id: r.conversations?.session_id as string,
       turn_number: r.turn_number,
       role: r.role,
       content: r.content,
@@ -76,7 +90,7 @@ export async function GET(req: NextRequest, props: Params) {
       .order('created_at', { ascending: false })
       .limit(1000)
     if (error) return serverError(error, 'bots.conversations.list', { orgId: bot.org_id })
-    turns = data || []
+    turns = (data || []) as unknown as TurnRow[]
   }
 
   // Get personas + extracted names for this bot's sessions. Name comes
@@ -89,18 +103,19 @@ export async function GET(req: NextRequest, props: Params) {
     .select('session_id, persona, name')
     .eq('bot_id', params.id)
 
-  const personaMap: Record<string, any> = {}
+  type PersonaRow = { session_id: string; persona: unknown; name: string | null }
+  const personaMap: Record<string, unknown> = {}
   const nameMap: Record<string, string> = {}
-  for (const p of (personas || [])) {
+  for (const p of ((personas || []) as unknown as PersonaRow[])) {
     personaMap[p.session_id] = p.persona
-    if ((p as any).name) nameMap[p.session_id] = (p as any).name
+    if (p.name) nameMap[p.session_id] = p.name
   }
 
   // Group by session_id
   interface SessionSummary {
     session_id: string; first_message: string; turn_count: number
     started_at: string; last_at: string; user_name: string
-    flags: string[]; has_deflection: boolean; persona: any | null
+    flags: string[]; has_deflection: boolean; persona: unknown
     review_status: string; review_reasons: string[]
   }
   const sessions: Record<string, SessionSummary> = {}
@@ -155,7 +170,8 @@ export async function GET(req: NextRequest, props: Params) {
   const humanReviews = new Map<string, { status: 'approved' | 'excluded'; reasons: string[] }>()
   try {
     const { data: revs } = await service.from('conversation_reviews').select('session_id, status, reasons').eq('bot_id', params.id)
-    for (const r of (revs || [])) humanReviews.set((r as any).session_id, { status: (r as any).status, reasons: Array.isArray((r as any).reasons) ? (r as any).reasons : [] })
+    type ReviewRow = { session_id: string; status: 'approved' | 'excluded'; reasons: unknown }
+    for (const r of ((revs || []) as unknown as ReviewRow[])) humanReviews.set(r.session_id, { status: r.status, reasons: Array.isArray(r.reasons) ? r.reasons : [] })
   } catch { /* table absent in prod yet → all clean */ }
   const dupFps = duplicateFingerprintSet(new Map(Object.entries(turnsBySession)))
   for (const s of Object.values(sessions)) {

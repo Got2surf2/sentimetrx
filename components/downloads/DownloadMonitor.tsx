@@ -61,7 +61,7 @@ function fmtFrequency(hours: number | null | undefined): string {
   return `${hours}h`
 }
 
-function timeAgo(iso: string | null) {
+function timeAgo(iso: string | null | undefined) {
   if (!iso) return '—'
   const ms = Date.now() - new Date(iso).getTime()
   if (ms < 60000) return 'just now'
@@ -70,14 +70,63 @@ function timeAgo(iso: string | null) {
   return Math.floor(ms / 86400000) + 'd ago'
 }
 
+interface RedditSource {
+  id:              string
+  orgName?:        string
+  status:          string
+  total_posts?:    number
+  total_comments?: number
+  updated_at:      string | null
+  error_message?:  string | null
+}
+
+interface ReviewSource {
+  id:                    string
+  orgName?:              string
+  brand_name:            string
+  status:                string
+  sync_frequency_hours:  number | null
+  last_synced_at:        string | null
+  next_sync_at:          string | null
+  error_message?:        string | null
+}
+
+interface PendingLocation {
+  id?:               string
+  review_source_id:  string
+}
+
+interface DatasetRow {
+  id:          string
+  name:        string
+  orgName?:    string
+  row_count?:  number
+  created_at:  string | null
+  updated_at?: string | null
+  status?:     string
+}
+
+interface Recording {
+  id:                  string
+  name:                string
+  orgName?:            string
+  status:              string
+  session_type?:       string
+  meeting_date?:       string | null
+  asr_vendor_chosen?:  string | null
+  source_duration_sec?: number | null
+  cost_cents?:         number | null
+  error_message?:      string | null
+}
+
 interface Props {
-  redditSources:    any[]
-  reviewSources:    any[]
-  pendingLocations: any[]
-  substackDatasets: any[]
-  regDatasets:      any[]
-  uploadDatasets:   any[]
-  recordings?:      any[]
+  redditSources:    RedditSource[]
+  reviewSources:    ReviewSource[]
+  pendingLocations: PendingLocation[]
+  substackDatasets: DatasetRow[]
+  regDatasets:      DatasetRow[]
+  uploadDatasets:   DatasetRow[]
+  recordings?:      Recording[]
   showOrgColumn?:   boolean   // false for single-org user view
   title?:           string
   subtitle?:        string
@@ -98,7 +147,7 @@ export default function DownloadMonitor({
   subtitle = 'Active, queued, and failed downloads',
 }: Props) {
   const [tab, setTab] = useState<Tab>('all')
-  const [reviewSources, setReviewSources] = useState<any[]>(initialReviewSources)
+  const [reviewSources, setReviewSources] = useState<ReviewSource[]>(initialReviewSources)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -106,7 +155,7 @@ export default function DownloadMonitor({
 
   const flashMsg = (m: string) => { setFlash(m); setTimeout(() => setFlash(null), 3000) }
 
-  async function patchSource(id: string, payload: Record<string, any>) {
+  async function patchSource(id: string, payload: Record<string, unknown>) {
     const res = await fetch('/api/review-sources/' + id, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -124,8 +173,8 @@ export default function DownloadMonitor({
     try {
       await patchSource(id, { sync_frequency_hours: hours })
       setReviewSources(prev => prev.map(s => s.id === id ? { ...s, sync_frequency_hours: hours } : s))
-    } catch (e: any) {
-      flashMsg('Update failed: ' + e.message)
+    } catch (e: unknown) {
+      flashMsg('Update failed: ' + (e instanceof Error ? e.message : String(e)))
     } finally {
       setSavingIds(prev => { const n = new Set(prev); n.delete(id); return n })
     }
@@ -140,8 +189,8 @@ export default function DownloadMonitor({
       setReviewSources(prev => prev.map(s => selected.has(s.id) ? { ...s, sync_frequency_hours: hours } : s))
       flashMsg(`Updated ${ids.length} sources`)
       setSelected(new Set())
-    } catch (e: any) {
-      flashMsg('Bulk update failed: ' + e.message)
+    } catch (e: unknown) {
+      flashMsg('Bulk update failed: ' + (e instanceof Error ? e.message : String(e)))
     } finally {
       setBulkBusy(false)
     }
@@ -156,8 +205,8 @@ export default function DownloadMonitor({
       setReviewSources(prev => prev.map(s => selected.has(s.id) ? { ...s, status } : s))
       flashMsg(`${status === 'paused' ? 'Paused' : 'Resumed'} ${ids.length} sources`)
       setSelected(new Set())
-    } catch (e: any) {
-      flashMsg('Bulk update failed: ' + e.message)
+    } catch (e: unknown) {
+      flashMsg('Bulk update failed: ' + (e instanceof Error ? e.message : String(e)))
     } finally {
       setBulkBusy(false)
     }
@@ -280,7 +329,7 @@ export default function DownloadMonitor({
               </tr>
             </thead>
             <tbody>
-              {redditSources.map((s: any) => (
+              {redditSources.map((s: RedditSource) => (
                 <tr key={s.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   {showOrgColumn && <td style={td}>{s.orgName}</td>}
                   <td style={td}><StatusPill status={s.status} /></td>
@@ -315,7 +364,7 @@ export default function DownloadMonitor({
               </tr>
             </thead>
             <tbody>
-              {reviewSources.map((s: any) => {
+              {reviewSources.map((s: ReviewSource) => {
                 const pending = pendingLocations.filter(l => l.review_source_id === s.id).length
                 const isSel = selected.has(s.id)
                 const isSaving = savingIds.has(s.id)
@@ -334,7 +383,7 @@ export default function DownloadMonitor({
                     <td style={td}><StatusPill status={s.status} /></td>
                     <td style={td}>
                       <select
-                        value={FREQUENCY_OPTIONS.some(o => o.value === s.sync_frequency_hours) ? s.sync_frequency_hours : ''}
+                        value={FREQUENCY_OPTIONS.some(o => o.value === s.sync_frequency_hours) ? s.sync_frequency_hours! : ''}
                         disabled={isSaving}
                         onChange={e => { void changeFrequency(s.id, Number(e.target.value)) }}
                         style={{ fontSize: 11, padding: '2px 6px', borderRadius: 5, border: '1px solid #d1d5db', background: 'white', cursor: isSaving ? 'wait' : 'pointer' }}>
@@ -366,7 +415,7 @@ export default function DownloadMonitor({
               </tr>
             </thead>
             <tbody>
-              {substackDatasets.map((d: any) => (
+              {substackDatasets.map((d: DatasetRow) => (
                 <tr key={d.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ ...td, fontWeight: 600 }}>{d.name}</td>
                   {showOrgColumn && <td style={td}>{d.orgName}</td>}
@@ -389,7 +438,7 @@ export default function DownloadMonitor({
               </tr>
             </thead>
             <tbody>
-              {regDatasets.map((d: any) => (
+              {regDatasets.map((d: DatasetRow) => (
                 <tr key={d.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ ...td, fontWeight: 600 }}>{d.name}</td>
                   {showOrgColumn && <td style={td}>{d.orgName}</td>}
@@ -412,7 +461,7 @@ export default function DownloadMonitor({
               </tr>
             </thead>
             <tbody>
-              {uploadDatasets.map((d: any) => (
+              {uploadDatasets.map((d: DatasetRow) => (
                 <tr key={d.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ ...td, fontWeight: 600 }}>{d.name}</td>
                   {showOrgColumn && <td style={td}>{d.orgName}</td>}
@@ -437,7 +486,7 @@ export default function DownloadMonitor({
               </tr>
             </thead>
             <tbody>
-              {recordings.map((r: any) => (
+              {recordings.map((r: Recording) => (
                 <tr key={r.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ ...td, fontWeight: 600 }}>
                     <a href={r.status === 'complete' ? `/recordings/${r.id}/report` : `/recordings/${r.id}/status`}

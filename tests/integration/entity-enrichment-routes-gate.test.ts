@@ -20,12 +20,34 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
+type QueryResult = { data: unknown; error: unknown }
+type CallerCtx = { userId: string | null; orgId: string | null; isAdmin: boolean }
+type EntityScope = { found: boolean; scopeType: string; scopeId: string; memberDatasetIds: string[] }
+type ChainMethod = (...args: unknown[]) => QueryBuilder
+interface QueryBuilder {
+  select: ChainMethod
+  order: ChainMethod
+  in: ChainMethod
+  limit: ChainMethod
+  neq: ChainMethod
+  range: ChainMethod
+  lt: ChainMethod
+  update: ChainMethod
+  delete: ChainMethod
+  insert: ChainMethod
+  upsert: ChainMethod
+  eq: (col: string, val: unknown) => QueryBuilder
+  single: () => Promise<QueryResult>
+  maybeSingle: () => Promise<QueryResult>
+  then: (res: (v: QueryResult) => unknown, rej: (e: unknown) => unknown) => Promise<unknown>
+}
+
 const ctx = {
-  authUser: null as any,
-  callerCtx: { userId: null, orgId: null, isAdmin: false } as any,
-  scope: { found: true, scopeType: 'dataset', scopeId: 'd_1', memberDatasetIds: ['d_1'] } as any,
-  results: {} as Record<string, any>,
-  eqCalls: {} as Record<string, [string, any][]>,
+  authUser: null as { id: string } | null,
+  callerCtx: { userId: null, orgId: null, isAdmin: false } as CallerCtx,
+  scope: { found: true, scopeType: 'dataset', scopeId: 'd_1', memberDatasetIds: ['d_1'] } as EntityScope,
+  results: {} as Record<string, QueryResult>,
+  eqCalls: {} as Record<string, [string, unknown][]>,
 }
 function reset() {
   ctx.authUser = null
@@ -35,14 +57,15 @@ function reset() {
   ctx.eqCalls = {}
 }
 
-function builder(table: string): any {
+function builder(table: string): QueryBuilder {
   ctx.eqCalls[table] = ctx.eqCalls[table] || []
-  const b: any = {}
-  for (const m of ['select', 'order', 'in', 'limit', 'neq', 'range', 'lt', 'update', 'delete', 'insert', 'upsert']) b[m] = () => b
-  b.eq = (col: string, val: any) => { ctx.eqCalls[table].push([col, val]); return b }
+  const b = {} as QueryBuilder
+  const chain = ['select', 'order', 'in', 'limit', 'neq', 'range', 'lt', 'update', 'delete', 'insert', 'upsert'] as const
+  for (const m of chain) b[m] = () => b
+  b.eq = (col: string, val: unknown) => { ctx.eqCalls[table].push([col, val]); return b }
   b.single = async () => ctx.results[table] ?? { data: null, error: null }
   b.maybeSingle = async () => ctx.results[table] ?? { data: null, error: null }
-  b.then = (res: any, rej: any) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
+  b.then = (res, rej) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
   return b
 }
 const client = () => ({ from: (t: string) => builder(t) })
@@ -75,10 +98,10 @@ import * as compute from '@/app/api/datasets/[datasetId]/compute/route'
 import * as mergeThemes from '@/app/api/datasets/[datasetId]/merge-themes/route'
 import * as expandKeywords from '@/app/api/datasets/[datasetId]/expand-keywords/route'
 
-const props = { params: Promise.resolve({ datasetId: 'd_1' }) } as any
-const slugProps = { params: Promise.resolve({ datasetId: 'd_1', slug: 'filet' }) } as any
-const req = (method = 'POST', body: any = {}) =>
-  new Request('http://t/x', { method, body: method === 'GET' ? undefined : JSON.stringify(body) }) as any
+const props = { params: Promise.resolve({ datasetId: 'd_1' }) }
+const slugProps = { params: Promise.resolve({ datasetId: 'd_1', slug: 'filet' }) }
+const req = (method = 'POST', body: Record<string, unknown> = {}) =>
+  new Request('http://t/x', { method, body: method === 'GET' ? undefined : JSON.stringify(body) })
 
 const caller = (orgId: string | null, isAdmin = false) => ({ userId: orgId ? 'u1' : null, orgId, isAdmin })
 const adminOrg = (org: string | null, isAdmin = false) =>

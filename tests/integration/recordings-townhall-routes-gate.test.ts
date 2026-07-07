@@ -19,12 +19,18 @@
 // the caller's org (paired id+org_id → 404 on null, or a JS org_id check).
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { NextRequest } from 'next/server'
+
+type QueryResult = { data: unknown; error: unknown }
+type AuthUser = { id: string; email: string }
+type UserContext = { userId: string; orgId: string; isAdmin: boolean; features: Record<string, boolean> }
+type CallerCtx = { userId: string | null; orgId: string | null; isAdmin: boolean }
 
 const ctx = {
-  authUser: null as any,
-  userContext: null as any,
-  callerCtx: { userId: null, orgId: null, isAdmin: false } as any,
-  results: {} as Record<string, any>,
+  authUser: null as AuthUser | null,
+  userContext: null as UserContext | null,
+  callerCtx: { userId: null, orgId: null, isAdmin: false } as CallerCtx,
+  results: {} as Record<string, QueryResult>,
 }
 function reset() {
   ctx.authUser = null
@@ -33,12 +39,18 @@ function reset() {
   ctx.results = {}
 }
 
-function builder(table: string): any {
-  const b: any = {}
+type MockBuilder = {
+  [method: string]: unknown
+  single: () => Promise<QueryResult>
+  maybeSingle: () => Promise<QueryResult>
+  then: (res: (v: QueryResult) => unknown, rej: (e: unknown) => unknown) => Promise<unknown>
+}
+function builder(table: string): MockBuilder {
+  const b = {} as MockBuilder
   for (const m of ['select', 'eq', 'order', 'in', 'limit', 'neq', 'range', 'gt', 'lte', 'like', 'update', 'delete', 'insert', 'upsert']) b[m] = () => b
   b.single = async () => ctx.results[table] ?? { data: null, error: null }
   b.maybeSingle = async () => ctx.results[table] ?? { data: null, error: null }
-  b.then = (res: any, rej: any) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
+  b.then = (res, rej) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
   return b
 }
 const client = () => ({ from: (t: string) => builder(t), storage: { from: () => ({ upload: async () => ({ error: null }), createSignedUrl: async () => ({ data: { signedUrl: 'x' }, error: null }), remove: async () => ({}) }) } })
@@ -80,10 +92,10 @@ import * as extractSetup from '@/app/api/recordings/extract-setup/route'
 import * as thSession from '@/app/api/townhall/sessions/[id]/route'
 import * as thAnalyze from '@/app/api/townhall/sessions/[id]/analyze/route'
 
-const idP = { params: Promise.resolve({ id: 'r_1' }) } as any
-const thP = { params: Promise.resolve({ id: 's_1' }) } as any
-const req = (method = 'POST', body: any = {}) =>
-  new Request('http://t/x', { method, body: method === 'GET' ? undefined : JSON.stringify(body) }) as any
+const idP: { params: Promise<{ id: string }> } = { params: Promise.resolve({ id: 'r_1' }) }
+const thP: { params: Promise<{ id: string }> } = { params: Promise.resolve({ id: 's_1' }) }
+const req = (method = 'POST', body: unknown = {}) =>
+  new Request('http://t/x', { method, body: method === 'GET' ? undefined : JSON.stringify(body) }) as unknown as NextRequest
 
 // All auth shapes populated so whichever a route uses resolves to orgA.
 function authAs(orgId: string, isAdmin = false) {
@@ -96,7 +108,7 @@ function authAs(orgId: string, isAdmin = false) {
 beforeEach(reset)
 
 // Every [id] route: cross-org / missing → 404; unauthenticated → 401.
-const idRoutes: { name: string; call: () => Promise<any> }[] = [
+const idRoutes: { name: string; call: () => Promise<Response> }[] = [
   { name: 'files POST', call: () => files.POST(req('POST', { files: [{ original_filename: 'a.mp3', size_bytes: 1, mime_type: 'audio/mpeg', is_video: false }] }), idP) },
   { name: 'live-summary POST', call: () => liveSummary.POST(req('POST'), idP) },
   { name: 'live-token POST', call: () => liveToken.POST(req('POST'), idP) },

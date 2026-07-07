@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
+import type { StudyConfig, SurveyQuestion, OpeningFlowItem } from '@/lib/types'
 
 // ── Shared types ────────────────────────────────────────────────────────
 
@@ -13,6 +14,25 @@ interface StudyQuestion { id: string; label: string; prompt: string }
 interface Props {
   logoUrl?: string; orgName?: string; fullName?: string; userEmail: string
   analyzeEnabled?: boolean; campaignsEnabled?: boolean; features?: Record<string, boolean>
+}
+
+// Minimal rating-scale entry — shared by config.ratingScale and the inline fallback (which omits emoji)
+type ScaleOption = { score: number; label: string }
+// Legacy demographic field shape stored in some study configs (distinct from typed `demoFields`)
+interface DemographicField { key: string; enabled?: boolean; options?: string[][] }
+type TestingStudyConfig = StudyConfig & { demographicFields?: DemographicField[] }
+
+// Response payload the simulator builds up across partial saves
+interface SimPayload {
+  agent: string
+  timestamp: string
+  npsRecommend?: { score: number; label: string }
+  experienceRating?: { score: number; label: string; sentiment: string }
+  openEnded?: Record<string, string>
+  customAnswers?: Record<string, string | string[]>
+  psychographics?: Record<string, string>
+  demographics?: Record<string, string>
+  openingAnswers?: Record<string, string>
 }
 
 // ── Test data ───────────────────────────────────────────────────────────
@@ -106,7 +126,7 @@ function feedback(score: number, max: number) { const p = score / max; return p 
 function sentiment(score: number, max: number) { const p = score / max; return p >= 0.7 ? 'positive' : p >= 0.4 ? 'neutral' : 'negative' }
 
 // Extract questions from study config for the dropdown
-function extractQuestions(config: any): StudyQuestion[] {
+function extractQuestions(config: StudyConfig): StudyQuestion[] {
   const questions: StudyQuestion[] = []
 
   // NPS
@@ -168,7 +188,7 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
 
   // Shared
   const [studyGuid, setStudyGuid] = useState('')
-  const [studyConfig, setStudyConfig] = useState<any>(null)
+  const [studyConfig, setStudyConfig] = useState<TestingStudyConfig | null>(null)
   const [studyName, setStudyName] = useState('')
   const [studyOrgName, setStudyOrgName] = useState('')
   const [loadingStudy, setLoadingStudy] = useState(false)
@@ -245,7 +265,7 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
   // ── AI: deflect ─────────────────────────────────────────────────────
 
   const testDeflect = useCallback(async (text: string): Promise<AIResult> => {
-    const qr = studyConfig?.questionRedirect || {}
+    const qr: Partial<NonNullable<StudyConfig['questionRedirect']>> = studyConfig?.questionRedirect || {}
     const start = Date.now()
     const res = await fetch('/api/deflect', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -407,7 +427,7 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
     const weights = simMix === 'positive' ? [2,5,10,40,43] : simMix === 'negative' ? [30,30,20,12,8] : simMix === 'uniform' ? [20,20,20,20,20] : [5,10,20,35,30]
     const config = studyConfig
     const scale = config.ratingScale || [{ score: 1, label: 'Poor' },{ score: 2, label: 'Fair' },{ score: 3, label: 'Average' },{ score: 4, label: 'Good' },{ score: 5, label: 'Excellent' }]
-    const maxScore = Math.max(...scale.map((r: any) => r.score))
+    const maxScore = Math.max(...scale.map((r: ScaleOption) => r.score))
 
     simLog(`Generating ${simCount} responses for "${studyName}"...`, 'info')
     let ok = 0, fail = 0
@@ -417,9 +437,9 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
 
       const sid = 'sim_' + Math.random().toString(36).slice(2) + Date.now().toString(36)
       const nps = weightedScore(weights), exp = weightedScore(weights)
-      const npsOpt = scale.find((r: any) => r.score === nps) || { label: 'Score ' + nps }
-      const expOpt = scale.find((r: any) => r.score === exp) || { label: 'Score ' + exp }
-      const payload: Record<string, any> = { agent: 'Simulator', timestamp: new Date().toISOString() }
+      const npsOpt = scale.find((r: ScaleOption) => r.score === nps) || { label: 'Score ' + nps }
+      const expOpt = scale.find((r: ScaleOption) => r.score === exp) || { label: 'Score ' + exp }
+      const payload: SimPayload = { agent: 'Simulator', timestamp: new Date().toISOString() }
 
       // Partial 1: NPS
       if (config.npsEnabled !== false) payload.npsRecommend = { score: nps, label: npsOpt.label }
@@ -437,8 +457,8 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
       if (config.q3Enabled !== false) payload.openEnded.q3 = feedback(exp, maxScore)
       if (config.q4Enabled !== false) payload.openEnded.q4 = pick(SUGGESTIONS)
       if (config.questions?.length) {
-        const ca: Record<string, any> = {}
-        config.questions.filter((q: any) => q.enabled !== false && q.type !== 'hidden').forEach((q: any) => {
+        const ca: Record<string, string | string[]> = {}
+        config.questions.filter((q: SurveyQuestion) => q.enabled !== false && q.type !== 'hidden').forEach((q: SurveyQuestion) => {
           if (q.type === 'open') ca[q.id] = pick([...POSITIVE, ...NEUTRAL, ...SUGGESTIONS])
           else if ((q.type === 'radio' || q.type === 'dropdown') && q.options?.length) ca[q.id] = pick(q.options)
           else if (q.type === 'checkbox' && q.options?.length) { const n = Math.floor(Math.random() * Math.min(3, q.options.length)) + 1; ca[q.id] = [...q.options].sort(() => Math.random() - 0.5).slice(0, n) }
@@ -452,8 +472,8 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
 
       // Psychographics + demographics + opening flow
       if (config.psychographicBank?.length) { const ps: Record<string, string> = {}; const pool = [...config.psychographicBank]; const n = config.psychoCount || 3; for (let j = 0; j < n && pool.length; j++) { const idx = Math.floor(Math.random() * pool.length); const q = pool.splice(idx, 1)[0]; ps[q.key] = q.opts?.length ? pick(q.opts) : pick(['Strongly agree','Agree','Neutral','Disagree']) }; payload.psychographics = ps }
-      if (config.demographicFields) { const dm: Record<string, string> = {}; config.demographicFields.filter((d: any) => d.enabled).forEach((f: any) => { if (f.options?.length) dm[f.key] = (pick(f.options) as string[])[0]; else if (DEMO_POOLS[f.key]) dm[f.key] = pick(DEMO_POOLS[f.key]) }); if (Object.keys(dm).length) payload.demographics = dm }
-      if (config.openingFlow) { const opens = config.openingFlow.filter((f: any) => f.type === 'open_end'); if (opens.length) { const oa: Record<string, string> = {}; opens.forEach((item: any) => { oa[item.id] = feedback(exp, maxScore) }); payload.openingAnswers = oa } }
+      if (config.demographicFields) { const dm: Record<string, string> = {}; config.demographicFields.filter((d: DemographicField) => d.enabled).forEach((f: DemographicField) => { if (f.options?.length) dm[f.key] = (pick(f.options) as string[])[0]; else if (DEMO_POOLS[f.key]) dm[f.key] = pick(DEMO_POOLS[f.key]) }); if (Object.keys(dm).length) payload.demographics = dm }
+      if (config.openingFlow) { const opens = config.openingFlow.filter((f: OpeningFlowItem) => f.type === 'open_end'); if (opens.length) { const oa: Record<string, string> = {}; opens.forEach((item: OpeningFlowItem) => { oa[item.id] = feedback(exp, maxScore) }); payload.openingAnswers = oa } }
 
       // Final submit
       const duration = Math.floor(Math.random() * 510) + 90

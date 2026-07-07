@@ -15,11 +15,24 @@ export const dynamic = 'force-dynamic'
 
 interface Params { params: Promise<{ id: string }> }
 
+// Minimal shape of a joined `organizations` relation (Supabase returns it as
+// either a single object or a one-element array depending on the relationship).
+interface OrgRel { is_admin_org?: boolean | null }
+
+// Minimal shape of an `agents` row for the fields this route reads. The index
+// signature keeps it assignable to snapshotForDiff's Record<string, unknown>.
+interface AgentRow {
+  org_id: string
+  name: string | null
+  status: string | null
+  [key: string]: unknown
+}
+
 async function getAuth(supabase: Awaited<ReturnType<typeof createClient>>) {
   const user = await getAuthUser(supabase)
   if (!user) return null
   const { data } = await supabase.from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
-  const orgData = Array.isArray(data?.organizations) ? (data.organizations as any)[0] : data?.organizations as any
+  const orgData = Array.isArray(data?.organizations) ? (data.organizations as OrgRel[])[0] : data?.organizations as OrgRel | undefined
   return { userId: user.id, orgId: data?.org_id as string | null, isAdmin: !!orgData?.is_admin_org }
 }
 
@@ -74,10 +87,10 @@ export async function PATCH(req: NextRequest, props: Params) {
     // the admin's own org fail with a false "already in that org" (target ==
     // caller org), even when the agent lived in a different org.
     const { data: cur } = await service.from('agents').select('org_id, name').eq('id', params.id).single()
-    transferFromOrgId = (cur as any)?.org_id ?? null
+    transferFromOrgId = (cur as AgentRow | null)?.org_id ?? null
     const check = await checkTransferTarget(service, transferFromOrgId, body.org_id)
     if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status || 400 })
-    resourceSnapshot = { name: (cur as any)?.name ?? null }
+    resourceSnapshot = { name: (cur as AgentRow | null)?.name ?? null }
     // org_id is NOT set on `updates` — the cascading RPC below moves it (plus
     // all the agent's owned data) atomically. A bare agents.org_id update here
     // would strand conversations/turns/questions/etc. in the old org.
@@ -107,7 +120,7 @@ export async function PATCH(req: NextRequest, props: Params) {
   // Defense-in-depth: a non-admin may only touch their own org's agent. The
   // update below is already org-paired, but guarding here (same as GET) also
   // stops a cross-org id from writing a spurious audit-log entry / success:true.
-  if (!auth.isAdmin && beforeRow && (beforeRow as any).org_id !== auth.orgId) {
+  if (!auth.isAdmin && beforeRow && (beforeRow as AgentRow).org_id !== auth.orgId) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   }
 
@@ -124,7 +137,7 @@ export async function PATCH(req: NextRequest, props: Params) {
   if (updates.brand_tag !== undefined && !isTransfer && beforeRow) {
     await rollupAgentEntitiesToBrand(service, {
       agentId: params.id,
-      orgId: (beforeRow as any).org_id,
+      orgId: (beforeRow as AgentRow).org_id,
       brandTag: updates.brand_tag as string,
     })
   }
@@ -147,8 +160,8 @@ export async function PATCH(req: NextRequest, props: Params) {
   // Audit log: write a 'status_change' or 'update' depending on what changed.
   if (beforeRow) {
     const { data: afterRow } = await service.from('agents').select('*').eq('id', params.id).single()
-    const before = snapshotForDiff(beforeRow as any)
-    const after = snapshotForDiff(afterRow as any)
+    const before = snapshotForDiff(beforeRow as AgentRow)
+    const after = snapshotForDiff(afterRow as AgentRow | null)
     const diff = diffSnapshots(before, after)
     const changedKeys = Object.keys(diff.after)
     if (changedKeys.length > 0) {
@@ -156,13 +169,13 @@ export async function PATCH(req: NextRequest, props: Params) {
       const isStatusOnly = changedKeys.length === 1 && changedKeys[0] === 'status'
       let summary: string
       if (isStatusOnly) {
-        summary = 'Status changed: ' + String((diff.before as any).status) + ' → ' + String((diff.after as any).status)
+        summary = 'Status changed: ' + String(diff.before.status) + ' → ' + String(diff.after.status)
       } else {
         summary = 'Updated ' + changedKeys.length + ' field' + (changedKeys.length > 1 ? 's' : '') + ': ' + changedKeys.slice(0, 6).join(', ') + (changedKeys.length > 6 ? '…' : '')
       }
       void logBotChange({
         botId: params.id,
-        orgId: (afterRow as any)?.org_id || auth.orgId,
+        orgId: (afterRow as AgentRow | null)?.org_id || auth.orgId,
         actorId: auth.userId,
         actorEmail: user?.email || null,
         action: isStatusOnly ? 'status_change' : 'update',
@@ -192,7 +205,7 @@ export async function DELETE(req: NextRequest, props: Params) {
 
   // Defense-in-depth: non-admins may only delete their own org's agent (the
   // delete below is already org-paired; this guards the snapshot read too).
-  if (!auth.isAdmin && beforeRow && (beforeRow as any).org_id !== auth.orgId) {
+  if (!auth.isAdmin && beforeRow && (beforeRow as AgentRow).org_id !== auth.orgId) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   }
 
@@ -206,12 +219,12 @@ export async function DELETE(req: NextRequest, props: Params) {
     const user = await getAuthUser(supabase)
     void logBotChange({
       botId: params.id,
-      orgId: (beforeRow as any).org_id || auth.orgId,
+      orgId: (beforeRow as AgentRow).org_id || auth.orgId,
       actorId: auth.userId,
       actorEmail: user?.email || null,
       action: 'delete',
-      summary: 'Deleted agent "' + ((beforeRow as any).name || params.id) + '"',
-      before: snapshotForDiff(beforeRow as any),
+      summary: 'Deleted agent "' + ((beforeRow as AgentRow).name || params.id) + '"',
+      before: snapshotForDiff(beforeRow as AgentRow),
     })
   }
 

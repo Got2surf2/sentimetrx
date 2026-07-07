@@ -41,7 +41,7 @@ function fmtDate(d: Date): string {
   return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
-function addHeader(slide: any, title: string, subtitle?: string) {
+function addHeader(slide: PptxGenJS.Slide, title: string, subtitle?: string) {
   slide.addShape('rect', { x: 0, y: 0, w: W, h: 1.0, fill: { color: DN.navy } })
   slide.addText(title, {
     x: 0.6, y: subtitle ? 0.1 : 0.15, w: 9.5, h: subtitle ? 0.5 : 0.7,
@@ -60,7 +60,7 @@ function addHeader(slide: any, title: string, subtitle?: string) {
   slide.addShape('rect', { x: 0, y: 1.0, w: W, h: 0.04, fill: { color: DN.sarinaBlue } })
 }
 
-function addFooter(slide: any, pageNum: number) {
+function addFooter(slide: PptxGenJS.Slide, pageNum: number) {
   slide.addText('Datanautix · Engineering Reality Check · For peer review · Confidential', {
     x: 0.5, y: H - 0.4, w: 10, h: 0.3, fontSize: 9, fontFace: 'Arial', color: DN.slate,
   })
@@ -69,7 +69,7 @@ function addFooter(slide: any, pageNum: number) {
   })
 }
 
-function bullet(text: string, opts: any = {}) {
+function bullet(text: string, opts: Partial<PptxGenJS.TextPropsOptions> = {}) {
   return {
     text,
     options: {
@@ -81,7 +81,7 @@ function bullet(text: string, opts: any = {}) {
 }
 
 // ── Cover ──────────────────────────────────────────────────────────────────
-function addTitleSlide(pptx: any) {
+function addTitleSlide(pptx: PptxGenJS) {
   const s = pptx.addSlide()
   const buildDate = process.env.NEXT_PUBLIC_BUILD_DATE
   const lastUpdated = buildDate ? fmtDate(new Date(buildDate)) : fmtDate(new Date())
@@ -115,7 +115,7 @@ function addTitleSlide(pptx: any) {
 }
 
 // ── 1. The Frame ───────────────────────────────────────────────────────────
-function slideTheFrame(pptx: any, pg: number) {
+function slideTheFrame(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, '~16 weeks. One operator. AI-assisted.')
   addFooter(s, pg)
@@ -166,7 +166,7 @@ LAND THE BOTTOM STRAP: "Read this with that constraint in mind. Disciplines that
 }
 
 // ── 1b. Positioning (real problems, deep experience, where funding goes) ─────
-function slidePositioning(pptx: any, pg: number) {
+function slidePositioning(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Anyone can build a tool now. We solve real problems.', '20 years across platforms → a Claude-spined stack for known, well-understood pain points')
   addFooter(s, pg)
@@ -216,7 +216,7 @@ THE UPSIDE (bottom strap): the large fragmented market and the AI-led roll-up ar
 }
 
 // ── 2. What Got Built ──────────────────────────────────────────────────────
-function slideWhatGotBuilt(pptx: any, pg: number) {
+function slideWhatGotBuilt(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'What Got Built', '13 modules across customer-facing + platform · 903 TS files · ~193K lines')
   addFooter(s, pg)
@@ -285,7 +285,7 @@ Don't read this aloud. Let them see the surface area — note Town Hall is a who
 }
 
 // ── 3. Architectural Decisions ─────────────────────────────────────────────
-function slideDecisions(pptx: any, pg: number) {
+function slideDecisions(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'The decisions that shaped the build.')
   addFooter(s, pg)
@@ -334,7 +334,7 @@ Close: "Operator-led. Every one of them." (the bottom strap on the slide).`
 }
 
 // ── 4. Discipline That Exists ──────────────────────────────────────────────
-function slideDiscipline(pptx: any, pg: number) {
+function slideDiscipline(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'What discipline exists.')
   addFooter(s, pg)
@@ -380,7 +380,7 @@ Lean dep tree (26 prod deps). Service-role boundary: server-only key, auth clien
 }
 
 // ── 5. Discipline That Is Missing ──────────────────────────────────────────
-function slideGaps(pptx: any, pg: number) {
+function slideGaps(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, "Where it's thin.")
   addFooter(s, pg)
@@ -445,7 +445,7 @@ CLOSE on the bottom strap. Don't apologize — this is now an investment list, n
 }
 
 // ── 6. Risk Register ───────────────────────────────────────────────────────
-function slideRisks(pptx: any, pg: number) {
+function slideRisks(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Where it would break first.')
   addFooter(s, pg)
@@ -495,7 +495,7 @@ Don't apologize. Engineers respect honest risk inventories — and several of la
 }
 
 // ── 7. Operator vs AI ──────────────────────────────────────────────────────
-function slideOperatorVsAI(pptx: any, pg: number) {
+function slideOperatorVsAI(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'Who did what.')
   addFooter(s, pg)
@@ -557,7 +557,7 @@ Don't say "fully AI-generated." That cedes the framing. Say "AI-assisted enginee
 }
 
 // ── 8. Phase 1 Hardening Plan ──────────────────────────────────────────────
-function slideHardening(pptx: any, pg: number) {
+function slideHardening(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'What capital buys.')
   addFooter(s, pg)
@@ -610,7 +610,7 @@ These map to the rollup deck's use-of-funds lines. Smaller wedge than last revie
 }
 
 // ── 9. Open Questions ──────────────────────────────────────────────────────
-function slideOpenQuestions(pptx: any, pg: number) {
+function slideOpenQuestions(pptx: PptxGenJS, pg: number) {
   const s = pptx.addSlide()
   addHeader(s, 'What I want you to push back on.')
   addFooter(s, pg)
@@ -661,7 +661,7 @@ CLOSE: "Disagreement is the point. The deck exists so we can argue from a shared
 }
 
 // ── Deck assembler ─────────────────────────────────────────────────────────
-function buildDeck(pptx: any) {
+function buildDeck(pptx: PptxGenJS) {
   let pg = 0
   addTitleSlide(pptx)
   pg = 1

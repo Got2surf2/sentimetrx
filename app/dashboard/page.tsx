@@ -2,9 +2,44 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import { validateOrgFilter } from '@/lib/orgValidate'
+import type { ModuleFeatures, StudyConfig } from '@/lib/types'
 import DashboardClient from './DashboardClient'
 
 export const dynamic = 'force-dynamic'
+
+type OrgData = {
+  id?: string
+  is_admin_org?: boolean
+  logo_url?: string
+  name?: string
+  features?: ModuleFeatures
+} | null
+
+interface StudyRow {
+  id: string
+  guid: string
+  slug: string
+  name: string
+  bot_name: string
+  bot_emoji: string
+  status: string
+  visibility: string
+  created_by: string
+  created_at: string
+  config: StudyConfig | null
+  org_id: string
+}
+
+interface StatRpcRow {
+  study_id: string
+  total_responses: number | null
+  complete_count: number | null
+  promoters: number | null
+  passives: number | null
+  detractors: number | null
+  avg_experience: number | null
+  last_response_at: string | null
+}
 
 export default async function DashboardPage(props: { searchParams: Promise<{ org?: string; user?: string }> }) {
   const searchParams = await props.searchParams;
@@ -18,10 +53,10 @@ export default async function DashboardPage(props: { searchParams: Promise<{ org
     .eq('id', user.id)
     .single()
 
-  const orgData    = resolveOrg(userData?.organizations) as any
+  const orgData    = resolveOrg(userData?.organizations) as OrgData
   // Effective features = org ∩ user. Per-user overrides apply on top of the
   // org-level subscription. See lib/resolveOrg.ts:effectiveFeatures.
-  const features   = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  const features   = effectiveFeatures(orgData?.features, userData?.features)
   if (!features.surveys) {
     if (features.analyze)        redirect('/analyze')
     else if (features.townhall)  redirect('/pulseiq')
@@ -47,10 +82,10 @@ export default async function DashboardPage(props: { searchParams: Promise<{ org
   }
 
   const { data: rawStudies } = await studiesQuery
-  const studies = rawStudies || []
+  const studies = (rawStudies || []) as StudyRow[]
 
   // Fetch creator info
-  const creatorIds = Array.from(new Set(studies.map((s: any) => s.created_by).filter(Boolean)))
+  const creatorIds = Array.from(new Set(studies.map((s) => s.created_by).filter(Boolean)))
   const { data: creatorsData } = creatorIds.length > 0
     ? await supabase.from('users').select('id, full_name, email, org_id').in('id', creatorIds)
     : { data: [] }
@@ -62,7 +97,7 @@ export default async function DashboardPage(props: { searchParams: Promise<{ org
 
   // Fetch org names
   const allOrgIds = Array.from(new Set(
-    studies.map((s: any) => s.org_id || creatorMap[s.created_by]?.orgId).filter(Boolean)
+    studies.map((s) => s.org_id || creatorMap[s.created_by]?.orgId).filter(Boolean)
   ))
   const { data: orgsData } = allOrgIds.length > 0
     ? await supabase.from('organizations').select('id, name').in('id', allOrgIds)
@@ -71,7 +106,7 @@ export default async function DashboardPage(props: { searchParams: Promise<{ org
   const orgMap: Record<string, string> = {}
   for (const o of (orgsData || [])) orgMap[o.id] = o.name
 
-  const enrichedStudies = studies.map((s: any) => {
+  const enrichedStudies = studies.map((s) => {
     const resolvedOrgId = s.org_id || creatorMap[s.created_by]?.orgId || ''
     return {
       ...s,
@@ -82,7 +117,7 @@ export default async function DashboardPage(props: { searchParams: Promise<{ org
   })
 
   // Fetch per-study stats from materialized view (single query) with fallback to count queries
-  const studyIds = studies.map((s: any) => s.id)
+  const studyIds = studies.map((s) => s.id)
   const statsMap: Record<string, { total: number; completeCount: number; promoters: number; passives: number; detractors: number; avgScore: number; ratingLabel: string; lastResponse: string | null }> = {}
 
   if (studyIds.length > 0) {
@@ -90,7 +125,7 @@ export default async function DashboardPage(props: { searchParams: Promise<{ org
     // service role only — the RPC is a SECURITY DEFINER wrapper that
     // filters rows to the caller's org, so it can't leak other orgs'
     // stats even though the underlying MV is org-agnostic.
-    let mvStats: any[] | null = null
+    let mvStats: StatRpcRow[] | null = null
     try {
       const { data } = await supabase.rpc('get_study_response_stats_for_user', { p_study_ids: studyIds })
       mvStats = data
@@ -99,7 +134,7 @@ export default async function DashboardPage(props: { searchParams: Promise<{ org
     if (mvStats && mvStats.length > 0) {
       // Use materialized view
       for (const mv of mvStats) {
-        const study = studies.find((s: any) => s.id === mv.study_id) as any
+        const study = studies.find((s) => s.id === mv.study_id)
         const ratingLabel = study?.config?.experienceRatingLabel || 'Avg Rating'
         statsMap[mv.study_id] = {
           total: mv.total_responses || 0,
@@ -115,7 +150,7 @@ export default async function DashboardPage(props: { searchParams: Promise<{ org
       // Studies not in the view (no responses) get zeros
       for (const sid of studyIds) {
         if (!statsMap[sid]) {
-          const study = studies.find((s: any) => s.id === sid) as any
+          const study = studies.find((s) => s.id === sid)
           statsMap[sid] = { total: 0, completeCount: 0, promoters: 0, passives: 0, detractors: 0, avgScore: 0, ratingLabel: study?.config?.experienceRatingLabel || 'Avg Rating', lastResponse: null }
         }
       }
@@ -124,13 +159,13 @@ export default async function DashboardPage(props: { searchParams: Promise<{ org
       // Pre-fill zeros so studies with zero responses (and any RPC failure)
       // still get a stats row.
       for (const sid of studyIds) {
-        const study = studies.find((s: any) => s.id === sid) as any
+        const study = studies.find((s) => s.id === sid)
         statsMap[sid] = { total: 0, completeCount: 0, promoters: 0, passives: 0, detractors: 0, avgScore: 0, ratingLabel: study?.config?.experienceRatingLabel || 'Avg Rating', lastResponse: null }
       }
       try {
         const { data: liveStats } = await supabase.rpc('study_stats_for_ids', { p_study_ids: studyIds })
-        for (const row of (liveStats || [])) {
-          const study = studies.find((s: any) => s.id === row.study_id) as any
+        for (const row of ((liveStats || []) as StatRpcRow[])) {
+          const study = studies.find((s) => s.id === row.study_id)
           const ratingLabel = study?.config?.experienceRatingLabel || 'Avg Rating'
           statsMap[row.study_id] = {
             total:         row.total_responses || 0,

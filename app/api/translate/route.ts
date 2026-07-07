@@ -4,7 +4,7 @@
 import { createClient, getAuthUser, createServiceRoleClient } from '@/lib/supabase/server'
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
-import type { StudyTranslation } from '@/lib/types'
+import type { StudyTranslation, StudyConfig, LikertScaleOption } from '@/lib/types'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { serverError } from '@/lib/apiError'
@@ -12,12 +12,33 @@ import { serverError } from '@/lib/apiError'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
+// Shape of the JSON returned by the translation model (mirrors the request payload).
+interface TranslatedPayload {
+  strings?: Record<string, string>
+  questions?: StudyTranslation['questions']
+  psychographics?: StudyTranslation['psychographics']
+  followUps?: StudyTranslation['followUps']
+  openingFlow?: StudyTranslation['openingFlow']
+  demoLabels?: StudyTranslation['demoLabels']
+  demoOptions?: StudyTranslation['demoOptions']
+  contactLabels?: StudyTranslation['contactLabels']
+  ui?: Record<string, string>
+  ratingLabels?: Record<string, string>
+  npsLabels?: Record<string, string>
+  transitions?: Record<string, string>
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: any
+  let body: {
+    config?: StudyConfig
+    targetLanguage?: string
+    targetLanguageName?: string
+    studyId?: string
+  }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const { config, targetLanguage, targetLanguageName, studyId } = body
@@ -53,16 +74,17 @@ export async function POST(req: NextRequest) {
   if (config.readyNo) contentToTranslate.readyNo = config.readyNo
 
   // Adaptive follow-up prompts (experience rating & NPS)
-  const followUpsToTranslate: Record<string, any> = {}
+  type FollowUpEntry = { sharedPrompt?: string; perResponse?: Record<string, string> }
+  const followUpsToTranslate: Record<string, FollowUpEntry> = {}
   for (const key of ['experienceFollowUp', 'npsFollowUp'] as const) {
     const fu = config[key]
     if (!fu?.enabled) continue
-    const entry: any = {}
+    const entry: FollowUpEntry = {}
     if (fu.sharedPrompt) entry.sharedPrompt = fu.sharedPrompt
     if (fu.perResponse) {
       entry.perResponse = {} as Record<string, string>
       for (const [score, pr] of Object.entries(fu.perResponse)) {
-        if ((pr as any).prompt) entry.perResponse[score] = (pr as any).prompt
+        if (pr.prompt) entry.perResponse[score] = pr.prompt
       }
     }
     followUpsToTranslate[key] = entry
@@ -71,12 +93,12 @@ export async function POST(req: NextRequest) {
   // Custom question follow-ups
   for (const q of (config.questions || [])) {
     if (q.enabled === false || !q.followUp?.enabled) continue
-    const entry: any = {}
+    const entry: FollowUpEntry = {}
     if (q.followUp.sharedPrompt) entry.sharedPrompt = q.followUp.sharedPrompt
     if (q.followUp.perResponse) {
       entry.perResponse = {} as Record<string, string>
       for (const [score, pr] of Object.entries(q.followUp.perResponse)) {
-        if ((pr as any).prompt) entry.perResponse[score] = (pr as any).prompt
+        if (pr.prompt) entry.perResponse[score] = pr.prompt
       }
     }
     followUpsToTranslate['question_' + q.id] = entry
@@ -97,7 +119,7 @@ export async function POST(req: NextRequest) {
     if (!df.enabled) continue
     demoLabelsToTranslate[df.key] = df.label
     if (df.type === 'select' && df.options?.length) {
-      demoOptionsToTranslate[df.key] = df.options.map((o: any) => o[1])
+      demoOptionsToTranslate[df.key] = df.options.map((o) => o[1])
     }
   }
 
@@ -118,7 +140,7 @@ export async function POST(req: NextRequest) {
     if (q.enabled === false || q.type === 'hidden') continue
     const entry: { prompt: string; options?: string[]; likertLabels?: string[] } = { prompt: q.prompt }
     if (q.options && q.options.length > 0) entry.options = q.options
-    if (q.type === 'likert' && q.likertScale?.length) entry.likertLabels = q.likertScale.map((s: any) => s.label)
+    if (q.type === 'likert' && q.likertScale?.length) entry.likertLabels = q.likertScale.map((s: LikertScaleOption) => s.label)
     questionsToTranslate[q.id] = entry
   }
 
@@ -181,7 +203,7 @@ export async function POST(req: NextRequest) {
   if (trans.contact?.enabled !== false)
     transitionStrings.contact = trans.contact?.text || ''
 
-  const payload: Record<string, any> = {
+  const payload: Record<string, unknown> = {
     strings: contentToTranslate,
     questions: questionsToTranslate,
     psychographics: psychoToTranslate,
@@ -208,7 +230,7 @@ ${JSON.stringify(payload, null, 2)}
 
 Return ONLY valid JSON, no markdown, no explanation.`
 
-  async function attemptTranslation(): Promise<any> {
+  async function attemptTranslation(): Promise<TranslatedPayload> {
     const result = await callAI({
       tier: 'fast',
       maxTokens: 16000,
@@ -227,7 +249,7 @@ Return ONLY valid JSON, no markdown, no explanation.`
   }
 
   try {
-    let parsed: any
+    let parsed: TranslatedPayload
     try {
       parsed = await attemptTranslation()
     } catch (firstErr) {
@@ -268,7 +290,7 @@ Return ONLY valid JSON, no markdown, no explanation.`
 
     return NextResponse.json({ translation })
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'translate', { orgId: studyOrgId })
   }
 }

@@ -10,13 +10,16 @@
 // TTL, snapshot content immutability, view/snapshot visibility, graceful 404.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { CallerOrgContext } from '@/lib/auth/orgAccess'
+
+type SbResult = { data: unknown; error: unknown }
 
 const ctx = {
-  callerCtx: { userId: null, orgId: null, isAdmin: false } as any,
-  results: {} as Record<string, any>,
-  eqCalls: {} as Record<string, [string, any][]>,
-  inserts: {} as Record<string, any>,
-  updates: {} as Record<string, any>,
+  callerCtx: { userId: null, orgId: null, isAdmin: false } as CallerOrgContext,
+  results: {} as Record<string, SbResult>,
+  eqCalls: {} as Record<string, [string, unknown][]>,
+  inserts: {} as Record<string, Record<string, unknown>>,
+  updates: {} as Record<string, Record<string, unknown>>,
   deletes: {} as Record<string, boolean>,
 }
 function reset() {
@@ -28,17 +31,34 @@ function reset() {
   ctx.deletes = {}
 }
 
-function builder(table: string): any {
+interface Builder {
+  select: () => Builder
+  order: () => Builder
+  in: () => Builder
+  limit: () => Builder
+  neq: () => Builder
+  range: () => Builder
+  lt: () => Builder
+  eq: (col: string, val: unknown) => Builder
+  insert: (payload: Record<string, unknown>) => Builder
+  update: (payload: Record<string, unknown>) => Builder
+  delete: () => Builder
+  single: () => Promise<SbResult>
+  maybeSingle: () => Promise<SbResult>
+  then: (res: (value: SbResult) => unknown, rej: (reason: unknown) => unknown) => Promise<unknown>
+}
+
+function builder(table: string): Builder {
   ctx.eqCalls[table] = ctx.eqCalls[table] || []
-  const b: any = {}
-  for (const m of ['select', 'order', 'in', 'limit', 'neq', 'range', 'lt']) b[m] = () => b
-  b.eq = (col: string, val: any) => { ctx.eqCalls[table].push([col, val]); return b }
-  b.insert = (payload: any) => { ctx.inserts[table] = payload; return b }
-  b.update = (payload: any) => { ctx.updates[table] = payload; return b }
+  const b = {} as Builder
+  for (const m of ['select', 'order', 'in', 'limit', 'neq', 'range', 'lt'] as const) b[m] = () => b
+  b.eq = (col: string, val: unknown) => { ctx.eqCalls[table].push([col, val]); return b }
+  b.insert = (payload: Record<string, unknown>) => { ctx.inserts[table] = payload; return b }
+  b.update = (payload: Record<string, unknown>) => { ctx.updates[table] = payload; return b }
   b.delete = () => { ctx.deletes[table] = true; return b }
   b.single = async () => ctx.results[table] ?? { data: null, error: null }
   b.maybeSingle = async () => ctx.results[table] ?? { data: null, error: null }
-  b.then = (res: any, rej: any) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
+  b.then = (res, rej) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
   return b
 }
 const client = () => ({ from: (t: string) => builder(t), rpc: async () => ({ data: null, error: null }) })
@@ -53,10 +73,10 @@ vi.mock('@/lib/auth/orgAccess', () => ({ getCallerOrgContext: async () => ctx.ca
 import * as list from '@/app/api/datasets/[datasetId]/views/route'
 import * as one from '@/app/api/datasets/[datasetId]/views/[viewId]/route'
 
-const listProps = { params: Promise.resolve({ datasetId: 'd_1' }) } as any
-const oneProps = { params: Promise.resolve({ datasetId: 'd_1', viewId: 'v_1' }) } as any
-const req = (method: string, body: any = {}) =>
-  new Request('http://t/x', { method, body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(body) }) as any
+const listProps = { params: Promise.resolve({ datasetId: 'd_1' }) }
+const oneProps = { params: Promise.resolve({ datasetId: 'd_1', viewId: 'v_1' }) }
+const req = (method: string, body: Record<string, unknown> = {}) =>
+  new Request('http://t/x', { method, body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(body) })
 
 const sameOrg = () => { ctx.callerCtx = { userId: 'u1', orgId: 'orgA', isAdmin: false }; ctx.results['datasets'] = { data: { org_id: 'orgA' }, error: null } }
 

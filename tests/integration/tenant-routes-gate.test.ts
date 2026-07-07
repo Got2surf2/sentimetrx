@@ -6,12 +6,30 @@
 // getCallerOrgContext + heavy libs mocked; we assert the security gate only.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { NextRequest } from 'next/server'
+import type { CallerOrgContext } from '@/lib/auth/orgAccess'
+
+interface AuthUser { id: string }
+interface UserRow { org_id: string | null; organizations?: { is_admin_org: boolean } }
+interface QueryResult { data: unknown; error: unknown }
+interface QueryBuilder {
+  select: () => QueryBuilder
+  eq: () => QueryBuilder
+  order: () => QueryBuilder
+  range: () => QueryBuilder
+  in: () => QueryBuilder
+  limit: () => QueryBuilder
+  neq: () => QueryBuilder
+  single: () => Promise<QueryResult>
+  maybeSingle: () => Promise<QueryResult>
+  then: (res: (v: QueryResult) => unknown, rej: (e: unknown) => unknown) => Promise<unknown>
+}
 
 const ctx = {
-  authUser: null as any,
-  userRow: null as any,       // createClient users lookup (org_id + organizations)
-  callerCtx: { userId: null, orgId: null, isAdmin: false } as any, // getCallerOrgContext
-  results: {} as Record<string, any>,   // service/session single() results by table
+  authUser: null as AuthUser | null,
+  userRow: null as UserRow | null,       // createClient users lookup (org_id + organizations)
+  callerCtx: { userId: null, orgId: null, isAdmin: false } as CallerOrgContext, // getCallerOrgContext
+  results: {} as Record<string, QueryResult>,   // service/session single() results by table
 }
 
 function reset() {
@@ -21,13 +39,14 @@ function reset() {
   ctx.results = {}
 }
 
-function builder(table: string): any {
-  const b: any = {}
+function builder(table: string): QueryBuilder {
+  const b: Record<string, unknown> = {}
   for (const m of ['select', 'eq', 'order', 'range', 'in', 'limit', 'neq']) b[m] = () => b
   b.single = async () => ctx.results[table] ?? { data: null, error: null }
   b.maybeSingle = async () => ctx.results[table] ?? { data: null, error: null }
-  b.then = (res: any, rej: any) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
-  return b
+  b.then = (res: (v: QueryResult) => unknown, rej: (e: unknown) => unknown) =>
+    Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
+  return b as unknown as QueryBuilder
 }
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -57,37 +76,37 @@ const post = () => new Request('http://t/x', { method: 'POST', body: '{}' })
 beforeEach(reset)
 
 describe('POST /api/campaigns/[id]/send', () => {
-  const p = { params: { id: 'c_1' } } as any
+  const p = { params: { id: 'c_1' } } as unknown as { params: Promise<{ id: string }> }
   it('401 unauthenticated', async () => {
-    expect((await campaignSend.POST(post() as any, p)).status).toBe(401)
+    expect((await campaignSend.POST(post() as NextRequest, p)).status).toBe(401)
   })
   it('401 when the user has no org', async () => {
     ctx.authUser = { id: 'u1' }; ctx.userRow = { org_id: null, organizations: { is_admin_org: false } }
-    expect((await campaignSend.POST(post() as any, p)).status).toBe(401)
+    expect((await campaignSend.POST(post() as NextRequest, p)).status).toBe(401)
   })
   it('404 cross-org (campaign in another org)', async () => {
     ctx.authUser = { id: 'u1' }; ctx.userRow = { org_id: 'orgA', organizations: { is_admin_org: false } }
     ctx.results['campaigns'] = { data: { id: 'c_1', org_id: 'orgB', status: 'draft', studies: {} }, error: null }
-    expect((await campaignSend.POST(post() as any, p)).status).toBe(404)
+    expect((await campaignSend.POST(post() as NextRequest, p)).status).toBe(404)
   })
 })
 
 describe('POST /api/social/comments/[id]/handle', () => {
-  const p = { params: { id: 'cm_1' } } as any
+  const p = { params: { id: 'cm_1' } } as unknown as { params: Promise<{ id: string }> }
   it('401 when unauthenticated / no org', async () => {
-    expect((await commentHandle.POST(post() as any, p)).status).toBe(401)
+    expect((await commentHandle.POST(post() as NextRequest, p)).status).toBe(401)
   })
   it('404 when the comment is missing or cross-org', async () => {
     ctx.authUser = { id: 'u1' }; ctx.userRow = { org_id: 'orgA' }
     ctx.results['social_comments'] = { data: null, error: null }  // org-scoped query found nothing
-    expect((await commentHandle.POST(post() as any, p)).status).toBe(404)
+    expect((await commentHandle.POST(post() as NextRequest, p)).status).toBe(404)
   })
 })
 
 describe('GET /api/datasets/[datasetId] (PATCH-guard sibling — GET path)', () => {
   // The GET handler resolves org via getOrgAndCheck and pairs id+org_id.
-  const p = { params: { datasetId: 'ds_1' } } as any
-  const get = () => datasetRows.GET(new Request('http://t/x') as any, p)
+  const p = { params: { datasetId: 'ds_1' } } as unknown as { params: Promise<{ datasetId: string }> }
+  const get = () => datasetRows.GET(new Request('http://t/x'), p)
   it('401 when caller has no org', async () => {
     ctx.callerCtx = { userId: null, orgId: null, isAdmin: false }
     expect((await get()).status).toBe(401)

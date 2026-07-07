@@ -18,12 +18,17 @@
 // routes write into the caller's own org; ask-ana gates the body datasetId.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { NextRequest } from 'next/server'
+
+type AuthUser = { id: string } | null
+type CallerCtx = { userId: string | null; orgId: string | null; isAdmin: boolean }
+type MockResult = { data: unknown; error: unknown }
 
 const ctx = {
-  authUser: null as any,
-  callerCtx: { userId: null, orgId: null, isAdmin: false } as any,
-  userContext: null as any,
-  results: {} as Record<string, any>,
+  authUser: null as AuthUser,
+  callerCtx: { userId: null, orgId: null, isAdmin: false } as CallerCtx,
+  userContext: null as Record<string, unknown> | null,
+  results: {} as Record<string, MockResult>,
 }
 function reset() {
   ctx.authUser = null
@@ -32,12 +37,12 @@ function reset() {
   ctx.results = {}
 }
 
-function builder(table: string): any {
-  const b: any = {}
+function builder(table: string) {
+  const b: Record<string, unknown> = {}
   for (const m of ['select', 'eq', 'order', 'in', 'limit', 'neq', 'range', 'gt', 'lte', 'like', 'update', 'delete', 'insert', 'upsert']) b[m] = () => b
   b.single = async () => ctx.results[table] ?? { data: null, error: null }
   b.maybeSingle = async () => ctx.results[table] ?? { data: null, error: null }
-  b.then = (res: any, rej: any) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
+  b.then = (res: (v: MockResult) => unknown, rej: (e: unknown) => unknown) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
   return b
 }
 const client = () => ({ from: (t: string) => builder(t) })
@@ -69,12 +74,12 @@ import * as studyPdf from '@/app/api/bots/[id]/study/pdf/route'
 import * as studyPptx from '@/app/api/bots/[id]/study/pptx/route'
 import * as askAna from '@/app/api/ask-ana/route'
 
-const idProps = { params: Promise.resolve({ id: 'b_1' }) } as any
-const entityProps = { params: Promise.resolve({ id: 'b_1', entityId: 'e_1' }) } as any
-const questionProps = { params: Promise.resolve({ id: 'b_1', questionId: 'q_1' }) } as any
-const reviewProps = { params: Promise.resolve({ id: 'b_1', sessionId: 's_1' }) } as any
-const req = (method = 'POST', body: any = {}) =>
-  new Request('http://t/x', { method, body: method === 'GET' ? undefined : JSON.stringify(body) }) as any
+const idProps = { params: Promise.resolve({ id: 'b_1' }) }
+const entityProps = { params: Promise.resolve({ id: 'b_1', entityId: 'e_1' }) }
+const questionProps = { params: Promise.resolve({ id: 'b_1', questionId: 'q_1' }) }
+const reviewProps = { params: Promise.resolve({ id: 'b_1', sessionId: 's_1' }) }
+const req = (method = 'POST', body: unknown = {}) =>
+  new Request('http://t/x', { method, body: method === 'GET' ? undefined : JSON.stringify(body) }) as unknown as NextRequest
 
 const caller = (orgId: string | null, isAdmin = false) => ({ userId: orgId ? 'u1' : null, orgId, isAdmin })
 
@@ -104,7 +109,7 @@ describe('bots — POST (create) / import', () => {
 })
 
 // ── [id] action routes — gate on the agent's org ───────────────────────────
-const idRoutes: { name: string; call: (r: any) => Promise<any>; method?: string }[] = [
+const idRoutes: { name: string; call: (r: unknown) => Promise<Response>; method?: string }[] = [
   { name: 'analyze POST', call: () => analyze.POST(req('POST'), idProps) },
   { name: 'entities/extract POST', call: () => entityExtract.POST(req('POST'), idProps) },
   { name: 'entities/[entityId] PATCH', call: () => entityRow.PATCH(req('PATCH', { hidden: true }), entityProps) },

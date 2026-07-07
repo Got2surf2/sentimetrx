@@ -171,6 +171,28 @@ interface Props {
   initialHasEntities?: boolean  // server-prefetched (scope has ≥1 non-hidden catalog entity) so the Entities pill doesn't pop in after the client catalog fetch; only seeds the gate while that fetch is in flight, then the live catalog governs
 }
 
+// Persisted UI state (sessionStorage). All optional — older saved payloads may
+// omit fields, and the legacy subTab/viewBy shape is mapped forward on restore.
+interface TmSessionState {
+  activeField?: string | null
+  activeFields?: string[]
+  section?: Section
+  view?: LensView
+  subTab?: SubTab
+  viewBy?: string
+  themesView?: 'distribution' | 'cards' | 'signals'
+  signalCutoffs?: { mainstream: number; noise: number }
+  showAllThemes?: boolean
+  compareViewMode?: 'group' | 'theme'
+  compareSmartAxes?: boolean
+  breakdownField?: string | null
+  compareFields?: string[]
+  selectedValues?: string[]
+  ratingField?: string | null
+  colorMode?: 'sentiment' | 'rating'
+  hideFlagged?: boolean
+}
+
 
 // ─── ApiKeyModal ──────────────────────────────────────────────────────────────
 
@@ -319,7 +341,7 @@ function BreakdownSelector({ catFields, breakdownField, setBreakdownField, schem
   setBreakdownField: (f: string | null) => void
   schema: SchemaField[]
   parsedData: Record<string, unknown>[]
-  analytics: any
+  analytics: DatasetAnalytics | null
   selectedValues: Set<string>
   setSelectedValues: (s: Set<string>) => void
 }) {
@@ -327,7 +349,7 @@ function BreakdownSelector({ catFields, breakdownField, setBreakdownField, schem
 
   function getValues(field: string): string[] {
     // Use analytics fieldSummaries for authoritative value list (covers all rows, not just sample)
-    var summary = analytics?.fieldSummaries?.[field]
+    var summary = analytics?.fieldSummaries?.[field] as { values?: string[]; topN?: string[] } | undefined
     var raw: string[] | null = null
     if (summary?.values) raw = summary.values as string[]
     else if (summary?.topN) raw = summary.topN as string[]
@@ -346,10 +368,10 @@ function BreakdownSelector({ catFields, breakdownField, setBreakdownField, schem
     }
     // Apply value aliases so breakdown values match aliased row data
     var sf = schema.find(function(f) { return f.field === field })
-    var aliases = (sf as any)?.valueAliases
+    var aliases = sf?.valueAliases
     if (aliases && Object.keys(aliases).length > 0) {
       var seen = new Set<string>()
-      return raw.map(function(v) { return aliases[v] || v }).filter(function(v) { if (seen.has(v)) return false; seen.add(v); return true })
+      return raw.map(function(v) { return aliases![v] || v }).filter(function(v) { if (seen.has(v)) return false; seen.add(v); return true })
     }
     return raw
   }
@@ -465,7 +487,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
   var [pinnedSig, setPinnedSig] = useState<string | null>(null)
   var [pinnedSigData, setPinnedSigData] = useState<{ dir: string; text: string; color: string } | null>(null)
   var [copiedSig, setCopiedSig] = useState(false)
-  var sigLeaveTimer = useRef<any>(null)
+  var sigLeaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   var [sigPopRect, setSigPopRect] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
   // Bar metric: 'share' (theme % within segment, default) vs 'rating' (avg star
   // rating). Toggle only meaningful when the dataset has a rating field.
@@ -1052,8 +1074,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // separate flag in the schema config; we respect it here for symmetry.
   const hiddenFields: string[] = useMemo(
     () => (schema?.fields || [])
-      .filter(function(f: any) { return f.type === 'ignore' || f.type === 'id' || f.hidden === true })
-      .map(function(f: any) { return f.field as string }),
+      .filter(function(f: SchemaField) { return f.type === 'ignore' || f.type === 'id' || f.hidden === true })
+      .map(function(f: SchemaField) { return f.field as string }),
     [schema?.fields],
   )
 
@@ -1061,8 +1083,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [displayThemes, setDisplayThemes] = useState<ThemeModel | null>(null)
   const overallBoxRef = useRef<{ topBoxPct: number; bottomBoxPct: number } | null>(null)
   const [themes, setThemes] = useState<ThemeModel | null>(savedThemeModel || null)
-  const [themeSource, setThemeSource] = useState<string | null>((savedThemeModel as any)?.themeSource || (savedThemeModel as any)?.source || null)
-  const [themeLibName, setThemeLibName] = useState<string | null>((savedThemeModel as any)?.themeLibName || (savedThemeModel as any)?.libName || null)
+  const [themeSource, setThemeSource] = useState<string | null>(savedThemeModel?.themeSource || (savedThemeModel as (ThemeModel & { source?: string | null }) | null)?.source || null)
+  const [themeLibName, setThemeLibName] = useState<string | null>(savedThemeModel?.themeLibName || (savedThemeModel as (ThemeModel & { libName?: string | null }) | null)?.libName || null)
   const [samplingInfo, setSamplingInfo] = useState<{ sampled: number; total: number } | null>(null)
   // Server-computed enrichment for theme cards:
   //   topicalWords[themeId]      → top topical words [word, count][] (currently unused)
@@ -1216,8 +1238,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       setEntityCatalogRows(data.entities || [])
       setEntityCatalogTotal(typeof data.total_distinct === 'number' ? data.total_distinct : null)
       setEntityCatalogScopeType(data.scope_type || null)
-    } catch (err: any) {
-      setEntityCatalogError(err?.message || 'Failed to load entities')
+    } catch (err: unknown) {
+      setEntityCatalogError(err instanceof Error ? err.message : 'Failed to load entities')
     } finally {
       setEntityCatalogLoading(false)
     }
@@ -1244,7 +1266,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // ensures the writer-effect below doesn't overwrite sessionStorage with
   // defaults before this restore runs.
   useEffect(function() {
-    const saved = readSession<any>(_tmKey)
+    const saved = readSession<TmSessionState>(_tmKey)
     if (saved) {
       if (saved.activeField !== undefined) setActiveField(saved.activeField)
       if (Array.isArray(saved.activeFields)) setActiveFields(saved.activeFields)
@@ -1773,7 +1795,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         var colData = await colRes.json()
         if (!colRes.ok || !colData.members) throw new Error('Could not load collection members')
 
-        var membersWithThemes = (colData.members as { label: string; has_themes: boolean; theme_model: any }[])
+        var membersWithThemes = (colData.members as { label: string; has_themes: boolean; theme_model: ThemeModel }[])
           .filter(function(m) { return m.has_themes })
 
         if (membersWithThemes.length < 2) {
@@ -2573,9 +2595,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                 {/* Theme name + origin badge */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                                   <span style={{ fontSize: 15, fontWeight: 800, color: T.text }}>{t.name}</span>
-                                  {(t as any).origin === 'seed' && <span style={{ fontSize: 9, padding: '1px 7px', borderRadius: 10, fontWeight: 700, background: '#dbeafe', color: '#1d4ed8', border: '1px solid #93c5fd' }}>Seed</span>}
-                                  {(t as any).origin === 'organic-promoted' && <span style={{ fontSize: 9, padding: '1px 7px', borderRadius: 10, fontWeight: 700, background: '#dcfce7', color: '#166534', border: '1px solid #86efac' }}>Organic</span>}
-                                  {(t as any).origin === 'organic' && <span style={{ fontSize: 9, padding: '1px 7px', borderRadius: 10, fontWeight: 700, background: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74' }}>Organic</span>}
+                                  {(t as Theme & { origin?: string }).origin === 'seed' && <span style={{ fontSize: 9, padding: '1px 7px', borderRadius: 10, fontWeight: 700, background: '#dbeafe', color: '#1d4ed8', border: '1px solid #93c5fd' }}>Seed</span>}
+                                  {(t as Theme & { origin?: string }).origin === 'organic-promoted' && <span style={{ fontSize: 9, padding: '1px 7px', borderRadius: 10, fontWeight: 700, background: '#dcfce7', color: '#166534', border: '1px solid #86efac' }}>Organic</span>}
+                                  {(t as Theme & { origin?: string }).origin === 'organic' && <span style={{ fontSize: 9, padding: '1px 7px', borderRadius: 10, fontWeight: 700, background: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74' }}>Organic</span>}
                                 </div>
                                 {/* Description */}
                                 <div style={{ fontSize: 12, color: T.textMute, lineHeight: 1.5, marginBottom: 10, minHeight: 32 }}>{t.description}</div>
@@ -2862,7 +2884,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   )}
                   {viewBy === 'theme' && themePopoverIdx !== null && themes && (displayThemes || themes).themes[themePopoverIdx] && (
                     <ThemePopover
-                      theme={(displayThemes || themes).themes[themePopoverIdx] as any}
+                      theme={(displayThemes || themes).themes[themePopoverIdx]}
                       rows={filteredRows}
                       fields={activeFields && activeFields.length > 0 ? activeFields : (activeField || (themes ? themes.fieldName : ''))}
                       color={themeColors[themePopoverIdx]?.text}

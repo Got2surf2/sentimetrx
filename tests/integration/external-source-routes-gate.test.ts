@@ -16,25 +16,37 @@
 // pairing and create routes assert the row lands in the caller org.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { NextRequest } from 'next/server'
+
+type QueryResult = { data: unknown; error: unknown }
+type ChainMethod = 'select' | 'order' | 'in' | 'limit' | 'neq' | 'range' | 'update' | 'delete'
+type Builder = Record<ChainMethod, () => Builder> & {
+  eq: (col: string, val: unknown) => Builder
+  insert: (payload: Record<string, unknown>) => Builder
+  single: () => Promise<QueryResult>
+  maybeSingle: () => Promise<QueryResult>
+  then: (res: (value: QueryResult) => unknown, rej: (reason: unknown) => unknown) => Promise<unknown>
+}
 
 const ctx = {
-  authUser: null as any,
-  results: {} as Record<string, any>,
-  eqCalls: {} as Record<string, [string, any][]>,
-  insertCalls: {} as Record<string, any[]>,
+  authUser: null as { id: string } | null,
+  results: {} as Record<string, QueryResult>,
+  eqCalls: {} as Record<string, [string, unknown][]>,
+  insertCalls: {} as Record<string, Record<string, unknown>[]>,
 }
 function reset() { ctx.authUser = null; ctx.results = {}; ctx.eqCalls = {}; ctx.insertCalls = {} }
 
-function builder(table: string): any {
+function builder(table: string): Builder {
   ctx.eqCalls[table] = ctx.eqCalls[table] || []
   ctx.insertCalls[table] = ctx.insertCalls[table] || []
-  const b: any = {}
-  for (const m of ['select', 'order', 'in', 'limit', 'neq', 'range', 'update', 'delete']) b[m] = () => b
-  b.eq = (col: string, val: any) => { ctx.eqCalls[table].push([col, val]); return b }
-  b.insert = (payload: any) => { ctx.insertCalls[table].push(payload); return b }
+  const b = {} as Builder
+  const chainMethods: ChainMethod[] = ['select', 'order', 'in', 'limit', 'neq', 'range', 'update', 'delete']
+  for (const m of chainMethods) b[m] = () => b
+  b.eq = (col: string, val: unknown) => { ctx.eqCalls[table].push([col, val]); return b }
+  b.insert = (payload: Record<string, unknown>) => { ctx.insertCalls[table].push(payload); return b }
   b.single = async () => ctx.results[table] ?? { data: null, error: null }
   b.maybeSingle = async () => ctx.results[table] ?? { data: null, error: null }
-  b.then = (res: any, rej: any) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
+  b.then = (res, rej) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
   return b
 }
 
@@ -67,8 +79,8 @@ import * as regsSearch from '@/app/api/regulations-sources/search/route'
 import * as alerts from '@/app/api/social/alerts/route'
 import * as dmTemplates from '@/app/api/social/dm-templates/route'
 
-const req = (method = 'POST', body: any = {}) =>
-  new Request('http://t/x', { method, body: method === 'GET' ? undefined : JSON.stringify(body) }) as any
+const req = (method = 'POST', body: Record<string, unknown> = {}) =>
+  new Request('http://t/x', { method, body: method === 'GET' ? undefined : JSON.stringify(body) }) as unknown as NextRequest
 
 const withAnalyze = (org: string | null) =>
   ({ data: { org_id: org, organizations: { features: { analyze: true } } }, error: null })

@@ -25,12 +25,23 @@
 // service-role write.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { NextRequest } from 'next/server'
 
-const ctx = {
-  authUser: null as any,
-  callerCtx: { userId: null, orgId: null, isAdmin: false } as any,
-  results: {} as Record<string, any>,
-  usersById: {} as Record<string, any>,
+interface QueryResult { data: unknown; error: unknown }
+interface MockUser { id: string; email?: string }
+interface CallerCtx { userId: string | null; orgId: string | null; isAdmin: boolean }
+interface Ctx {
+  authUser: MockUser | null
+  callerCtx: CallerCtx
+  results: Record<string, QueryResult>
+  usersById: Record<string, QueryResult>
+}
+
+const ctx: Ctx = {
+  authUser: null,
+  callerCtx: { userId: null, orgId: null, isAdmin: false },
+  results: {},
+  usersById: {},
 }
 function reset() {
   ctx.authUser = null
@@ -39,14 +50,36 @@ function reset() {
   ctx.usersById = {}
 }
 
-function builder(table: string): any {
-  let lastId: any
-  const b: any = {}
-  for (const m of ['select', 'order', 'in', 'limit', 'neq', 'range', 'gt', 'gte', 'lte', 'or', 'like', 'update', 'delete', 'insert', 'upsert']) b[m] = () => b
-  b.eq = (col: string, val: any) => { if (col === 'id') lastId = val; return b }
+interface MockBuilder {
+  select: () => MockBuilder
+  order: () => MockBuilder
+  in: () => MockBuilder
+  limit: () => MockBuilder
+  neq: () => MockBuilder
+  range: () => MockBuilder
+  gt: () => MockBuilder
+  gte: () => MockBuilder
+  lte: () => MockBuilder
+  or: () => MockBuilder
+  like: () => MockBuilder
+  update: () => MockBuilder
+  delete: () => MockBuilder
+  insert: () => MockBuilder
+  upsert: () => MockBuilder
+  eq: (col: unknown, val: unknown) => MockBuilder
+  single: () => Promise<QueryResult>
+  maybeSingle: () => Promise<QueryResult>
+  then: (res: (v: QueryResult) => unknown, rej: (e: unknown) => unknown) => Promise<unknown>
+}
+
+function builder(table: string): MockBuilder {
+  let lastId: string | undefined
+  const b = {} as MockBuilder
+  for (const m of ['select', 'order', 'in', 'limit', 'neq', 'range', 'gt', 'gte', 'lte', 'or', 'like', 'update', 'delete', 'insert', 'upsert']) (b as unknown as Record<string, unknown>)[m] = () => b
+  b.eq = (col, val) => { if (col === 'id') lastId = val as string; return b }
   b.single = async () => (table === 'users' && lastId != null && lastId in ctx.usersById) ? ctx.usersById[lastId] : (ctx.results[table] ?? { data: null, error: null })
   b.maybeSingle = b.single
-  b.then = (res: any, rej: any) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
+  b.then = (res, rej) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
   return b
 }
 const client = () => ({
@@ -83,10 +116,10 @@ import * as inviteResend from '@/app/api/invite/[id]/resend/route'
 import * as favorites from '@/app/api/favorites/route'
 import * as share from '@/app/api/share/route'
 
-const req = (method = 'POST', body: any = {}, url = 'http://t/x') =>
-  new Request(url, { method, body: method === 'GET' ? undefined : JSON.stringify(body) }) as any
-const srcP = { params: Promise.resolve({ sourceId: 's_1' }) } as any
-const idP = { params: Promise.resolve({ id: 'x_1' }) } as any
+const req = (method = 'POST', body: unknown = {}, url = 'http://t/x') =>
+  new Request(url, { method, body: method === 'GET' ? undefined : JSON.stringify(body) }) as unknown as NextRequest
+const srcP: { params: Promise<{ sourceId: string }> } = { params: Promise.resolve({ sourceId: 's_1' }) }
+const idP: { params: Promise<{ id: string }> } = { params: Promise.resolve({ id: 'x_1' }) }
 
 function authAs(orgId: string | null, opts: { role?: string; isAdmin?: boolean; analyze?: boolean } = {}) {
   const { role = 'owner', isAdmin = false, analyze = true } = opts
@@ -201,7 +234,7 @@ describe('org/logo — POST', () => {
     const form = new FormData()
     form.set('file', new File(['x'], 'logo.png', { type: 'image/png' }))
     form.set('org_id', 'orgB')
-    const r = await orgLogo.POST(new Request('http://t/x', { method: 'POST', body: form }) as any)
+    const r = await orgLogo.POST(new Request('http://t/x', { method: 'POST', body: form }) as unknown as NextRequest)
     expect(r.status).toBe(403)
   })
 })

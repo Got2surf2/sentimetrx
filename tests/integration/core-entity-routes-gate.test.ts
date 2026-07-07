@@ -20,13 +20,18 @@
 // assert the row lands in the caller's org.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { NextRequest } from 'next/server'
+
+type AuthUser = { id: string; email?: string } | null
+type SupaResult = { data: unknown; error: unknown }
+type RouteProps = { params: Promise<{ id: string }> }
 
 const ctx = {
-  authUser: null as any,
-  results: {} as Record<string, any>,
-  usersById: {} as Record<string, any>,
-  eqCalls: {} as Record<string, [string, any][]>,
-  insertCalls: {} as Record<string, any[]>,
+  authUser: null as AuthUser,
+  results: {} as Record<string, SupaResult>,
+  usersById: {} as Record<string, SupaResult>,
+  eqCalls: {} as Record<string, [string, unknown][]>,
+  insertCalls: {} as Record<string, Record<string, unknown>[]>,
 }
 function reset() {
   ctx.authUser = null
@@ -36,14 +41,32 @@ function reset() {
   ctx.insertCalls = {}
 }
 
-function builder(table: string): any {
+type ChainMethod = () => MockBuilder
+interface MockBuilder {
+  select: ChainMethod
+  order: ChainMethod
+  in: ChainMethod
+  limit: ChainMethod
+  neq: ChainMethod
+  range: ChainMethod
+  update: ChainMethod
+  delete: ChainMethod
+  eq: (col: string, val: unknown) => MockBuilder
+  insert: (payload: Record<string, unknown>) => MockBuilder
+  single: () => Promise<unknown>
+  maybeSingle: () => Promise<unknown>
+  then: (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) => Promise<unknown>
+}
+
+function builder(table: string): MockBuilder {
   ctx.eqCalls[table] = ctx.eqCalls[table] || []
   ctx.insertCalls[table] = ctx.insertCalls[table] || []
-  let lastId: any = undefined
-  const b: any = {}
-  for (const m of ['select', 'order', 'in', 'limit', 'neq', 'range', 'update', 'delete']) b[m] = () => b
-  b.eq = (col: string, val: any) => { ctx.eqCalls[table].push([col, val]); if (col === 'id') lastId = val; return b }
-  b.insert = (payload: any) => { ctx.insertCalls[table].push(payload); return b }
+  let lastId: string | undefined = undefined
+  const b = {} as MockBuilder
+  const chainMethods = ['select', 'order', 'in', 'limit', 'neq', 'range', 'update', 'delete'] as const
+  for (const m of chainMethods) b[m] = () => b
+  b.eq = (col: string, val: unknown) => { ctx.eqCalls[table].push([col, val]); if (col === 'id') lastId = val as string; return b }
+  b.insert = (payload: Record<string, unknown>) => { ctx.insertCalls[table].push(payload); return b }
   b.single = async () => {
     if (table === 'users' && lastId !== undefined && (lastId in ctx.usersById)) return ctx.usersById[lastId]
     return ctx.results[table] ?? { data: null, error: null }
@@ -52,7 +75,7 @@ function builder(table: string): any {
     if (table === 'users' && lastId !== undefined && (lastId in ctx.usersById)) return ctx.usersById[lastId]
     return ctx.results[table] ?? { data: null, error: null }
   }
-  b.then = (res: any, rej: any) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
+  b.then = (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
   return b
 }
 
@@ -69,7 +92,7 @@ vi.mock('@/lib/userEvents', () => ({
   recordUserEvent: async () => {},
   eventContextFromRequest: () => ({ ip: null, userAgent: null }),
 }))
-vi.mock('@/lib/orgValidate', () => ({ validateOrgFilter: (v: any) => v }))
+vi.mock('@/lib/orgValidate', () => ({ validateOrgFilter: (v: unknown) => v }))
 vi.mock('@/lib/townHallAdapter', () => ({ listTownHallsAsLegacy: async () => [] }))
 
 import * as study from '@/app/api/studies/[id]/route'
@@ -80,12 +103,12 @@ import * as team from '@/app/api/settings/team/route'
 import * as sessions from '@/app/api/townhall/sessions/route'
 import * as customTheme from '@/app/api/townhall/themes/custom/route'
 
-const studyProps = { params: Promise.resolve({ id: 'st_1' }) } as any
-const dsProps = { params: Promise.resolve({ id: 'ds_1' }) } as any
-const campProps = { params: Promise.resolve({ id: 'c_1' }) } as any
+const studyProps: RouteProps = { params: Promise.resolve({ id: 'st_1' }) }
+const dsProps: RouteProps = { params: Promise.resolve({ id: 'ds_1' }) }
+const campProps: RouteProps = { params: Promise.resolve({ id: 'c_1' }) }
 
-const req = (method = 'POST', body: any = {}, url = 'http://t/x') =>
-  new Request(url, { method, body: method === 'GET' ? undefined : JSON.stringify(body) }) as any
+const req = (method = 'POST', body: unknown = {}, url = 'http://t/x') =>
+  new Request(url, { method, body: method === 'GET' ? undefined : JSON.stringify(body) }) as unknown as NextRequest
 
 const withAdmin = (org: string | null, isAdmin = false) =>
   ({ data: { org_id: org, organizations: { is_admin_org: isAdmin } }, error: null })

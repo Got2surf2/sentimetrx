@@ -14,7 +14,7 @@ function authHeader(): string {
   return 'Basic ' + Buffer.from(`${login}:${password}`).toString('base64')
 }
 
-async function post(path: string, body: unknown[]): Promise<any> {
+async function post(path: string, body: unknown[]): Promise<DfsResponse> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
     headers: { 'Authorization': authHeader(), 'Content-Type': 'application/json' },
@@ -33,7 +33,7 @@ async function post(path: string, body: unknown[]): Promise<any> {
   }
 }
 
-async function get(path: string): Promise<any> {
+async function get(path: string): Promise<DfsResponse> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'GET',
     headers: { 'Authorization': authHeader() },
@@ -86,6 +86,79 @@ export interface DfsReview {
 }
 
 // ---------------------------------------------------------------------------
+// Loosely-typed DataForSEO JSON response shapes (only the fields we read).
+// ---------------------------------------------------------------------------
+
+interface DfsMoney { balance?: number }
+interface MonthlySearch { year: number; month: number; search_volume: number }
+
+interface DfsResult {
+  items?: unknown[]
+  reviews_count: number
+  money?: DfsMoney
+  // search_volume/live returns keyword rows directly as result entries
+  keyword?: string
+  search_volume?: number
+  monthly_searches?: MonthlySearch[]
+}
+
+interface DfsTask {
+  id?: string
+  status_code: number
+  status_message?: string
+  result?: DfsResult[] | null
+  data?: { tag?: string }
+}
+
+interface DfsResponse {
+  tasks?: DfsTask[]
+}
+
+interface RatingObj { value?: number | null; votes_count?: number }
+interface AddressInfo { city?: string; region?: string; zip?: string }
+
+interface DfsBusinessItem {
+  type?: string
+  place_id?: string
+  title?: string
+  address?: string
+  address_info?: AddressInfo
+  rating?: RatingObj
+  phone?: string
+  latitude?: number | null
+  longitude?: number | null
+  url_path?: string
+  reviews_count?: number
+}
+
+interface DfsReviewItem {
+  review_id?: string
+  id?: string
+  profile_name: string
+  author_name?: string
+  timestamp: string
+  rank_absolute?: number
+  rating?: number | RatingObj
+  review_text?: string | null
+  owner_answer?: string | null
+  owner_timestamp?: string | null
+  review_url?: string | null
+  profile_url?: string | null
+  reviews_count?: number
+  // Tripadvisor-specific fields
+  responses?: { text?: string | null; timestamp?: string | null }[]
+  user_profile?: { name?: string }
+  url?: string | null
+}
+
+interface DfsSerpItem {
+  type?: string
+  url?: string
+  title?: string
+  description?: string
+}
+
+// ---------------------------------------------------------------------------
 // Search locations (live endpoint — instant results)
 // ---------------------------------------------------------------------------
 
@@ -105,17 +178,17 @@ export async function searchLocations(keyword: string): Promise<DfsLocation[]> {
     throw new Error(`Search failed: ${tasks?.[0]?.status_message || 'Unknown error'}`)
   }
 
-  const items = tasks[0].result?.[0]?.items || []
+  const items = (tasks[0].result?.[0]?.items || []) as DfsBusinessItem[]
   return items
-    .filter((item: any) => item?.type === 'maps_search')
+    .filter((item) => item?.type === 'maps_search')
     .map(parseBusinessItem)
     .filter((l: DfsLocation | null) => l !== null)
 }
 
-function parseBusinessItem(item: any): DfsLocation | null {
+function parseBusinessItem(item: DfsBusinessItem): DfsLocation | null {
   if (!item?.place_id) return null
   // Use structured address_info if available, fall back to parsing address string
-  const ai = item.address_info || {}
+  const ai: AddressInfo = item.address_info || {}
   const fallback = ai.city ? null : parseAddressString(item.address || '')
   return {
     place_id: item.place_id,
@@ -190,8 +263,9 @@ export async function submitReviewTask(
         return { taskId: taskStatus.id, getPath: attempt.getPath }
       }
       lastError = `${attempt.path}: ${taskStatus?.status_message || 'no task ID'}`
-    } catch (err: any) {
-      lastError = `${attempt.path}: ${err.message?.slice(0, 150)}`
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      lastError = `${attempt.path}: ${message.slice(0, 150)}`
     }
   }
   throw new Error(`Failed to submit review task: ${lastError}`)
@@ -214,7 +288,7 @@ export async function checkReviewTask(ref: ReviewTaskRef): Promise<TaskCheckResu
 
   if (task.status_code === 20000 && task.result?.length) {
     const resultData = task.result[0]
-    const items = resultData?.items || []
+    const items = (resultData?.items || []) as DfsReviewItem[]
     console.log('[dataforseo] task ready — items:', items.length, 'sample keys:', items[0] ? Object.keys(items[0]).join(',') : 'none', 'reviews_count:', resultData?.reviews_count)
     if (items.length === 0 && resultData?.reviews_count > 0) {
       // Items empty but reviews exist — might be nested differently
@@ -273,12 +347,12 @@ export async function fetchReviewsBatch(
 
     const postData = await post('/business_data/google/reviews/task_post', tasks)
     const taskIds = (postData?.tasks || [])
-      .filter((t: any) => t.id)
-      .map((t: any) => ({ id: t.id, tag: t.data?.tag || '' }))
+      .filter((t): t is DfsTask & { id: string } => Boolean(t.id))
+      .map((t) => ({ id: t.id, tag: t.data?.tag || '' }))
 
     // Poll all tasks
-    const pending = new Set<string>(taskIds.map((t: any) => t.id))
-    const tagMap = new Map<string, string>(taskIds.map((t: any) => [t.id, t.tag]))
+    const pending = new Set<string>(taskIds.map((t) => t.id))
+    const tagMap = new Map<string, string>(taskIds.map((t): [string, string] => [t.id, t.tag]))
     const maxAttempts = 40
     const pollInterval = 5000
 
@@ -291,7 +365,7 @@ export async function fetchReviewsBatch(
           if (!task) continue
 
           if (task.status_code === 20000 && task.result?.length) {
-            const items: any[] = task.result[0]?.items || []
+            const items = (task.result[0]?.items || []) as DfsReviewItem[]
             const placeId: string = tagMap.get(taskId) || ''
             const reviews: DfsReview[] = items.map(parseReviewItem).filter(Boolean) as DfsReview[]
             results.set(placeId, reviews)
@@ -315,7 +389,7 @@ export async function fetchReviewsBatch(
   return results
 }
 
-function parseReviewItem(item: any): DfsReview | null {
+function parseReviewItem(item: DfsReviewItem): DfsReview | null {
   if (!item) return null
   // Generate a stable ID from profile + timestamp if no review_id field
   const reviewId = item.review_id || item.id || (item.profile_name + ':' + item.timestamp) || String(item.rank_absolute)
@@ -360,9 +434,9 @@ export async function searchTripadvisorLocations(keyword: string): Promise<DfsLo
     const task = result?.tasks?.[0]
     if (!task) continue
     if (task.status_code === 20000 && task.result?.length) {
-      const items = task.result[0]?.items || []
+      const items = (task.result[0]?.items || []) as DfsBusinessItem[]
       return items
-        .filter((it: any) => it?.url_path)
+        .filter((it) => it?.url_path)
         .map(parseTripadvisorBusinessItem)
         .filter((l: DfsLocation | null) => l !== null)
     }
@@ -375,7 +449,7 @@ export async function searchTripadvisorLocations(keyword: string): Promise<DfsLo
   throw new Error('Tripadvisor search timed out — please try again')
 }
 
-function parseTripadvisorBusinessItem(item: any): DfsLocation | null {
+function parseTripadvisorBusinessItem(item: DfsBusinessItem): DfsLocation | null {
   if (!item?.url_path) return null
   // Search titles arrive rank-prefixed: "1. Salami Social Club" — strip it.
   // Tripadvisor search does not return structured address fields.
@@ -425,7 +499,7 @@ function normalizeTimestamp(ts: string | null | undefined): string {
   return t.replace(' ', 'T').replace(/\s+/g, '')
 }
 
-function parseTripadvisorReviewItem(item: any): DfsReview | null {
+function parseTripadvisorReviewItem(item: DfsReviewItem): DfsReview | null {
   if (!item) return null
   const reviewId = item.review_id || item.id || (item.rank_absolute != null ? String(item.rank_absolute) : '')
   if (!reviewId) return null
@@ -484,7 +558,7 @@ export async function getSearchVolumes(keywords: string[]): Promise<SearchVolume
     language_code: 'en',
   }])
   const items = data?.tasks?.[0]?.result || []
-  return items.map((item: any) => ({
+  return items.map((item) => ({
     keyword: String(item.keyword || ''),
     searchVolume: item.search_volume ?? 0,
     trend: classifyTrend(item.monthly_searches),
@@ -512,7 +586,7 @@ export async function searchGoogle(query: string, depth: number = 10): Promise<S
     depth,
   }])
 
-  const items = data?.tasks?.[0]?.result?.[0]?.items || []
+  const items = (data?.tasks?.[0]?.result?.[0]?.items || []) as DfsSerpItem[]
   const results: SerpResult[] = []
   for (const item of items) {
     if (item.type === 'organic' && item.url) {

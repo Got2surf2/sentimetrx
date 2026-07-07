@@ -2,8 +2,14 @@
 // Lightweight slide spec renderer — takes JSON slide specs from Ana and renders
 // them into pptxgenjs slides using the shared Datanautix brand primitives.
 
+import type PptxGenJS from 'pptxgenjs'
 import { W, H, PAD, FY, bgFill, trunc } from './shared'
 import { getDeckPalette, type DeckPalette } from './styles'
+
+// Every builder threads the per-request pptx instance, which carries the chosen
+// deck palette as `_deckPalette` (set once in renderDeck, read via pal()).
+type Pptx = PptxGenJS & { _deckPalette?: DeckPalette }
+type Slide = PptxGenJS.Slide
 
 // ── Palette ─────────────────────────────────────────────────────────────────
 // Presets live in ./styles (DeckSpec.style picks one; default = the modern
@@ -231,18 +237,18 @@ export interface DeckSpec {
 }
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
-function solidRect(slide: any, pptx: any, x: number, y: number, w: number, h: number, fill: string, transparency = 0) {
+function solidRect(slide: Slide, pptx: Pptx, x: number, y: number, w: number, h: number, fill: string, transparency = 0) {
   slide.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: fill, transparency }, line: { width: 0 } })
 }
 
-function rect(slide: any, pptx: any, x: number, y: number, w: number, h: number, fill: string) {
+function rect(slide: Slide, pptx: Pptx, x: number, y: number, w: number, h: number, fill: string) {
   const CR = pal(pptx)
   slide.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: fill }, line: { color: CR.line, width: 1 }, rectRadius: 0.07 })
 }
 
 /** Prominent subject-brand label, top-right of every content slide (the brand the
  *  report is about). The datanautix producer mark lives in the footer. */
-function brandLabel(slide: any, pptx: any, brand?: string) {
+function brandLabel(slide: Slide, pptx: Pptx, brand?: string) {
   const CR = pal(pptx)
   if (!brand) return
   slide.addText(trunc(brand, 40), {
@@ -253,7 +259,7 @@ function brandLabel(slide: any, pptx: any, brand?: string) {
   solidRect(slide, pptx, W - 2.0, 0.92, 1.7, 0.035, CR.orange)
 }
 
-function hdr(slide: any, pptx: any, title: string, subtitle?: string, brand?: string) {
+function hdr(slide: Slide, pptx: Pptx, title: string, subtitle?: string, brand?: string) {
   const CR = pal(pptx)
   bgFill(slide, pptx, CR.cream)
   // full-height left accent bar
@@ -273,7 +279,7 @@ function hdr(slide: any, pptx: any, title: string, subtitle?: string, brand?: st
   brandLabel(slide, pptx, brand)
 }
 
-function footer(slide: any, pptx: any, _datasetName: string) {
+function footer(slide: Slide, pptx: Pptx, _datasetName: string) {
   const CR = pal(pptx)
   solidRect(slide, pptx, 0, FY - 0.02, W, 0.012, CR.teal, 55)
   // datanautix producer mark (moved here from the header; the subject brand now
@@ -285,7 +291,7 @@ function footer(slide: any, pptx: any, _datasetName: string) {
   ], { x: PAD, y: FY, w: W * 0.6, h: 0.26, fontSize: 8.5, valign: 'middle' })
 }
 
-function insightBox(slide: any, pptx: any, x: number, y: number, w: number, h: number, text: string) {
+function insightBox(slide: Slide, pptx: Pptx, x: number, y: number, w: number, h: number, text: string) {
   const CR = pal(pptx)
   rect(slide, pptx, x, y, w, h, CR.card)
   solidRect(slide, pptx, x, y, 0.06, h, CR.teal)
@@ -326,7 +332,7 @@ function barColors(CR: DeckPalette) {
   return [CR.teal, CR.tealL, CR.gold, CR.orange, CR.ink2, CR.tealD, CR.green, CR.amber, CR.red, CR.orangeD]
 }
 
-export function renderBarChart(pptx: any, spec: BarChartSlide, datasetName: string) {
+export function renderBarChart(pptx: Pptx, spec: BarChartSlide, datasetName: string) {
   const CR = pal(pptx)
   const BAR_COLORS = barColors(CR)
   const slide = pptx.addSlide('NUMBERED')
@@ -390,7 +396,7 @@ export function renderBarChart(pptx: any, spec: BarChartSlide, datasetName: stri
   footer(slide, pptx, datasetName)
 }
 
-export function renderColumnChart(pptx: any, spec: ColumnChartSlide, datasetName: string) {
+export function renderColumnChart(pptx: Pptx, spec: ColumnChartSlide, datasetName: string) {
   const CR = pal(pptx)
   const BAR_COLORS = barColors(CR)
   const slide = pptx.addSlide('NUMBERED')
@@ -449,7 +455,7 @@ export function renderColumnChart(pptx: any, spec: ColumnChartSlide, datasetName
   footer(slide, pptx, datasetName)
 }
 
-function renderKpiGrid(pptx: any, spec: KpiGridSlide, datasetName: string) {
+function renderKpiGrid(pptx: Pptx, spec: KpiGridSlide, datasetName: string) {
   const CR = pal(pptx)
   const slide = pptx.addSlide('NUMBERED')
   hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
@@ -496,7 +502,7 @@ function renderKpiGrid(pptx: any, spec: KpiGridSlide, datasetName: string) {
   footer(slide, pptx, datasetName)
 }
 
-function renderTable(pptx: any, spec: TableSlide, datasetName: string) {
+function renderTable(pptx: Pptx, spec: TableSlide, datasetName: string) {
   const CR = pal(pptx)
   const slide = pptx.addSlide('NUMBERED')
   hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
@@ -540,7 +546,7 @@ function renderTable(pptx: any, spec: TableSlide, datasetName: string) {
   footer(slide, pptx, datasetName)
 }
 
-function renderBullets(pptx: any, spec: BulletsSlide, datasetName: string) {
+function renderBullets(pptx: Pptx, spec: BulletsSlide, datasetName: string) {
   const CR = pal(pptx)
   const slide = pptx.addSlide('NUMBERED')
   hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
@@ -573,7 +579,7 @@ function renderBullets(pptx: any, spec: BulletsSlide, datasetName: string) {
   footer(slide, pptx, datasetName)
 }
 
-export function renderQuotes(pptx: any, spec: QuotesSlide, datasetName: string) {
+export function renderQuotes(pptx: Pptx, spec: QuotesSlide, datasetName: string) {
   const CR = pal(pptx)
   const slide = pptx.addSlide('NUMBERED')
   hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
@@ -632,7 +638,7 @@ export function renderQuotes(pptx: any, spec: QuotesSlide, datasetName: string) 
   footer(slide, pptx, datasetName)
 }
 
-function renderTwoColumn(pptx: any, spec: TwoColumnSlide, datasetName: string) {
+function renderTwoColumn(pptx: Pptx, spec: TwoColumnSlide, datasetName: string) {
   const CR = pal(pptx)
   const slide = pptx.addSlide('NUMBERED')
   hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
@@ -670,7 +676,7 @@ function renderTwoColumn(pptx: any, spec: TwoColumnSlide, datasetName: string) {
   footer(slide, pptx, datasetName)
 }
 
-export function renderEntityGrid(pptx: any, spec: EntityGridSlide, datasetName: string) {
+export function renderEntityGrid(pptx: Pptx, spec: EntityGridSlide, datasetName: string) {
   const CR = pal(pptx)
   const slide = pptx.addSlide('NUMBERED')
   hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
@@ -737,7 +743,7 @@ export function fmtWallClock(seconds: number): string {
   return `${(seconds / 3600).toFixed(1)} hours`
 }
 
-export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: string) {
+export function renderProvenance(pptx: Pptx, spec: ProvenanceSlide, datasetName: string) {
   const CR = pal(pptx)
   const slide = pptx.addSlide('NUMBERED')
   hdr(slide, pptx, spec.title || 'How this deck was made.', undefined, datasetName)
@@ -774,16 +780,16 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
     const subY = lblY + lblHt + g
     slide.addText(value, {
       x, y: valY, w, h: valH,
-      fontSize: 46, bold: true, color, align: 'center', valign: 'middle', autoFit: true, wrap: false, margin: 0 as any,
+      fontSize: 46, bold: true, color, align: 'center', valign: 'middle', autoFit: true, wrap: false, margin: 0,
     })
     slide.addText(label, {
       x, y: lblY, w, h: lblHt,
-      fontSize: 16, bold: true, color: CR.ink, align: 'center', valign: 'middle', autoFit: true, wrap: false, margin: 0 as any,
+      fontSize: 16, bold: true, color: CR.ink, align: 'center', valign: 'middle', autoFit: true, wrap: false, margin: 0,
     })
     if (sub) {
       slide.addText(sub, {
         x, y: subY, w, h: subHt,
-        fontSize: 10, color: CR.ink2, italic: true, align: 'center', valign: 'middle', autoFit: true, wrap: false, margin: 0 as any,
+        fontSize: 10, color: CR.ink2, italic: true, align: 'center', valign: 'middle', autoFit: true, wrap: false, margin: 0,
       })
     }
   }
@@ -845,16 +851,16 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
       const subY = lblY + labH + g
       slide.addText(it.value, {
         x: x + 0.15, y: valY, w: colW - 0.3, h: valH,
-        fontSize: 16, bold: true, color: CR.ink, valign: 'middle', autoFit: true, wrap: false, margin: 0 as any,
+        fontSize: 16, bold: true, color: CR.ink, valign: 'middle', autoFit: true, wrap: false, margin: 0,
       })
       slide.addText(it.label, {
         x: x + 0.15, y: lblY, w: colW - 0.3, h: labH,
-        fontSize: 9.5, color: CR.ink2, italic: true, valign: 'middle', autoFit: true, wrap: false, margin: 0 as any,
+        fontSize: 9.5, color: CR.ink2, italic: true, valign: 'middle', autoFit: true, wrap: false, margin: 0,
       })
       if (it.sub && subH >= 0.11) {
         slide.addText(clip(it.sub, 60), {
           x: x + 0.15, y: subY, w: colW - 0.3, h: subH,
-          fontSize: 8.5, color: CR.ink2, valign: 'top', wrap: false, autoFit: true, margin: 0 as any,
+          fontSize: 8.5, color: CR.ink2, valign: 'top', wrap: false, autoFit: true, margin: 0,
         })
       }
     })
@@ -915,7 +921,7 @@ export function renderProvenance(pptx: any, spec: ProvenanceSlide, datasetName: 
   footer(slide, pptx, datasetName)
 }
 
-export function renderCustomDecks(pptx: any, spec: CustomDecksSlide, datasetName: string) {
+export function renderCustomDecks(pptx: Pptx, spec: CustomDecksSlide, datasetName: string) {
   const CR = pal(pptx)
   const slide = pptx.addSlide('NUMBERED')
   hdr(slide, pptx, spec.title || 'Every deck is custom.', spec.tagline, datasetName)
@@ -977,7 +983,7 @@ export function renderCustomDecks(pptx: any, spec: CustomDecksSlide, datasetName
 
 // ── Title slide ─────────────────────────────────────────────────────────────
 // Dark INK cover — premium, high-contrast against the cream content slides.
-function renderTitleSlide(pptx: any, title: string, subtitle: string, datasetName: string, preparedFor?: string, preparedBy?: string) {
+function renderTitleSlide(pptx: Pptx, title: string, subtitle: string, datasetName: string, preparedFor?: string, preparedBy?: string) {
   const CR = pal(pptx)
   const slide = pptx.addSlide('NUMBERED')
   solidRect(slide, pptx, 0, 0, W, H, CR.ink)
@@ -1012,7 +1018,7 @@ function renderTitleSlide(pptx: any, title: string, subtitle: string, datasetNam
 
 
 // Section divider — chapter break on the dark cream-family background.
-function renderSection(pptx: any, spec: SectionSlide, _datasetName: string) {
+function renderSection(pptx: Pptx, spec: SectionSlide, _datasetName: string) {
   const CR = pal(pptx)
   const slide = pptx.addSlide('NUMBERED')
   solidRect(slide, pptx, 0, 0, W, H, CR.ink)
@@ -1043,7 +1049,7 @@ function sentColors(CR: DeckPalette): Record<string, { fg: string; bg: string }>
     neutral:  { fg: CR.ink2,   bg: 'F0EBE3' },
   }
 }
-function renderThemeCards(pptx: any, spec: ThemeCardsSlide, datasetName: string) {
+function renderThemeCards(pptx: Pptx, spec: ThemeCardsSlide, datasetName: string) {
   const CR = pal(pptx)
   const SENT_COLOR = sentColors(CR)
   const slide = pptx.addSlide('NUMBERED')
@@ -1089,7 +1095,7 @@ function renderThemeCards(pptx: any, spec: ThemeCardsSlide, datasetName: string)
     }
     // Keyword chips as one inline rich-text row
     if (c.keywords && c.keywords.length) {
-      const runs: any[] = []
+      const runs: PptxGenJS.TextProps[] = []
       c.keywords.slice(0, 8).forEach((k, ki) => {
         if (ki > 0) runs.push({ text: '   ', options: { fontSize: 12 } })
         runs.push({ text: k.word, options: { fontSize: 12.5, bold: true, color: CR.teal } })
@@ -1116,7 +1122,7 @@ function pillTones(CR: DeckPalette): Record<string, { bg: string; fg: string }> 
     neutral: { bg: 'F0EBE3', fg: CR.ink2 },
   }
 }
-function renderCommentsGrid(pptx: any, spec: CommentsGridSlide, datasetName: string) {
+function renderCommentsGrid(pptx: Pptx, spec: CommentsGridSlide, datasetName: string) {
   const CR = pal(pptx)
   const PILL_TONE = pillTones(CR)
   const slide = pptx.addSlide('NUMBERED')
@@ -1173,7 +1179,7 @@ function renderCommentsGrid(pptx: any, spec: CommentsGridSlide, datasetName: str
 }
 
 // Numeric distribution — summary-stat cards over a histogram with an optional mean line.
-function renderNumericStats(pptx: any, spec: NumericStatsSlide, datasetName: string) {
+function renderNumericStats(pptx: Pptx, spec: NumericStatsSlide, datasetName: string) {
   const CR = pal(pptx)
   const slide = pptx.addSlide('NUMBERED')
   hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
@@ -1232,7 +1238,7 @@ function renderNumericStats(pptx: any, spec: NumericStatsSlide, datasetName: str
 }
 
 // Response-distribution horizontal bars with an optional KPI strip on top.
-function renderDistBars(pptx: any, spec: DistBarsSlide, datasetName: string) {
+function renderDistBars(pptx: Pptx, spec: DistBarsSlide, datasetName: string) {
   const CR = pal(pptx)
   const BAR_COLORS = barColors(CR)
   const slide = pptx.addSlide('NUMBERED')
@@ -1298,7 +1304,7 @@ function renderDistBars(pptx: any, spec: DistBarsSlide, datasetName: string) {
 }
 
 // 2×2 compact grid of mini bar charts (one card per categorical field).
-function renderCompactGrid(pptx: any, spec: CompactGridSlide, datasetName: string) {
+function renderCompactGrid(pptx: Pptx, spec: CompactGridSlide, datasetName: string) {
   const CR = pal(pptx)
   const BAR_COLORS = barColors(CR)
   const slide = pptx.addSlide('NUMBERED')
@@ -1351,7 +1357,7 @@ function renderCompactGrid(pptx: any, spec: CompactGridSlide, datasetName: strin
 }
 
 // Survey response + completion funnel.
-function renderSurveyFunnel(pptx: any, spec: SurveyFunnelSlide, datasetName: string) {
+function renderSurveyFunnel(pptx: Pptx, spec: SurveyFunnelSlide, datasetName: string) {
   const CR = pal(pptx)
   const slide = pptx.addSlide('NUMBERED')
   hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
@@ -1405,7 +1411,7 @@ function renderSurveyFunnel(pptx: any, spec: SurveyFunnelSlide, datasetName: str
 }
 
 // Key-driver (OLS coefficient) diverging-bar chart.
-function renderThemeImpact(pptx: any, spec: ThemeImpactSlide, datasetName: string) {
+function renderThemeImpact(pptx: Pptx, spec: ThemeImpactSlide, datasetName: string) {
   const CR = pal(pptx)
   const slide = pptx.addSlide('NUMBERED')
   hdr(slide, pptx, spec.title, spec.subtitle, datasetName)
@@ -1501,7 +1507,7 @@ export async function renderDeck(deck: DeckSpec, datasetName: string): Promise<B
       case 'theme_impact': renderThemeImpact(pptx, spec, datasetName); break
       default:
         // Unknown type — render as bullets with the raw data
-        renderBullets(pptx, { type: 'bullets', title: (spec as any).title || 'Slide', bullets: [JSON.stringify(spec)] }, datasetName)
+        renderBullets(pptx, { type: 'bullets', title: (spec as { title?: string }).title || 'Slide', bullets: [JSON.stringify(spec)] }, datasetName)
     }
   }
 

@@ -9,10 +9,20 @@ import { buildStudySchema } from '@/lib/datasetUtils'
 import { type Industry } from '@/lib/industryDefaults'
 import { INDUSTRY_THEMES } from '@/lib/industryThemes'
 import { serverError } from '@/lib/apiError'
+import type { StudyConfig, SurveyQuestion, PsychoQuestion, DemoField } from '@/lib/types'
+import type { SchemaFieldConfig } from '@/lib/analyzeTypes'
 
 export const dynamic = 'force-dynamic'
 
 interface Params { params: Promise<{ datasetId: string }> }
+
+interface OrgRel { is_admin_org: boolean }
+interface UserRow { org_id: string | null; organizations: OrgRel | OrgRel[] | null }
+interface LinkedStudy { id: string; name: string; config: StudyConfig }
+interface DatasetWithStudy { org_id: string | null; studies: LinkedStudy | null }
+// Study questions may carry an `analyticsLabel` set by the schema editor; it is
+// not on the base SurveyQuestion type, so widen locally where it is read.
+type StudyQuestion = SurveyQuestion & { analyticsLabel?: string }
 
 export async function POST(_req: Request, props: Params) {
   const params = await props.params;
@@ -27,23 +37,23 @@ export async function POST(_req: Request, props: Params) {
   // Admin-org members can act cross-org (Phase E parity).
   const { data: userData } = await supabase
     .from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
-  const orgRel = (userData as any)?.organizations
+  const orgRel = (userData as UserRow | null)?.organizations
   const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org === true : orgRel?.is_admin_org === true
-  const userOrgId = (userData as any)?.org_id as string | null
+  const userOrgId = (userData as UserRow | null)?.org_id as string | null
 
   // Load dataset + linked study
   const { data: dataset } = await service
     .from('datasets').select('*, studies(id, name, config)').eq('id', params.datasetId).single()
 
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
-  if (!isAdmin && (dataset as any).org_id !== userOrgId) {
+  if (!isAdmin && (dataset as DatasetWithStudy).org_id !== userOrgId) {
     return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
   }
   if (dataset.source !== 'study' || !dataset.study_id) {
     return NextResponse.json({ error: 'Not a study-linked dataset' }, { status: 400 })
   }
 
-  const study = (dataset as any).studies
+  const study = (dataset as DatasetWithStudy).studies
   if (!study || !study.config) {
     return NextResponse.json({ error: 'Study config not found', needsReview: true }, { status: 400 })
   }
@@ -53,33 +63,33 @@ export async function POST(_req: Request, props: Params) {
 
   // Ensure all fields have prompt populated (for PPTX subtitles)
   if (study.config.questions) {
-    study.config.questions.forEach(function(q: any) {
+    study.config.questions.forEach(function(q: SurveyQuestion) {
       const col = q.exportLabel || q.prompt || q.id
-      const field = schema.fields.find(function(f: any) { return f.field === col || f.field.includes(col) })
+      const field = schema.fields.find(function(f: SchemaFieldConfig) { return f.field === col || f.field.includes(col) })
       if (field && !field.prompt) field.prompt = q.prompt
     })
   }
   if (study.config.psychographicBank) {
-    study.config.psychographicBank.forEach(function(pq: any) {
+    study.config.psychographicBank.forEach(function(pq: PsychoQuestion) {
       const sanitized = (pq.key || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
-      const field = schema.fields.find(function(f: any) { return f.field === 'psycho_' + sanitized })
+      const field = schema.fields.find(function(f: SchemaFieldConfig) { return f.field === 'psycho_' + sanitized })
       if (field && !field.prompt) field.prompt = pq.q
     })
   }
   if (study.config.demoFields) {
-    study.config.demoFields.forEach(function(df: any) {
+    study.config.demoFields.forEach(function(df: DemoField) {
       if (!df.enabled) return
       const sanitized = (df.key || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
-      const field = schema.fields.find(function(f: any) { return f.field === 'demo_' + sanitized })
+      const field = schema.fields.find(function(f: SchemaFieldConfig) { return f.field === 'demo_' + sanitized })
       if (field && !field.prompt) field.prompt = df.label
     })
   }
 
   // Apply question text as field labels (aliases)
   if (study.config.questions) {
-    study.config.questions.forEach(function(q: any) {
+    study.config.questions.forEach(function(q: StudyQuestion) {
       const col = q.exportLabel || q.prompt || q.id
-      const field = schema.fields.find(function(f: any) { return f.field === col || f.field.includes(col) })
+      const field = schema.fields.find(function(f: SchemaFieldConfig) { return f.field === col || f.field.includes(col) })
       if (field) {
         // analyticsLabel takes priority; fall back to truncated prompt
         if (q.analyticsLabel) {
@@ -92,7 +102,7 @@ export async function POST(_req: Request, props: Params) {
   }
 
   // Apply standard aliases for built-in fields
-  schema.fields.forEach(function(f: any) {
+  schema.fields.forEach(function(f: SchemaFieldConfig) {
     if (f.field === 'nps_score' && !f.label) f.label = 'NPS Score'
     if (f.field === 'experience_score' && !f.label) f.label = 'Experience Rating'
     if (f.field === 'sentiment' && !f.label) f.label = 'Sentiment'

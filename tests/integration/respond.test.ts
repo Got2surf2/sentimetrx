@@ -15,17 +15,29 @@ vi.mock('@/lib/contentGuard', () => ({
 
 // A tiny in-memory Supabase stand-in. Each test installs the chain it needs
 // by setting the `behavior` map below.
+type QueryResult = { data: unknown; error: { message: string } | null }
 type Behavior = {
-  studyLookup?: { data: any; error: any }
-  responseInsert?: { data: any; error: any }
-  responseUpsert?: { data: any; error: any }
-  existingDeviceCheck?: { data: any[] | null }
+  studyLookup?: QueryResult
+  responseInsert?: QueryResult
+  responseUpsert?: QueryResult
+  existingDeviceCheck?: { data: unknown[] | null }
 }
 const behavior: Behavior = {}
 
+interface SupabaseChain {
+  select: () => SupabaseChain
+  insert: () => unknown
+  upsert: () => unknown
+  update: () => SupabaseChain
+  eq: () => SupabaseChain
+  limit: () => SupabaseChain
+  single: () => Promise<unknown>
+  then: (resolve: (value: unknown) => void) => void
+}
+
 vi.mock('@/lib/supabase/server', () => {
-  function chainable(): any {
-    const obj: any = {
+  function chainable(): SupabaseChain {
+    const obj: SupabaseChain = {
       select: () => obj,
       insert: () => obj,
       upsert: () => obj,
@@ -33,7 +45,7 @@ vi.mock('@/lib/supabase/server', () => {
       eq: () => obj,
       limit: () => obj,
       single: () => Promise.resolve(behavior.studyLookup ?? { data: null, error: null }),
-      then: (resolve: any) => resolve({ data: [], error: null }),
+      then: (resolve: (value: unknown) => void) => resolve({ data: [], error: null }),
     }
     return obj
   }
@@ -41,14 +53,14 @@ vi.mock('@/lib/supabase/server', () => {
     createServiceRoleClient: () => ({
       from: (table: string) => {
         if (table === 'studies') {
-          const obj: any = chainable()
+          const obj: SupabaseChain = chainable()
           obj.single = () =>
             Promise.resolve(behavior.studyLookup ?? { data: null, error: { message: 'no study' } })
           return obj
         }
         if (table === 'responses') {
-          const obj: any = chainable()
-          obj.then = (resolve: any) =>
+          const obj: SupabaseChain = chainable()
+          obj.then = (resolve: (value: unknown) => void) =>
             resolve(behavior.existingDeviceCheck ?? { data: [], error: null })
           obj.upsert = () => ({
             select: () => ({
