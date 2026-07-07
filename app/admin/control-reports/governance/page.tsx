@@ -4,6 +4,7 @@ import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
 import GovernanceTrend from '@/components/admin/GovernanceTrend'
 import { loadAllReports } from '@/lib/governanceReports'
+import type { ModuleFeatures } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,9 +19,9 @@ export default async function ControlReportsGovernancePage() {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (!orgData?.is_admin_org) redirect('/dashboard')
-  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  const features = effectiveFeatures(orgData?.features, (userData as { features?: ModuleFeatures } | null)?.features)
 
   const reports = await loadAllReports()
 

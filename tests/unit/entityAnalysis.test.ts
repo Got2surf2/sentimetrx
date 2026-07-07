@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('@/lib/ai', () => ({ callAI: vi.fn() }))
 
 import { catalogToAggregate, entitySlideSpecs, splitMentions } from '@/lib/entityAnalysis'
+import type { EntityGridSlide } from '@/lib/pptx/slideRenderer'
 
 describe('splitMentions', () => {
   it('splits on commas / "and" / "&" / semicolons and drops null-ish tokens', () => {
@@ -52,7 +53,7 @@ describe('entitySlideSpecs', () => {
     expect(specs.map(s => s.type)).toEqual(['entity_grid', 'bar_chart', 'entity_grid', 'quotes'])
     expect(specs[0].title).toContain('Charities Donated To')
     // top grid caps at 24
-    expect((specs[0] as any).entities).toHaveLength(24)
+    expect((specs[0] as EntityGridSlide).entities).toHaveLength(24)
   })
 
   it('omits the long-tail grid when there are <=24 entities', () => {

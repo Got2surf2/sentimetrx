@@ -5,6 +5,7 @@ import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
 import { loadAllReports } from '@/lib/governanceReports'
 import { loadAllDriftReports } from '@/lib/specDriftReports'
+import type { ModuleFeatures } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,9 +25,9 @@ export default async function ControlReportsIndexPage() {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (!orgData?.is_admin_org) redirect('/dashboard')
-  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  const features = effectiveFeatures(orgData?.features, userData?.features as ModuleFeatures | null | undefined)
 
   const [governance, drift] = await Promise.all([
     loadAllReports(),

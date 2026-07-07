@@ -7,7 +7,7 @@
 // document ingestion can reuse it (with text-extract-first, vision-fallback).
 
 import 'server-only'
-import { callAI, type AIUsageContext } from '@/lib/ai'
+import { callAI, type AIUsageContext, type TextContentBlock, type ImageContentBlock } from '@/lib/ai'
 
 const SONNET_MODEL = 'claude-sonnet-4-6'
 
@@ -31,7 +31,7 @@ export async function visionReadPages(input: VisionReadInput): Promise<Record<st
 
   for (let i = 0; i < input.imageUrls.length; i += batchSize) {
     const batch = input.imageUrls.slice(i, i + batchSize)
-    const content: any[] = []
+    const content: Array<TextContentBlock | ImageContentBlock> = []
     batch.forEach((url, j) => {
       content.push({ type: 'text', text: `--- PAGE ${i + j + 1} ---` })
       content.push({ type: 'image', source: { type: 'url', url } })

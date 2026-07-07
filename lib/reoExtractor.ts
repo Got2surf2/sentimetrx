@@ -49,7 +49,7 @@ export function parseReoOutput(raw: string): ReoObservation[] {
   if (fence) s = fence[1].trim()
   const a = s.indexOf('{'), b = s.lastIndexOf('}')
   if (a >= 0 && b > a) s = s.slice(a, b + 1)
-  let parsed: any
+  let parsed: { observations?: unknown }
   try { parsed = JSON.parse(s) } catch { return [] }
   const list = Array.isArray(parsed?.observations) ? parsed.observations : []
   const out: ReoObservation[] = []

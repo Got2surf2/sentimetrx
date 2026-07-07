@@ -18,7 +18,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => ({
     ok: true,
     json: async () => ({ brands: ['Capital Grille', 'Ruth\'s Chris'] }),
-  })) as any)
+  })) as unknown as typeof fetch)
 })
 
 describe('BrandTagInput', () => {

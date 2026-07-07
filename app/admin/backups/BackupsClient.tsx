@@ -5,7 +5,7 @@ import Link from 'next/link'
 import TopNav from '@/components/nav/TopNav'
 import type { ModuleFeatures } from '@/lib/types'
 
-interface OrgRow { id: string; name: string; slug: string; plan: string; is_admin_org: boolean }
+export interface OrgRow { id: string; name: string; slug: string; plan: string; is_admin_org: boolean }
 
 interface Props {
   orgs: OrgRow[]

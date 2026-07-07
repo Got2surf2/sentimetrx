@@ -19,7 +19,7 @@ export default async function PosPreviewPage() {
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (!orgData?.is_admin_org) redirect('/dashboard')
 
   // Pull every dataset across orgs for the dropdown.
@@ -30,5 +30,14 @@ export default async function PosPreviewPage() {
     .order('created_at', { ascending: false })
     .limit(200)
 
-  return <PosPreviewClient datasets={(datasets || []) as any} />
+  return <PosPreviewClient datasets={(datasets || []) as DatasetRow[]} />
+}
+
+type DatasetRow = {
+  id:        string
+  name:      string
+  source:    string | null
+  brand_tag: string | null
+  org_id:    string | null
+  row_count: number | null
 }

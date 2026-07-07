@@ -88,11 +88,11 @@ export async function fetchUnresolvedIssues(limit = 50): Promise<SentryDigest> {
         // No cache — always fetch live.
         cache: 'no-store',
       })
-    } catch (e: any) {
+    } catch (e: unknown) {
       return {
         ok:         false,
         configured: true,
-        reason:     `Network error: ${e?.message || String(e)}`,
+        reason:     `Network error: ${e instanceof Error ? e.message : String(e)}`,
         fetchedAt:  now,
         total:      issues.length,
         issues,

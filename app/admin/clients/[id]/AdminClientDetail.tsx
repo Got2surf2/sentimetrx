@@ -133,8 +133,8 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
       }
       // User is no longer in this org — remove from list
       setMembers(prev => prev.filter(m => m.id !== userId))
-    } catch (e: any) {
-      setError(e?.message || 'Failed to transfer user.')
+    } catch (e: unknown) {
+      setError((e instanceof Error ? e.message : '') || 'Failed to transfer user.')
     } finally {
       setTransferringUser(null)
     }
@@ -223,8 +223,8 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
       if (!res.ok) throw new Error(data.error || 'Delete failed')
       // Org is gone — back to the admin client list.
       router.push('/admin')
-    } catch (e: any) {
-      setError(e.message || 'Delete failed')
+    } catch (e: unknown) {
+      setError((e instanceof Error ? e.message : '') || 'Delete failed')
       setDeleting(false)
     }
   }

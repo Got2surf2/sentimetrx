@@ -21,6 +21,9 @@ interface Params { params: Promise<{ id: string }> }
 // Only features that exist in lib/featureFlags.ts FeatureName are writable here.
 const KNOWN_FEATURES = new Set(['recording'])
 
+interface OverrideRow { user_id: string; enabled: boolean | null; quota_per_month: number | null }
+interface PutBody { feature: string; enabled?: unknown; quota_per_month?: unknown }
+
 export async function GET(req: NextRequest, props: Params) {
   const params = await props.params;
   const denied = await requireAdmin()
@@ -54,7 +57,7 @@ export async function GET(req: NextRequest, props: Params) {
         .select('user_id, enabled, quota_per_month')
         .eq('feature', feature)
         .in('user_id', memberIds)
-    : { data: [] as any[] }
+    : { data: [] as OverrideRow[] }
 
   const byUser = new Map((overrides || []).map(o => [o.user_id, o]))
   const users = (members || []).map(m => ({
@@ -80,7 +83,7 @@ export async function PUT(req: NextRequest, props: Params) {
   const supabase = await createClient()
   const actor = await getAuthUser(supabase)
 
-  let body: any
+  let body: PutBody
   try { body = await req.json() } catch { return NextResponse.json({ error: 'invalid JSON' }, { status: 400 }) }
 
   const feature = body?.feature

@@ -33,7 +33,7 @@ export default async function DatasetLayout(props: Props) {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
 
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
@@ -72,7 +72,7 @@ export default async function DatasetLayout(props: Props) {
     }
   }
 
-  const studyName = (dataset as any).studies?.name ?? null
+  const studyName = (dataset as { studies?: { name?: string | null } | null }).studies?.name ?? null
   const schemaFields = (stateRow?.schema_config?.fields || []) as SchemaFieldConfig[]
   const primaryDateField = (stateRow?.schema_config?.primaryDateField || undefined) as string | undefined
 

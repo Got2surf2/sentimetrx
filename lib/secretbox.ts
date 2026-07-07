@@ -69,8 +69,8 @@ export function decryptSecret(stored: string | null | undefined): string | undef
     decipher.setAuthTag(Buffer.from(tagB64, 'base64'))
     const pt = Buffer.concat([decipher.update(Buffer.from(ctB64, 'base64')), decipher.final()])
     return pt.toString('utf8')
-  } catch (e: any) {
-    console.warn('[secretbox] decrypt failed: ' + (e?.message || e))
+  } catch (e: unknown) {
+    console.warn('[secretbox] decrypt failed: ' + (e instanceof Error ? e.message : String(e)))
     return undefined
   }
 }

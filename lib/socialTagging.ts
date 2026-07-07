@@ -234,7 +234,7 @@ export function routeResponse(tagged: TagResult, authorName?: string | null, pos
   // Positive with intent → template with action URL
   if (tagged.sentiment === 'positive' && tagged.intents.length > 0) {
     var intentKey = 'positive_intent_' + tagged.intents[0]
-    var pool = (TEMPLATES as any)[intentKey]
+    var pool = (TEMPLATES as Record<string, string[] | null>)[intentKey]
     if (pool) return { route: 'template', response: inject(pick(pool), authorName), reason: 'Positive + intent' }
   }
 

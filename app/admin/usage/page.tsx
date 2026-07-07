@@ -5,6 +5,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
+import type { ModuleFeatures } from '@/lib/types'
 import TopNav from '@/components/nav/TopNav'
 import UsageClient from './UsageClient'
 
@@ -21,9 +22,9 @@ export default async function UsagePage() {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (!orgData?.is_admin_org) redirect('/dashboard')
-  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  const features = effectiveFeatures(orgData?.features, userData?.features as ModuleFeatures | null | undefined)
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">

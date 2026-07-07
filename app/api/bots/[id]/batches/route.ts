@@ -61,7 +61,7 @@ Exactly ${comments.length} objects, in order.`
     const res = await callAI({ tier: 'standard', maxTokens: 2000, timeoutMs: 90000, system, messages: [{ role: 'user', content: blocks }] })
     logUsage({ org_id: orgId, resource_type: 'bot', resource_id: botId, event_type: 'question_extract' }, res.usage)
     const parsed = JSON.parse(res.text.replace(/^```json\s*|\s*```$/g, '').trim())
-    if (Array.isArray(parsed)) return parsed.map((p: any): Extracted => {
+    if (Array.isArray(parsed)) return parsed.map((p: { question?: unknown; topic?: unknown; tier?: unknown } | null): Extracted => {
       const t = p?.tier
       const tier: ReplyTier = t === 'contact_list' || t === 'acknowledge' ? t : 'answer'
       return { question: clean(p?.question, 500), topic: clean(p?.topic, 120), tier }
@@ -137,7 +137,7 @@ export async function POST(req: NextRequest, props: Params) {
   const drafts: (string | null)[] = userMessages.map(() => null)
   const { data: botFull } = await service.from('agents').select('id, org_id, name, system_prompt, config').eq('id', params.id).single()
   if (botFull) {
-    const cfg = ((botFull as any).config || {}) as { conciseAcknowledgements?: boolean; replies?: { contactList?: string; acknowledge?: string } }
+    const cfg = ((botFull as { config?: unknown }).config || {}) as { conciseAcknowledgements?: boolean; replies?: { contactList?: string; acknowledge?: string } }
     const concise = cfg.conciseAcknowledgements !== false
     const contactLine = cfg.replies?.contactList || 'We’ll add you to the project contact list.'
     const ackLine = cfg.replies?.acknowledge || 'Thank you — your comment has been recorded for the project team.'

@@ -27,7 +27,7 @@ export default async function TextMinePage(props: Props) {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (!orgData?.features?.analyze) redirect('/dashboard')
 
   const service = createServiceRoleClient()
@@ -77,7 +77,7 @@ export default async function TextMinePage(props: Props) {
 
   const schema = stateRow.schema_config || { fields: [], autoDetected: true, version: 1 }
   const analytics = stateRow.analytics || null
-  const themeModel = stateRow.theme_model && (stateRow.theme_model as any).themes?.length > 0
+  const themeModel = stateRow.theme_model && ((stateRow.theme_model as { themes?: unknown[] }).themes?.length as number) > 0
     ? stateRow.theme_model
     : null
 

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const callAI = vi.fn()
 
 vi.mock('@/lib/ai', () => ({
-  callAI: (...args: any[]) => callAI(...args),
+  callAI: (...args: unknown[]) => callAI(...args),
 }))
 
 vi.mock('@/lib/usageLog', () => ({

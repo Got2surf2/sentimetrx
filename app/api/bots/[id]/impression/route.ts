@@ -35,13 +35,13 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const { limited } = await checkRateLimit('impression:' + botId + ':' + ip, 30, 60000)
   if (limited) return new NextResponse(null, { status: 204, headers: CORS })
 
-  let body: any = {}
+  let body: Record<string, unknown> = {}
   try { body = await req.json() } catch { /* empty/invalid body is fine */ }
 
   const service = createServiceRoleClient()
   const { data: bot } = await service.from('agents').select('id, org_id').eq('id', botId).single()
   if (bot && bot.org_id) {
-    const str = (v: any) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 80) : null)
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 80) : null)
     await service.from('agent_impressions').insert({
       org_id: bot.org_id,
       bot_id: bot.id,

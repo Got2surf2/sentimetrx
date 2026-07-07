@@ -163,3 +163,9 @@ WHY: Continue to zero.
 WHY: Continue to zero.
 
 40 files (−77): pulseiq/pi clients, bots/glossary pages, townhall/social/settings/recordings/datasets/campaigns/collections routes, respond, cron. No cross-file conflicts (tsc clean first pass). Global tsc 0 errors, 1238 tests pass, 644→565. Ceiling → 565. Not pushed.
+
+## ESLint burn-down wave 12 — 40 files (Jul 7)
+
+WHY: Continue to zero.
+
+40 files (−67): bots pdf/questions/impression/batches routes, admin pages (usage/simulator/sentry/hub/estimator/control-reports/etc), analyze pages, unit tests, lib/vision, userContext, socialTagging, sentry, secretbox, reoExtractor, redditSync. Reconciled one cross-file: backups/page imports OrgRow from BackupsClient → exported the interface. Global tsc 0 errors, 1238 tests pass, 565→498. Ceiling → 498. Not pushed.

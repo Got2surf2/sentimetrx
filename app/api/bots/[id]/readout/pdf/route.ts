@@ -69,8 +69,8 @@ export async function POST(_req: NextRequest, props: { params: Promise<{ id: str
       if (!exe) return NextResponse.json({ error: 'No local Chrome found — set PUPPETEER_EXECUTABLE_PATH' }, { status: 500 })
       browser = await puppeteer.launch({ executablePath: exe, headless: true, args: ['--no-sandbox'] })
     }
-  } catch (e: any) {
-    console.error({ at: 'readout-pdf', msg: 'launch failed', err: e?.message })
+  } catch (e: unknown) {
+    console.error({ at: 'readout-pdf', msg: 'launch failed', err: e instanceof Error ? e.message : String(e) })
     return NextResponse.json({ error: 'PDF engine failed to start' }, { status: 500 })
   }
 
@@ -87,8 +87,8 @@ export async function POST(_req: NextRequest, props: { params: Promise<{ id: str
         'Cache-Control': 'no-store',
       },
     })
-  } catch (e: any) {
-    console.error({ at: 'readout-pdf', msg: 'render failed', err: e?.message })
+  } catch (e: unknown) {
+    console.error({ at: 'readout-pdf', msg: 'render failed', err: e instanceof Error ? e.message : String(e) })
     return NextResponse.json({ error: 'PDF render failed' }, { status: 500 })
   } finally {
     await browser.close()

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
 import AdminHub from '@/components/admin/AdminHub'
+import type { ModuleFeatures } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,9 +18,9 @@ export default async function AdminHubPage() {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (!orgData?.is_admin_org) redirect('/dashboard')
-  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  const features = effectiveFeatures(orgData?.features, (userData?.features ?? null) as ModuleFeatures | null)
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">

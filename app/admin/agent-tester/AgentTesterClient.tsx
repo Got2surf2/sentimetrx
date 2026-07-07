@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import type { ModuleFeatures } from '@/lib/types'
+import type { ContentCheckResult } from '@/lib/contentGuard'
 
 interface BotOption { id: string; name: string; slug: string; status: string }
 interface SessionOption { id: string; name: string; status: string }
@@ -36,7 +37,7 @@ interface TestResult {
   sentiment: { label: string; score: number }
   bleeped: string
   bleepedDifferent: boolean
-  guard: any
+  guard: ContentCheckResult
   intents: IntentHit[]
 }
 
@@ -167,7 +168,7 @@ export default function AgentTesterClient({ logoUrl, orgName, userEmail, fullNam
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed'); return }
       setResult(data)
-    } catch (e: any) { setError(e?.message || 'Failed') }
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Failed') }
     finally { setLoading(false) }
   }
 

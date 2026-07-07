@@ -93,8 +93,8 @@ export async function POST(req: NextRequest, props: Params) {
     let vec: number[] | null = null
     try {
       vec = await generateEmbedding(title + '\n' + content, bot.org_id)
-    } catch (e: any) {
-      console.error({ at: 'question-answer', msg: 'embedding failed (chunk still usable)', err: e?.message })
+    } catch (e: unknown) {
+      console.error({ at: 'question-answer', msg: 'embedding failed (chunk still usable)', err: e instanceof Error ? e.message : String(e) })
     }
     const embeddingPatch = vec ? { embedding: JSON.stringify(vec) } : {}
 
@@ -161,8 +161,8 @@ export async function POST(req: NextRequest, props: Params) {
         // We Heard sees the real words — question + commentary), else the question.
         questionId: params.questionId, question: question.original_comment || question.user_message, answer,
       })
-    } catch (e: any) {
-      console.error({ at: 'question-answer', msg: 'external corpus materialize failed (answer still saved)', err: e?.message })
+    } catch (e: unknown) {
+      console.error({ at: 'question-answer', msg: 'external corpus materialize failed (answer still saved)', err: e instanceof Error ? e.message : String(e) })
     }
   }
 

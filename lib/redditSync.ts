@@ -128,12 +128,13 @@ export async function syncRedditSource(
         total_pulled: comments.length,
       }).eq('id', thread.id)
 
-    } catch (err: any) {
+    } catch (err) {
+      const message = (err as { message?: string } | null | undefined)?.message
       result.threads_errored++
       result.threads_remaining--
-      result.errors.push(`${thread.subreddit}/${thread.thread_id}: ${err?.message || 'Unknown error'}`)
+      result.errors.push(`${thread.subreddit}/${thread.thread_id}: ${message || 'Unknown error'}`)
       await service.from('reddit_source_threads').update({
-        error_message: (err?.message || 'Download failed').slice(0, 500),
+        error_message: (message || 'Download failed').slice(0, 500),
       }).eq('id', thread.id)
     }
   }

@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
 import UploadClient from './UploadClient'
+import type { ModuleFeatures } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,9 +21,9 @@ export default async function NewDatasetPage() {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
 
-  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  const features = effectiveFeatures(orgData?.features, userData?.features as ModuleFeatures | null | undefined)
   if (!features.analyze) redirect('/dashboard')
 
   return (

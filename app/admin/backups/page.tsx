@@ -5,7 +5,7 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg } from '@/lib/resolveOrg'
-import BackupsClient from './BackupsClient'
+import BackupsClient, { type OrgRow } from './BackupsClient'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,7 +19,7 @@ export default async function BackupsPage() {
     .select('full_name, org_id, organizations(is_admin_org, logo_url, name, features)')
     .eq('id', user.id)
     .single()
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (!orgData?.is_admin_org) redirect('/dashboard')
 
   const service = createServiceRoleClient()
@@ -30,7 +30,7 @@ export default async function BackupsPage() {
 
   return (
     <BackupsClient
-      orgs={(orgs || []) as any}
+      orgs={(orgs || []) as OrgRow[]}
       logoUrl={orgData?.logo_url}
       orgName={orgData?.name}
       userEmail={user.email!}

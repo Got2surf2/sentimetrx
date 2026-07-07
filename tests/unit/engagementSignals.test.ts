@@ -46,7 +46,7 @@ describe('isCurtResponse', () => {
     'hello there my friend',          // 4 words — over threshold
     'I have a lot to say about this', // long
   ])('does NOT flag %j as curt', (msg) => {
-    expect(isCurtResponse(msg as any)).toBe(false)
+    expect(isCurtResponse(msg)).toBe(false)
   })
 })
 

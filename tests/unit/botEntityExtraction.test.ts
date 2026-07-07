@@ -123,7 +123,7 @@ describe('aggregateExtractedEntities', () => {
 
   it('skips items with no canonical', () => {
     const result = aggregateExtractedEntities([
-      [{ canonical: '', category: 'other' as any }],
+      [{ canonical: '', category: 'other' }],
       [{ canonical: 'Real Entity', category: 'place' }],
     ])
     expect(result.size).toBe(1)

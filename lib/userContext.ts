@@ -61,7 +61,7 @@ export async function getUserContext(supabase: SupabaseClient): Promise<UserCont
   // If the user has been disabled, treat them as signed out at the app layer.
   // Their auth.users.banned_until prevents *new* logins; this catches the
   // case where a disabled user still has a valid JWT from before disabling.
-  if ((userRow as any).disabled) {
+  if ((userRow as { disabled?: boolean | null }).disabled) {
     await supabase.auth.signOut().catch(() => {})
     return null
   }
