@@ -439,6 +439,41 @@ Endpoint base: `https://api.dataforseo.com/v3`. Auth: HTTP Basic, header `Author
 
 DataforSEO is async — submitting a task returns immediately with an ID, the actual data arrives anywhere from 30 seconds to several minutes later. Vercel functions have a 60s ceiling. So we submit on one cron run, check on the next. Locations with many reviews thus take **~12 hours** end-to-end for first sync (one cron cycle to submit + one to check + one to ingest if depth was too small). The state machine lives entirely in `review_source_locations.error_message` (with `pending_task:` prefix) plus `last_synced_at` (NULL = never synced; non-NULL = at least one cycle complete).
 
+### 7.x Google Reviews Response Dashboard (SCOPED 2026-07-06, NOT BUILT)
+
+Owner ask: poll for new Google reviews and respond in near-real-time — management
+alerts, AI-drafted replies, response tracking. Scoping outcome (~70% of the
+substrate already exists — sync + auto-classify + severity/emotion alert signals +
+Resend email + the client-review draft→approve→send workflow as the UX template):
+
+- **Phase 1 — dashboard + alerts + AI drafts, manual posting** (~3–4 sessions, no
+  external dependencies): a needs-response queue over synced reviews; alert rules
+  (rating ≤2★, severity alert tags, churn/disappointment emotion language, per-
+  location rating spikes) → instant Resend email to a management list; an
+  AI-drafted reply per review following brand tone guidelines; edit → approve →
+  **copy/open-in-Google** (manual paste into GBP); "mark responded" + SLA timers.
+  Freshness bound: DataForSEO polling — practical floor ~hourly per priority
+  location (fractions of a cent per poll).
+- **Phase 2 — one-click posting + minutes-level freshness** (~2–3 sessions of our
+  work + Google's approval lead time): **Google Business Profile API** integration.
+  DataForSEO can only READ; posting replies requires GBP. Per-client OAuth
+  (`business.manage`; tokens encrypted at rest — the BYOK `lib/secretbox` pattern),
+  reply post + read-back for true response-rate analytics, and GBP-native review
+  polling (fresher than DataForSEO, free).
+- **Phase 3 — polish**: auto-thank-you rules for 5★, digest vs instant alert
+  preferences, response-time benchmarking per location.
+
+**The long pole is Google's API approval, not our build.** Application: the GBP
+API contact form ("Application for Basic API Access") via
+https://support.google.com/business/workflow/16726127 — requires a Google Cloud
+project, and the APPLYING org (Datanautix/Kaizen) to have its OWN verified
+Business Profile ≥60 days old, submitted from the profile's OWNER account, with
+a business website + use-case description; ~2 weeks to process. Only Datanautix
+applies — clients later grant access to their own listings via OAuth. Owner
+action item (2026-07-06): confirm whether Kaizen/Datanautix has a verified,
+60-day-old GBP and which account owns it; if none exists, create one NOW (the
+60-day clock is the real lead time). Build starts on owner go.
+
 ---
 
 ## 8. Substack Module
