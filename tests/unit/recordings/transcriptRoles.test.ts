@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { buildTranscriptRoles, tightenSpansFromTranscript, traceActionItem } from '@/lib/recordings/transcriptRoles'
+import type { QaPairPayload, ActionItemPayload } from '@/lib/recordings/types'
 
 const seg = (start: number, text: string) => ({ start, end: start + 3, text })
 const pair = (start_sec: number, end_sec: number, question: string, answer: string) => ({
-  start_sec, end_sec, unit_type: 'qa_pair' as const, payload: { question, answer } as any,
+  start_sec, end_sec, unit_type: 'qa_pair' as const, payload: { question, answer } as QaPairPayload,
 })
 
 describe('buildTranscriptRoles', () => {
@@ -34,8 +35,8 @@ describe('buildTranscriptRoles', () => {
 
   it('ignores non-qa_pair rows (e.g. action_item) and pairs without a start', () => {
     const segments = [seg(5, 'some content here about roads')]
-    const actionItem = { start_sec: 5, end_sec: 8, unit_type: 'action_item' as const, payload: { description: 'do x' } as any }
-    const noStart = { start_sec: null, end_sec: null, unit_type: 'qa_pair' as const, payload: { question: 'q', answer: 'a' } as any }
+    const actionItem = { start_sec: 5, end_sec: 8, unit_type: 'action_item' as const, payload: { description: 'do x' } as ActionItemPayload }
+    const noStart = { start_sec: null, end_sec: null, unit_type: 'qa_pair' as const, payload: { question: 'q', answer: 'a' } as QaPairPayload }
     const roles = buildTranscriptRoles(segments, [actionItem, noStart])
     expect(roles.size).toBe(0)
   })
@@ -57,13 +58,13 @@ describe('tightenSpansFromTranscript', () => {
     const out = tightenSpansFromTranscript(segments, pairs)
     expect(out[0]).toEqual({ start_sec: 10, end_sec: 23 })   // A: its two segments only
     expect(out[1]).toEqual({ start_sec: 30, end_sec: 43 })   // B: 30 no longer stolen into A
-    expect((out[0] as any).end_sec).toBeLessThanOrEqual((out[1] as any).start_sec)  // no overlap
+    expect(out[0]!.end_sec).toBeLessThanOrEqual(out[1]!.start_sec)  // no overlap
   })
 
   it('falls back to the estimate when a pair matches no segment; null for non-pairs', () => {
     const segments = [seg(0, 'totally unrelated filler chatter')]
     const noMatch = pair(100, 130, 'a precise question', 'a precise answer')
-    const action = { start_sec: 5, end_sec: 8, unit_type: 'action_item' as const, payload: { description: 'x' } as any }
+    const action = { start_sec: 5, end_sec: 8, unit_type: 'action_item' as const, payload: { description: 'x' } as ActionItemPayload }
     const out = tightenSpansFromTranscript(segments, [noMatch, action])
     expect(out[0]).toEqual({ start_sec: 100, end_sec: 130 })  // estimate kept
     expect(out[1]).toBeNull()

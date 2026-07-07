@@ -27,7 +27,7 @@ describe('scrubSentryEvent', () => {
           'x-org-id': 'org_123',
         },
       },
-    }) as any
+    })
     expect(ev.request.headers['user-agent']).toBe('Mozilla')
     expect(ev.request.headers['x-org-id']).toBe('org_123')
     expect(ev.request.headers.authorization).toBe('[redacted]')
@@ -42,7 +42,7 @@ describe('scrubSentryEvent', () => {
       },
       contexts: { user: { apiKey: 'k_secret' } },
       tags: { token: 't1', plain: 'visible' },
-    }) as any
+    })
     expect(ev.extra.email).toBe('[redacted]')
     expect(ev.extra.nested.phone).toBe('[redacted]')
     expect(ev.extra.nested.ok).toBe('fine')
@@ -54,7 +54,7 @@ describe('scrubSentryEvent', () => {
   it('reduces user to {id} only', () => {
     const ev = scrubSentryEvent({
       user: { id: 'u_1', email: 'a@b.com', ip_address: '1.2.3.4', username: 'alice' },
-    }) as any
+    })
     expect(ev.user).toEqual({ id: 'u_1' })
   })
 
@@ -74,7 +74,7 @@ describe('scrubSentryEvent', () => {
         { category: 'navigation', message: 'visited /u/alice@example.com profile' },
         { category: 'http', message: 'called 555-123-4567' },
       ],
-    }) as any
+    })
     expect(ev.breadcrumbs[0].message).toBe('visited /u/[redacted] profile')
     expect(ev.breadcrumbs[1].message).toBe('called [redacted]')
   })
@@ -83,7 +83,7 @@ describe('scrubSentryEvent', () => {
     const ev = scrubSentryEvent({
       message: 'normal error',
       tags: { env: 'production' },
-    }) as any
+    })
     expect(ev.message).toBe('normal error')
     expect(ev.tags.env).toBe('production')
   })

@@ -31,6 +31,30 @@ export interface AnalyticsTurn {
   sentiment_score?: number | null
 }
 
+// Legacy-shaped theme row (from conversation_turns pipeline / townHallAdapter).
+// Only the fields this module reads are declared; the index signature keeps the
+// spread (`...t`) faithful to whatever other properties the caller carries.
+export interface LegacyThemeRow {
+  id: string
+  label: string
+  keywords?: string[]
+  source?: string
+  state?: string
+  sentiment?: string | null
+  [key: string]: unknown
+}
+
+export type EnrichedTheme = LegacyThemeRow & {
+  sentiment: string
+  match_count: number
+  mention_count: number
+  response_count: number
+  percentage: number
+  example_quotes: string[]
+  quote_matches: { text: string; match: string }[]
+  top_keywords: { word: string; count: number }[]
+}
+
 export interface SessionAnalytics {
   sentiment_breakdown: { positive: number; negative: number; mixed: number; neutral: number }
   responses_over_time: { bucket: string; count: number }[]
@@ -44,7 +68,7 @@ export interface SessionAnalytics {
 
 export function computeSessionAnalytics(opts: {
   turns: AnalyticsTurn[] // chronological (created_at ascending)
-  themes: any[]          // legacy-shaped theme rows
+  themes: LegacyThemeRow[] // legacy-shaped theme rows
   safetyConfig?: Partial<ContentSafetyConfig>
   bucketParam?: string | null
 }): { enrichedThemes: any[]; analytics: SessionAnalytics } {
@@ -68,7 +92,7 @@ export function computeSessionAnalytics(opts: {
   // Per-theme analytics — two strategies:
   // 1) Seed/guide/custom topics: use theme_id assignment (AI-matched during conversation) as primary
   // 2) Organic/auto_detected topics: use keyword matching (detected from text patterns)
-  const enrichedThemes = (themes || []).map(function(t: any) {
+  const enrichedThemes: EnrichedTheme[] = (themes || []).map(function(t: LegacyThemeRow) {
     const keywords: string[] = t.keywords || []
     const isOrganic = t.source === 'auto_detected'
     let matchCount = 0, totalPos = 0, totalNeg = 0
@@ -208,8 +232,8 @@ export function computeSessionAnalytics(opts: {
   const responsesOverTime = Object.entries(timeBuckets).sort().map(function(e) { return { bucket: e[0], count: e[1] } })
 
   // Per-theme frequency over time (keyword-matched, same buckets)
-  const activeThemeList = (themes || []).filter((t: any) => t.state !== 'dismissed')
-  const themeRegexes: { id: string; label: string; regexes: RegExp[] }[] = activeThemeList.map(function(t: any) {
+  const activeThemeList = (themes || []).filter((t: LegacyThemeRow) => t.state !== 'dismissed')
+  const themeRegexes: { id: string; label: string; regexes: RegExp[] }[] = activeThemeList.map(function(t: LegacyThemeRow) {
     const kws: string[] = t.keywords || []
     return {
       id: t.id,

@@ -6,6 +6,7 @@ import { computeSourceHash } from '@/lib/studyDraft'
 import { Input, Section, NavButtons } from './CreatorUI'
 import { INDUSTRY_LABELS, INDUSTRY_DEFAULTS, INDUSTRY_EMOJI_SETS, type Industry } from '@/lib/industryDefaults'
 import { SUPPORTED_LANGUAGES } from '@/lib/types'
+import type { StudyTranslation } from '@/lib/types'
 import EmojiPickerPopover from './EmojiPickerPopover'
 
 const HERMES = '#E8632A'
@@ -29,9 +30,9 @@ interface Props extends StepProps { onNext: () => void; onTranslatingChange?: (v
 export default function StepBasics({ draft, update, updateConfig, onNext, onTranslatingChange }: Props) {
   const theme   = draft.config.theme
   const canNext = draft.name.trim() && draft.bot_name.trim()
-  const presetIndustry = (draft.config.industry || (draft as any).industry || '') as Industry | ''
+  const presetIndustry = (draft.config.industry || draft.industry || '') as Industry | ''
   const [industry,      setIndustry]      = useState<Industry>(presetIndustry || '' as Industry)
-  const [otherIndustry, setOtherIndustry] = useState(draft.config.otherIndustry || (draft as any).otherIndustry || '')
+  const [otherIndustry, setOtherIndustry] = useState(draft.config.otherIndustry || draft.otherIndustry || '')
   const [applied,       setApplied]       = useState(!!presetIndustry)
   const isEditing = !!presetIndustry   // true when editing an existing study
 
@@ -509,11 +510,11 @@ function LanguageSection({ draft, updateConfig, onTranslatingChange }: Pick<Prop
       const translation = { ...data.translation, _sourceHash: computeSourceHash(cfgToUse) }
       const translations = { ...(cfgToUse.translations || {}), [code]: translation }
       updateConfig({ translations })
-    } catch (err: any) {
-      if (err.name === 'TimeoutError') {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'TimeoutError') {
         setError('Translation timed out — try clicking Translate again')
       } else {
-        setError(err.message || 'Translation failed')
+        setError((err instanceof Error && err.message) || 'Translation failed')
       }
     } finally {
       setTranslating(null)
@@ -524,9 +525,10 @@ function LanguageSection({ draft, updateConfig, onTranslatingChange }: Pick<Prop
     const trans = draft.config.translations?.[code]
     if (!trans) return true
     // Hash-based check: if source content changed, translation is stale
-    if ((trans as any)._sourceHash && (trans as any)._sourceHash !== computeSourceHash(draft.config)) return true
+    const hashedTrans = trans as StudyTranslation & { _sourceHash?: string }
+    if (hashedTrans._sourceHash && hashedTrans._sourceHash !== computeSourceHash(draft.config)) return true
     // Legacy check for translations without a hash
-    if (!(trans as any)._sourceHash) {
+    if (!hashedTrans._sourceHash) {
       const psychoKeys = (draft.config.psychographicBank || []).map(p => p.key)
       const questionIds = (draft.config.questions || []).filter(q => q.enabled !== false && q.type !== 'hidden').map(q => q.id)
       if (psychoKeys.length > 0 && psychoKeys.some(k => !trans.psychographics?.[k])) return true

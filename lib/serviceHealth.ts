@@ -62,6 +62,9 @@ export interface ServiceHealthRow {
   updated_at: string | null
 }
 
+/** Shape of a persisted `service_health` row as read back from the DB. */
+type StoredServiceRow = Partial<ServiceHealthRow> & { service: string }
+
 /** Severity ordering for sorting/alerting (higher = worse). */
 export const STATUS_RANK: Record<ServiceStatus, number> = {
   critical: 4, error: 3, low: 2, unknown: 1, ok: 0,
@@ -125,7 +128,7 @@ export async function recordBalance(
       display_name: meta.name,
       tier: meta.tier,
       balance_usd: balanceUsd,
-      balance_raw: (raw ?? null) as any,
+      balance_raw: (raw ?? null),
       status,
       checked_at: now,
       updated_at: now,
@@ -148,9 +151,9 @@ async function probeDeepgramBalance(): Promise<number> {
   if (!projId) throw new Error('Deepgram: no project found')
   const balRes = await fetch(`https://api.deepgram.com/v1/projects/${projId}/balances`, { headers: h, cache: 'no-store' })
   if (!balRes.ok) throw new Error(`Deepgram balances HTTP ${balRes.status}`)
-  const balances = (await balRes.json())?.balances ?? []
+  const balances: Array<{ amount?: number | string | null }> = (await balRes.json())?.balances ?? []
   // `amount` is the remaining USD value per balance bucket; sum across buckets.
-  return balances.reduce((sum: number, b: any) => sum + (Number(b?.amount) || 0), 0)
+  return balances.reduce((sum: number, b) => sum + (Number(b?.amount) || 0), 0)
 }
 
 async function probeTwilioBalance(): Promise<number> {
@@ -184,8 +187,8 @@ export async function probeBalances(): Promise<Array<{ key: ServiceKey; status: 
       const bal = await p.fn()
       const status = await recordBalance(p.key, bal)
       out.push({ key: p.key, status, balance: bal })
-    } catch (e: any) {
-      const msg = e?.message || 'probe failed'
+    } catch (e) {
+      const msg = (e instanceof Error ? e.message : '') || 'probe failed'
       // A 402/credit error → flag as out-of-credit; anything else (missing
       // creds, network) → leave the row's existing state, report 'unknown'.
       if (isCreditError(undefined, msg)) {
@@ -207,12 +210,12 @@ export async function probeBalances(): Promise<Array<{ key: ServiceKey; status: 
  * Sorted worst-status-first.
  */
 export async function getServiceHealthRows(): Promise<ServiceHealthRow[]> {
-  let stored: Record<string, any> = {}
+  let stored: Record<string, StoredServiceRow> = {}
   try {
     const svc = createServiceRoleClient()
     const { data, error: healthErr } = await svc.from('service_health').select('*')
     if (healthErr) void logError('serviceHealth.getServiceHealthRows', healthErr)
-    stored = Object.fromEntries((data ?? []).map((r: any) => [r.service, r]))
+    stored = Object.fromEntries((data ?? []).map((r: StoredServiceRow) => [r.service, r]))
   } catch { /* fall through to defaults */ }
 
   const rows: ServiceHealthRow[] = SERVICES.map(s => {

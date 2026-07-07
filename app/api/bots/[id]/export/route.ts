@@ -19,25 +19,29 @@ export async function GET(_req: NextRequest, props: Params) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  type OrgRel = { is_admin_org: boolean | null }
+  type UserData = { org_id: string | null; organizations: OrgRel | OrgRel[] | null }
   const { data: userData } = await supabase
     .from('users')
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
-  const userOrgId = (userData as any)?.org_id as string | null
+  const orgRel = (userData as UserData | null)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
+  const userOrgId = (userData as UserData | null)?.org_id ?? null
 
+  type BotRow = { org_id: string | null; name: string | null; slug: string | null }
   const service = createServiceRoleClient()
   const { data: bot, error } = await service.from('agents').select('org_id, name, slug').eq('id', params.id).single()
   if (error || !bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
-  if (!isAdmin && (bot as any).org_id !== userOrgId) {
+  const botRow = bot as BotRow
+  if (!isAdmin && botRow.org_id !== userOrgId) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   }
 
   const payload = await buildAgentManifest(service, params.id)
 
-  const safeName = String((bot as any).slug || (bot as any).name || 'bot').replace(/[^a-z0-9_-]/gi, '_')
+  const safeName = String(botRow.slug || botRow.name || 'bot').replace(/[^a-z0-9_-]/gi, '_')
   const filename = 'bot_' + safeName + '_' + new Date().toISOString().slice(0, 10) + '.json'
 
   return new NextResponse(JSON.stringify(payload, null, 2), {

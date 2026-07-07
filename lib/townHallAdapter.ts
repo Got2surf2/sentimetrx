@@ -35,7 +35,7 @@
 
 import type { createServiceRoleClient } from '@/lib/supabase/server'
 import { logError } from '@/lib/log'
-import { computeSessionAnalytics } from '@/lib/townhallAnalytics'
+import { computeSessionAnalytics, type LegacyThemeRow } from '@/lib/townhallAnalytics'
 import type { ContentSafetyConfig } from '@/lib/contentGuard'
 
 type ServiceClient = ReturnType<typeof createServiceRoleClient>
@@ -471,7 +471,7 @@ export async function getTownHallAsLegacy(
   const legacyTurns = await fetchTurnsAsLegacy(db, hall.id, hall.org_id)
   const { enrichedThemes, analytics } = computeSessionAnalytics({
     turns: legacyTurns,
-    themes,
+    themes: themes as unknown as LegacyThemeRow[],
     safetyConfig: session.config?.content_safety || {},
     bucketParam: opts.bucketParam ?? null,
   })

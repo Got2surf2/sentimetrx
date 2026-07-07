@@ -16,6 +16,11 @@ import type { SchemaConfig, Dataset } from '@/lib/analyzeTypes'
 
 interface OrgOption { id: string; name: string }
 
+interface ReviewLocation { selected?: boolean; last_synced_at?: string | null; error_message?: string | null }
+
+interface FieldGrown { field: string; before: number; after: number }
+interface SchemaRefreshMember { name?: string; datasetId?: string; rowsScanned?: number; fieldsGrown?: FieldGrown[] }
+
 interface Props {
   dataset:    Pick<Dataset, 'id' | 'name' | 'description' | 'source' | 'visibility' | 'status' | 'row_count' | 'taxonomy_enabled'>
   schema:     SchemaConfig
@@ -59,7 +64,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
       .then(function(r) { return r.json() })
       .then(function(data) {
         var locs = data.locations || []
-        var unsynced = locs.filter(function(l: any) { return l.selected && !l.last_synced_at && !l.error_message })
+        var unsynced = locs.filter(function(l: ReviewLocation) { return l.selected && !l.last_synced_at && !l.error_message })
         setDownloadComplete(unsynced.length === 0 && locs.length > 0)
       })
       .catch(function() {})
@@ -127,7 +132,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
       setAppendFile(null)
       if (fileRef.current) fileRef.current.value = ''
       router.refresh()
-    } catch (err: any) {
+    } catch (err) {
       // Rollback: delete any batches that were uploaded before the failure
       if (uploadedBatches.length > 0) {
         try {
@@ -138,7 +143,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
           })
         } catch {}
       }
-      setAppendError((err.message || 'Failed to append data') + '. Partial upload has been rolled back.')
+      setAppendError(((err instanceof Error ? err.message : '') || 'Failed to append data') + '. Partial upload has been rolled back.')
     } finally {
       setAppending(false)
     }
@@ -192,7 +197,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
       let msg = ''
       if (data.isCollection) {
         // Collection: report the collection-level result PLUS per-member.
-        const memberLines: string[] = (data.members || []).map(function(m: any) {
+        const memberLines: string[] = (data.members || []).map(function(m: SchemaRefreshMember) {
           return '  · ' + (m.name || m.datasetId) + ': scanned ' + (m.rowsScanned || 0).toLocaleString() + ' rows — ' + fmtGrew(m.fieldsGrown || [])
         })
         msg = 'Collection scanned ' + (data.rowsScanned || 0).toLocaleString() + ' rows total. Collection schema: ' + fmtGrew(grew) + (memberLines.length ? '\n' + memberLines.join('\n') : '')
@@ -200,11 +205,11 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
         msg = 'Scanned ' + (data.rowsScanned || 0).toLocaleString() + ' rows. ' + (grew.length === 0 ? 'Schema already up to date.' : 'Updated: ' + fmtGrew(grew))
       }
       setSchemaRefreshMsg(msg)
-      if (grew.length > 0 || (data.members && data.members.some(function(m: any) { return (m.fieldsGrown || []).length > 0 }))) {
+      if (grew.length > 0 || (data.members && data.members.some(function(m: SchemaRefreshMember) { return (m.fieldsGrown || []).length > 0 }))) {
         router.refresh()
       }
-    } catch (e: any) {
-      setSchemaRefreshMsg('Refresh failed: ' + (e?.message || 'network error'))
+    } catch (e) {
+      setSchemaRefreshMsg('Refresh failed: ' + ((e instanceof Error ? e.message : '') || 'network error'))
     } finally {
       setRefreshingSchema(false)
     }
@@ -426,8 +431,8 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
                   } else {
                     setTrimResult('Error: ' + (data.error || 'Failed'))
                   }
-                } catch (err: any) {
-                  setTrimResult('Error: ' + (err?.message || 'Failed'))
+                } catch (err) {
+                  setTrimResult('Error: ' + ((err instanceof Error ? err.message : '') || 'Failed'))
                 } finally { setTrimming(false) }
               })() }}
               disabled={trimming || !trimField || !trimDate}
@@ -469,7 +474,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
           resourceName={name || 'Dataset'}
           resourceLabel="dataset"
           apiUrl={'/api/datasets/' + dataset.id}
-          currentOrgId={(dataset as any).org_id}
+          currentOrgId={(dataset as Dataset).org_id}
           onTransferred={() => router.push('/analyze')}
         />
       )}

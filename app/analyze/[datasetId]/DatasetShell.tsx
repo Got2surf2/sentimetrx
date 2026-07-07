@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { FilterProvider, useFilters } from '@/components/analyze/FilterContext'
 import { RowsProvider, useRows } from '@/components/analyze/RowsContext'
 import { filterCount, applyFilters } from '@/lib/filterUtils'
-import type { Filters } from '@/lib/filterUtils'
+import type { Filters, SerializedFilters } from '@/lib/filterUtils'
 import FiltersModal from '@/components/analyze/FiltersModal'
 import AskAnaPanel from '@/components/analyze/AskAnaPanel'
 import DatasetHeader from './DatasetHeader'
@@ -20,6 +20,9 @@ interface DatasetMeta {
   status: 'active' | 'archived'; row_count: number; last_synced_at: string | null; study_id?: string | null; description?: string | null; study_name: string | null
 }
 import type { SchemaFieldConfig as SchemaField } from '@/lib/analyzeTypes'
+
+// Shape returned by GET /api/datasets/[id]/state (saved session filters are serialized)
+interface SessionStateResponse { session_state?: { filters?: SerializedFilters } }
 
 interface Props {
   dataset: DatasetMeta
@@ -49,13 +52,13 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
   // Restore session (filters) on mount
   useEffect(function() {
     fetch('/api/datasets/' + datasetId + '/state')
-      .then(function(r) { return r.ok ? r.json() : {} as any })
-      .then(function(d) {
+      .then(function(r) { return r.ok ? (r.json() as Promise<SessionStateResponse>) : ({} as SessionStateResponse) })
+      .then(function(d: SessionStateResponse) {
         if (d.session_state && d.session_state.filters) {
           // Restore filters from session — need to reconstruct Sets from arrays
           const restored: Filters = {}
           Object.entries(d.session_state.filters).forEach(function(entry) {
-            const field = entry[0], f = entry[1] as any
+            const field = entry[0], f = entry[1]
             if (f.type === 'cat') {
               // Old saved sessions (pre-mode) default to 'include' to preserve
               // their original behavior; new ones round-trip whatever was saved.
@@ -159,8 +162,8 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
   // Serialize the active filters (Sets → arrays for JSON) — the wire shape the
   // export / ask-ana / ad-hoc-report routes apply. Computed at render so the
   // "Report" picker can pass the in-view scope to an ad-hoc report.
-  const serializeFilters = function(): Record<string, any> {
-    const out: Record<string, any> = {}
+  const serializeFilters = function(): SerializedFilters {
+    const out: SerializedFilters = {}
     Object.entries(filters).forEach(function(entry) {
       const field = entry[0], f = entry[1]
       if (f.type === 'cat') out[field] = { type: 'cat', mode: f.mode, values: Array.from(f.values), excludeBlanks: f.excludeBlanks }
@@ -224,7 +227,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
             return (
               <span key={field} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 20, background: 'white', border: '1px solid #fbd5c2', color: '#374151', whiteSpace: 'nowrap', flexShrink: 0 }}>
                 <span style={{ color: '#e8622a', fontWeight: 700 }}>{label}:</span> {desc}
-                <button onClick={function() { setFilters(function(prev) { const next: Record<string, any> = {}; Object.keys(prev).forEach(function(k) { if (k !== field) next[k] = prev[k] }); return next as any }) }}
+                <button onClick={function() { setFilters(function(prev) { const next: Filters = {}; Object.keys(prev).forEach(function(k) { if (k !== field) next[k] = prev[k] }); return next }) }}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 12, lineHeight: 1, padding: 0 }}>{'\u00D7'}</button>
               </span>
             )

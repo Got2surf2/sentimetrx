@@ -34,14 +34,17 @@ const TYPE_MAP: Record<ResourceType, { table: string; ts: string; href: (id: str
 async function resolveCaller(supabase: Awaited<ReturnType<typeof createClient>>) {
   const user = await getAuthUser(supabase)
   if (!user) return null
+  type OrgRel = { is_admin_org: boolean | null }
+  type CallerRow = { org_id: string | null; organizations: OrgRel | OrgRel[] | null }
   const { data } = await supabase
     .from('users')
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
-  const orgRel = (data as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
-  return { user, orgId: (data as any)?.org_id as string | null, isAdmin }
+  const row = data as CallerRow | null
+  const orgRel = row?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
+  return { user, orgId: row?.org_id ?? null, isAdmin }
 }
 
 export async function GET() {
@@ -79,7 +82,8 @@ export async function GET() {
     let q = service.from(cfg.table).select('id, org_id, name, ' + cfg.ts).in('id', ids)
     if (!caller.isAdmin) q = q.eq('org_id', caller.orgId as string)
     const { data: rows } = await q
-    const rowMap = new Map<string, any>((rows || []).map((r: any) => [r.id, r]))
+    type ResourceRow = { id: string; org_id: string | null; name: string | null; [k: string]: unknown }
+    const rowMap = new Map<string, ResourceRow>(((rows || []) as unknown as ResourceRow[]).map((r) => [r.id, r]))
     // Re-walk favs in created_at-desc order so the response keeps fav order.
     for (const f of favs || []) {
       if (f.resource_type !== type) continue
@@ -90,7 +94,7 @@ export async function GET() {
         resource_id:   f.resource_id,
         name:          r.name || 'Untitled',
         href:          cfg.href(f.resource_id),
-        ts:            r[cfg.ts] || null,
+        ts:            (r[cfg.ts] as string | null) || null,
         created_at:    f.created_at,
       })
     }
@@ -106,7 +110,7 @@ export async function POST(req: NextRequest) {
   const caller = await resolveCaller(supabase)
   if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: any
+  let body: Record<string, unknown> | null
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
   const resource_type = body?.resource_type as ResourceType | undefined
   const resource_id   = body?.resource_id as string | undefined
@@ -128,7 +132,7 @@ export async function POST(req: NextRequest) {
     .eq('id', resource_id)
     .single()
   if (!resource) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (!caller.isAdmin && (resource as any).org_id !== caller.orgId) {
+  if (!caller.isAdmin && (resource as { org_id: string | null }).org_id !== caller.orgId) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 

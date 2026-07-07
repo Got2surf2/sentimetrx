@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const callAI = vi.fn()
 
 vi.mock('@/lib/ai', () => ({
-  callAI: (...args: any[]) => callAI(...args),
+  callAI: (...args: unknown[]) => callAI(...args),
 }))
 
 vi.mock('@/lib/usageLog', () => ({
@@ -17,7 +17,7 @@ const FOCUSES: BotFocus[] = [
   { slug: 'fees', label: 'Fees', description: 'Concerns about cost', enabled: true },
   { slug: 'safety', label: 'Safety', description: 'Concerns about physical safety', enabled: true },
   { slug: 'staff', label: 'Staff', description: 'Comments about employees', enabled: true },
-] as any
+]
 
 describe('classifyProbeFocuses — gating', () => {
   beforeEach(() => callAI.mockReset())
@@ -31,8 +31,8 @@ describe('classifyProbeFocuses — gating', () => {
   it('skips disabled focuses but still calls AI if at least one remains', async () => {
     callAI.mockResolvedValue({ text: 'fees' })
     const focusesWithDisabled: BotFocus[] = [
-      { slug: 'fees', label: 'Fees', description: 'cost', enabled: true } as any,
-      { slug: 'old', label: 'Old', description: 'retired', enabled: false } as any,
+      { slug: 'fees', label: 'Fees', description: 'cost', enabled: true },
+      { slug: 'old', label: 'Old', description: 'retired', enabled: false },
     ]
     const out = await classifyProbeFocuses(focusesWithDisabled, 'the fees were higher than I expected')
     expect(out.slugs).toEqual(['fees'])
@@ -56,7 +56,7 @@ describe('classifyProbeFocuses — AI response parsing', () => {
   beforeEach(() => callAI.mockReset())
 
   it('parses a single-slug response', async () => {
-    callAI.mockResolvedValue({ text: 'fees', usage: { model: 'haiku', cost: 0.0001 } as any })
+    callAI.mockResolvedValue({ text: 'fees', usage: { model: 'haiku', cost: 0.0001 } })
     const out = await classifyProbeFocuses(FOCUSES, 'the fees were way too high for the value')
     expect(out.slugs).toEqual(['fees'])
     expect(out.usage).toEqual({ model: 'haiku', cost: 0.0001 })

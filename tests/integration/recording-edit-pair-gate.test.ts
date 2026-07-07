@@ -12,12 +12,22 @@ const ctx = {
   rowOrg: 'orgA',
   unitType: 'qa_pair',
 }
-let updatedPayload: any = null
+let updatedPayload: Record<string, unknown> | null = null
+
+interface MockBuilder {
+  _table: string
+  _eqs: Record<string, string>
+  select: () => MockBuilder
+  order: () => MockBuilder
+  eq: (col: string, val: string) => MockBuilder
+  single: () => Promise<{ data: unknown; error: null }>
+  update: (vals: { payload: Record<string, unknown> }) => MockBuilder
+}
 
 vi.mock('@/lib/supabase/server', () => {
-  const builder = (table: string): any => {
-    const b: any = { _table: table, _eqs: {} as Record<string, string> }
-    for (const m of ['select', 'order']) b[m] = () => b
+  const builder = (table: string): MockBuilder => {
+    const b = { _table: table, _eqs: {} as Record<string, string> } as unknown as MockBuilder
+    for (const m of ['select', 'order'] as const) b[m] = () => b
     b.eq = (col: string, val: string) => { b._eqs[col] = val; return b }
     b.single = async () => {
       if (table === 'users') return { data: { org_id: ctx.callerOrg }, error: null }
@@ -28,7 +38,7 @@ vi.mock('@/lib/supabase/server', () => {
       }
       return { data: null, error: null }
     }
-    b.update = (vals: any) => { updatedPayload = vals.payload; return b }
+    b.update = (vals: { payload: Record<string, unknown> }) => { updatedPayload = vals.payload; return b }
     return b
   }
   return {
@@ -40,7 +50,7 @@ vi.mock('@/lib/supabase/server', () => {
 
 import * as route from '@/app/api/recordings/[id]/extractions/[extractionId]/route'
 
-function patch(body: any) {
+function patch(body: Record<string, unknown>) {
   const req = new Request('http://t/x', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   return route.PATCH(req, { params: Promise.resolve({ id: 'r1', extractionId: 'e1' }) })
 }
@@ -51,20 +61,20 @@ describe('PATCH recording extraction — hand-edit gate', () => {
   it('writes edited_* and stamps edited_at', async () => {
     const res = await patch({ edited_question: 'My fix', edited_answer: 'Better answer' })
     expect(res.status).toBe(200)
-    expect(updatedPayload.edited_question).toBe('My fix')
-    expect(updatedPayload.edited_answer).toBe('Better answer')
-    expect(typeof updatedPayload.edited_at).toBe('string')
+    expect(updatedPayload!.edited_question).toBe('My fix')
+    expect(updatedPayload!.edited_answer).toBe('Better answer')
+    expect(typeof updatedPayload!.edited_at).toBe('string')
     // AI + verbatim untouched.
-    expect(updatedPayload.polished_question).toBe('AI q')
-    expect(updatedPayload.question).toBe('V q')
+    expect(updatedPayload!.polished_question).toBe('AI q')
+    expect(updatedPayload!.question).toBe('V q')
   })
 
   it('clearing both sides (null) reverts to AI and drops the stamp', async () => {
     const res = await patch({ edited_question: null, edited_answer: '' })
     expect(res.status).toBe(200)
-    expect(updatedPayload.edited_question).toBeNull()
-    expect(updatedPayload.edited_answer).toBeNull()
-    expect(updatedPayload.edited_at).toBeNull()
+    expect(updatedPayload!.edited_question).toBeNull()
+    expect(updatedPayload!.edited_answer).toBeNull()
+    expect(updatedPayload!.edited_at).toBeNull()
   })
 
   it('404s on a cross-org extraction (same-tenant gate)', async () => {

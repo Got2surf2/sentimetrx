@@ -15,7 +15,7 @@ async function throttle(): Promise<void> {
   lastRequest = Date.now()
 }
 
-async function redditGet(path: string): Promise<any> {
+async function redditGet(path: string): Promise<unknown> {
   await throttle()
   const url = `${BASE}${path}`
   const delays = [5000, 10000, 15000] // progressive backoff
@@ -30,6 +30,61 @@ async function redditGet(path: string): Promise<any> {
     throw new Error(`Reddit returned non-JSON response (${ct || 'no content-type'}). Reddit may be temporarily blocking requests.`)
   }
   return res.json()
+}
+
+// ── Raw Reddit API response shapes ───────────────────────────────────────────
+
+interface RedditChild<T> {
+  kind?: string
+  data: T
+}
+
+interface RedditListing<T> {
+  data?: { children?: RedditChild<T>[] }
+}
+
+interface RedditPostData {
+  id: string
+  subreddit: string
+  title: string
+  author?: string
+  selftext?: string
+  score?: number
+  ups?: number
+  downs?: number
+  upvote_ratio?: number
+  num_comments?: number
+  permalink: string
+  created_utc: number
+  url: string
+  gilded?: number
+  total_awards_received?: number
+}
+
+interface RedditCommentData {
+  id: string
+  author?: string
+  body?: string
+  score?: number
+  ups?: number
+  downs?: number
+  controversiality?: number
+  is_submitter?: boolean
+  gilded?: number
+  total_awards_received?: number
+  permalink?: string
+  created_utc: number
+  parent_id?: string
+  replies?: RedditListing<RedditCommentData>
+}
+
+interface RedditSubredditData {
+  display_name: string
+  title?: string
+  public_description?: string
+  subscribers?: number
+  icon_img?: string
+  community_icon?: string
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -83,9 +138,9 @@ export interface SubredditResult {
 }
 
 export async function searchSubreddits(query: string): Promise<SubredditResult[]> {
-  const data = await redditGet(`/subreddits/search.json?q=${encodeURIComponent(query)}&limit=25&sort=relevance`)
+  const data = await redditGet(`/subreddits/search.json?q=${encodeURIComponent(query)}&limit=25&sort=relevance`) as RedditListing<RedditSubredditData>
   const children = data?.data?.children || []
-  return children.map(function(c: any) {
+  return children.map(function(c: RedditChild<RedditSubredditData>) {
     const d = c.data
     return {
       name: d.display_name,
@@ -101,9 +156,9 @@ export async function searchSubreddits(query: string): Promise<SubredditResult[]
 
 export async function searchPosts(query: string, subreddit?: string, sort: string = 'relevance', limit: number = 50): Promise<RedditThread[]> {
   const sub = subreddit ? `/r/${subreddit}` : ''
-  const data = await redditGet(`${sub}/search.json?q=${encodeURIComponent(query)}&sort=${sort}&limit=${Math.min(limit, 100)}&restrict_sr=${subreddit ? 'true' : 'false'}&type=link`)
+  const data = await redditGet(`${sub}/search.json?q=${encodeURIComponent(query)}&sort=${sort}&limit=${Math.min(limit, 100)}&restrict_sr=${subreddit ? 'true' : 'false'}&type=link`) as RedditListing<RedditPostData>
   const children = data?.data?.children || []
-  return children.map(function(c: any): RedditThread {
+  return children.map(function(c: RedditChild<RedditPostData>): RedditThread {
     const d = c.data
     return {
       thread_id: d.id,
@@ -129,7 +184,7 @@ export async function searchPosts(query: string, subreddit?: string, sort: strin
 
 export async function fetchThreadComments(permalink: string, limit: number = 500): Promise<{ post: RedditThread; comments: RedditComment[] }> {
   // Reddit returns [post_listing, comment_listing]
-  const data = await redditGet(`${permalink}.json?limit=${Math.min(limit, 500)}&depth=10&sort=top`)
+  const data = await redditGet(`${permalink}.json?limit=${Math.min(limit, 500)}&depth=10&sort=top`) as [RedditListing<RedditPostData>, RedditListing<RedditCommentData>]
 
   if (!Array.isArray(data) || data.length < 2) {
     throw new Error('Unexpected Reddit thread response format')
@@ -163,7 +218,7 @@ export async function fetchThreadComments(permalink: string, limit: number = 500
 }
 
 function flattenComments(
-  children: any[],
+  children: RedditChild<RedditCommentData>[],
   threadId: string,
   subreddit: string,
   threadTitle: string,
@@ -231,9 +286,9 @@ export function commentToRow(c: RedditComment): Record<string, unknown> {
 // ── Fetch top/hot posts from a subreddit ─────────────────────────────────────
 
 export async function fetchSubredditPosts(subreddit: string, sort: string = 'hot', limit: number = 50): Promise<RedditThread[]> {
-  const data = await redditGet(`/r/${subreddit}/${sort}.json?limit=${Math.min(limit, 100)}`)
+  const data = await redditGet(`/r/${subreddit}/${sort}.json?limit=${Math.min(limit, 100)}`) as RedditListing<RedditPostData>
   const children = data?.data?.children || []
-  return children.map(function(c: any): RedditThread {
+  return children.map(function(c: RedditChild<RedditPostData>): RedditThread {
     const d = c.data
     return {
       thread_id: d.id,

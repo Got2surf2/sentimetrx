@@ -11,6 +11,30 @@ import { resolveOrg } from '@/lib/resolveOrg'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
+interface ReviewSourceLocationInput {
+  place_id?: string
+  name?: string
+  address?: string | null
+  city?: string | null
+  state?: string | null
+  zip?: string | null
+  rating?: number | null
+  review_count?: number | null
+}
+
+interface ReviewSourceLocationRow {
+  review_source_id: string
+  place_id: string
+  name: string
+  address: string | null
+  city: string | null
+  state: string | null
+  zip: string | null
+  rating: number | null
+  review_count: number
+  selected: boolean
+}
+
 export async function GET() {
   try {
     const supabase = await createClient()
@@ -23,7 +47,7 @@ export async function GET() {
       .eq('id', user.id)
       .single()
 
-    const orgData = resolveOrg(userData?.organizations) as any
+    const orgData = resolveOrg(userData?.organizations)
     if (!orgData?.features?.analyze) {
       return NextResponse.json({ error: 'Analyze module not enabled' }, { status: 403 })
     }
@@ -41,7 +65,7 @@ export async function GET() {
     if (error) return serverError(error, 'reviewSources.list', { orgId })
 
     return NextResponse.json({ sources: sources || [] })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'reviewSources.list')
   }
 }
@@ -58,7 +82,7 @@ export async function POST(req: Request) {
       .eq('id', user.id)
       .single()
 
-    const orgData = resolveOrg(userData?.organizations) as any
+    const orgData = resolveOrg(userData?.organizations)
     if (!orgData?.features?.analyze) {
       return NextResponse.json({ error: 'Analyze module not enabled' }, { status: 403 })
     }
@@ -134,7 +158,7 @@ export async function POST(req: Request) {
     // sharing a place_id), which would violate the UNIQUE(review_source_id, place_id)
     // constraint and fail the whole insert. Keep the first occurrence of each place_id.
     const seenPlaceIds = new Set<string>()
-    const locationRows = locations.reduce(function(rows: any[], loc: any) {
+    const locationRows = locations.reduce(function(rows: ReviewSourceLocationRow[], loc: ReviewSourceLocationInput) {
       if (!loc.place_id || seenPlaceIds.has(loc.place_id)) return rows
       seenPlaceIds.add(loc.place_id)
       rows.push({
@@ -170,7 +194,7 @@ export async function POST(req: Request) {
       locations:  locations.length,
       status:     'active',
     }, { status: 201 })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'reviewSources.create')
   }
 }

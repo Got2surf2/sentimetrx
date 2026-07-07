@@ -1,9 +1,27 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
+import type { ModuleFeatures, CampaignStats, Campaign } from '@/lib/types'
 import CampaignDashboardClient from './CampaignDashboardClient'
 
 export const dynamic = 'force-dynamic'
+
+type OrgData = {
+  id?: string
+  is_admin_org?: boolean
+  logo_url?: string
+  name?: string
+  features?: ModuleFeatures
+} | null
+
+type RawCampaign = Campaign & {
+  studies?: {
+    name?: string
+    status?: string
+    bot_emoji?: string | null
+    config?: { theme?: { primaryColor?: string | null; headerGradient?: string | null } | null } | null
+  } | null
+}
 
 export default async function CampaignsPage() {
   const supabase = await createClient()
@@ -16,9 +34,9 @@ export default async function CampaignsPage() {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations) as OrgData
   const isAdmin = !!orgData?.is_admin_org
-  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  const features = effectiveFeatures(orgData?.features, userData?.features as ModuleFeatures | null | undefined)
 
   if (!features.campaigns && !isAdmin) {
     redirect('/dashboard')
@@ -32,7 +50,7 @@ export default async function CampaignsPage() {
     .select('*, studies(name, status, config, bot_emoji)')
     .order('created_at', { ascending: false })
 
-  const enrichedCampaigns = (campaigns || []).map((c: any) => ({
+  const enrichedCampaigns = ((campaigns || []) as RawCampaign[]).map((c) => ({
     ...c,
     study_name: c.studies?.name,
     study_status: c.studies?.status,
@@ -43,7 +61,7 @@ export default async function CampaignsPage() {
   }))
 
   // Fetch respondent stats for each campaign
-  const statsMap: Record<string, any> = {}
+  const statsMap: Record<string, CampaignStats> = {}
   const respondentsMap: Record<string, { email: string; status: string }[]> = {}
   for (const c of enrichedCampaigns) {
     const { data: respondents } = await service
@@ -60,7 +78,7 @@ export default async function CampaignsPage() {
       if (s in counts) counts[s]++
     }
     statsMap[c.id] = counts
-    respondentsMap[c.id] = (respondents || []).map((r: any) => ({ email: r.email, status: r.status }))
+    respondentsMap[c.id] = (respondents || []).map((r: { email: string; status: string }) => ({ email: r.email, status: r.status }))
   }
 
   return (

@@ -31,6 +31,23 @@ export interface SyncResult {
   limit_reached: boolean
 }
 
+// Minimal shape of a `review_source_locations` row used by reviewToRow. The
+// Supabase service client is untyped here, so rows come back as `any`; this
+// captures just the fields the row-builder reads.
+interface ReviewLocationRow {
+  name: string
+  address: string | null
+  city: string | null
+  state: string | null
+  place_id: string
+}
+
+// Minimal shape of a `review_sources` row used by updateSourceTimestamps.
+interface ReviewSourceTimestampRow {
+  id: string
+  sync_frequency_hours: number
+}
+
 const BATCH_SIZE = 3
 // Phase 1 drains pending DataForSEO tasks via task_get (a cheap single GET
 // per location, ~200-500ms each). Use a larger batch than Phase 2 so a
@@ -55,8 +72,8 @@ const REFRESH_STALE_MS = 60 * 60 * 1000  // 1 hour
 //   - Network / timeout / fetch failed: standard transient infra noise.
 //   - "All review API attempts failed": our own retry wrapper exhausted —
 //     usually a transient DataforSEO incident.
-function isTransientError(err: any): boolean {
-  const msg = String(err?.message || err || '')
+function isTransientError(err: unknown): boolean {
+  const msg = String((err as { message?: unknown })?.message || err || '')
   return /timeout|FUNCTION_INVOCATION_TIMEOUT|network|ECONNRESET|fetch failed|40601|40401|40602|All review API attempts failed/i.test(msg)
 }
 
@@ -169,14 +186,15 @@ export async function syncReviewSource(
           }).eq('id', loc.id)
         }
         // status === 'pending' → leave task ref in place, check again next call
-      } catch (err: any) {
+      } catch (err) {
+        const message = err instanceof Error ? err.message : undefined
         result.locations_errored++
-        result.errors.push(`${loc.name}: ${err.message?.slice(0, 150)}`)
+        result.errors.push(`${loc.name}: ${message?.slice(0, 150)}`)
         // Preserve the pending task ref on transient errors so the location
         // gets retried next call instead of getting permanently parked.
         if (!isTransientError(err)) {
           await service.from('review_source_locations').update({
-            error_message: err.message?.slice(0, 500),
+            error_message: message?.slice(0, 500),
           }).eq('id', loc.id)
         }
       }
@@ -220,9 +238,10 @@ export async function syncReviewSource(
         }).eq('id', loc.id)
         if (remainingBudget !== null) remainingBudget -= depth
         result.locations_submitted++
-      } catch (err: any) {
+      } catch (err) {
+        const message = err instanceof Error ? err.message : undefined
         result.locations_errored++
-        result.errors.push(`${loc.name}: ${err.message?.slice(0, 150)}`)
+        result.errors.push(`${loc.name}: ${message?.slice(0, 150)}`)
         // Skip writing error_message for transient failures so the cron
         // picks the location up again next cycle. Without this, a single
         // DataforSEO timeout / network blip / "Task In Queue" / "Task
@@ -230,7 +249,7 @@ export async function syncReviewSource(
         // it never refreshes again until manually unstuck.
         if (!isTransientError(err)) {
           await service.from('review_source_locations').update({
-            error_message: err.message?.slice(0, 500),
+            error_message: message?.slice(0, 500),
           }).eq('id', loc.id)
         }
       }
@@ -277,14 +296,15 @@ export async function syncReviewSource(
           }).eq('id', loc.id)
           if (remainingBudget !== null) remainingBudget -= depth
           result.locations_submitted++
-        } catch (err: any) {
+        } catch (err) {
+          const message = err instanceof Error ? err.message : undefined
           result.locations_errored++
-          result.errors.push(`${loc.name}: ${err.message?.slice(0, 150)}`)
+          result.errors.push(`${loc.name}: ${message?.slice(0, 150)}`)
           // Same transient-error guard as Phase 2 — don't poison
           // last_synced'd locations on a flaky DataforSEO response.
           if (!isTransientError(err)) {
             await service.from('review_source_locations').update({
-              error_message: err.message?.slice(0, 500),
+              error_message: message?.slice(0, 500),
             }).eq('id', loc.id)
           }
         }
@@ -454,7 +474,7 @@ function formatLocationLabel(name: string, city: string | null, state: string | 
   return parts.join(' - ')
 }
 
-function reviewToRow(rev: DfsReview, loc: any, label: string): Record<string, unknown> {
+function reviewToRow(rev: DfsReview, loc: ReviewLocationRow, label: string): Record<string, unknown> {
   return {
     review_id: rev.review_id, author: rev.profile_name, rating: rev.rating,
     review_text: rev.review_text || '', review_date: rev.timestamp ? rev.timestamp.split('T')[0] : '',
@@ -464,7 +484,7 @@ function reviewToRow(rev: DfsReview, loc: any, label: string): Record<string, un
   }
 }
 
-async function updateSourceTimestamps(service: SupabaseClient, source: any, hasPending: boolean): Promise<void> {
+async function updateSourceTimestamps(service: SupabaseClient, source: ReviewSourceTimestampRow, hasPending: boolean): Promise<void> {
   const now = new Date().toISOString()
   // sync_frequency_hours = 0 means "manual mode" — don't schedule a future
   // auto-sync. Park next_sync_at way in the future so the cron query

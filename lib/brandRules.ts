@@ -32,16 +32,17 @@ export async function rebuildBrandSchema(
     .eq('id', brandCollectionId)
     .single()
   if (colErr) void logError('brandRules.rebuildBrandSchema', colErr)
-  if (!col || (col as any).kind !== 'brand') return
+  const colRow = col as { dataset_id: string; kind: string | null } | null
+  if (!colRow || colRow.kind !== 'brand') return
 
-  const virtualDatasetId = (col as any).dataset_id as string
+  const virtualDatasetId = colRow.dataset_id
 
   const { data: members, error: membersErr } = await service
     .from('collection_members')
     .select('dataset_id')
     .eq('collection_id', brandCollectionId)
   if (membersErr) void logError('brandRules.rebuildBrandSchema', membersErr)
-  const memberIds = (members || []).map((m: any) => m.dataset_id as string)
+  const memberIds = ((members || []) as { dataset_id: string }[]).map((m) => m.dataset_id)
 
   const mergedSchema = await buildMergedCollectionSchema(service, memberIds)
 
@@ -65,7 +66,7 @@ export async function applyBrandRulesOnJoin(
     .eq('id', datasetId)
     .single()
   if (dsErr) void logError('brandRules.applyBrandRulesOnJoin', dsErr)
-  const brandCollectionId = (ds as any)?.brand_collection_id as string | null
+  const brandCollectionId = (ds as { brand_collection_id: string | null } | null)?.brand_collection_id ?? null
   if (!brandCollectionId) return
 
   await rebuildBrandSchema(service, brandCollectionId)
@@ -93,7 +94,7 @@ export async function discoverBrandEntitiesIfNeeded(
     .eq('id', datasetId)
     .single()
   if (dsErr) void logError('brandRules.discoverBrandEntitiesIfNeeded', dsErr)
-  const brandCollectionId = (ds as any)?.brand_collection_id as string | null
+  const brandCollectionId = (ds as { brand_collection_id: string | null } | null)?.brand_collection_id ?? null
   if (!brandCollectionId) return
 
   const { data: priorRuns, error: priorRunsErr } = await service

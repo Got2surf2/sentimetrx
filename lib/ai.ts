@@ -229,10 +229,31 @@ function buildAzureRequest(resolved: ResolvedProvider, opts: AIRequestOptions) {
 
 // ── Response parsers ─────────────────────────────────────────────────────────
 
-function parseAnthropicResponse(data: any, model: string, tier: ModelTier): AIResponse {
+interface AnthropicContentBlock { type: string; text?: string }
+interface AnthropicResponseData {
+  content?: AnthropicContentBlock[]
+  stop_reason?: string
+  usage?: {
+    input_tokens?: number
+    output_tokens?: number
+    cache_read_input_tokens?: number
+    cache_creation_input_tokens?: number
+  }
+}
+
+interface OpenAIResponseData {
+  choices?: Array<{ message?: { content?: string }; finish_reason?: string }>
+  usage?: {
+    prompt_tokens?: number
+    completion_tokens?: number
+    prompt_tokens_details?: { cached_tokens?: number }
+  }
+}
+
+function parseAnthropicResponse(data: AnthropicResponseData, model: string, tier: ModelTier): AIResponse {
   const text = (data.content || [])
-    .filter((b: any) => b.type === 'text')
-    .map((b: any) => b.text || '')
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text || '')
     .join('')
   const u = data.usage || {}
   return {
@@ -250,7 +271,7 @@ function parseAnthropicResponse(data: any, model: string, tier: ModelTier): AIRe
   }
 }
 
-function parseOpenAIResponse(data: any, model: string, tier: ModelTier): AIResponse {
+function parseOpenAIResponse(data: OpenAIResponseData, model: string, tier: ModelTier): AIResponse {
   const choice = data.choices?.[0]
   const u = data.usage || {}
   return {
@@ -302,7 +323,7 @@ export async function callAI(opts: AIRequestOptions): Promise<AIResponse> {
   // Build provider-specific request
   let url: string
   let headers: Record<string, string>
-  let body: any
+  let body: unknown
 
   switch (resolved.provider) {
     case 'anthropic': {
@@ -345,7 +366,7 @@ export async function callAI(opts: AIRequestOptions): Promise<AIResponse> {
         code: response.status, message: errMsg,
       })
     }
-    const err = new Error(errMsg) as any
+    const err = new Error(errMsg) as Error & { status?: number }
     err.status = response.status
     throw err
   }

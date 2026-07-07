@@ -72,7 +72,7 @@ export default function RedditWizard({ onBack }: Props) {
         body: JSON.stringify({ subreddit: subName, sort: postSort }),
       })
       const resText = await res.text()
-      var data: any
+      var data: { error?: string; posts?: RedditThread[] }
       try { data = JSON.parse(resText) } catch { data = { error: 'Reddit is temporarily unavailable. Please wait a moment and try again.' } }
       if (!res.ok || data.error) { setSearchError(data.error || 'Subreddit not found. Check the name and try again.'); return }
       if (!data.posts?.length) {
@@ -90,8 +90,8 @@ export default function RedditWizard({ onBack }: Props) {
       setSortBy('date')
       setDatasetName('Reddit: r/' + subName)
       if (posts.length) setStep(2)
-    } catch (err: any) {
-      setSearchError(err?.message || 'Failed to load subreddit')
+    } catch (err) {
+      setSearchError((err as { message?: string })?.message || 'Failed to load subreddit')
     } finally {
       setSearching(false)
     }
@@ -227,15 +227,15 @@ export default function RedditWizard({ onBack }: Props) {
             body: JSON.stringify({ thread_id: thread.thread_id, max_comments: maxCommentsPerThread }),
           })
           var dlText = await dlRes.text()
-          var dlData: any
+          var dlData: { error?: string; comments?: number }
           try { dlData = JSON.parse(dlText) } catch { dlData = { error: 'Reddit temporarily unavailable (non-JSON response)' } }
           if (dlRes.ok && !dlData.error) {
             totalComments += dlData.comments || 0
           } else {
             errors.push(thread.title.slice(0, 40) + ': ' + (dlData.error || 'failed'))
           }
-        } catch (e: any) {
-          errors.push(thread.title.slice(0, 40) + ': ' + (e?.message || 'failed'))
+        } catch (e) {
+          errors.push(thread.title.slice(0, 40) + ': ' + ((e as { message?: string })?.message || 'failed'))
         }
 
         setDlProgress({ threadsDown: idx + 1, threadsTotal: selectedThreads.length, comments: totalComments })
@@ -257,8 +257,8 @@ export default function RedditWizard({ onBack }: Props) {
       setTimeout(function() {
         router.push('/analyze/' + datasetId + '/settings?new=1')
       }, 1500)
-    } catch (err: any) {
-      setCreateError(err?.message || 'Failed')
+    } catch (err) {
+      setCreateError((err as { message?: string })?.message || 'Failed')
     } finally {
       setCreating(false)
     }

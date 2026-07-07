@@ -79,15 +79,26 @@ vi.mock('@supabase/supabase-js', () => ({
 
 // Supabase — used by study/[guid] (lookup) and townhall/chat (session lookup).
 // Each test installs the row it needs via the `behavior` map.
+type SupabaseError = { message: string; status?: number; code?: string } | null
 type SupabaseBehavior = {
-  studyByGuid?: { data: any[] | null; error: any }
-  townhallSession?: { data: any; error: any }
+  studyByGuid?: { data: Record<string, unknown>[] | null; error: SupabaseError }
+  townhallSession?: { data: Record<string, unknown> | null; error: SupabaseError }
 }
 const supaBehavior: SupabaseBehavior = {}
 
 vi.mock('@/lib/supabase/server', () => {
-  function chain(): any {
-    const obj: any = {
+  type QueryChain = {
+    select: () => QueryChain
+    eq: () => QueryChain
+    not: () => QueryChain
+    order: () => QueryChain
+    limit: () => Promise<unknown>
+    single: () => Promise<unknown>
+    update: () => { eq: () => Promise<unknown> }
+    insert: () => { select: () => { single: () => Promise<unknown> } }
+  }
+  function chain(): QueryChain {
+    const obj: QueryChain = {
       select: () => obj,
       eq: () => obj,
       not: () => obj,

@@ -127,3 +127,9 @@ Same workflow, 26 more files (−276): townhall analyze/resume/join/export route
 WHY: Continue to zero.
 
 30 files (−236): pulseiq/bots/favorites clients, share/recordings/datasets/entities routes, more route-gate + unit tests, uiHints, studyDraft, creator steps, deploy/glossary pages, etc. Reconciled one cross-file conflict: admin/downloads/page.tsx enriched DB rows (Record<string,unknown>) → DownloadMonitor's typed props; exported the 4 prop interfaces and cast at the boundary (`as unknown as RedditSource[]` etc — DB-to-component boundary, no `any`). Global tsc 0 errors, 1238 tests pass, warnings 1506→1270. Ceiling → 1270. Not pushed.
+
+## ESLint burn-down wave 6 — 30 files (Jul 7)
+
+WHY: Continue to zero.
+
+30 files (−171): lib/ai, agentReadout, reviewSync, reddit, brandRules, serviceHealth, townhallAnalytics; settings/dataset/bot clients; review-sources/favorites/entities/compute/bots routes; unit + integration tests. Reconciled one cross-file conflict: townhallAnalytics now types computeSessionAnalytics `themes: LegacyThemeRow[]` (indexed) vs townHallAdapter's LegacyTheme (no index sig) → boundary `as unknown as LegacyThemeRow[]`. Global tsc 0 errors, 1238 tests pass, 1270→1099. Ceiling → 1099. Not pushed.

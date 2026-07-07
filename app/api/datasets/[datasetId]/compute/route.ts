@@ -16,6 +16,7 @@ import { mergeDatasetAnalytics } from '@/lib/datasetAnalytics'
 import { recomputeCollectionAnalytics } from '@/lib/collectionRecompute'
 import { rebuildBrandSchema, discoverBrandEntitiesIfNeeded } from '@/lib/brandRules'
 import { serverError } from '@/lib/apiError'
+import type { SchemaFieldConfig } from '@/lib/analyzeTypes'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,11 +55,11 @@ export async function POST(_req: Request, props: Params) {
   // computing. Member schemas fill in over time (uploads load rows, sources
   // sync), so a brand built earlier can have a stale or empty schema until
   // this runs. Mutates stateRow.schema_config so the checks below see it.
-  if ((dataset as any).source === 'collection') {
+  if (dataset.source === 'collection') {
     const { data: brandCol } = await service
       .from('collections').select('id, kind').eq('dataset_id', params.datasetId).single()
-    if (brandCol && (brandCol as any).kind === 'brand') {
-      await rebuildBrandSchema(service, (brandCol as any).id)
+    if (brandCol && brandCol.kind === 'brand') {
+      await rebuildBrandSchema(service, brandCol.id)
       const { data: refreshed } = await service
         .from('dataset_state').select('schema_config').eq('dataset_id', params.datasetId).single()
       if (refreshed) stateRow.schema_config = refreshed.schema_config
@@ -77,8 +78,8 @@ export async function POST(_req: Request, props: Params) {
     const { data: sampleFlat } = await service
       .from('dataset_rows_flat').select('data').eq('dataset_id', params.datasetId).limit(1).single()
     const sampleRow: Record<string, unknown> = (sampleFlat?.data as Record<string, unknown>) || {}
-    const existingCols = new Set(schema.fields.map((f: any) => f.field as string))
-    const newFields: any[] = []
+    const existingCols = new Set(schema.fields.map((f: SchemaFieldConfig) => f.field))
+    const newFields: SchemaFieldConfig[] = []
     for (const col of Object.keys(sampleRow)) {
       if (existingCols.has(col)) continue
       const colLower = col.toLowerCase()
@@ -102,7 +103,7 @@ export async function POST(_req: Request, props: Params) {
 
   // ── Collection: recompute aggregates from member rows (shared with the
   // member-sync cascade in lib/collectionRecompute). ───────────────────────
-  if ((dataset as any).source === 'collection') {
+  if (dataset.source === 'collection') {
     try {
       const res = await recomputeCollectionAnalytics(service, params.datasetId, user.id)
       if (!res) return NextResponse.json({ error: 'Collection has no members or schema' }, { status: 400 })

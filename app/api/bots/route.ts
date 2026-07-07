@@ -14,6 +14,25 @@ import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
+type OrgRel = { is_admin_org: boolean | null }
+interface UserOrgRow {
+  org_id: string | null
+  organizations: OrgRel | OrgRel[] | null
+}
+
+interface AgentRow {
+  id: string
+  org_id: string
+  name: string
+  slug: string
+  status: string
+  config: unknown
+  conversation_count: number | null
+  last_session_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 async function getUserContext(supabase: Awaited<ReturnType<typeof createClient>>) {
   const user = await getAuthUser(supabase)
   if (!user) return null
@@ -22,9 +41,10 @@ async function getUserContext(supabase: Awaited<ReturnType<typeof createClient>>
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
-  const orgRel = data?.organizations
-  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : (orgRel as any)?.is_admin_org
-  return { userId: user.id, orgId: (data as any)?.org_id as string | null, isAdmin: !!isAdmin }
+  const row = data as UserOrgRow | null
+  const orgRel = row?.organizations
+  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : orgRel?.is_admin_org
+  return { userId: user.id, orgId: (row?.org_id as string | null), isAdmin: !!isAdmin }
 }
 
 export async function GET(req: NextRequest) {
@@ -51,7 +71,7 @@ export async function GET(req: NextRequest) {
   // Live session counts via RPC (count distinct session_id per bot in
   // Postgres, served from idx_bot_turns_session). Replaces a fetch-all-turns
   // + JS dedup that scaled with total turn count.
-  const botIds = (data || []).map(function(b: any) { return b.id })
+  const botIds = ((data || []) as AgentRow[]).map(function(b: AgentRow) { return b.id })
   const sessionCounts: Record<string, number> = {}
 
   if (botIds.length > 0) {
@@ -77,15 +97,15 @@ export async function GET(req: NextRequest) {
   // Resolve org names for admin per-card display.
   let orgNameMap: Record<string, string> = {}
   if (ctx.isAdmin) {
-    const orgIds = Array.from(new Set((data || []).map((b: any) => b.org_id).filter(Boolean)))
+    const orgIds = Array.from(new Set(((data || []) as AgentRow[]).map((b: AgentRow) => b.org_id).filter(Boolean)))
     if (orgIds.length > 0) {
       const { data: orgs, error: orgErr } = await service.from('organizations').select('id, name').in('id', orgIds)
       if (orgErr) void logError('bots.list.org_names', orgErr, { orgId: ctx.orgId ?? undefined })
-      ;(orgs || []).forEach((o: any) => { orgNameMap[o.id] = o.name })
+      ;((orgs || []) as { id: string; name: string }[]).forEach((o) => { orgNameMap[o.id] = o.name })
     }
   }
 
-  const enriched = (data || []).map(function(b: any) {
+  const enriched = ((data || []) as AgentRow[]).map(function(b: AgentRow) {
     return {
       ...b,
       conversation_count: sessionCounts[b.id] || 0,

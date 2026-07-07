@@ -6,6 +6,9 @@ import {
   buildExtractorInput,
   UI_HINT_EXTRACTOR_PROMPT,
   type UiHintClassifier,
+  type ParkingHint,
+  type RestaurantsHint,
+  type LinkCardHint,
 } from '@/lib/uiHints'
 
 // Stub classifier — returns a canned response. Lets us assert end-to-end
@@ -48,7 +51,7 @@ describe('validateHint', () => {
   })
 
   it('drops invalid via value', () => {
-    const out = validateHint({ type: 'terminal_map', via: 'helicopter' as any })
+    const out = validateHint({ type: 'terminal_map', via: 'helicopter' })
     expect(out).toEqual({ type: 'terminal_map' })
   })
 
@@ -59,8 +62,8 @@ describe('validateHint', () => {
 
   it('caps parking highlight array length to 8', () => {
     const ten = Array.from({ length: 10 }, (_, i) => 'lot_' + i)
-    const out = validateHint({ type: 'parking', highlight: ten }) as any
-    expect(out.highlight.length).toBe(8)
+    const out = validateHint({ type: 'parking', highlight: ten }) as ParkingHint
+    expect(out.highlight!.length).toBe(8)
   })
 
   it('validates restaurants with context label', () => {
@@ -69,7 +72,7 @@ describe('validateHint', () => {
   })
 
   it('coerces missing place_ids to []', () => {
-    const out = validateHint({ type: 'restaurants' }) as any
+    const out = validateHint({ type: 'restaurants' }) as RestaurantsHint
     expect(out.type).toBe('restaurants')
     expect(out.place_ids).toEqual([])
   })
@@ -83,7 +86,7 @@ describe('validateHint', () => {
       cta_label: 'Reserve',
     })
     expect(out).toBeTruthy()
-    expect((out as any).cta_url).toBe('https://flymco.com/speed-through-mco')
+    expect((out as LinkCardHint).cta_url).toBe('https://flymco.com/speed-through-mco')
   })
 
   it('rejects link_card with non-flymco cta_url (open-redirect guard)', () => {
@@ -116,7 +119,7 @@ describe('validateHint', () => {
       body: 'b',
       cta_url: 'https://flymco.com/x',
       cta_label: 'Click',
-    }) as any
+    }) as LinkCardHint
     expect(out.title.length).toBe(80)
   })
 })
@@ -211,7 +214,7 @@ describe('extractUiHints (end-to-end with stub classifier)', () => {
     })
     expect(out.hints).toHaveLength(1)
     expect(out.hints[0].type).toBe('link_card')
-    expect((out.hints[0] as any).cta_url).toBe('https://flymco.com/speed-through-mco')
+    expect((out.hints[0] as LinkCardHint).cta_url).toBe('https://flymco.com/speed-through-mco')
   })
 
   it('returns no hint when classifier throws', async () => {

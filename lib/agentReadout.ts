@@ -78,7 +78,7 @@ interface BotRow {
   name: string
   org_id: string
   focuses: { slug: string; label: string; description?: string; enabled?: boolean }[]
-  config: Record<string, any>
+  config: Record<string, unknown>
 }
 
 // Per-exchange tag from the classify pass. A single user turn can carry both a
@@ -122,10 +122,13 @@ Return ONLY a JSON array, one object per index, no markdown:
 [{"i":0,"focus":"slug_or_null","q_label":"Topic_or_null","comment":"verbatim_or_null","c_label":"Topic_or_null"}, ...]`
     const res = await callAI({ tier: 'fast', maxTokens: 1800, timeoutMs: 40000, system, messages: [{ role: 'user', content: lines }] })
     logUsage({ org_id: orgId, resource_type: 'bot', resource_id: botId, event_type: 'agent_readout_classify' }, res.usage)
-    let parsed: any[] = []
-    try { parsed = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()) } catch { parsed = [] }
+    let parsed: Record<string, unknown>[] = []
+    try {
+      const j = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
+      parsed = Array.isArray(j) ? j : []
+    } catch { parsed = [] }
     return batch.map((_e, i) => {
-      const p = parsed.find((x: any) => x && x.i === i) || {}
+      const p: Record<string, unknown> = parsed.find((x) => x && x.i === i) || {}
       const focus = typeof p.focus === 'string' && enabled.some(f => f.slug === p.focus) ? p.focus : null
       const qLabel = typeof p.q_label === 'string' && p.q_label.trim().length > 1 ? p.q_label.trim() : null
       const comment = typeof p.comment === 'string' && p.comment.trim().length > 3 ? p.comment.trim() : null
@@ -198,7 +201,7 @@ Return ONLY JSON, no markdown:
   logUsage({ org_id: orgId, resource_type: 'bot', resource_id: botId, event_type: 'agent_readout_summary' }, res.usage)
   try {
     const a = JSON.parse(res.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
-    return { overview: typeof a.overview === 'string' ? a.overview : '', takeaways: Array.isArray(a.takeaways) ? a.takeaways.filter((s: any) => typeof s === 'string') : [] }
+    return { overview: typeof a.overview === 'string' ? a.overview : '', takeaways: Array.isArray(a.takeaways) ? a.takeaways.filter((s: unknown) => typeof s === 'string') : [] }
   } catch { return empty }
 }
 
@@ -338,8 +341,8 @@ export async function getAgentReadout(botId: string, opts: { force?: boolean } =
         else beyondThemes[r.t].samples[r.s].quote = p
       })
     }
-  } catch (e: any) {
-    console.error({ at: 'agent-readout', msg: 'verbatim polish failed (showing raw)', err: e?.message })
+  } catch (e: unknown) {
+    console.error({ at: 'agent-readout', msg: 'verbatim polish failed (showing raw)', err: e instanceof Error ? e.message : String(e) })
   }
 
   // Pass C: executive summary over the (now polished) themed structure.
@@ -376,7 +379,7 @@ export async function getAgentReadout(botId: string, opts: { force?: boolean } =
   }
 
   await service.from('agent_readout_cache').upsert({
-    bot_id: botId, org_id: bot.org_id, cache_key: cacheKey, analysis: readout as any, updated_at: new Date().toISOString(),
+    bot_id: botId, org_id: bot.org_id, cache_key: cacheKey, analysis: readout as unknown, updated_at: new Date().toISOString(),
   }, { onConflict: 'bot_id' })
 
   return readout

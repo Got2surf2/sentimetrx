@@ -10,7 +10,14 @@ interface Bot {
   id: string
   name: string
   slug: string
-  config: Partial<ChatBotConfig> & { initialMessage?: string; suggestions?: string[] }
+  // askName/dynamicChips may arrive from DB JSON as strings ('false'/'true'),
+  // so they're widened here to allow the raw string comparisons below.
+  config: Partial<Omit<ChatBotConfig, 'askName' | 'dynamicChips'>> & {
+    initialMessage?: string
+    suggestions?: string[]
+    askName?: boolean | string
+    dynamicChips?: boolean | string
+  }
   // True when any research probe is enabled (server-computed) — forces the
   // §14.3 disclosure line in the widget chrome, not removable while active.
   researchDisclosure?: boolean
@@ -41,10 +48,10 @@ export default function BotClient({ bot }: { bot: Bot }) {
     fontFamily: c.fontFamily,
     suggestions: c.suggestions || [],
     initialMessage: c.initialMessage || 'Hi! How can I help you today?',
-    askName: (c as any).askName !== 'false',
-    dynamicChips: (c as any).dynamicChips === true || (c as any).dynamicChips === 'true',
-    languages: Array.isArray((c as any).languages) ? (c as any).languages : undefined,
-    language: (c as any).language,
+    askName: c.askName !== 'false',
+    dynamicChips: c.dynamicChips === true || c.dynamicChips === 'true',
+    languages: Array.isArray(c.languages) ? c.languages : undefined,
+    language: c.language,
     extraBody: site ? { site } : undefined,
     researchDisclosure: bot.researchDisclosure === true,
   }

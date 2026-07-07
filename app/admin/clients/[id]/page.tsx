@@ -5,6 +5,32 @@ import AdminClientDetail from './AdminClientDetail'
 
 interface Props { params: Promise<{ id: string }> }
 
+interface MemberRow {
+  id: string
+  email: string
+  full_name: string | null
+  role: string
+  created_at: string
+  disabled?: boolean
+}
+
+interface LoginLogRow {
+  user_id: string
+  created_at: string
+}
+
+interface StudyRow {
+  id: string
+  guid: string
+  name: string
+  bot_name: string
+  bot_emoji: string
+  status: string
+  visibility: string
+  created_at: string
+  created_by: string | null
+}
+
 export const dynamic = 'force-dynamic'
 
 export default async function AdminClientPage(props: Props) {
@@ -20,7 +46,7 @@ export default async function AdminClientPage(props: Props) {
     .single()
 
   const orgData = userData?.organizations
-  const isAdmin = Array.isArray(orgData) ? orgData[0]?.is_admin_org : (orgData as any)?.is_admin_org
+  const isAdmin = Array.isArray(orgData) ? orgData[0]?.is_admin_org : (orgData as { is_admin_org?: boolean } | null | undefined)?.is_admin_org
   if (!isAdmin) redirect('/dashboard')
 
   const service = createServiceRoleClient()
@@ -43,7 +69,7 @@ export default async function AdminClientPage(props: Props) {
     .order('created_at')
 
   // Attach last-login + 30-day login count to each member.
-  const memberIds = (rawMembers || []).map((m: any) => m.id)
+  const memberIds = (rawMembers || []).map((m: MemberRow) => m.id)
   let loginByUser: Record<string, { last_login_at: string | null; logins_30d: number }> = {}
   if (memberIds.length > 0) {
     const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
@@ -52,9 +78,9 @@ export default async function AdminClientPage(props: Props) {
       .select('user_id, created_at')
       .in('user_id', memberIds)
       .order('created_at', { ascending: false })
-    for (const l of (logs || [])) {
-      const uid = (l as any).user_id
-      const t = (l as any).created_at
+    for (const l of (logs || []) as LoginLogRow[]) {
+      const uid = l.user_id
+      const t = l.created_at
       if (!loginByUser[uid]) loginByUser[uid] = { last_login_at: null, logins_30d: 0 }
       if (!loginByUser[uid].last_login_at || t > loginByUser[uid].last_login_at!) {
         loginByUser[uid].last_login_at = t
@@ -62,7 +88,7 @@ export default async function AdminClientPage(props: Props) {
       if (t >= since30) loginByUser[uid].logins_30d++
     }
   }
-  const members = (rawMembers || []).map((m: any) => ({
+  const members = (rawMembers || []).map((m: MemberRow) => ({
     ...m,
     last_login_at: loginByUser[m.id]?.last_login_at || null,
     logins_30d:    loginByUser[m.id]?.logins_30d || 0,
@@ -75,7 +101,7 @@ export default async function AdminClientPage(props: Props) {
     .order('created_at', { ascending: false })
 
   // Per-study response counts using head queries (not fetching all rows)
-  const studiesWithCounts = await Promise.all((studies || []).map(async (s: any) => {
+  const studiesWithCounts = await Promise.all((studies || []).map(async (s: StudyRow) => {
     const { count } = await service.from('responses').select('id', { count: 'exact', head: true }).eq('study_id', s.id)
     return { ...s, response_count: count || 0 }
   }))

@@ -42,7 +42,7 @@ export async function GET(req: Request, props: Params) {
   const { data: ds } = await service
     .from('datasets').select('id, org_id').eq('id', params.datasetId).single()
   if (!ds) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
-  if (!isAdmin && (ds as any).org_id !== orgId) {
+  if (!isAdmin && (ds as { org_id: string }).org_id !== orgId) {
     return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
   }
 
@@ -56,7 +56,7 @@ export async function GET(req: Request, props: Params) {
   if (themeId) {
     const { data: stateRow } = await service
       .from('dataset_state').select('theme_model').eq('dataset_id', params.datasetId).single()
-    const themeModel = ((stateRow as any)?.theme_model ?? {}) as { themes?: ThemeModelTheme[] }
+    const themeModel = ((stateRow as { theme_model?: unknown } | null)?.theme_model ?? {}) as { themes?: ThemeModelTheme[] }
     const theme = (themeModel.themes || []).find(t => t.id === themeId)
     if (!theme || !theme.keywords || theme.keywords.length === 0) {
       return NextResponse.json({ entities: [], categories: [], total_distinct: 0, theme_id: themeId, note: 'theme not found or has no keywords' })
@@ -81,6 +81,16 @@ export async function GET(req: Request, props: Params) {
 }
 
 interface IncomingEntity { canonical?: unknown; category?: unknown; aliases?: unknown }
+
+interface ExistingCatalogRow {
+  slug: string
+  canonical: string
+  category: string
+  aliases: string[] | null
+  sample_count: number | null
+  source: string | null
+  hidden: boolean | null
+}
 
 function normaliseAliases(input: unknown): string[] {
   if (!Array.isArray(input)) return []
@@ -116,9 +126,10 @@ export async function POST(req: Request, props: Params) {
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
 
   // Accept either a single entity object or { entities: [...] }.
-  const incoming: IncomingEntity[] = Array.isArray((body as any)?.entities)
-    ? ((body as any).entities as IncomingEntity[])
-    : (body && typeof body === 'object' && 'canonical' in (body as any)
+  const bodyObj = (body && typeof body === 'object' ? body : {}) as { entities?: unknown }
+  const incoming: IncomingEntity[] = Array.isArray(bodyObj.entities)
+    ? (bodyObj.entities as IncomingEntity[])
+    : (body && typeof body === 'object' && 'canonical' in bodyObj
         ? [body as IncomingEntity]
         : [])
   if (incoming.length === 0) {
@@ -139,7 +150,7 @@ export async function POST(req: Request, props: Params) {
     .eq('scope_type', scope.scopeType)
     .eq('scope_id', scope.scopeId)
   const existingBySlug = new Map<string, { canonical: string; category: string; aliases: string[]; sample_count: number; source: string; hidden: boolean }>()
-  for (const e of (existing || []) as any[]) {
+  for (const e of (existing || []) as ExistingCatalogRow[]) {
     existingBySlug.set(e.slug, {
       canonical: e.canonical, category: e.category,
       aliases: e.aliases || [], sample_count: e.sample_count || 0,

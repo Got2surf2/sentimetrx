@@ -9,6 +9,7 @@ import DOMPurify from 'isomorphic-dompurify'
 import DownloadButton from '@/components/ui/DownloadButton'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { getFlagStyle, isFixedFlag } from '@/lib/flagStyles'
+import type { Persona } from '@/lib/personaExtractor'
 
 var HERMES = '#E8632A'
 var IMSG_BLUE = '#007AFF'
@@ -24,7 +25,7 @@ var TIME_RANGES = [
 interface Session {
   session_id: string; first_message: string; turn_count: number
   started_at: string; last_at: string; user_name: string
-  flags: string[]; has_deflection: boolean; persona: any | null
+  flags: string[]; has_deflection: boolean; persona: Persona | null
   review_status: string; review_reasons: string[]
 }
 
@@ -213,7 +214,7 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
       // log. Mirrors what the local conversation modal already shows
       // in its header + persona bar.
       var sessUserName = selectedSessionData?.user_name || ''
-      var sessPersona = (selectedSessionData?.persona || null) as any
+      var sessPersona = (selectedSessionData?.persona || null) as Persona | null
       var html = buildConversationHtml(botName, botConfig, freshTurns, { userName: sessUserName, persona: sessPersona })
       var html_labeled: string | undefined
       if (isSuperadmin && shareIncludeLabels) {
@@ -575,7 +576,7 @@ function buildConversationHtml(
   name: string,
   config: BotConfig,
   turns: Turn[],
-  opts?: { labeled?: boolean; userName?: string; persona?: any },
+  opts?: { labeled?: boolean; userName?: string; persona?: Persona | null },
 ): string {
   var labeled = !!opts?.labeled
   var userName = (opts?.userName || '').trim()
@@ -596,7 +597,7 @@ function buildConversationHtml(
   // Pill renderer for focus:<slug> / topic:<slug> / intent:<LABEL> flags.
   // Inlined (not imported from lib/flagStyles) so the HTML string can be
   // built without DOM React. Same color palette.
-  function pillsHtml(flags: any[] | null | undefined, kinds: string[]): string {
+  function pillsHtml(flags: string[] | null | undefined, kinds: string[]): string {
     if (!Array.isArray(flags)) return ''
     var matched = flags.filter(function(f) { return typeof f === 'string' && kinds.some(function(k) { return f.indexOf(k + ':') === 0 }) }) as string[]
     if (matched.length === 0) return ''
@@ -635,7 +636,7 @@ function buildConversationHtml(
     // focus:<slug> on assistant turns; topic:<slug> on user turns. Pills
     // render even when sentiment/intent are absent.
     var pillKinds = t.role === 'user' ? ['topic'] : ['focus']
-    var pills = pillsHtml(t.content_flags as any, pillKinds)
+    var pills = pillsHtml(t.content_flags, pillKinds)
     var textRow = parts.length > 0 ? '<div>' + parts.join(' · ') + '</div>' : ''
     var pillRow = pills ? '<div style="margin-top:' + (textRow ? '2px' : '0') + '">' + pills + '</div>' : ''
     if (!textRow && !pillRow) return ''
