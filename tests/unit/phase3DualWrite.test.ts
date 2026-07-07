@@ -1,5 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { mirrorTurns, mirrorFocusFlagsUpdate, mirrorDeleteSession } from '@/lib/phase3DualWrite'
+
+type MockResult = { data: unknown; error: unknown }
+interface MockBuilder {
+  eq(col: string, val: unknown): MockBuilder
+  select(): MockBuilder
+  single(): Promise<MockResult>
+  maybeSingle(): Promise<MockResult>
+  then(onF: (r: MockResult) => void): void
+}
 
 // Minimal Supabase client mock — captures the call chain and lets each test
 // assert which tables were touched and with what filters.
@@ -8,7 +18,7 @@ function buildMockService() {
 
   function makeBuilder(table: string, verb: string, payload?: unknown) {
     const filters: Record<string, unknown> = {}
-    const builder: any = {
+    const builder: MockBuilder = {
       eq(col: string, val: unknown) { filters[col] = val; return builder },
       select() { return builder },
       single() {
@@ -25,7 +35,7 @@ function buildMockService() {
         }
         return Promise.resolve({ data: null, error: null })
       },
-      then(onF: any) {
+      then(onF: (r: MockResult) => void) {
         // Terminal — fires when the builder is awaited without .select()/.single()
         calls.push({ table, verb, payload, filters })
         onF({ data: null, error: null })
@@ -34,7 +44,7 @@ function buildMockService() {
     return builder
   }
 
-  const service: any = {
+  const service = {
     from(table: string) {
       return {
         upsert(payload: unknown) { return makeBuilder(table, 'upsert', payload) },
@@ -45,7 +55,7 @@ function buildMockService() {
       }
     },
   }
-  return { service, calls }
+  return { service: service as unknown as SupabaseClient, calls }
 }
 
 describe('phase3DualWrite — flag gating', () => {
@@ -104,13 +114,13 @@ describe('phase3DualWrite — wiring (flag ON)', () => {
 
     expect(calls[0].table).toBe('conversations')
     expect(calls[0].verb).toBe('upsert')
-    expect((calls[0].payload as any).bot_id).toBe('bot-1')
-    expect((calls[0].payload as any).session_id).toBe('sess-1')
-    expect((calls[0].payload as any).org_id).toBe('org-1')
+    expect((calls[0].payload as Record<string, unknown>).bot_id).toBe('bot-1')
+    expect((calls[0].payload as Record<string, unknown>).session_id).toBe('sess-1')
+    expect((calls[0].payload as Record<string, unknown>).org_id).toBe('org-1')
 
     const turnCall = calls.find(c => c.table === 'conversation_turns' && c.verb === 'insert')
     expect(turnCall).toBeTruthy()
-    const turns = turnCall!.payload as any[]
+    const turns = turnCall!.payload as Record<string, unknown>[]
     expect(turns.length).toBe(2)
     expect(turns[0].conversation_id).toBe('mock-conv-id')
     expect(turns[0].org_id).toBe('org-1')
@@ -130,7 +140,7 @@ describe('phase3DualWrite — wiring (flag ON)', () => {
     })
     const turnCall = calls.find(c => c.table === 'conversation_turns' && c.verb === 'insert')
     expect(turnCall).toBeTruthy()
-    const turns = turnCall!.payload as any[]
+    const turns = turnCall!.payload as Record<string, unknown>[]
     expect(turns.length).toBe(1)
     expect(turns[0].turn_number).toBe(2)
   })
@@ -146,7 +156,7 @@ describe('phase3DualWrite — wiring (flag ON)', () => {
 
     const updateCall = calls.find(c => c.table === 'conversation_turns' && c.verb === 'update')
     expect(updateCall).toBeTruthy()
-    expect((updateCall!.payload as any).content_flags).toEqual(['focus:a', 'focus:b'])
+    expect((updateCall!.payload as Record<string, unknown>).content_flags).toEqual(['focus:a', 'focus:b'])
     expect(updateCall!.filters?.conversation_id).toBe('mock-conv-id')
     expect(updateCall!.filters?.turn_number).toBe(3)
   })

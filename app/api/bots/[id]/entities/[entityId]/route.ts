@@ -21,6 +21,15 @@ export const dynamic = 'force-dynamic'
 
 interface Params { params: Promise<{ id: string; entityId: string }> }
 
+interface AgentRow { id: string; org_id: string }
+interface EntityRow {
+  id: string
+  scope_type?: string
+  scope_id?: string
+  source: string
+  provenance?: Provenance | null
+}
+
 export async function PATCH(req: NextRequest, props: Params) {
   const params = await props.params;
   const supabase = await createClient()
@@ -32,7 +41,7 @@ export async function PATCH(req: NextRequest, props: Params) {
   const canonical = typeof body?.canonical === 'string' ? body.canonical.trim() : undefined
   const aliasesRaw = Array.isArray(body?.aliases) ? body.aliases : undefined
   const aliases = aliasesRaw
-    ? aliasesRaw.map((a: any) => String(a || '').trim()).filter((a: string) => a.length > 0 && a.length <= 80)
+    ? aliasesRaw.map((a: unknown) => String(a || '').trim()).filter((a: string) => a.length > 0 && a.length <= 80)
     : undefined
 
   if (hidden === undefined && canonical === undefined && aliases === undefined) {
@@ -46,7 +55,7 @@ export async function PATCH(req: NextRequest, props: Params) {
 
   const { data: bot } = await service.from('agents').select('id, org_id').eq('id', params.id).single()
   if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
-  if (!isAdmin && (bot as any).org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!isAdmin && (bot as AgentRow).org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // Pair entity_catalog row by id + scope to prevent cross-bot updates.
   const { data: existing } = await service
@@ -58,7 +67,7 @@ export async function PATCH(req: NextRequest, props: Params) {
     .single()
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const patch: Record<string, any> = {}
+  const patch: Record<string, string | boolean | string[] | Provenance> = {}
   if (hidden !== undefined) patch.hidden = hidden
   if (canonical !== undefined) {
     patch.canonical = canonical
@@ -71,7 +80,7 @@ export async function PATCH(req: NextRequest, props: Params) {
   // Curating the spelling/aliases is a human act — record manual provenance so
   // this row owns its canonical at the highest authority.
   if (canonical !== undefined || aliases !== undefined) {
-    patch.provenance = mergeProvenance(((existing as any).provenance ?? {}) as Provenance, 'manual', null, 1)
+    patch.provenance = mergeProvenance(((existing as EntityRow).provenance ?? {}) as Provenance, 'manual', null, 1)
   }
 
   const { data: updated, error } = await service
@@ -82,7 +91,7 @@ export async function PATCH(req: NextRequest, props: Params) {
     .eq('scope_id', params.id)
     .select('id, canonical, slug, category, aliases, sample_count, source, hidden, first_seen_at, last_seen_at')
     .single()
-  if (error) return serverError(error, 'bots.entities.update', { orgId: (bot as any).org_id })
+  if (error) return serverError(error, 'bots.entities.update', { orgId: (bot as AgentRow).org_id })
 
   // Visibility change or term change → catalog needs a fresh load on the next turn.
   invalidateEntityCache(params.id)
@@ -91,7 +100,7 @@ export async function PATCH(req: NextRequest, props: Params) {
   // (best-effort; uses the BOT's org so an admin's cross-org edit lands in the
   // right brand). Hide/unhide doesn't need a roll — the rollup only ever adds.
   if (canonical !== undefined || aliases !== undefined) {
-    await rollupAgentEntitiesToBrand(service, { agentId: params.id, orgId: (bot as any).org_id })
+    await rollupAgentEntitiesToBrand(service, { agentId: params.id, orgId: (bot as AgentRow).org_id })
   }
 
   return NextResponse.json({ entity: updated })
@@ -106,7 +115,7 @@ export async function DELETE(_req: NextRequest, props: Params) {
   const service = createServiceRoleClient()
   const { data: bot } = await service.from('agents').select('id, org_id').eq('id', params.id).single()
   if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
-  if (!isAdmin && (bot as any).org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!isAdmin && (bot as AgentRow).org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // Only manual rows can be hard-deleted. Discovered rows should be hidden
   // instead (so re-discovery doesn't resurface noise the admin already
@@ -119,7 +128,7 @@ export async function DELETE(_req: NextRequest, props: Params) {
     .eq('scope_id', params.id)
     .single()
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if ((existing as any).source !== 'manual') {
+  if ((existing as EntityRow).source !== 'manual') {
     return NextResponse.json({ error: 'Hide discovered entities instead of deleting.' }, { status: 400 })
   }
 
@@ -129,7 +138,7 @@ export async function DELETE(_req: NextRequest, props: Params) {
     .eq('id', params.entityId)
     .eq('scope_type', 'bot')
     .eq('scope_id', params.id)
-  if (error) return serverError(error, 'bots.entities.delete', { orgId: (bot as any).org_id })
+  if (error) return serverError(error, 'bots.entities.delete', { orgId: (bot as AgentRow).org_id })
 
   invalidateEntityCache(params.id)
   return NextResponse.json({ ok: true })

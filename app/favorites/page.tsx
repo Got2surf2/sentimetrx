@@ -12,6 +12,19 @@ import FavoritesClient from './FavoritesClient'
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Sentimetrx — Favorites' }
 
+// Minimal shape of a favorited resource's DB row. Only the fields read below
+// are named; the index signature keeps the full row available for the card.
+interface ResourceRow {
+  id:              string
+  name?:           string | null
+  slug?:           string | null
+  response_count?: number | null
+  row_count?:      number | null
+  source?:         string | null
+  status?:         string | null
+  [key: string]:   unknown
+}
+
 interface EnrichedFav {
   resource_type: 'bot' | 'study' | 'dataset' | 'campaign' | 'townhall_session'
   resource_id:   string
@@ -20,7 +33,7 @@ interface EnrichedFav {
   href:          string
   ts:            string | null
   created_at:    string
-  raw:           Record<string, any>   // full DB row for rich card rendering
+  raw:           ResourceRow   // full DB row for rich card rendering
 }
 
 export default async function FavoritesPage() {
@@ -33,9 +46,9 @@ export default async function FavoritesPage() {
     .select('full_name, org_id, organizations(id, name, is_admin_org, logo_url, features)')
     .eq('id', user.id)
     .single()
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   const isAdmin = !!orgData?.is_admin_org
-  const orgId   = (userData as any)?.org_id as string | null
+  const orgId   = userData?.org_id as string | null
 
   const service = createServiceRoleClient()
   const { data: favs } = await service
@@ -45,7 +58,7 @@ export default async function FavoritesPage() {
     .order('created_at', { ascending: false })
 
   // Enrich — same pattern as /m. Tenant users only see resources in their org.
-  const TYPE_MAP: Record<string, { table: string; tsField: string; href: (id: string, r: any) => string; subtitle: (r: any) => string | undefined }> = {
+  const TYPE_MAP: Record<string, { table: string; tsField: string; href: (id: string, r: ResourceRow) => string; subtitle: (r: ResourceRow) => string | undefined }> = {
     bot:              { table: 'bots',              tsField: 'updated_at', href: (id) => '/bots/' + id + '/conversations', subtitle: (r) => r.slug ? '/b/' + r.slug : undefined },
     study:            { table: 'studies',           tsField: 'created_at', href: (id) => '/studies/' + id + '/edit',       subtitle: (r) => (r.response_count || 0).toLocaleString() + ' responses' },
     dataset:          { table: 'datasets',          tsField: 'created_at', href: (id) => '/analyze/' + id,                 subtitle: (r) => [r.row_count ? r.row_count.toLocaleString() + ' rows' : '', r.source].filter(Boolean).join(' · ') || undefined },
@@ -59,14 +72,14 @@ export default async function FavoritesPage() {
     byType[f.resource_type].push(f.resource_id)
   }
 
-  const rowMaps: Record<string, Map<string, any>> = {}
+  const rowMaps: Record<string, Map<string, ResourceRow>> = {}
   await Promise.all(Object.entries(byType).map(async function([type, ids]) {
     const cfg = TYPE_MAP[type]
     if (!cfg) { rowMaps[type] = new Map(); return }
-    let q: any = service.from(cfg.table).select('*').in('id', ids)
+    let q = service.from(cfg.table).select('*').in('id', ids)
     if (!isAdmin) q = q.eq('org_id', orgId)
     const { data } = await q
-    rowMaps[type] = new Map((data || []).map((r: any) => [r.id, r]))
+    rowMaps[type] = new Map(((data || []) as ResourceRow[]).map((r): [string, ResourceRow] => [r.id, r]))
   }))
 
   const enriched: EnrichedFav[] = []
@@ -81,7 +94,7 @@ export default async function FavoritesPage() {
       name:          r.name || 'Untitled',
       subtitle:      cfg.subtitle(r),
       href:          cfg.href(f.resource_id, r),
-      ts:            r[cfg.tsField] || null,
+      ts:            (r[cfg.tsField] as string | null) || null,
       created_at:    f.created_at,
       raw:           r,
     })
@@ -94,7 +107,7 @@ export default async function FavoritesPage() {
         orgName={orgData?.name}
         isAdmin={isAdmin}
         userEmail={user.email}
-        fullName={(userData as any)?.full_name}
+        fullName={userData?.full_name}
         features={orgData?.features || {}}
         currentPage="favorites"
       />

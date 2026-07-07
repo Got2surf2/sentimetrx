@@ -17,6 +17,41 @@ import { INDUSTRY_LABELS, type Industry } from '@/lib/industryDefaults'
 
 export const dynamic = 'force-dynamic'
 
+interface PsychographicItem {
+  industry: string
+  industryLabel: string
+  prompt: string
+  responses: unknown
+}
+
+interface OpenEndedItem {
+  industry: string
+  industryLabel: string
+  prompt: string
+  triggerType: unknown
+  keywordTriggers: unknown
+  defaultFollowOn: unknown
+}
+
+interface OpenEndedBank {
+  industries: Array<{
+    industry: string
+    open_ends: Array<{
+      prompt: string
+      trigger_type: unknown
+      keyword_triggers: unknown
+      default_follow_on: unknown
+    }>
+  }>
+}
+
+interface OrgFeatures {
+  custom_questions?: {
+    demo?: unknown[]
+    psycho?: unknown[]
+  }
+}
+
 const LABEL_TO_KEY: Record<string, string> = {}
 for (const [key, label] of Object.entries(INDUSTRY_LABELS)) {
   LABEL_TO_KEY[label] = key
@@ -36,7 +71,7 @@ export async function GET(req: NextRequest) {
   const typeFilter = url.searchParams.get('type')
   const industryFilter = url.searchParams.get('industry')
 
-  const result: { psychographic: any[]; structured: any[]; openEnded: any[]; customDemo: any[]; customPsycho: any[] } =
+  const result: { psychographic: PsychographicItem[]; structured: Record<string, unknown>[]; openEnded: OpenEndedItem[]; customDemo: unknown[]; customPsycho: unknown[] } =
     { psychographic: [], structured: [], openEnded: [], customDemo: [], customPsycho: [] }
 
   if (!typeFilter || typeFilter === 'psychographic') {
@@ -59,7 +94,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (!typeFilter || typeFilter === 'open_ended') {
-    for (const ind of (openEndedData as any).industries) {
+    for (const ind of (openEndedData as unknown as OpenEndedBank).industries) {
       const industryKey = mapIndustryLabel(ind.industry)
       if (industryFilter && industryKey !== industryFilter) continue
       for (const oe of ind.open_ends) {
@@ -75,7 +110,7 @@ export async function GET(req: NextRequest) {
   if (orgId) {
     const { data: orgData } = await supabase
       .from('organizations').select('features').eq('id', orgId).single()
-    const features = (orgData?.features as any) || {}
+    const features = (orgData?.features as OrgFeatures | null) || {}
     const customQ = features.custom_questions || { demo: [], psycho: [] }
     result.customDemo = customQ.demo || []
     result.customPsycho = customQ.psycho || []

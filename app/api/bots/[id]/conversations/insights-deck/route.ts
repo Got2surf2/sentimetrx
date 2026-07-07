@@ -26,20 +26,32 @@ export async function POST(req: NextRequest, props: Params) {
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
-  const userOrgId = (userData as any)?.org_id as string | null
+  type OrgRel = { is_admin_org: boolean | null }
+  const typedUserData = userData as { org_id: string | null; organizations: OrgRel | OrgRel[] | null } | null
+  const orgRel = typedUserData?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
+  const userOrgId = typedUserData?.org_id ?? null
 
   const service = createServiceRoleClient()
 
-  const { data: bot } = await service
+  const { data: botData } = await service
     .from('agents')
     .select('id, name, system_prompt, personality, config, conversation_count, org_id')
     .eq('id', params.id)
     .single()
 
+  const bot = botData as {
+    id: string
+    name: string
+    system_prompt: string | null
+    personality: string | null
+    config: unknown
+    conversation_count: number | null
+    org_id: string
+  } | null
+
   if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
-  if (!isAdmin && (bot as any).org_id !== userOrgId) {
+  if (!isAdmin && bot.org_id !== userOrgId) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   }
 
@@ -54,7 +66,15 @@ export async function POST(req: NextRequest, props: Params) {
       .eq('conversations.bot_id', params.id)
       .order('turn_number', { ascending: true })
       .limit(2000)
-    turns = (data || []).map((r: any) => ({
+    type TurnJoin = {
+      turn_number: number
+      role: string
+      content: string
+      language: string | null
+      created_at: string
+      conversations: { session_id: string; bot_id: string } | null
+    }
+    turns = ((data || []) as unknown as TurnJoin[]).map((r) => ({
       session_id: r.conversations?.session_id || '',
       turn_number: r.turn_number,
       role: r.role,
@@ -135,7 +155,7 @@ export async function POST(req: NextRequest, props: Params) {
     maxTokens: 2000,
     timeoutMs: 45000,
     system: `You are analyzing ${sessionCount} conversations (${totalTurns} turns) with an AI agent called "${bot.name}".
-${(bot as any).personality ? `Agent personality: ${(bot as any).personality}` : ''}
+${bot.personality ? `Agent personality: ${bot.personality}` : ''}
 ${bot.system_prompt ? `Agent purpose: ${(bot.system_prompt || '').slice(0, 300)}` : ''}
 
 The transcript labels every line with either "user:" (real human participant) or "assistant:" (the AI agent itself). When the spec says "user quote", it means a line prefixed with "user:". NEVER lift, paraphrase, or attribute an "assistant:" line as a user quote — those are the agent's own responses, not what users said.
@@ -159,7 +179,16 @@ Return ONLY valid JSON, no markdown.`,
   logUsage({ org_id: (bot as { org_id: string }).org_id, resource_type: 'bot', resource_id: params.id, event_type: 'insights_deck' }, aiResult.usage)
 
   // Parse AI response
-  let analysis: any = {}
+  let analysis = {} as {
+    common_questions: string[]
+    audience_profile: string
+    conversation_patterns: string[]
+    drop_off_insights: string
+    knowledge_gaps: string[]
+    personality_effectiveness: string
+    recommendations: string[]
+    top_quotes: string[]
+  }
   try {
     const cleaned = aiResult.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
     analysis = JSON.parse(cleaned)

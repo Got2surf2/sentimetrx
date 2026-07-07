@@ -10,22 +10,38 @@
 // (route-handler org filters aren't covered by the RLS/egress suites — CLAUDE.md.)
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { CallerOrgContext } from '@/lib/auth/orgAccess'
+
+type MockResult = { data: unknown; error: unknown }
+
+type ChainMethod =
+  | 'select' | 'order' | 'in' | 'limit' | 'neq'
+  | 'range' | 'not' | 'update' | 'delete' | 'insert' | 'eq'
+
+interface MockBuilder extends Record<ChainMethod, () => MockBuilder> {
+  single: () => Promise<MockResult>
+  maybeSingle: () => Promise<MockResult>
+  then: (
+    res: (value: MockResult) => unknown,
+    rej: (reason: unknown) => unknown,
+  ) => Promise<unknown>
+}
 
 const ctx = {
-  callerCtx: { userId: null, orgId: null, isAdmin: false } as any,
-  results: {} as Record<string, any>,
+  callerCtx: { userId: null, orgId: null, isAdmin: false } as CallerOrgContext,
+  results: {} as Record<string, MockResult>,
 }
 function reset() {
   ctx.callerCtx = { userId: null, orgId: null, isAdmin: false }
   ctx.results = {}
 }
 
-function builder(table: string): any {
-  const b: any = {}
-  for (const m of ['select', 'order', 'in', 'limit', 'neq', 'range', 'not', 'update', 'delete', 'insert', 'eq']) b[m] = () => b
+function builder(table: string): MockBuilder {
+  const b = {} as MockBuilder
+  for (const m of ['select', 'order', 'in', 'limit', 'neq', 'range', 'not', 'update', 'delete', 'insert', 'eq'] as ChainMethod[]) b[m] = () => b
   b.single = async () => ctx.results[table] ?? { data: null, error: null }
   b.maybeSingle = async () => ctx.results[table] ?? { data: null, error: null }
-  b.then = (res: any, rej: any) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
+  b.then = (res, rej) => Promise.resolve(ctx.results[table] ?? { data: [], error: null }).then(res, rej)
   return b
 }
 const client = () => ({ from: (t: string) => builder(t), rpc: async () => ({ data: null, error: null }) })
@@ -40,9 +56,9 @@ vi.mock('@/lib/collectionSchema', () => ({ buildMergedCollectionSchema: async ()
 
 import * as members from '@/app/api/collections/[id]/members/route'
 
-const props = { params: Promise.resolve({ id: 'd_collection' }) } as any
-const req = (body: any = {}) =>
-  new Request('http://t/x', { method: 'POST', body: JSON.stringify(body) }) as any
+const props: { params: Promise<{ id: string }> } = { params: Promise.resolve({ id: 'd_collection' }) }
+const req = (body: unknown = {}) =>
+  new Request('http://t/x', { method: 'POST', body: JSON.stringify(body) })
 const validBody = { members: [{ dataset_id: 'd_new', label: 'New' }] }
 
 beforeEach(reset)

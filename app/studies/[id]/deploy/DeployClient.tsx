@@ -5,6 +5,7 @@ import Link from 'next/link'
 import QRCode from 'qrcode'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
+import type { StudyConfig, StudyTheme, SurveyQuestion } from '@/lib/types'
 
 interface Study {
   id:        string
@@ -13,7 +14,7 @@ interface Study {
   bot_name:  string
   bot_emoji: string
   status:    string
-  config:    any
+  config:    StudyConfig
 }
 
 interface Props { study: Study; surveyUrl: string; logoUrl?: string; orgName?: string; isAdmin?: boolean; userEmail?: string; fullName?: string }
@@ -117,7 +118,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
     }
   }
 
-  const theme = study.config?.theme || {}
+  const theme: Partial<StudyTheme> = study.config?.theme || {}
   const isActive = study.status === 'active'
 
   return (
@@ -189,11 +190,11 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
 
           {/* Hidden fields URL template */}
           {(() => {
-            const hiddenFields = (study.config?.questions ?? []).filter((q: any) => q.type === 'hidden')
-              .map((q: any) => ({ ...q, paramKey: q.paramKey || (q.prompt || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '') }))
-              .filter((q: any) => q.paramKey)
+            const hiddenFields = (study.config?.questions ?? []).filter((q: SurveyQuestion) => q.type === 'hidden')
+              .map((q: SurveyQuestion) => ({ ...q, paramKey: q.paramKey || (q.prompt || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '') }))
+              .filter((q: SurveyQuestion) => q.paramKey)
             if (hiddenFields.length === 0) return null
-            const templateUrl = surveyUrl + '?' + hiddenFields.map((q: any) => q.paramKey + '=').join('&')
+            const templateUrl = surveyUrl + '?' + hiddenFields.map((q: SurveyQuestion) => q.paramKey + '=').join('&')
             return (
               <div className="bg-white border border-gray-200 rounded-2xl p-6">
                 <h2 className="font-semibold text-white mb-1">Hidden fields</h2>
@@ -204,7 +205,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
                   {templateUrl}
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  {hiddenFields.map((q: any) => (
+                  {hiddenFields.map((q: SurveyQuestion) => (
                     <div key={q.id} className="flex items-center gap-2 text-xs">
                       <span className="font-mono text-cyan-400">{q.paramKey}</span>
                       <span className="text-gray-500">→</span>
@@ -381,7 +382,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
 
             {/* Create new */}
             <div className="flex items-center gap-3">
-              <select value={shareExpiry} onChange={e => setShareExpiry(e.target.value as any)}
+              <select value={shareExpiry} onChange={e => setShareExpiry(e.target.value as '24h' | '7d' | '30d')}
                 className="px-3 py-2.5 rounded-xl bg-gray-50 border border-gray-200 text-sm text-gray-700 outline-none">
                 <option value="24h">Expires in 24 hours</option>
                 <option value="7d">Expires in 7 days</option>

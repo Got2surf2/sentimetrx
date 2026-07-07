@@ -13,13 +13,32 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { FavoriteStar } from '@/components/ui/FavoriteStar'
-import type { DatasetWithState } from '@/lib/analyzeTypes'
+import type { DatasetWithState, FieldSummary, OpenEndedSummary, SchemaFieldConfig } from '@/lib/analyzeTypes'
 import ReportsMenu from '@/components/analyze/ReportsMenu'
 import AdHocReportModal from '@/components/analyze/AdHocReportModal'
 import { hasAnyReport } from '@/lib/reportCatalog'
 import type { ReportContext, ReportType, ReportFormat } from '@/lib/reportCatalog'
 
 interface OrgOption { id: string; name: string }
+
+// Minimal shape of the rows returned by /api/review-sources — only the two
+// fields this card reads.
+interface ReviewSourceBrief { id: string; dataset_id: string | null }
+
+// The card is sometimes handed a `collection_info` field that isn't part of
+// the DatasetWithState metadata type (attached by /analyze/page.tsx).
+type CollectionInfo = { collectionDatasetId: string; collectionName: string }
+
+// Loose view over a computed FieldSummary for the scoring-donut math: the
+// donut only reads these numeric aggregates, which live on the numeric /
+// categorical members of the FieldSummary union.
+interface DonutSummary {
+  counts?:  Record<string, number>
+  avg?:     number
+  nonNull?: number
+  min?:     number
+  max?:     number
+}
 
 // Phase C: dataset listing carries server-computed signal stats keyed
 // by dataset id, fetched in one batch from /api/datasets/signal-stats-batch.
@@ -98,7 +117,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   // setCollectionInfo is still used after "Remove from collection" to
   // clear the chip without a full page reload.
   const [collectionInfo, setCollectionInfo] = useState<{ collectionDatasetId: string; collectionName: string } | null>(
-    (dataset as any).collection_info || null
+    (dataset as DatasetWithState & { collection_info?: CollectionInfo | null }).collection_info || null
   )
   const [transferOrgId, setTransferOrgId] = useState('')
   const [transferring,  setTransferring]  = useState(false)
@@ -122,7 +141,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   // collection; a dataset tagged to a brand → the parent brand collection.
   const glossaryCollectionId = isBrand
     ? (dataset.collection_id || null)
-    : (!isCollection ? ((dataset as any).brand_collection_id || null) : null)
+    : (!isCollection ? (dataset.brand_collection_id || null) : null)
   const fieldCount = dataset.state?.schema_config?.fields?.filter(function(f: { type: string }) {
     return f.type !== 'ignore'
   }).length ?? null
@@ -163,7 +182,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       if (isReviews) {
         var srcRes = await fetch('/api/review-sources')
         var srcData = await srcRes.json()
-        var source = (srcData.sources || []).find(function(s: any) { return s.dataset_id === dataset.id })
+        var source = ((srcData.sources || []) as ReviewSourceBrief[]).find(function(s: ReviewSourceBrief) { return s.dataset_id === dataset.id })
         if (!source) { setSyncToast('No review source found'); setSyncing(false); setTimeout(function() { setSyncToast('') }, 3000); return }
 
         // Auto-poll the sync until the cycle is complete (locations_remaining === 0)
@@ -224,7 +243,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
         var allSrcRes = await fetch('/api/review-sources')
         var allSrcData = await allSrcRes.json()
         var sourceByDataset: Record<string, { id: string }> = {}
-        ;(allSrcData.sources || []).forEach(function(s: any) { sourceByDataset[s.dataset_id] = { id: s.id } })
+        ;((allSrcData.sources || []) as ReviewSourceBrief[]).forEach(function(s: ReviewSourceBrief) { sourceByDataset[s.dataset_id as string] = { id: s.id } })
 
         var syncableMembers = members.filter(function(m) { return !!sourceByDataset[m.dataset_id] })
         if (syncableMembers.length === 0) {
@@ -630,14 +649,14 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
 
       {/* 3. Stats row */}
       {isReviews && (function() {
-        var analytics = dataset.state?.analytics as any
+        var analytics = dataset.state?.analytics
         // Try multiple field names for the review text summary
-        var fs = analytics?.fieldSummaries || {}
-        var reviewTextSummary = fs.review_text || fs.Review || fs.comment || fs.Comment || fs.text || null
+        var fs: Record<string, FieldSummary> = analytics?.fieldSummaries || {}
+        var reviewTextSummary = (fs.review_text || fs.Review || fs.comment || fs.Comment || fs.text || null) as OpenEndedSummary | null
         // For open-ended fields, nonNull = rows with actual text content
         var withComments = reviewTextSummary?.nonNull || 0
         // If nonNull is 0 but we have rows, check if avgWordCount > 0 (means there IS text data)
-        if (withComments === 0 && reviewTextSummary?.avgWordCount > 0) {
+        if (withComments === 0 && (reviewTextSummary?.avgWordCount as number) > 0) {
           withComments = dataset.row_count  // analytics not computed correctly, assume all have text
         }
         var ratingOnly = Math.max(0, dataset.row_count - withComments)
@@ -741,16 +760,16 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       {/* 3b. Scoring donut — shows when a scored field exists with analytics */}
       {(function() {
         var fields = dataset.state?.schema_config?.fields || []
-        var analytics = dataset.state?.analytics as any
+        var analytics = dataset.state?.analytics
         if (!analytics || !analytics.fieldSummaries) return null
 
         // Find a score field: either explicit scoreField with remapping, or a rating/nps numeric field
-        var scoreField = fields.find(function(f: any) { return f.scoreField && f.remapping && Object.keys(f.remapping).length > 0 })
-        var ratingField = !scoreField ? fields.find(function(f: any) { return f.type === 'numeric' && (f.sqt === 'rating' || f.sqt === 'nps') }) : null
+        var scoreField = fields.find(function(f: SchemaFieldConfig) { return f.scoreField && f.remapping && Object.keys(f.remapping).length > 0 })
+        var ratingField = !scoreField ? fields.find(function(f: SchemaFieldConfig) { return f.type === 'numeric' && (f.sqt === 'rating' || f.sqt === 'nps') }) : null
         var targetField = scoreField || ratingField
         if (!targetField) return null
 
-        var summary = analytics.fieldSummaries[targetField.field]
+        var summary = analytics.fieldSummaries[targetField.field] as DonutSummary
         if (!summary) return null
 
         var avgScore: number, minScore: number, maxScore: number, mappedCount: number

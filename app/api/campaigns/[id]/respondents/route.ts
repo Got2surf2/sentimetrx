@@ -11,6 +11,9 @@ export const dynamic = 'force-dynamic'
 
 interface Params { params: Promise<{ id: string }> }
 
+type OrgRelation = { is_admin_org: boolean | null }
+type UserWithOrg = { organizations?: OrgRelation | OrgRelation[] | null }
+
 export async function GET(req: NextRequest, props: Params) {
   const params = await props.params;
   const supabase = await createClient()
@@ -23,8 +26,8 @@ export async function GET(req: NextRequest, props: Params) {
     .eq('id', user.id)
     .single()
   if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+  const orgRel = (userData as UserWithOrg)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
 
   // Use service role to bypass campaign_respondents RLS
   const service = createServiceRoleClient()
@@ -74,8 +77,8 @@ export async function POST(req: NextRequest, props: Params) {
     .eq('id', user.id)
     .single()
   if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+  const orgRel = (userData as UserWithOrg)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
 
   const service = createServiceRoleClient()
 
@@ -90,7 +93,7 @@ export async function POST(req: NextRequest, props: Params) {
     return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }
 
-  let body: any
+  let body: { respondents?: unknown }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const { respondents } = body
@@ -169,8 +172,8 @@ export async function DELETE(req: NextRequest, props: Params) {
     .eq('id', user.id)
     .single()
   if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+  const orgRel = (userData as UserWithOrg)?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
 
   let body: { respondent_ids: string[] }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }

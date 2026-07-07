@@ -20,7 +20,32 @@ const W = 13.33, H = 7.5, PAD = 0.42, HH = 0.9, FY = H - 0.28
 
 interface ConvMsg { who: 'bot' | 'user'; text: string; ai?: boolean }
 
-function buildConversationFromPayload(payload: any, config: any, botName: string): ConvMsg[] {
+interface ConfigQuestion { id: string; type?: string; enabled?: boolean; prompt: string }
+interface PsychoBankItem { key: string; q: string }
+interface StudyConfig {
+  greeting?: string
+  ratingPrompt?: string
+  npsPrompt?: string
+  promoterQ1?: string
+  passiveQ1?: string
+  detractorQ1?: string
+  q1?: string
+  q3?: string
+  q4?: string
+  questions?: ConfigQuestion[]
+  psychographicBank?: PsychoBankItem[]
+  theme?: { primaryColor?: string; backgroundColor?: string }
+}
+interface ResponsePayload {
+  openEnded?: Record<string, string>
+  experienceRating?: { score?: number | null; label?: string }
+  npsRecommend?: { score?: number | null; label?: string }
+  customAnswers?: Record<string, unknown>
+  psychographics?: Record<string, unknown>
+  conversationLog?: ConvMsg[]
+}
+
+function buildConversationFromPayload(payload: ResponsePayload | null | undefined, config: StudyConfig | null | undefined, botName: string): ConvMsg[] {
   const msgs: ConvMsg[] = []
   const oe = payload?.openEnded || {}
 
@@ -40,7 +65,7 @@ function buildConversationFromPayload(payload: any, config: any, botName: string
   for (const qKey of ['q1', 'q3', 'q4'] as const) {
     const answer = oe[qKey]
     if (!answer) continue
-    const prompt = qKey === 'q1' ? (config?.promoterQ1 || config?.passiveQ1 || config?.detractorQ1) : (config as any)?.[qKey]
+    const prompt = qKey === 'q1' ? (config?.promoterQ1 || config?.passiveQ1 || config?.detractorQ1) : config?.[qKey]
     if (prompt) msgs.push({ who: 'bot', text: prompt })
     const parts = answer.split(' [+ ')
     msgs.push({ who: 'user', text: parts[0] })
@@ -51,7 +76,7 @@ function buildConversationFromPayload(payload: any, config: any, botName: string
   }
 
   if (payload?.customAnswers && config?.questions) {
-    for (const q of config.questions.filter((q: any) => q.type !== 'hidden' && q.enabled !== false)) {
+    for (const q of config.questions.filter((q: ConfigQuestion) => q.type !== 'hidden' && q.enabled !== false)) {
       const ans = payload.customAnswers[q.id]
       if (ans != null) {
         msgs.push({ who: 'bot', text: q.prompt })
@@ -64,7 +89,7 @@ function buildConversationFromPayload(payload: any, config: any, botName: string
   const psycho = payload?.psychographics || {}
   const bank = config?.psychographicBank || []
   for (const [key, val] of Object.entries(psycho).filter(([, v]) => v)) {
-    const bq = bank.find((b: any) => b.key === key)
+    const bq = bank.find((b: PsychoBankItem) => b.key === key)
     if (bq) msgs.push({ who: 'bot', text: bq.q })
     msgs.push({ who: 'user', text: val as string })
   }
@@ -99,7 +124,7 @@ export async function GET(
   pptx.company = 'Sentimetrx'
   pptx.title = `${study.name} — Conversation`
 
-  const theme = (study.config as any)?.theme || {}
+  const theme: { primaryColor?: string; backgroundColor?: string } = (study.config as StudyConfig | null)?.theme || {}
   const primaryHex = (theme.primaryColor || '#00b4d8').replace('#', '')
   const bgHex = (theme.backgroundColor || '#0a1628').replace('#', '')
 
@@ -205,7 +230,7 @@ export async function GET(
   const rawBuffer = await pptx.write({ outputType: 'nodebuffer' })
   const fileName = study.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '_conversation.pptx'
 
-  return new NextResponse(rawBuffer as any, {
+  return new NextResponse(rawBuffer as unknown as BodyInit, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'Content-Disposition': `attachment; filename="${fileName}"`,

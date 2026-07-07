@@ -153,8 +153,8 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
       setTotalDistinct(typeof data.total_distinct === 'number' ? data.total_distinct : null)
       setScopeType(data.scope_type || null)
       setLastRefresh(data.last_refresh || null)
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load entities')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load entities')
     } finally {
       setLoading(false)
     }
@@ -176,8 +176,8 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
       await loadPreview()
       setSavedFlash(true)
       setTimeout(function() { setSavedFlash(false) }, 3000)
-    } catch (err: any) {
-      setError(err?.message || 'Discovery failed')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Discovery failed')
     } finally {
       setDiscovering(false)
     }
@@ -200,8 +200,8 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
       setAddCanonical('')
       setAddAliases('')
       await loadPreview()
-    } catch (err: any) {
-      setError(err?.message || 'Add failed')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Add failed')
     } finally {
       setAdding(false)
     }
@@ -234,8 +234,8 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
       setBulkResult((data.entities_new || 0) + ' new, ' + (data.entities_merged || 0) + ' merged, ' + (data.rejected?.length || 0) + ' rejected')
       setBulkText('')
       await loadPreview()
-    } catch (err: any) {
-      setError(err?.message || 'Bulk add failed')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Bulk add failed')
     } finally {
       setBulkSubmitting(false)
     }
@@ -263,8 +263,8 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
       await loadPreview()
       setSavedFlash(true)
       setTimeout(function() { setSavedFlash(false) }, 2500)
-    } catch (err: any) {
-      setError(err?.message || 'Save failed')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Save failed')
     } finally {
       setSavingHidden(false)
     }
@@ -320,8 +320,8 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
       if (!res.ok) throw new Error(data?.error || 'Save failed')
       setEditSlug(null)
       await loadPreview()
-    } catch (err: any) {
-      setEditError(err?.message || 'Save failed')
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Save failed')
     } finally {
       setEditSaving(false)
     }
@@ -336,8 +336,8 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
       if (!res.ok) throw new Error(data?.error || 'Reset failed')
       setResetConfirm(false)
       await loadPreview()
-    } catch (err: any) {
-      setError(err?.message || 'Reset failed')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Reset failed')
     } finally {
       setResetting(false)
     }

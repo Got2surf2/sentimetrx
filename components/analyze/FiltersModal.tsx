@@ -42,8 +42,8 @@ function toReal(pending: PendingFilters): Filters {
   Object.entries(pending).forEach(function(e) {
     var field = e[0], f = e[1]
     if (f.type === 'cat') out[field] = { type: 'cat', mode: f.mode, values: new Set(f.values), excludeBlanks: f.excludeBlanks }
-    else if (f.type === 'range') out[field] = f as any
-    else if (f.type === 'daterange') out[field] = f as any
+    else if (f.type === 'range') out[field] = f
+    else if (f.type === 'daterange') out[field] = f
   })
   return out
 }
@@ -200,8 +200,8 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
               // Prefer the live blank count from /filter-options — the rows here
               // are synthetic (one per distinct value) so counting them fabricates
               // blanks for any field with fewer distinct values than the widest.
-              var blankCount = (f as any).blanks != null
-                ? (f as any).blanks
+              var blankCount = f.blanks != null
+                ? f.blanks
                 : rows.filter(function(r) { var v = r[f.field]; return v == null || String(v).trim() === '' }).length
 
               // ── Categorical ──────────────────────────────────────────
@@ -451,12 +451,12 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                       <div style={{ position: 'absolute', top: '50%', left: dtPctLeft + '%', right: dtPctRight + '%', height: 4, background: T.accent, borderRadius: 2, transform: 'translateY(-50%)' }} />
                       {/* Left thumb — drag to change min */}
                       <div style={Object.assign({}, thumbBase, { left: dtPctLeft + '%', zIndex: leftZ })}
-                        onMouseDown={startDrag('left') as any}
-                        onTouchStart={startDrag('left') as any} />
+                        onMouseDown={startDrag('left')}
+                        onTouchStart={startDrag('left')} />
                       {/* Right thumb — drag to change max */}
                       <div style={Object.assign({}, thumbBase, { left: (100 - dtPctRight) + '%', zIndex: rightZ })}
-                        onMouseDown={startDrag('right') as any}
-                        onTouchStart={startDrag('right') as any} />
+                        onMouseDown={startDrag('right')}
+                        onTouchStart={startDrag('right')} />
                     </div>
                     {/* Bounds — orange, below slider */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: T.accent, fontWeight: 600, marginBottom: 6 }}>

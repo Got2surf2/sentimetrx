@@ -20,7 +20,7 @@ interface SerializedDateRangeFilter { type: 'daterange'; values: [number, number
 type SerializedFilter = SerializedCatFilter | SerializedRangeFilter | SerializedDateRangeFilter
 type SerializedFilters = Record<string, SerializedFilter>
 
-function rowMatchesFilter(data: Record<string, any>, filters: SerializedFilters): boolean {
+function rowMatchesFilter(data: Record<string, unknown>, filters: SerializedFilters): boolean {
   return Object.entries(filters).every(([field, f]) => {
     const val = data[field]
     if (f.type === 'cat') {
@@ -148,7 +148,7 @@ export async function GET(req: NextRequest) {
     const { data: ds } = await service.from('datasets').select('study_id').eq('id', meta.dataset_id).single()
     if (ds?.study_id) {
       const { data: study } = await service.from('studies').select('config').eq('id', ds.study_id).single()
-      if (study?.config) ratingType = (study.config as any).ratingType || 'experience'
+      if (study?.config) ratingType = (study.config as { ratingType?: string }).ratingType || 'experience'
     } else if (dataset.source === 'collection') {
       // For collections, look up first member's study
       const { data: col } = await service.from('collections').select('id').eq('dataset_id', meta.dataset_id).single()
@@ -158,7 +158,7 @@ export async function GET(req: NextRequest) {
           const { data: memberDs } = await service.from('datasets').select('study_id').eq('id', members[0].dataset_id).single()
           if (memberDs?.study_id) {
             const { data: study } = await service.from('studies').select('config').eq('id', memberDs.study_id).single()
-            if (study?.config) ratingType = (study.config as any).ratingType || 'experience'
+            if (study?.config) ratingType = (study.config as { ratingType?: string }).ratingType || 'experience'
           }
         }
       }
@@ -173,7 +173,7 @@ export async function GET(req: NextRequest) {
 
   // Fetch all rows (paginated with 1000-row pages)
   // For collections: union rows from member datasets with _collection_label
-  const allRows: Record<string, any>[] = []
+  const allRows: Record<string, unknown>[] = []
   const PAGE_SIZE = 1000
 
   let flatDatasetIds: string[] = [meta.dataset_id]
@@ -201,7 +201,7 @@ export async function GET(req: NextRequest) {
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
       if (!rows || rows.length === 0) break
       for (const r of rows) {
-        const row = r.data as Record<string, any>
+        const row = r.data as Record<string, unknown>
         if (label) row._collection_label = label
         allRows.push(row)
       }
@@ -212,14 +212,14 @@ export async function GET(req: NextRequest) {
 
   // Step 1: Apply active filters to get "in view" rows
   var filters = meta.filters || {}
-  var inViewRows: Record<string, any>[] = []
+  var inViewRows: Record<string, unknown>[] = []
   for (const row of allRows) {
     if (Object.keys(filters).length === 0 || rowMatchesFilter(row, filters)) inViewRows.push(row)
   }
 
   // Step 2: From in-view rows, split by primary field into primary vs comparison
-  var filteredRows: Record<string, any>[] = []
-  var benchmarkRows: Record<string, any>[] = []
+  var filteredRows: Record<string, unknown>[] = []
+  var benchmarkRows: Record<string, unknown>[] = []
   if (meta.primary && meta.primary.field && meta.primary.values.length > 0) {
     var pField = meta.primary.field
     var pValues = new Set(meta.primary.values)
@@ -262,7 +262,7 @@ export async function GET(req: NextRequest) {
   const themes = themeModel?.themes || []
   const textFields = themeModel?.fieldNames || (themeModel?.fieldName ? [themeModel.fieldName] : fields.filter(f => f.type === 'open-ended').map(f => f.field))
 
-  function rowMatchesTheme(row: Record<string, any>, keywords: string[]): boolean {
+  function rowMatchesTheme(row: Record<string, unknown>, keywords: string[]): boolean {
     const pattern = new RegExp('(?:^|\\W)(?:' + keywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\w*', 'i')
     for (const tf of textFields) {
       const text = row[tf]

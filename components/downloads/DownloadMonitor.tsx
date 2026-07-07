@@ -70,7 +70,7 @@ function timeAgo(iso: string | null | undefined) {
   return Math.floor(ms / 86400000) + 'd ago'
 }
 
-interface RedditSource {
+export interface RedditSource {
   id:              string
   orgName?:        string
   status:          string
@@ -80,7 +80,7 @@ interface RedditSource {
   error_message?:  string | null
 }
 
-interface ReviewSource {
+export interface ReviewSource {
   id:                    string
   orgName?:              string
   brand_name:            string
@@ -96,7 +96,7 @@ interface PendingLocation {
   review_source_id:  string
 }
 
-interface DatasetRow {
+export interface DatasetRow {
   id:          string
   name:        string
   orgName?:    string
@@ -106,7 +106,7 @@ interface DatasetRow {
   status?:     string
 }
 
-interface Recording {
+export interface Recording {
   id:                  string
   name:                string
   orgName?:            string

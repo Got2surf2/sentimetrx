@@ -15,16 +15,26 @@
 //                                   (no tenant read); short-circuits / size-caps
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import type { NextRequest } from 'next/server'
 
-const ctx = { results: {} as Record<string, any> }
+type MockResult = { data: unknown; error: unknown; count?: number }
+const ctx = { results: {} as Record<string, MockResult> }
 function reset() { ctx.results = {} }
 
-function builder(table: string): any {
-  const b: any = {}
-  for (const m of ['select', 'eq', 'order', 'in', 'limit', 'update', 'delete', 'insert']) b[m] = () => b
+type ChainMethod = 'select' | 'eq' | 'order' | 'in' | 'limit' | 'update' | 'delete' | 'insert'
+type MockBuilder = Record<ChainMethod, () => MockBuilder> & {
+  single: () => Promise<MockResult>
+  maybeSingle: () => Promise<MockResult>
+  then: (res: (value: MockResult) => unknown, rej: (reason: unknown) => unknown) => Promise<unknown>
+  readonly count: number
+}
+
+function builder(table: string): MockBuilder {
+  const b = {} as MockBuilder
+  for (const m of ['select', 'eq', 'order', 'in', 'limit', 'update', 'delete', 'insert'] as ChainMethod[]) b[m] = () => b
   b.single = async () => ctx.results[table] ?? { data: null, error: null }
   b.maybeSingle = b.single
-  b.then = (res: any, rej: any) => Promise.resolve(ctx.results[table] ?? { data: [], count: 0, error: null }).then(res, rej)
+  b.then = (res, rej) => Promise.resolve(ctx.results[table] ?? { data: [], count: 0, error: null }).then(res, rej)
   // head:true count queries read `.count`
   Object.defineProperty(b, 'count', { get: () => 0 })
   return b
@@ -45,8 +55,8 @@ import * as socialHook from '@/app/api/social/webhook/route'
 import * as thResponses from '@/app/api/townhall/responses/route'
 import * as translateResp from '@/app/api/translate-responses/route'
 
-const json = (body: any, headers: Record<string, string> = {}) =>
-  new Request('http://t/x', { method: 'POST', body: JSON.stringify(body), headers }) as any
+const json = (body: unknown, headers: Record<string, string> = {}) =>
+  new Request('http://t/x', { method: 'POST', body: JSON.stringify(body), headers }) as unknown as NextRequest
 
 beforeEach(reset)
 afterEach(() => vi.unstubAllEnvs())

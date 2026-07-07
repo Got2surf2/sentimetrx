@@ -1,4 +1,4 @@
-import type { StudyConfig } from './types'
+import type { StudyConfig, LikertScaleOption, StudyTranslation } from './types'
 import type { Industry } from './industryDefaults'
 import { SUPPORTED_LANGUAGES } from './types'
 
@@ -27,7 +27,7 @@ export function computeSourceHash(config: StudyConfig): string {
   const parts: string[] = []
   // Core prompts
   for (const k of ['greeting', 'q3', 'q4', 'promoterQ1', 'passiveQ1', 'detractorQ1', 'ratingPrompt', 'npsPrompt', 'closingMessage', 'closingCard', 'readyPrompt', 'readyYes', 'readyNo'] as const) {
-    if ((config as any)[k]) parts.push(k + ':' + (config as any)[k])
+    if (config[k]) parts.push(k + ':' + config[k])
   }
   // Rating scale labels
   for (const r of (config.ratingScale || [])) { if (r.label) parts.push('rs:' + r.label) }
@@ -36,7 +36,7 @@ export function computeSourceHash(config: StudyConfig): string {
     if (q.enabled === false || q.type === 'hidden') continue
     parts.push('q:' + q.id + ':' + q.prompt)
     if (q.options) parts.push('qo:' + q.options.join('|'))
-    if (q.likertScale) parts.push('ql:' + q.likertScale.map((s: any) => s.label).join('|'))
+    if (q.likertScale) parts.push('ql:' + q.likertScale.map((s: LikertScaleOption) => s.label).join('|'))
   }
   // Psychographics
   for (const p of (config.psychographicBank || [])) {
@@ -44,14 +44,14 @@ export function computeSourceHash(config: StudyConfig): string {
   }
   // Follow-ups
   for (const k of ['experienceFollowUp', 'npsFollowUp'] as const) {
-    const fu = (config as any)[k]
+    const fu = config[k]
     if (fu?.enabled && fu.sharedPrompt) parts.push('fu:' + k + ':' + fu.sharedPrompt)
   }
   // Demo fields
   for (const df of (config.demoFields || [])) {
     if (!df.enabled) continue
     parts.push('d:' + df.key + ':' + df.label)
-    if (df.options) parts.push('do:' + df.options.map((o: any) => o[1]).join('|'))
+    if (df.options) parts.push('do:' + df.options.map((o: [string, string]) => o[1]).join('|'))
   }
   // Contact fields
   for (const cf of (config.contactFields || [])) {
@@ -80,7 +80,7 @@ export function getStaleLanguages(config: StudyConfig): string[] {
     const trans = config.translations?.[code]
     if (!trans) return true
     // Check fingerprint — if source content changed, translation is stale
-    if ((trans as any)._sourceHash !== currentHash) return true
+    if ((trans as StudyTranslation & { _sourceHash?: string })._sourceHash !== currentHash) return true
     return false
   })
 }
@@ -89,7 +89,7 @@ export function getStaleLanguages(config: StudyConfig): string[] {
  * Auto-translate all stale languages before publishing.
  * Returns updated translations object merged with existing translations.
  */
-export async function autoTranslateStale(config: StudyConfig, studyId?: string): Promise<Record<string, any> | null> {
+export async function autoTranslateStale(config: StudyConfig, studyId?: string): Promise<Record<string, StudyTranslation> | null> {
   const stale = getStaleLanguages(config)
   if (stale.length === 0) return null
 

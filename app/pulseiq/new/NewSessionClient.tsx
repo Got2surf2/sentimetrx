@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import TopNav from '@/components/nav/TopNav'
 import { useRouter } from 'next/navigation'
-import type { TownHallConfig, TownHallGuideTopic, TownHallRound } from '@/lib/types'
+import type { TownHallConfig, TownHallGuideTopic, TownHallRound, TownHallSessionType, PsychoQuestion } from '@/lib/types'
 import type { BotFocus } from '@/lib/focusClassifier'
 import { SUPPORTED_LANGUAGES, DEMO_BANK } from '@/lib/types'
 import { GENERAL_PSYCHO_BANK } from '@/lib/psychoBank'
@@ -11,6 +11,14 @@ import { INDUSTRY_LABELS, INDUSTRY_EMOJIS, INDUSTRY_EMOJI_SETS, type Industry } 
 import EmojiPickerPopover from '@/components/creator/EmojiPickerPopover'
 import THCreatorNav, { TH_STEP_LABELS } from '@/components/townhall/THCreatorNav'
 import ContentSafetyEditor, { type ContentSafetyConfigValue } from '@/components/agent/ContentSafetyEditor'
+
+interface SuggestedGuideTopic {
+  label?: string
+  description?: string
+  opening_question?: string
+  follow_up_angles?: string[]
+  keywords?: string[]
+}
 
 interface Props {
   logoUrl?: string
@@ -546,7 +554,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
       const data = await res.json()
       if (data.topics?.length) {
         const roundsMode = config.pacing_mode === 'rounds'
-        const gen: TownHallGuideTopic[] = data.topics.map((t: any) => ({
+        const gen: TownHallGuideTopic[] = data.topics.map((t: SuggestedGuideTopic) => ({
           id: generateId(),
           label: t.label || '',
           description: t.description || '',
@@ -589,7 +597,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
     setAgentFocuses(null)
     if (!selectedAgentId) return
     let cancelled = false
-    fetch('/api/bots/' + selectedAgentId).then(r => r.json()).then((bot: any) => {
+    fetch('/api/bots/' + selectedAgentId).then(r => r.json()).then((bot: { focuses?: BotFocus[] }) => {
       if (cancelled) return
       const focuses: BotFocus[] = Array.isArray(bot?.focuses) ? bot.focuses : []
       setAgentFocuses(focuses)
@@ -889,7 +897,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
               <div>
                 <Label sub="Drives how the AI addresses participants and references peers">Session type</Label>
                 <select value={config.session_type || 'community'}
-                  onChange={e => setConfig(c => ({ ...c, session_type: e.target.value as any }))}
+                  onChange={e => setConfig(c => ({ ...c, session_type: e.target.value as TownHallSessionType }))}
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300">
                   <option value="community">Community (residents, community)</option>
                   <option value="employee">Employee (team members, organization)</option>
@@ -1219,8 +1227,8 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                       <div className="text-xs text-gray-500 mt-0.5">Show AI thinking process inline — useful for demos</div>
                     </div>
                     <button type="button" onClick={() => setConfig(prev => ({ ...prev, testing: !prev.testing }))}
-                      className={'relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 border-2 border-transparent ' + ((config as any).testing ? 'bg-amber-500' : 'bg-gray-200')}>
-                      <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + ((config as any).testing ? 'translate-x-5' : 'translate-x-0')} />
+                      className={'relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 border-2 border-transparent ' + (config.testing ? 'bg-amber-500' : 'bg-gray-200')}>
+                      <span className={'inline-block w-5 h-5 bg-white rounded-full shadow-md transition-transform transform ' + (config.testing ? 'translate-x-5' : 'translate-x-0')} />
                     </button>
                   </div>
                   <p className="text-[10px] text-amber-700 mt-1">Participants can also type <code className="bg-white/60 px-1 rounded">#verbose</code> in chat to enable — requires Sentimetrx login to confirm.</p>
@@ -1304,7 +1312,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                 </div>
               </div>
 
-              <ContentSafetyEditor value={config.content_safety as any} onChange={updateSafety} />
+              <ContentSafetyEditor value={config.content_safety as ContentSafetyConfigValue} onChange={updateSafety} />
             </div>
           )}
 
@@ -1426,11 +1434,11 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
                 </div>
                 <div className="space-y-1">
                   {GENERAL_PSYCHO_BANK.map(pq => {
-                    const inBank = (config.psychographicBank || []).some((b: any) => b.key === pq.key)
+                    const inBank = (config.psychographicBank || []).some((b: PsychoQuestion) => b.key === pq.key)
                     return (
                       <button key={pq.key} type="button" onClick={() => {
                         const current = config.psychographicBank || []
-                        const next = inBank ? current.filter((b: any) => b.key !== pq.key) : [...current, { key: pq.key, q: pq.q, opts: pq.opts }]
+                        const next = inBank ? current.filter((b: PsychoQuestion) => b.key !== pq.key) : [...current, { key: pq.key, q: pq.q, opts: pq.opts }]
                         setConfig(c => ({ ...c, psychographicBank: next }))
                       }}
                         className="flex items-center gap-2 w-full text-left px-3 py-1.5 rounded-lg text-sm transition-all"

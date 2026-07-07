@@ -121,3 +121,9 @@ WHY: Sentry fired `PGRST205 — Could not find the table 'public.service_health'
 WHY: Continue the burn-down.
 
 Same workflow, 26 more files (−276): townhall analyze/resume/join/export routes, datasets/aggregate, ask-ana, agentStudy, entityFilter/Discovery, orgTransfer, outletReport, projectReportLoad, more route-gate tests, AskAnaPanel, recordings/m pages, admin simulator. Fixed one self-contained cast the isolated agent's tsc missed (townhall/join `projectHallAsSession(hall) as unknown as ProjectedSession`). Before running: verified the tree was clean + confirmed the ~30 session-start "dirty" files were the already-committed AI-cost sweep (064a39ed, ancestor) — no uncommitted work at risk. Global tsc 0 errors, 1238 tests pass, warnings 1782→1506. Ceiling → 1506. Not pushed.
+
+## ESLint burn-down wave 5 — 30 files (Jul 7)
+
+WHY: Continue to zero.
+
+30 files (−236): pulseiq/bots/favorites clients, share/recordings/datasets/entities routes, more route-gate + unit tests, uiHints, studyDraft, creator steps, deploy/glossary pages, etc. Reconciled one cross-file conflict: admin/downloads/page.tsx enriched DB rows (Record<string,unknown>) → DownloadMonitor's typed props; exported the 4 prop interfaces and cast at the boundary (`as unknown as RedditSource[]` etc — DB-to-component boundary, no `any`). Global tsc 0 errors, 1238 tests pass, warnings 1506→1270. Ceiling → 1270. Not pushed.

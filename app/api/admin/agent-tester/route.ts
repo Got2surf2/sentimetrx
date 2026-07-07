@@ -11,13 +11,59 @@ import {
   SKIP_PATTERNS, isInputSafe, isOutputSafe, isOutputClean,
   cleanAiOutput, looksLikeAIRefusal,
 } from '@/lib/guardrails'
-import { checkMessage, scoreSentimentFull, bleepText, CONTENT_SAFETY_DEFAULTS } from '@/lib/contentGuard'
+import { checkMessage, scoreSentimentFull, bleepText, CONTENT_SAFETY_DEFAULTS, type ContentSafetyConfig } from '@/lib/contentGuard'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 10
 
 interface RuleHit { name: string; pattern: string }
 interface IntentHit { label: string; matched_keywords: string[]; url?: string; message?: string; source: 'bot_intent' | 'townhall_theme' }
+
+// Loose merged shape covering both bot intents ({ keywords[], enabled, url, message })
+// and townhall themes ({ description, question, follow_up_angles }).
+interface IntentItem {
+  enabled?: boolean
+  keywords?: string[]
+  label: string
+  url?: string
+  message?: string
+  description?: string
+  question?: string
+  follow_up_angles?: string[]
+}
+
+interface LoadedBot {
+  kind: 'bot'
+  id: string
+  name: string
+  slug: string
+  status: string
+  config: unknown
+  system_prompt: string | null
+  knowledge_base: string | null
+  intents: IntentItem[]
+  training_urls: unknown
+}
+interface LoadedSession {
+  kind: 'session'
+  id: string
+  name: string
+  status: string
+  cohort_config: unknown
+  themes: IntentItem[]
+}
+type LoadedAgent = LoadedBot | LoadedSession
+
+type AgentSummary =
+  | { kind: 'bot'; id: string; name: string; slug: string; status: string; systemPromptPreview: string; systemPromptLength: number; knowledgeBaseLength: number; intentCount: number; safetyConfig: ContentSafetyConfig }
+  | { kind: 'session'; id: string; name: string; status: string; intentCount: number; safetyConfig: ContentSafetyConfig }
+
+interface RequestBody {
+  text?: string
+  targetType?: string
+  targetId?: string
+  botId?: string
+}
 
 const SKIP_PATTERN_LABELS = ['profanity', 'violence', 'sexual', 'slurs', 'urls']
 
@@ -31,9 +77,9 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-  const orgId = (userData as any)?.org_id
+  const orgId = (userData as { org_id: string | null } | null)?.org_id
 
-  let body: any
+  let body: RequestBody
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
   const text: string = String(body?.text || '').trim()
   // Accept either a bot or a townhall session as the "agent" to test against.
@@ -45,9 +91,9 @@ export async function POST(req: Request) {
   if (text.length > 2000) return NextResponse.json({ error: 'text too long (max 2000 chars)' }, { status: 400 })
 
   // ── Optionally load the agent (bot or session) to apply its config ───
-  let agent: any = null
+  let agent: LoadedAgent | null = null
   let safetyConfig = CONTENT_SAFETY_DEFAULTS
-  let intentSource: any[] = []
+  let intentSource: IntentItem[] = []
   if (targetId) {
     const service = createServiceRoleClient()
     if (targetType === 'session') {
@@ -81,7 +127,7 @@ export async function POST(req: Request) {
       if (!data) return NextResponse.json({ error: 'Bot not found in your org' }, { status: 404 })
       agent = { kind: 'bot', ...data }
       intentSource = Array.isArray(data.intents) ? data.intents : []
-      const cs = (data.config as any)?.content_safety
+      const cs = (data.config as { content_safety?: Record<string, unknown> } | null)?.content_safety
       if (cs && typeof cs === 'object') safetyConfig = { ...CONTENT_SAFETY_DEFAULTS, ...cs }
     }
   }
@@ -130,7 +176,7 @@ export async function POST(req: Request) {
   }
 
   // Build agent summary card (shape unified between bot + session)
-  let agentSummary: any = null
+  let agentSummary: AgentSummary | null = null
   if (agent) {
     if (agent.kind === 'bot') {
       agentSummary = {
@@ -139,7 +185,7 @@ export async function POST(req: Request) {
         systemPromptPreview: String(agent.system_prompt || '').slice(0, 240),
         systemPromptLength: String(agent.system_prompt || '').length,
         knowledgeBaseLength: String(agent.knowledge_base || '').length,
-        intentCount: Array.isArray(agent.intents) ? agent.intents.filter(function(i: any) { return i?.enabled }).length : 0,
+        intentCount: Array.isArray(agent.intents) ? agent.intents.filter(function(i: IntentItem) { return i?.enabled }).length : 0,
         safetyConfig,
       }
     } else {
@@ -182,7 +228,7 @@ export async function GET() {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { data: userData } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-  const orgId = (userData as any)?.org_id
+  const orgId = (userData as { org_id: string | null } | null)?.org_id
 
   const service = createServiceRoleClient()
   const [{ data: bots }, { data: sessions }] = await Promise.all([

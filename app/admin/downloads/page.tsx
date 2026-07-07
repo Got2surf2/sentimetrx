@@ -3,8 +3,15 @@ import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
 import DownloadMonitor from '@/components/downloads/DownloadMonitor'
+import type { RedditSource, ReviewSource, DatasetRow, Recording } from '@/components/downloads/DownloadMonitor'
 
 export const dynamic = 'force-dynamic'
+
+// Supabase join `organizations(name)` arrives as either a single object or a
+// one-element array depending on the relationship cardinality inferred at query
+// time; the rows carry arbitrary source-specific columns beyond that.
+type OrgRef = { name?: string | null }
+type RowWithOrg = Record<string, unknown> & { organizations?: OrgRef | OrgRef[] | null }
 
 export default async function DownloadsPage() {
   const supabase = await createClient()
@@ -17,9 +24,9 @@ export default async function DownloadsPage() {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (!orgData?.is_admin_org) redirect('/dashboard')
-  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  const features = effectiveFeatures(orgData?.features, userData?.features)
 
   const service = createServiceRoleClient()
 
@@ -91,13 +98,13 @@ export default async function DownloadsPage() {
       />
       <div style={{ paddingTop: 56 }} className="flex-1">
         <DownloadMonitor
-          redditSources={(redditSources || []).map((s: any) => ({ ...s, orgName: (Array.isArray(s.organizations) ? s.organizations[0] : s.organizations)?.name || '' }))}
-          reviewSources={(reviewSources || []).map((s: any) => ({ ...s, orgName: (Array.isArray(s.organizations) ? s.organizations[0] : s.organizations)?.name || '' }))}
+          redditSources={(redditSources || []).map((s: RowWithOrg) => ({ ...s, orgName: (Array.isArray(s.organizations) ? s.organizations[0] : s.organizations)?.name || '' })) as unknown as RedditSource[]}
+          reviewSources={(reviewSources || []).map((s: RowWithOrg) => ({ ...s, orgName: (Array.isArray(s.organizations) ? s.organizations[0] : s.organizations)?.name || '' })) as unknown as ReviewSource[]}
           pendingLocations={pendingLocations || []}
-          substackDatasets={(substackDatasets || []).map((d: any) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' }))}
-          regDatasets={(regDatasets || []).map((d: any) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' }))}
-          uploadDatasets={(uploadDatasets || []).map((d: any) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' }))}
-          recordings={(recordings || []).map((r: any) => ({ ...r, orgName: (Array.isArray(r.organizations) ? r.organizations[0] : r.organizations)?.name || '' }))}
+          substackDatasets={(substackDatasets || []).map((d: RowWithOrg) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' })) as unknown as DatasetRow[]}
+          regDatasets={(regDatasets || []).map((d: RowWithOrg) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' })) as unknown as DatasetRow[]}
+          uploadDatasets={(uploadDatasets || []).map((d: RowWithOrg) => ({ ...d, orgName: (Array.isArray(d.organizations) ? d.organizations[0] : d.organizations)?.name || '' })) as unknown as DatasetRow[]}
+          recordings={(recordings || []).map((r: RowWithOrg) => ({ ...r, orgName: (Array.isArray(r.organizations) ? r.organizations[0] : r.organizations)?.name || '' })) as unknown as Recording[]}
           showOrgColumn={true}
           subtitle="Active, queued, and failed downloads across all orgs"
         />

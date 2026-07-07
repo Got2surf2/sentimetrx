@@ -226,85 +226,116 @@ export function buildExtractorInput(userMessage: string, assistantMessage: strin
   return parts.join('\n\n')
 }
 
+// Loose shape for the model-emitted hint object before validation. Fields the
+// validator narrows via `typeof`/`Array.isArray` guards stay `unknown`; the
+// small enum-ish fields it checks against `allowed.includes(...)` are pre-typed
+// so those guards + assignments line up with the discriminated-union targets.
+interface RawHint {
+  type?: unknown
+  terminal?: 'A' | 'B' | 'C'
+  from?: 'A' | 'B' | 'C'
+  to?: 'A' | 'B' | 'C'
+  via?: string
+  gate?: unknown
+  highlight?: unknown
+  place_ids?: unknown
+  context?: unknown
+  category?: unknown
+  lane?: string
+  level?: unknown
+  flight?: unknown
+  airline?: unknown
+  destination?: unknown
+  origin?: unknown
+  arrivals?: unknown
+  time_window?: unknown
+  title?: unknown
+  body?: unknown
+  cta_url?: unknown
+  cta_label?: unknown
+  image_url?: unknown
+}
+
 // Validates a raw hint object against the discriminated-union shapes.
 // Returns null on any structural problem — it's safer to drop a malformed
 // hint than to ship it through to a card that'll crash on missing fields.
-export function validateHint(raw: any): UiHint | null {
+export function validateHint(raw: unknown): UiHint | null {
   if (!raw || typeof raw !== 'object') return null
-  const t = raw.type
+  const r = raw as RawHint
+  const t = r.type
   if (t === 'terminal_map') {
     const allowed = ['A', 'B', 'C']
     const h: TerminalMapHint = { type: 'terminal_map' }
-    if (raw.terminal && allowed.includes(raw.terminal)) h.terminal = raw.terminal
-    if (raw.from && allowed.includes(raw.from)) h.from = raw.from
-    if (raw.to && allowed.includes(raw.to)) h.to = raw.to
-    if (raw.via === 'shuttle' || raw.via === 'terminal_link_apm') h.via = raw.via
-    if (typeof raw.gate === 'string' && raw.gate.length <= 16) h.gate = raw.gate
+    if (r.terminal && allowed.includes(r.terminal)) h.terminal = r.terminal
+    if (r.from && allowed.includes(r.from)) h.from = r.from
+    if (r.to && allowed.includes(r.to)) h.to = r.to
+    if (r.via === 'shuttle' || r.via === 'terminal_link_apm') h.via = r.via
+    if (typeof r.gate === 'string' && r.gate.length <= 16) h.gate = r.gate
     return h
   }
   if (t === 'parking') {
     const h: ParkingHint = { type: 'parking' }
-    if (Array.isArray(raw.highlight)) {
-      h.highlight = raw.highlight.filter((s: any) => typeof s === 'string' && s.length <= 32).slice(0, 8)
+    if (Array.isArray(r.highlight)) {
+      h.highlight = r.highlight.filter((s: unknown) => typeof s === 'string' && s.length <= 32).slice(0, 8)
     }
     return h
   }
   if (t === 'restaurants') {
-    const place_ids = Array.isArray(raw.place_ids)
-      ? raw.place_ids.filter((s: any) => typeof s === 'string' && s.length <= 64).slice(0, 12)
+    const place_ids = Array.isArray(r.place_ids)
+      ? r.place_ids.filter((s: unknown) => typeof s === 'string' && s.length <= 64).slice(0, 12)
       : []
     const h: RestaurantsHint = { type: 'restaurants', place_ids }
-    if (typeof raw.context === 'string' && raw.context.length <= 64) h.context = raw.context
+    if (typeof r.context === 'string' && r.context.length <= 64) h.context = r.context
     return h
   }
   if (t === 'shops') {
     const h: ShopsHint = { type: 'shops' }
-    if (typeof raw.context === 'string' && raw.context.length <= 64) h.context = raw.context
-    if (typeof raw.category === 'string' && raw.category.length <= 32) h.category = raw.category
+    if (typeof r.context === 'string' && r.context.length <= 64) h.context = r.context
+    if (typeof r.category === 'string' && r.category.length <= 32) h.category = r.category
     return h
   }
   if (t === 'security_wait') {
     const allowed = ['A', 'B', 'C']
     const h: SecurityWaitHint = { type: 'security_wait' }
-    if (raw.terminal && allowed.includes(raw.terminal)) h.terminal = raw.terminal
-    if (raw.lane === 'general' || raw.lane === 'precheck') h.lane = raw.lane
+    if (r.terminal && allowed.includes(r.terminal)) h.terminal = r.terminal
+    if (r.lane === 'general' || r.lane === 'precheck') h.lane = r.lane
     return h
   }
   if (t === 'indoor_map') {
     const allowed = ['A', 'B', 'C']
     const h: IndoorMapHint = { type: 'indoor_map' }
-    if (raw.terminal && allowed.includes(raw.terminal)) h.terminal = raw.terminal
-    if (typeof raw.level === 'string' && raw.level.length <= 8) h.level = raw.level
-    if (typeof raw.gate === 'string' && raw.gate.length <= 12) h.gate = raw.gate
-    if (typeof raw.flight === 'string' && raw.flight.length <= 24) h.flight = raw.flight
-    if (typeof raw.category === 'string' && raw.category.length <= 32) h.category = raw.category
+    if (r.terminal && allowed.includes(r.terminal)) h.terminal = r.terminal
+    if (typeof r.level === 'string' && r.level.length <= 8) h.level = r.level
+    if (typeof r.gate === 'string' && r.gate.length <= 12) h.gate = r.gate
+    if (typeof r.flight === 'string' && r.flight.length <= 24) h.flight = r.flight
+    if (typeof r.category === 'string' && r.category.length <= 32) h.category = r.category
     return h
   }
   if (t === 'flight_list') {
     const allowed = ['A', 'B', 'C']
     const h: FlightListHint = { type: 'flight_list' }
-    if (typeof raw.airline === 'string' && raw.airline.length <= 4) h.airline = raw.airline.toUpperCase()
-    if (typeof raw.destination === 'string' && raw.destination.length <= 4) h.destination = raw.destination.toUpperCase()
-    if (typeof raw.origin === 'string' && raw.origin.length <= 4) h.origin = raw.origin.toUpperCase()
-    if (raw.terminal && allowed.includes(raw.terminal)) h.terminal = raw.terminal
-    if (typeof raw.arrivals === 'boolean') h.arrivals = raw.arrivals
-    if (typeof raw.time_window === 'string' && raw.time_window.length <= 32) h.time_window = raw.time_window
+    if (typeof r.airline === 'string' && r.airline.length <= 4) h.airline = r.airline.toUpperCase()
+    if (typeof r.destination === 'string' && r.destination.length <= 4) h.destination = r.destination.toUpperCase()
+    if (typeof r.origin === 'string' && r.origin.length <= 4) h.origin = r.origin.toUpperCase()
+    if (r.terminal && allowed.includes(r.terminal)) h.terminal = r.terminal
+    if (typeof r.arrivals === 'boolean') h.arrivals = r.arrivals
+    if (typeof r.time_window === 'string' && r.time_window.length <= 32) h.time_window = r.time_window
     return h
   }
   if (t === 'link_card') {
-    if (typeof raw.title !== 'string' || typeof raw.body !== 'string' ||
-        typeof raw.cta_url !== 'string' || typeof raw.cta_label !== 'string') return null
+    if (typeof r.title !== 'string' || typeof r.body !== 'string' ||
+        typeof r.cta_url !== 'string' || typeof r.cta_label !== 'string') return null
     // Strict URL allowlist — the model can only emit known MCO program pages.
     // Prevents prompt-injection-driven open-redirects.
-    if (!/^https:\/\/(www\.)?flymco\.com\//.test(raw.cta_url)) return null
+    if (!/^https:\/\/(www\.)?flymco\.com\//.test(r.cta_url)) return null
     const h: LinkCardHint = {
       type: 'link_card',
-      title: raw.title.slice(0, 80),
-      body: raw.body.slice(0, 800),
-      cta_url: raw.cta_url,
-      cta_label: raw.cta_label.slice(0, 40),
+      title: r.title.slice(0, 80),
+      body: r.body.slice(0, 800),
+      cta_url: r.cta_url,
+      cta_label: r.cta_label.slice(0, 40),
     }
-    if (typeof raw.image_url === 'string' && /^https:\/\//.test(raw.image_url)) h.image_url = raw.image_url
+    if (typeof r.image_url === 'string' && /^https:\/\//.test(r.image_url)) h.image_url = r.image_url
     return h
   }
   return null
@@ -313,7 +344,7 @@ export function validateHint(raw: any): UiHint | null {
 // Pulls a JSON object out of an LLM response, stripping the common failure
 // modes — code fences, leading prose, trailing prose. Returns null on
 // anything that isn't a valid JSON object.
-export function parseExtractorJson(raw: string): { hint?: any; next_chips?: any; revert_canvas?: any } | null {
+export function parseExtractorJson(raw: string): { hint?: unknown; next_chips?: unknown; revert_canvas?: unknown } | null {
   if (!raw) return null
   // Strip ```json fences if present
   let text = raw.trim()
@@ -331,7 +362,7 @@ export function parseExtractorJson(raw: string): { hint?: any; next_chips?: any;
   }
 }
 
-function validateChips(raw: any): string[] {
+function validateChips(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
   return raw
     .filter((s) => typeof s === 'string')

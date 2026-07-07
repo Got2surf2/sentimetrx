@@ -13,6 +13,16 @@ export const dynamic = 'force-dynamic'
 
 interface Params { params: Promise<{ datasetId: string }> }
 
+interface OrgData {
+  features?: { analyze?: boolean } | null
+  is_admin_org?: boolean | null
+}
+
+type DatasetWithRelations = Record<string, unknown> & {
+  studies?: { name?: string | null } | null
+  dataset_state?: unknown
+}
+
 async function getOrgAndCheck(supabase: Awaited<ReturnType<typeof createClient>>) {
   const user = await getAuthUser(supabase)
   if (!user) return { user: null, orgId: null, isAdmin: false, error: 'Unauthorized' }
@@ -24,7 +34,7 @@ async function getOrgAndCheck(supabase: Awaited<ReturnType<typeof createClient>>
     .single()
 
   const rawOrg  = userData?.organizations
-  const orgData = Array.isArray(rawOrg) ? rawOrg[0] : rawOrg as any
+  const orgData = (Array.isArray(rawOrg) ? rawOrg[0] : rawOrg) as OrgData | undefined
   if (!orgData?.features?.analyze) return { user: null, orgId: null, isAdmin: false, error: 'Analyze module not enabled' }
 
   return { user, orgId: userData?.org_id as string, isAdmin: !!orgData?.is_admin_org, error: null }
@@ -47,9 +57,9 @@ export async function GET(_req: Request, props: Params) {
 
   if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 404 })
 
-  const studyName = (data as any).studies?.name ?? null
-  const state     = (data as any).dataset_state ?? null
-  const { studies: _s, dataset_state: _ds, ...rest } = data as any
+  const studyName = (data as DatasetWithRelations).studies?.name ?? null
+  const state     = (data as DatasetWithRelations).dataset_state ?? null
+  const { studies: _s, dataset_state: _ds, ...rest } = data as DatasetWithRelations
 
   return NextResponse.json({ dataset: { ...rest, study_name: studyName, state } })
 }
@@ -69,7 +79,7 @@ export async function PATCH(req: Request, props: Params) {
   // mutate (or transfer) any org's dataset.
   const { data: ownerRow } = await service.from('datasets').select('org_id').eq('id', params.datasetId).single()
   if (!ownerRow) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  const datasetOrgId = (ownerRow as any).org_id as string | null
+  const datasetOrgId = (ownerRow as { org_id: string | null }).org_id
   if (!isAdmin && datasetOrgId !== orgId) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
@@ -91,7 +101,7 @@ export async function PATCH(req: Request, props: Params) {
       return NextResponse.json({ error: 'Only admins can transfer datasets' }, { status: 403 })
     }
     const { data: cur } = await service.from('datasets').select('name').eq('id', params.datasetId).single()
-    transferResourceName = (cur as any)?.name ?? null
+    transferResourceName = (cur as { name?: string | null } | null)?.name ?? null
     const check = await checkTransferTarget(service, datasetOrgId, body.org_id)
     if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status || 400 })
     updates.org_id = body.org_id
@@ -109,7 +119,7 @@ export async function PATCH(req: Request, props: Params) {
     try {
       await service.rpc('archive_dataset', { p_dataset_id: params.datasetId, p_user_id: user.id })
       return NextResponse.json({ ok: true })
-    } catch (archErr: any) {
+    } catch (archErr: unknown) {
       return serverError(archErr, 'datasets.archive', { orgId })
     }
   }
@@ -120,7 +130,7 @@ export async function PATCH(req: Request, props: Params) {
       try {
         await service.rpc('restore_dataset', { p_dataset_id: params.datasetId })
         return NextResponse.json({ ok: true })
-      } catch (restErr: any) {
+      } catch (restErr: unknown) {
         return serverError(restErr, 'datasets.restore', { orgId })
       }
     }
@@ -220,7 +230,7 @@ export async function DELETE(_req: Request, props: Params) {
         .eq('collection_id', colId)
       if ((count || 0) === 0) {
         // Collection is empty — delete the collection dataset (cascades to collection record)
-        const colDatasetId = (m.collections as any)?.dataset_id
+        const colDatasetId = (m.collections as { dataset_id?: string } | null)?.dataset_id
         if (colDatasetId) {
           try {
             const { error: cfrErr } = await service.from('dataset_rows_flat').delete().eq('dataset_id', colDatasetId)

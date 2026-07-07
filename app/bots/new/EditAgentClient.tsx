@@ -229,8 +229,8 @@ function BotCreatorInner() {
       if (Array.isArray(bot.opponents)) setOpponents(bot.opponents)
       if (bot.contrast_mode) setContrastMode(bot.contrast_mode)
       if (Array.isArray(bot.faq)) setFaq(bot.faq)
-      if (Array.isArray(bot.facts)) setFacts(bot.facts.map(function(f: any) { return typeof f === 'string' ? f : f.text || '' }))
-      if (Array.isArray(bot.guardrails)) setGuardrails(bot.guardrails.map(function(g: any) { return typeof g === 'string' ? g : g.rule || g.text || '' }))
+      if (Array.isArray(bot.facts)) setFacts(bot.facts.map(function(f: string | { text?: string }) { return typeof f === 'string' ? f : f.text || '' }))
+      if (Array.isArray(bot.guardrails)) setGuardrails(bot.guardrails.map(function(g: string | { rule?: string; text?: string }) { return typeof g === 'string' ? g : g.rule || g.text || '' }))
       if (Array.isArray(bot.sensitive_topics)) setSensitiveTopics(bot.sensitive_topics)
       if (Array.isArray(bot.focus_topics)) setFocusTopics(bot.focus_topics)
       if (bot.deflection_enabled === false) setDeflectionEnabled(false)
@@ -238,10 +238,10 @@ function BotCreatorInner() {
       if (bot.ask_profile) setAskProfile(true)
       if (bot.profile_question) setProfileQuestion(bot.profile_question)
       if (bot.demographic_inference) setDemographicInference(true)
-      if (Array.isArray(bot.intents)) setIntents(bot.intents.map(function(i: any) {
+      if (Array.isArray(bot.intents)) setIntents(bot.intents.map(function(i: { label?: string; description?: string; keywords?: string[]; url?: string; message?: string; enabled?: boolean }) {
         return { label: i.label || '', description: i.description || '', keywords: (i.keywords || []).join(', '), url: i.url || '', message: i.message || '', enabled: i.enabled !== false }
       }))
-      if (Array.isArray(bot.focuses)) setFocuses(bot.focuses.map(function(f: any) {
+      if (Array.isArray(bot.focuses)) setFocuses(bot.focuses.map(function(f: { slug?: string; label?: string; description?: string; enabled?: boolean }) {
         return { slug: f.slug || '', label: f.label || '', description: f.description || '', enabled: f.enabled !== false }
       }))
       if (Array.isArray(bot.research_probes)) setResearchProbes(bot.research_probes.map(function(p: { id?: string; question?: string; mode?: string; construct?: string; answer_schema?: string; follow_up?: number; enabled?: boolean; sampling?: { sample_pct?: number; target_n?: number }; eligibility?: { min_user_turns?: number } }) {
@@ -300,8 +300,8 @@ function BotCreatorInner() {
         return (prev ? prev + '\n\n' : '') + '--- RESEARCH: ' + researchQuery.trim() + ' ---\n' + data.knowledge
       })
       setResearchSources(data.sources || [])
-    } catch (err: any) {
-      setError(err.message || 'Research failed')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Research failed')
     }
     setResearching(false)
   }
@@ -323,8 +323,8 @@ function BotCreatorInner() {
         return (prev ? prev + '\n\n' : '') + data.text
       })
       setCrawlResult({ pages: data.pages_crawled, sites: data.sites_crawled || 1 })
-    } catch (err: any) {
-      setError(err.message || 'Deep crawl failed')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Deep crawl failed')
     }
     setCrawling(false)
   }
@@ -376,7 +376,7 @@ function BotCreatorInner() {
     var cleanFaq = faq.filter(function(f) { return f.question.trim() && f.answer.trim() })
     var cleanFacts = facts.filter(function(f) { return f.trim() })
     var cleanGuardrails = guardrails.filter(function(g) { return g.trim() })
-    var payload: any = {
+    var payload: Record<string, unknown> = {
       name: name.trim(),
       slug: slug.trim(),
       config: fullConfig,
@@ -477,8 +477,8 @@ function BotCreatorInner() {
 
       setDirty(false)
       router.push('/bots')
-    } catch (err: any) {
-      setError(err.message || 'Failed to save')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to save')
     } finally {
       setSaving(false)
     }
@@ -1063,7 +1063,7 @@ function BotCreatorInner() {
                     var d = await r.json()
                     if (!r.ok) { alert(d.error || 'Failed to suggest focuses'); return }
                     if (Array.isArray(d.focuses)) {
-                      setFocuses(d.focuses.map(function(f: any) { return { slug: f.slug || '', label: f.label || '', description: f.description || '', enabled: true } }))
+                      setFocuses(d.focuses.map(function(f: { slug?: string; label?: string; description?: string }) { return { slug: f.slug || '', label: f.label || '', description: f.description || '', enabled: true } }))
                     }
                   } catch { alert('Failed to suggest focuses') }
                   finally { setSuggestingFocuses(false) }

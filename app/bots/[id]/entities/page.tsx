@@ -13,6 +13,14 @@ export const dynamic = 'force-dynamic'
 
 interface Params { params: Promise<{ id: string }> }
 
+interface AgentRow {
+  id: string
+  name: string
+  slug: string
+  org_id: string
+  brand_tag: string | null
+}
+
 export default async function BotEntitiesPage(props: Params) {
   const params = await props.params;
   const supabase = await createClient()
@@ -25,7 +33,7 @@ export default async function BotEntitiesPage(props: Params) {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   const isAdmin = !!orgData?.is_admin_org
 
   const service = createServiceRoleClient()
@@ -33,28 +41,28 @@ export default async function BotEntitiesPage(props: Params) {
   // invariant); admins may load any org's agent.
   let agentQuery = service.from('agents').select('id, name, slug, org_id, brand_tag').eq('id', params.id)
   if (!isAdmin && userData?.org_id) agentQuery = agentQuery.eq('org_id', userData.org_id)
-  const { data: bot } = await agentQuery.single()
+  const { data: bot } = await agentQuery.single() as { data: AgentRow | null }
   if (!bot) redirect('/bots')
-  if (!isAdmin && (bot as any).org_id !== userData?.org_id) redirect('/bots')
+  if (!isAdmin && bot.org_id !== userData?.org_id) redirect('/bots')
 
   // Resolve the brand collection (if this agent is brand-tagged) so the editor
   // can link to the shared brand-glossary editor (Phase 5).
   let brandCollectionId: string | null = null
-  const brandTag = String((bot as any).brand_tag ?? '').trim()
+  const brandTag = String(bot.brand_tag ?? '').trim()
   if (brandTag) {
     const { data: col } = await service
       .from('collections').select('id')
-      .eq('org_id', (bot as any).org_id).eq('kind', 'brand').eq('slug', slugify(brandTag))
-      .maybeSingle()
-    brandCollectionId = (col as any)?.id ?? null
+      .eq('org_id', bot.org_id).eq('kind', 'brand').eq('slug', slugify(brandTag))
+      .maybeSingle() as { data: { id: string } | null }
+    brandCollectionId = col?.id ?? null
   }
 
   return (
     <EntitiesClient
       botId={params.id}
-      botName={(bot as any).name}
-      botSlug={(bot as any).slug}
-      brandTag={(bot as any).brand_tag ?? null}
+      botName={bot.name}
+      botSlug={bot.slug}
+      brandTag={bot.brand_tag ?? null}
       brandCollectionId={brandCollectionId}
       logoUrl={orgData?.logo_url}
       orgName={orgData?.name}

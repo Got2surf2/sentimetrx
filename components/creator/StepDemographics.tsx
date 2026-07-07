@@ -1,20 +1,20 @@
 'use client'
 
-import { useRef } from 'react'
+import { useRef, type DragEvent } from 'react'
 import type { StepProps } from '@/lib/studyDraft'
 import { Section, NavButtons, TransitionMessagePanel } from './CreatorUI'
-import { DEMO_BANK } from '@/lib/types'
+import { DEMO_BANK, type DemoField } from '@/lib/types'
 
 interface Props extends StepProps { onNext: () => void; onBack: () => void }
 
-function getMergedFields(currentFields: any[] | undefined) {
+function getMergedFields(currentFields: DemoField[] | undefined) {
   var merged = DEMO_BANK.map(function(bk) {
     if (!currentFields || currentFields.length === 0) return bk
-    var match = currentFields.find(function(cf: any) { return cf.key === bk.key })
+    var match = currentFields.find(function(cf: DemoField) { return cf.key === bk.key })
     return match ? { ...bk, enabled: match.enabled, label: match.label || bk.label } : bk
   })
   if (currentFields) {
-    currentFields.forEach(function(cf: any) {
+    currentFields.forEach(function(cf: DemoField) {
       if (!DEMO_BANK.find(function(bk) { return bk.key === cf.key })) {
         merged.push(cf)
       }
@@ -23,7 +23,7 @@ function getMergedFields(currentFields: any[] | undefined) {
   // Preserve order from currentFields if available
   if (currentFields && currentFields.length > 0) {
     var keyOrder: Record<string, number> = {}
-    currentFields.forEach(function(cf: any, i: number) { keyOrder[cf.key] = i })
+    currentFields.forEach(function(cf: DemoField, i: number) { keyOrder[cf.key] = i })
     merged.sort(function(a, b) {
       var ai = keyOrder[a.key] != null ? keyOrder[a.key] : 999
       var bi = keyOrder[b.key] != null ? keyOrder[b.key] : 999
@@ -38,7 +38,7 @@ export default function StepDemographics({ draft, updateConfig, onNext, onBack }
   var merged = getMergedFields(draft.config.demoFields)
   var enabledCount = merged.filter(function(f) { return f.enabled }).length
 
-  function saveMerged(next: any[]) {
+  function saveMerged(next: DemoField[]) {
     updateConfig({ demoFields: next })
   }
 
@@ -67,7 +67,7 @@ export default function StepDemographics({ draft, updateConfig, onNext, onBack }
               <div key={f.key}
                 draggable
                 onDragStart={function() { demoDragIdx.current = idx }}
-                onDragOver={function(e: any) {
+                onDragOver={function(e: DragEvent<HTMLDivElement>) {
                   e.preventDefault()
                   if (demoDragIdx.current === null || demoDragIdx.current === idx) return
                   var next = merged.slice()
@@ -98,7 +98,7 @@ export default function StepDemographics({ draft, updateConfig, onNext, onBack }
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-700">{f.label}</div>
                   <div className="text-xs text-gray-400">
-                    {f.type === 'select' && f.options ? f.options.slice(0, 3).map(function(o: any) { return o[1] }).join(', ') + (f.options.length > 3 ? ' ...' : '') : 'Free text input'}
+                    {f.type === 'select' && f.options ? f.options.slice(0, 3).map(function(o: [string, string]) { return o[1] }).join(', ') + (f.options.length > 3 ? ' ...' : '') : 'Free text input'}
                   </div>
                 </div>
 

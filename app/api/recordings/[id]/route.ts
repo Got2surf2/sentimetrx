@@ -19,6 +19,10 @@ export const dynamic = 'force-dynamic'
 
 const BUCKET = 'recordings'
 
+// Minimal shapes for the columns/objects we read below.
+type RecordingFilePaths = { storage_path?: string | null; audio_storage_path?: string | null }
+type StorageObject = { name?: string; id?: string | null }
+
 // Move a recording's entire graph to another org: relocate its storage objects
 // from <fromOrg>/<id>/… to <toOrg>/<id>/…, then atomically re-org_id the rows
 // (recordings + files + transcript + extractions + derived dataset) via the
@@ -42,14 +46,14 @@ async function transferRecordingOrg(
     .select('storage_path, audio_storage_path')
     .eq('recording_id', recordingId)
     .eq('org_id', fromOrg)
-  for (const f of (files ?? []) as any[]) {
+  for (const f of (files ?? []) as RecordingFilePaths[]) {
     if (f.storage_path) objects.add(f.storage_path)
     if (f.audio_storage_path) objects.add(f.audio_storage_path)
   }
   objects.add(`${oldPrefix}/audio/stitched.mp3`)
   for (const dir of [oldPrefix, `${oldPrefix}/audio`]) {
     const { data: listed } = await service.storage.from(BUCKET).list(dir, { limit: 1000 })
-    for (const o of (listed ?? []) as any[]) {
+    for (const o of (listed ?? []) as StorageObject[]) {
       if (o?.name && o.id !== null) objects.add(`${dir}/${o.name}`)  // id null = subfolder
     }
   }
@@ -219,7 +223,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     .select('storage_path, audio_storage_path')
     .eq('recording_id', recording_id)
   const paths = new Set<string>()
-  for (const f of (files ?? []) as any[]) {
+  for (const f of (files ?? []) as RecordingFilePaths[]) {
     if (f.storage_path) paths.add(f.storage_path)
     if (f.audio_storage_path) paths.add(f.audio_storage_path)
   }
@@ -228,7 +232,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   // Catch any strays the DB doesn't track by listing the folders directly.
   for (const dir of [`${org_id}/${recording_id}`, `${org_id}/${recording_id}/audio`]) {
     const { data: listed } = await service.storage.from(BUCKET).list(dir, { limit: 1000 })
-    for (const o of (listed ?? []) as any[]) {
+    for (const o of (listed ?? []) as StorageObject[]) {
       if (o?.name && o.id !== null) paths.add(`${dir}/${o.name}`)  // id null = subfolder, skip
     }
   }
@@ -349,8 +353,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if ('objectives' in body) {
     const o = body.objectives
     if (o && typeof o === 'object') {
-      const summary = typeof (o as any).summary === 'string' ? (o as any).summary.trim() : ''
-      const questions = Array.isArray((o as any).questions) ? (o as any).questions.map((q: unknown) => typeof q === 'string' ? q.trim() : '').filter(Boolean) : []
+      const oo = o as Record<string, unknown>
+      const summary = typeof oo.summary === 'string' ? oo.summary.trim() : ''
+      const questions = Array.isArray(oo.questions) ? oo.questions.map((q: unknown) => typeof q === 'string' ? q.trim() : '').filter(Boolean) : []
       patch.objectives = (summary || questions.length) ? { summary, questions } : null
     } else {
       patch.objectives = null

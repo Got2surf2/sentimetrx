@@ -13,14 +13,15 @@
 // the route's authorization + orchestration with mocks.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { UserContext } from '@/lib/userContext'
 
 const ctx = {
-  caller: { userId: 'u1', orgId: 'orgA', isAdminOrg: true, isAdmin: true, userEmail: 'a@x.io' } as any,
+  caller: { userId: 'u1', orgId: 'orgA', isAdminOrg: true, isAdmin: true, userEmail: 'a@x.io' } as Partial<UserContext>,
   recOrg: 'orgA',
   recOwner: 'u1',
 }
 
-const rpcCalls: Array<{ name: string; args: any }> = []
+const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = []
 const moveCalls: Array<[string, string]> = []
 
 vi.mock('@/lib/userContext', () => ({ getUserContext: async () => ctx.caller }))
@@ -31,22 +32,23 @@ vi.mock('@/lib/orgTransfer', () => ({
 }))
 
 vi.mock('@/lib/supabase/server', () => {
-  const builder = (table: string): any => {
+  const builder = (table: string) => {
     const row =
       table === 'recordings'
         ? { id: 'rec_1', org_id: ctx.recOrg, created_by: ctx.recOwner, name: 'Town Hall', dataset_id: 'ds_1' }
         : { id: 'x', org_id: ctx.recOrg }
-    const b: any = {}
+    const b: Record<string, unknown> = {}
     for (const m of ['select', 'eq', 'order', 'in', 'update']) b[m] = () => b
     b.single = async () => ({ data: row, error: null })
     b.maybeSingle = async () => ({ data: row, error: null })
     // recording_files list read in transferRecordingOrg resolves to [] (no files).
-    b.then = (res: any, rej: any) => Promise.resolve({ data: [], error: null }).then(res, rej)
+    b.then = (res: (value: { data: unknown[]; error: null }) => unknown, rej: (reason: unknown) => unknown) =>
+      Promise.resolve({ data: [], error: null }).then(res, rej)
     return b
   }
   const service = {
     from: (t: string) => builder(t),
-    rpc: async (name: string, args: any) => { rpcCalls.push({ name, args }); return { error: null } },
+    rpc: async (name: string, args: Record<string, unknown>) => { rpcCalls.push({ name, args }); return { error: null } },
     storage: {
       from: () => ({
         list: async () => ({ data: [], error: null }),
@@ -64,7 +66,7 @@ vi.mock('@/lib/supabase/server', () => {
 import * as route from '@/app/api/recordings/[id]/route'
 import { recordOrgTransfer } from '@/lib/orgTransfer'
 
-function patch(body: any) {
+function patch(body: Record<string, unknown>) {
   const req = new Request('http://t/api/recordings/rec_1', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },

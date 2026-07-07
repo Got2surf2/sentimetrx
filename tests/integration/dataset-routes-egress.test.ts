@@ -195,7 +195,7 @@ describeMaybe('Dataset/regulations route cross-org egress (env-gated)', () => {
       'http://test.local/api/datasets/' + ids.studyDatasetA + '/sync',
       { method: 'POST' },
     )
-    const res = await POST(req as any, { params: Promise.resolve({ datasetId: ids.studyDatasetA! }) })
+    const res = await POST(req, { params: Promise.resolve({ datasetId: ids.studyDatasetA! }) })
     expect(res.status).toBe(404)
   })
 
@@ -218,7 +218,7 @@ describeMaybe('Dataset/regulations route cross-org egress (env-gated)', () => {
         'http://test.local/api/datasets/' + ids.studyDatasetA + '/sync',
         { method: 'POST' },
       )
-      const res = await POST(req as any, { params: Promise.resolve({ datasetId: ids.studyDatasetA! }) })
+      const res = await POST(req, { params: Promise.resolve({ datasetId: ids.studyDatasetA! }) })
       expect(res.status).not.toBe(404)
     } finally {
       ctx.signedIn = prev
@@ -235,7 +235,7 @@ describeMaybe('Dataset/regulations route cross-org egress (env-gated)', () => {
         headers: { 'Content-Type': 'application/json' },
       },
     )
-    const res = await POST(req as any)
+    const res = await POST(req)
     expect(res.status).toBe(404)
   })
 
@@ -249,7 +249,7 @@ describeMaybe('Dataset/regulations route cross-org egress (env-gated)', () => {
         headers: { 'Content-Type': 'application/json' },
       },
     )
-    const res = await POST(req as any)
+    const res = await POST(req)
     expect(res.status).toBe(404)
   })
 
@@ -275,7 +275,7 @@ describeMaybe('Dataset/regulations route cross-org egress (env-gated)', () => {
           headers: { 'Content-Type': 'application/json' },
         },
       )
-      const res = await POST(req as any)
+      const res = await POST(req)
       expect(res.status).not.toBe(404)
     } finally {
       ctx.signedIn = prev
@@ -290,7 +290,7 @@ describeMaybe('Dataset/regulations route cross-org egress (env-gated)', () => {
       'http://test.local/api/datasets/' + ids.studyDatasetA + '/auto-setup',
       { method: 'POST' },
     )
-    const res = await POST(req as any, { params: Promise.resolve({ datasetId: ids.studyDatasetA! }) })
+    const res = await POST(req, { params: Promise.resolve({ datasetId: ids.studyDatasetA! }) })
     expect(res.status).toBe(404)
   })
 
@@ -311,7 +311,7 @@ describeMaybe('Dataset/regulations route cross-org egress (env-gated)', () => {
         'http://test.local/api/datasets/' + ids.studyDatasetA + '/auto-setup',
         { method: 'POST' },
       )
-      const res = await POST(req as any, { params: Promise.resolve({ datasetId: ids.studyDatasetA! }) })
+      const res = await POST(req, { params: Promise.resolve({ datasetId: ids.studyDatasetA! }) })
       expect(res.status).not.toBe(404)
     } finally {
       ctx.signedIn = prev
@@ -327,7 +327,7 @@ describeMaybe('Dataset/regulations route cross-org egress (env-gated)', () => {
       body: JSON.stringify({ org_id: ids.orgA }),
       headers: { 'Content-Type': 'application/json' },
     })
-    const res = await DELETE(req as any)
+    const res = await DELETE(req)
     expect(res.status).toBe(403)
   })
 
@@ -346,7 +346,7 @@ describeMaybe('Dataset/regulations route cross-org egress (env-gated)', () => {
         body: JSON.stringify({ org_id: ids.orgA }),
         headers: { 'Content-Type': 'application/json' },
       })
-      const res = await DELETE(req as any)
+      const res = await DELETE(req)
       expect(res.status).toBe(200)
     } finally {
       ctx.signedIn = prev

@@ -13,6 +13,27 @@ import { buildSocialSchema, emptyThemeModel } from '@/lib/datasetUtils'
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
 
+interface SocialFlag {
+  type?: string
+  severity?: string
+  action?: string
+}
+
+interface SocialComment {
+  comment_id?: string
+  platform?: string
+  author_name?: string | null
+  text?: string | null
+  sentiment?: string | null
+  sentiment_score?: number | null
+  is_hidden?: boolean | null
+  is_deleted?: boolean | null
+  is_reply?: boolean | null
+  post_text?: string | null
+  platform_created_at?: string | null
+  flags?: SocialFlag[] | null
+}
+
 async function getAuth(supabase: Awaited<ReturnType<typeof createClient>>) {
   const user = await getAuthUser(supabase)
   if (!user) return null
@@ -112,7 +133,7 @@ export async function POST(req: NextRequest) {
     for (var er of existingRows || []) {
       if (er.data?.comment_id) existingIds.add(er.data.comment_id)
     }
-    newComments = comments.filter(function(c: any) { return !existingIds.has(c.comment_id) })
+    newComments = comments.filter(function(c: SocialComment) { return !existingIds.has(c.comment_id as string) })
 
     if (newComments.length === 0) {
       var syncTs = new Date().toISOString()
@@ -173,9 +194,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Convert comments to flat rows
-  var flatRows = newComments.map(function(c: any, idx: number) {
-    var flags = Array.isArray(c.flags) ? c.flags : []
-    var flagTypes = flags.map(function(f: any) { return f.type }).filter(function(t: string) { return t !== 'topics' && t !== 'emotion' && t !== 'intent' }).join(', ')
+  var flatRows = newComments.map(function(c: SocialComment, idx: number) {
+    var flags: SocialFlag[] = Array.isArray(c.flags) ? c.flags : []
+    var flagTypes = flags.map(function(f: SocialFlag) { return f.type }).filter(function(t: string | undefined) { return t !== 'topics' && t !== 'emotion' && t !== 'intent' }).join(', ')
     var maxSeverity = ''
     var severityRank: Record<string, number> = { mild: 1, rude: 2, severe: 3 }
     for (var f of flags) {
@@ -183,9 +204,9 @@ export async function POST(req: NextRequest) {
         maxSeverity = f.severity
       }
     }
-    var topics = flags.filter(function(f: any) { return f.type === 'topics' }).map(function(f: any) { return f.action?.replace('Topics: ', '') || '' }).join(', ')
-    var intents = flags.filter(function(f: any) { return f.type === 'intent' }).map(function(f: any) { return f.action?.replace(/ intent detected/i, '') || '' }).join(', ')
-    var emotion = flags.find(function(f: any) { return f.type === 'emotion' })?.action?.replace('Emotion: ', '') || 'neutral'
+    var topics = flags.filter(function(f: SocialFlag) { return f.type === 'topics' }).map(function(f: SocialFlag) { return f.action?.replace('Topics: ', '') || '' }).join(', ')
+    var intents = flags.filter(function(f: SocialFlag) { return f.type === 'intent' }).map(function(f: SocialFlag) { return f.action?.replace(/ intent detected/i, '') || '' }).join(', ')
+    var emotion = flags.find(function(f: SocialFlag) { return f.type === 'emotion' })?.action?.replace('Emotion: ', '') || 'neutral'
 
     return {
       dataset_id: datasetId,
