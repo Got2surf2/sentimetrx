@@ -3496,6 +3496,31 @@ CREATE TABLE IF NOT EXISTS "public"."sentry_snapshots" (
 ALTER TABLE "public"."sentry_snapshots" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."service_health" (
+    "service" "text" NOT NULL,
+    "display_name" "text" NOT NULL,
+    "tier" integer DEFAULT 2 NOT NULL,
+    "balance_usd" numeric,
+    "balance_raw" "jsonb",
+    "status" "text" DEFAULT 'unknown'::"text" NOT NULL,
+    "checked_at" timestamp with time zone,
+    "last_error_at" timestamp with time zone,
+    "last_error_code" "text",
+    "last_error_msg" "text",
+    "last_alerted_at" timestamp with time zone,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "service_health_status_check" CHECK (("status" = ANY (ARRAY['ok'::"text", 'low'::"text", 'critical'::"text", 'error'::"text", 'unknown'::"text"]))),
+    CONSTRAINT "service_health_tier_check" CHECK (("tier" = ANY (ARRAY[1, 2])))
+);
+
+
+ALTER TABLE "public"."service_health" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."service_health" IS 'One row per external vendor account; platform credit/health state. Tier-1 rows carry a polled balance_usd; tier-2 rows carry last credit-error only. Written by lib/serviceHealth.ts (service role), read by /admin/health + the service-balance cron.';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."shared_links" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "token" "text" DEFAULT "encode"("extensions"."gen_random_bytes"(24), 'hex'::"text") NOT NULL,
@@ -4225,6 +4250,11 @@ ALTER TABLE ONLY "public"."schema_migrations"
 
 ALTER TABLE ONLY "public"."sentry_snapshots"
     ADD CONSTRAINT "sentry_snapshots_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."service_health"
+    ADD CONSTRAINT "service_health_pkey" PRIMARY KEY ("service");
 
 
 
@@ -5695,6 +5725,13 @@ ALTER TABLE ONLY "public"."users"
 
 
 
+CREATE POLICY "admin org reads service_health" ON "public"."service_health" FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM ("public"."users" "u"
+     JOIN "public"."organizations" "o" ON (("o"."id" = "u"."org_id")))
+  WHERE (("u"."id" = "auth"."uid"()) AND ("o"."is_admin_org" = true)))));
+
+
+
 ALTER TABLE "public"."admin_action_log" ENABLE ROW LEVEL SECURITY;
 
 
@@ -6343,6 +6380,9 @@ ALTER TABLE "public"."sentry_snapshots" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "sentry_snapshots_admin_read" ON "public"."sentry_snapshots" FOR SELECT TO "authenticated" USING ("public"."is_platform_admin"());
 
+
+
+ALTER TABLE "public"."service_health" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."shared_links" ENABLE ROW LEVEL SECURITY;
@@ -7260,6 +7300,12 @@ GRANT ALL ON TABLE "public"."schema_migrations" TO "service_role";
 GRANT ALL ON TABLE "public"."sentry_snapshots" TO "anon";
 GRANT ALL ON TABLE "public"."sentry_snapshots" TO "authenticated";
 GRANT ALL ON TABLE "public"."sentry_snapshots" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."service_health" TO "anon";
+GRANT ALL ON TABLE "public"."service_health" TO "authenticated";
+GRANT ALL ON TABLE "public"."service_health" TO "service_role";
 
 
 
