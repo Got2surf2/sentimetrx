@@ -360,7 +360,7 @@ CONSOLIDATION — one platform replaces the multi-vendor stack.`
   addFooter(s10, pg)
   const proofs = [
     { org: 'Harlem Globetrotters', stat: '10×', fs: 32, d: 'more responses than their prior survey — 15–20% in-venue response rate.' },
-    { org: 'JW Marriott', stat: '10×', fs: 32, d: 'more responses than post-stay email, captured in the moment.' },
+    { org: 'National Seafood Restaurant', stat: '3.5×', fs: 32, d: 'more responses than their email survey, captured in the moment.' },
     { org: 'UCF Rosen College', stat: '<5%', fs: 32, d: 'of the expert team’s time, at near-identical analysis quality.' },
     { org: 'Orlando Resort', stat: 'Seconds', fs: 22, d: 'to identify a root cause that used to take weeks of manual reading.' },
   ]

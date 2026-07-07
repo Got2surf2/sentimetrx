@@ -349,8 +349,8 @@ function slideSarina(pptx: PptxGenJS, pg: number) {
   addFooter(s, pg)
 
   // The headline stat — dominate the slide
-  s.addText('10×', {
-    x: 0.5, y: 1.8, w: 6.0, h: 2.6, fontSize: 200, fontFace: 'Arial', color: DN.sarinaBlue, bold: true, align: 'center', valign: 'middle',
+  s.addText('3.5×', {
+    x: 0.5, y: 1.8, w: 6.0, h: 2.6, fontSize: 150, fontFace: 'Arial', color: DN.sarinaBlue, bold: true, align: 'center', valign: 'middle',
   })
   s.addText('more responses than email surveys', {
     x: 0.5, y: 4.5, w: 6.0, h: 0.6, fontSize: 18, fontFace: 'Arial', color: DN.slate, italic: true, align: 'center',
@@ -375,9 +375,9 @@ function slideSarina(pptx: PptxGenJS, pg: number) {
   })
 
   s.addNotes(
-`Lead with the 10x number. Let it sit.
+`Lead with the 3.5x number. Let it sit.
 
-"That's the headline. JW Marriott and a few hospitality clients — Sarina gets about 10 times the responses they get from email surveys. Because guests will talk in the moment when they won't fill a form an hour later."
+"That's the headline. A national seafood restaurant and a few hospitality clients — Sarina gets about 3.5 times the responses they get from email surveys. Because guests will talk in the moment when they won't fill a form an hour later."
 
 Then walk the three labels on the right:
 

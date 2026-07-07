@@ -494,7 +494,7 @@ The mode-aware-perks card is the one to land hardest — it's the literal answer
   })
   const proofs = [
     { org: 'Harlem Globetrotters', stat: '10×', fs: 32, d: 'more responses than their prior survey — 15–20% in-venue response rate.' },
-    { org: 'JW Marriott', stat: '10×', fs: 32, d: 'more responses than post-stay email, captured in the moment.' },
+    { org: 'National Seafood Restaurant', stat: '3.5×', fs: 32, d: 'more responses than their email survey, captured in the moment.' },
     { org: 'UCF Rosen College', stat: '<5%', fs: 32, d: 'of the expert team’s time, at near-identical analysis quality.' },
     { org: 'Orlando Resort', stat: 'Seconds', fs: 22, d: 'to a root cause that used to take weeks of manual reading.' },
   ]
@@ -515,7 +515,7 @@ The mode-aware-perks card is the one to land hardest — it's the literal answer
     x: 0.9, y: 6.2, w: 11.5, h: 0.32, fontSize: 11, fontFace: 'Arial', color: DN.gold,
   })
   s12.addNotes(
-`Credibility close before the ask. Two proof legs: (1) conversational capture gets far more, richer responses than a static form — Globetrotters and JW Marriott ~10×; (2) the analysis matches an expert team at a fraction of the time — UCF Rosen. Read the Okumus quote verbatim.
+`Credibility close before the ask. Two proof legs: (1) conversational capture gets far more, richer responses than a static form — Globetrotters ~10×, a national seafood restaurant ~3.5×; (2) the analysis matches an expert team at a fraction of the time — UCF Rosen. Read the Okumus quote verbatim.
 
 For an insights audience the UCF point lands hardest: it augments expert analysts, it doesn't pretend to replace judgment.`
   )

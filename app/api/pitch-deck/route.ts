@@ -459,7 +459,7 @@ Don't quote a number you can't back up. The footnote at the bottom tells the LP 
   addFooter(s10, pg)
   const cases = [
     { name: 'Harlem Globetrotters', metric: '10x', desc: 'more responses vs. post-event email surveys. 15-20% in-venue response rate.' },
-    { name: 'JW Marriott', metric: '10x', desc: 'more responses than post-stay email. Actionable feedback within hours.' },
+    { name: 'National Seafood Restaurant', metric: '3.5x', desc: 'more responses than their email survey. Actionable feedback within hours.' },
     { name: 'UCF Rosen College', metric: '<5%', desc: 'of time taken by human experts. Near-identical quality to professors.' },
     { name: 'Orlando Resort', metric: 'Seconds', desc: 'to identify root cause vs. weeks of manual analysis. Saved costly renovation.' },
   ]
