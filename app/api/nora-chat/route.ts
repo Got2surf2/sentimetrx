@@ -295,7 +295,8 @@ export async function POST(req: NextRequest) {
   const rl = await checkRateLimit('nora-chat:' + ip, 30, 60000)
   if (rl.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: cors })
 
-  let body: any
+  interface NoraChatMessage { role: 'user' | 'assistant'; content: string }
+  let body: { messages?: NoraChatMessage[] }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors }) }
 
   const { messages } = body
@@ -306,7 +307,7 @@ export async function POST(req: NextRequest) {
   const recentMessages = messages.slice(-20)
 
   // Content safety check on latest user message
-  const lastUserMsg = [...recentMessages].reverse().find((m: any) => m.role === 'user')
+  const lastUserMsg = [...recentMessages].reverse().find((m) => m.role === 'user')
   if (lastUserMsg) {
     const check = checkMessage('nora_' + (req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'anon'), lastUserMsg.content)
     if (!check.safe) {
@@ -382,7 +383,7 @@ ${KNOWLEDGE_BASE}`,
     if (result.stopReason === 'max_tokens') text = trimIncomplete(text)
 
     return NextResponse.json({ reply: text }, { headers: cors })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Nora chat error:', err)
     return NextResponse.json({ reply: "I'm having trouble connecting right now. Please try again in a moment, or reach out to info@tablacuisine.com for help." }, { headers: cors })
   }

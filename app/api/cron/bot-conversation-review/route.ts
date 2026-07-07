@@ -76,8 +76,8 @@ export async function GET(req: NextRequest) {
           .gte('created_at', since)
           .order('turn_number', { ascending: true })
           .limit(TURN_LIMIT)
-        turns = (data || []).map((r: any) => ({
-          session_id: r.conversations?.session_id || '',
+        turns = (data || []).map((r) => ({
+          session_id: (r.conversations as unknown as { session_id?: string } | null)?.session_id || '',
           turn_number: r.turn_number,
           role: r.role,
           content: r.content,
@@ -164,7 +164,7 @@ Start your response with exactly "DRIFT: YES" or "DRIFT: NO" on the first line, 
       }).eq('id', bot.id)
 
       results.push({ botId: bot.id, name: bot.name, sessions: sessionCount, drift: themeDrift })
-    } catch (err: any) {
+    } catch (err: unknown) {
       results.push({ botId: bot.id, name: bot.name, sessions: -1, drift: false })
     }
   }

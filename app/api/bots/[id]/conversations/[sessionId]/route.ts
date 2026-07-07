@@ -22,9 +22,12 @@ async function gateBotAccess(userId: string, botId: string): Promise<{ ok: true;
     .select('org_id, organizations(is_admin_org)')
     .eq('id', userId)
     .single()
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : (orgRel as any)?.is_admin_org
-  const userOrgId = (userData as any)?.org_id as string | null
+  type OrgRel = { is_admin_org?: boolean | null }
+  type UserRow = { org_id: string | null; organizations: OrgRel | OrgRel[] | null }
+  const row = userData as UserRow | null
+  const orgRel = row?.organizations
+  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : orgRel?.is_admin_org
+  const userOrgId = row?.org_id ?? null
 
   const { data: bot } = await service.from('agents').select('id, org_id').eq('id', botId).single()
   if (!bot) return { ok: false, status: 404, error: 'Bot not found' }

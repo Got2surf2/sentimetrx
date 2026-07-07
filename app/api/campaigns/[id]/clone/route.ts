@@ -22,8 +22,9 @@ export async function POST(req: NextRequest, props: Params) {
     .eq('id', user.id)
     .single()
   if (!userData?.org_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const orgRel = (userData as any)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!(orgRel as any)?.is_admin_org
+  type OrgRel = { is_admin_org: boolean | null }
+  const orgRel = (userData as { organizations?: OrgRel | OrgRel[] | null })?.organizations
+  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
 
   const service = createServiceRoleClient()
 
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest, props: Params) {
     return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }
 
-  let body: any = {}
+  let body: { include_recipients?: boolean; name?: string } = {}
   try { body = await req.json() } catch {}
   const includeRecipients = body.include_recipients === true
 

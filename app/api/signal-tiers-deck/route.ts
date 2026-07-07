@@ -18,7 +18,7 @@ const DN = {
   emerald:    '10B981',
 }
 
-function addHeader(slide: any, title: string, subtitle?: string) {
+function addHeader(slide: PptxGenJS.Slide, title: string, subtitle?: string) {
   slide.addShape('rect', { x: 0, y: 0, w: W, h: 1.1, fill: { color: DN.navy } })
   slide.addText(title, { x: 0.6, y: 0.15, w: 10, h: 0.55, fontSize: 26, fontFace: 'Arial', color: DN.white, bold: true })
   if (subtitle) {
@@ -27,14 +27,14 @@ function addHeader(slide: any, title: string, subtitle?: string) {
   slide.addShape('rect', { x: 0, y: 1.1, w: W, h: 0.04, fill: { color: DN.sarinaBlue } })
 }
 
-function addFooter(slide: any, page: number) {
+function addFooter(slide: PptxGenJS.Slide, page: number) {
   slide.addText('datanautix.com', { x: 0.5, y: H - 0.4, w: 3, h: 0.3, fontSize: 9, color: DN.slate, fontFace: 'Arial' })
   slide.addText(String(page), { x: W - 1, y: H - 0.4, w: 0.5, h: 0.3, fontSize: 9, color: DN.slate, fontFace: 'Arial', align: 'right' })
   // Logo placeholder
   slide.addText('DATANAUTIX', { x: W - 2.5, y: 0.2, w: 2, h: 0.4, fontSize: 11, fontFace: 'Arial', color: DN.orange, bold: true, align: 'right' })
 }
 
-function tierCard(slide: any, x: number, y: number, w: number, h: number, label: string, color: string, bgColor: string, description: string, criteria: string) {
+function tierCard(slide: PptxGenJS.Slide, x: number, y: number, w: number, h: number, label: string, color: string, bgColor: string, description: string, criteria: string) {
   slide.addShape('roundRect', { x, y, w, h, rectRadius: 0.1, fill: { color: bgColor }, line: { color: color, width: 1.5 } })
   slide.addText(label, { x: x + 0.15, y: y + 0.1, w: w - 0.3, h: 0.4, fontSize: 16, fontFace: 'Arial', color: color, bold: true })
   slide.addText(description, { x: x + 0.15, y: y + 0.5, w: w - 0.3, h: 0.5, fontSize: 11, fontFace: 'Arial', color: '374151', wrap: true })

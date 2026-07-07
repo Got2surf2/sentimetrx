@@ -145,3 +145,9 @@ WHY: Continue to zero.
 WHY: Continue to zero.
 
 34 files (−120): bots/reddit/datasets/pitch-deck routes, themeImpact, sentryScrub, projectReport, personaExtractor, flights, parking, botEntityExtraction, agentExport, creator steps, edit-study client, egress tests. Reconciled one cross-file (both in-wave, separate worktrees): sentryScrub.ts scrubSentryEvent now returns `T | null` (it genuinely drops events) → its test's `ev.x` accesses needed non-null assertions at the 6 call sites. Global tsc 0 errors, 1238 tests pass, 952→832. Ceiling → 832. Not pushed.
+
+## ESLint burn-down wave 9 — 36 files (Jul 7)
+
+WHY: Continue to zero.
+
+36 files (−106): bots/campaigns/recordings/social/collections/datasets/deck routes + clients, nora/clara/bot-chat, cron routes, admin routes. No cross-file conflicts (tsc clean first pass). Global tsc 0 errors, 1238 tests pass, 832→726. Ceiling → 726. Not pushed.

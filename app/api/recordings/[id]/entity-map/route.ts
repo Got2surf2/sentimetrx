@@ -31,8 +31,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
     .single()
-  const orgId = (userRow as any)?.org_id as string | undefined
-  const orgRel = (userRow as any)?.organizations
+  type OrgRel = { is_admin_org?: boolean }
+  type UserRow = { org_id?: string | null; organizations?: OrgRel | OrgRel[] | null }
+  const orgId = (userRow as UserRow | null)?.org_id as string | undefined
+  const orgRel = (userRow as UserRow | null)?.organizations
   const isAdminOrg = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org === true : orgRel?.is_admin_org === true
   if (!orgId) return NextResponse.json({ error: 'org not found' }, { status: 403 })
 
@@ -42,13 +44,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
 
   // Sanitize: trim canonical, dedupe + trim variants, drop blank canonicals, cap.
-  const entities = (body.entities as any[]).slice(0, MAX_ENTITIES).map(e => ({
+  type RawEntity = { canonical?: unknown; variants?: unknown; type?: unknown; mentions?: unknown }
+  const entities = (body.entities as RawEntity[]).slice(0, MAX_ENTITIES).map(e => ({
     canonical: String(e?.canonical ?? '').trim().slice(0, 120),
     variants: Array.isArray(e?.variants)
       ? Array.from(new Set(e.variants.map((v: unknown) => String(v ?? '').trim()).filter(Boolean))).slice(0, 40)
       : [],
-    type: ['name', 'place', 'org', 'term'].includes(e?.type) ? e.type : 'term',
-    mentions: Number.isFinite(e?.mentions) ? Math.max(0, Math.floor(e.mentions)) : 1,
+    type: ['name', 'place', 'org', 'term'].includes(e?.type as string) ? (e.type as string) : 'term',
+    mentions: Number.isFinite(e?.mentions) ? Math.max(0, Math.floor(e.mentions as number)) : 1,
   })).filter(e => e.canonical)
 
   const service = createServiceRoleClient()

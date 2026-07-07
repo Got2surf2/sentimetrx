@@ -127,7 +127,7 @@ export async function GET(req: NextRequest) {
   const stillUnresolved: SentryIssue[] = []
   if (digest.ok && digest.issues.length > 0) {
     const prevIds = new Set<string>()
-    const prevArr: any[] = Array.isArray(prev?.issues) ? prev!.issues as any[] : []
+    const prevArr: Array<{ id?: unknown }> = Array.isArray(prev?.issues) ? (prev!.issues as Array<{ id?: unknown }>) : []
     for (const it of prevArr) if (it?.id) prevIds.add(String(it.id))
     for (const it of digest.issues) {
       if (prevIds.size === 0 || !prevIds.has(it.id)) newIssues.push(it)
@@ -145,8 +145,8 @@ export async function GET(req: NextRequest) {
       const provider = getEmailProvider('resend')
       await Promise.all(recipients.map(to => provider.send({ to, from: FROM, subject, html, text })))
       emailed = true
-    } catch (e: any) {
-      console.error({ at: 'cron/sentry-digest', msg: "email send failed", err: e?.message || e })
+    } catch (e: unknown) {
+      console.error({ at: 'cron/sentry-digest', msg: "email send failed", err: e instanceof Error ? e.message : e })
     }
   }
 

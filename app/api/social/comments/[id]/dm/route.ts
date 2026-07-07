@@ -7,6 +7,22 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 
 export const dynamic = 'force-dynamic'
 
+interface SocialConnectionJoin {
+  id: string
+  access_token: string | null
+  platform: string
+}
+
+interface CommentWithConnection {
+  social_connections: SocialConnectionJoin | null
+}
+
+interface MessengerDmBody {
+  recipient: { id: string }
+  message: { text: string }
+  access_token: string
+}
+
 async function getAuth(supabase: Awaited<ReturnType<typeof createClient>>) {
   const user = await getAuthUser(supabase)
   if (!user) return null
@@ -35,12 +51,12 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   if (!comment) return NextResponse.json({ error: 'Comment not found' }, { status: 404 })
   if (!comment.author_id) return NextResponse.json({ error: 'No author ID available for DM' }, { status: 400 })
 
-  const token = (comment as any).social_connections?.access_token
+  const token = (comment as CommentWithConnection).social_connections?.access_token
   if (!token) return NextResponse.json({ error: 'No access token' }, { status: 400 })
 
   // Send DM via Messenger (Facebook) or IG Direct
   let apiUrl: string
-  let dmBody: any
+  let dmBody: MessengerDmBody
 
   if (comment.platform === 'facebook') {
     apiUrl = `https://graph.facebook.com/v19.0/me/messages`
@@ -74,7 +90,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   // Log the DM
   await service.from('social_dm_log').insert({
     org_id: auth.orgId,
-    connection_id: (comment as any).social_connections?.id,
+    connection_id: (comment as CommentWithConnection).social_connections?.id,
     platform: comment.platform,
     recipient_id: comment.author_id,
     recipient_name: comment.author_name,

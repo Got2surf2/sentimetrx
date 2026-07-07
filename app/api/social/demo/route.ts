@@ -17,7 +17,7 @@ async function getAuth(supabase: Awaited<ReturnType<typeof createClient>>) {
   if (!user) return null
   const { data } = await supabase.from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
   const org = Array.isArray(data?.organizations) ? data.organizations[0] : data?.organizations
-  return { userId: user.id, orgId: data?.org_id as string | null, isAdmin: !!(org as any)?.is_admin_org }
+  return { userId: user.id, orgId: data?.org_id as string | null, isAdmin: !!(org as { is_admin_org?: boolean } | undefined)?.is_admin_org }
 }
 
 export async function POST(req: NextRequest) {
@@ -159,14 +159,14 @@ Output ONLY the JSON array, nothing else.`,
   // Create moderation log entries for auto-actioned comments
   const modLogs: Array<{ org_id: string; comment_id: string; action: string; reply_text: string | null; performed_by: string | null }> = []
   for (const row of (inserted || [])) {
-    const rowFlags = row.flags as any[]
+    const rowFlags = row.flags as Array<{ type: string; severity: string | null; action?: string }>
     if (row.is_deleted) {
       modLogs.push({ org_id: auth.orgId, comment_id: row.id, action: 'delete', reply_text: 'Auto-deleted: threats/slurs detected', performed_by: null })
     } else if (row.is_hidden) {
       modLogs.push({ org_id: auth.orgId, comment_id: row.id, action: 'hide', reply_text: 'Auto-hidden: severe content or spam', performed_by: null })
     }
     // Log review flags too
-    if (Array.isArray(rowFlags) && rowFlags.some((f: any) => f.type === 'review')) {
+    if (Array.isArray(rowFlags) && rowFlags.some((f) => f.type === 'review')) {
       modLogs.push({ org_id: auth.orgId, comment_id: row.id, action: 'hide', reply_text: 'Flagged for human review', performed_by: null })
     }
   }

@@ -59,6 +59,8 @@ function depthChip(pairs: number): { bg: string; fg: string; label: string } {
   return { bg: '#F3F4F6', fg: '#9CA3AF', label }
 }
 
+type StatTile = { v: number | string; l: string; sub?: string; color?: string }
+
 const card: React.CSSProperties = { background: 'white', border: '1px solid #e5e7eb', borderRadius: 14, padding: '18px 20px', marginBottom: 16 }
 const h2: React.CSSProperties = { fontSize: 15, fontWeight: 700, color: INK, marginBottom: 12 }
 
@@ -210,7 +212,7 @@ export default function ReportClient() {
       <div style={card}>
         <div style={h2}>Overview</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
-          {[
+          {([
             { v: t.totalSessions, l: 'Conversations', sub: 'all sessions' },
             { v: t.conversations, l: 'Useful Conversations', sub: 'of ' + t.totalSessions + ' total' },
             ...(t.answerRatePct != null ? [{ v: t.answerRatePct + '%', l: 'Answer Rate', sub: t.answeredPairs + ' of ' + t.totalPairs + ' answered', color: '#059669' }] : []),
@@ -221,11 +223,11 @@ export default function ReportClient() {
               { v: s.health.responseRatePct != null ? s.health.responseRatePct + '%' : '—', l: 'Response Rate', sub: s.health.responseRatePct != null ? 'engaged of opens (7d)' : 'gathering open data' },
               { v: t.impressions as number, l: 'Widget Opens' },
             ] : []),
-          ].map((k, i) => (
+          ] as StatTile[]).map((k, i) => (
             <div key={i} style={{ background: '#F9FAFB', borderRadius: 10, padding: '12px 14px' }}>
-              <div style={{ fontSize: 24, fontWeight: 700, color: (k as any).color || INK }}>{k.v}</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: k.color || INK }}>{k.v}</div>
               <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginTop: 2 }}>{k.l}</div>
-              {(k as any).sub && <div style={{ fontSize: 10, color: MUTE }}>{(k as any).sub}</div>}
+              {k.sub && <div style={{ fontSize: 10, color: MUTE }}>{k.sub}</div>}
             </div>
           ))}
         </div>

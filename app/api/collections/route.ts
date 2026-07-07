@@ -13,6 +13,14 @@ import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
+interface MemberDataset {
+  id: string
+  name: string
+  row_count: number | null
+  source: string | null
+  org_id: string | null
+}
+
 export async function POST(req: Request) {
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
@@ -24,7 +32,7 @@ export async function POST(req: Request) {
   // Feature gate uses the caller's own org features (not the target org).
   const { data: callerOrgRow } = await supabase
     .from('organizations').select('features').eq('id', callerOrgId).single()
-  if (!(callerOrgRow as any)?.features?.analyze) {
+  if (!(callerOrgRow as { features?: { analyze?: boolean } | null } | null)?.features?.analyze) {
     return NextResponse.json({ error: 'Analyze module not enabled' }, { status: 403 })
   }
 
@@ -56,7 +64,7 @@ export async function POST(req: Request) {
   // All members must share a single org — that org becomes the
   // collection's home. Mixing orgs is rejected because the resulting
   // collection couldn't legitimately belong to any one tenant.
-  const orgIds = Array.from(new Set(memberDatasets.map((d: any) => d.org_id).filter(Boolean)))
+  const orgIds = Array.from(new Set(memberDatasets.map((d: MemberDataset) => d.org_id).filter(Boolean)))
   if (orgIds.length === 0) {
     return NextResponse.json({ error: 'Member datasets have no org_id' }, { status: 400 })
   }
@@ -118,7 +126,7 @@ export async function POST(req: Request) {
   // same rule inferPurpose uses; brand_360 is only ever an explicit choice).
   const purpose = (bodyPurpose && (PURPOSES as readonly string[]).includes(bodyPurpose))
     ? bodyPurpose
-    : (memberDatasets.every((d: any) => d.source === 'recording' || d.source === 'bot') ? 'community' : 'competitive')
+    : (memberDatasets.every((d: MemberDataset) => d.source === 'recording' || d.source === 'bot') ? 'community' : 'competitive')
 
   // 3. Create collection record
   const { data: collection, error: colErr } = await service

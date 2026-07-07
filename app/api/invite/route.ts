@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: any
+  let body: { org_id?: string; email?: string; role?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
   const { org_id, email, role } = body
 
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   const orgData    = userData?.organizations
   const isSuperAdmin = Array.isArray(orgData)
     ? orgData[0]?.is_admin_org === true
-    : (orgData as any)?.is_admin_org === true
+    : (orgData as { is_admin_org?: boolean } | null | undefined)?.is_admin_org === true
   const isOrgOwner = userData?.role === 'owner' && userData?.org_id === org_id
 
   if (!isSuperAdmin && !isOrgOwner) {
@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
   if (data.used_at) return NextResponse.json({ error: 'Invite already used' }, { status: 410 })
   if (new Date(data.expires_at) < new Date()) return NextResponse.json({ error: 'Invite expired' }, { status: 410 })
 
-  const orgRel = (data as any).organizations
+  const orgRel = (data as { organizations?: { name?: string } | { name?: string }[] | null }).organizations
   const orgName = Array.isArray(orgRel) ? orgRel[0]?.name : orgRel?.name
 
   return NextResponse.json({

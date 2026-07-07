@@ -11,6 +11,15 @@ import DownloadMonitor from '@/components/downloads/DownloadMonitor'
 
 export const dynamic = 'force-dynamic'
 
+type PendingLocation = {
+  id: string
+  review_source_id: string
+  name: string | null
+  total_pulled: number | null
+  last_synced_at: string | null
+  error_message: string | null
+}
+
 export default async function UserDownloadsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -24,8 +33,8 @@ export default async function UserDownloadsPage() {
 
   if (!userData?.org_id) redirect('/dashboard')
 
-  const orgData = resolveOrg(userData?.organizations) as any
-  const features = effectiveFeatures(orgData?.features, (userData as any)?.features)
+  const orgData = resolveOrg(userData?.organizations)
+  const features = effectiveFeatures(orgData?.features, userData?.features)
 
   const service = createServiceRoleClient()
   const orgId = userData.org_id
@@ -63,7 +72,7 @@ export default async function UserDownloadsPage() {
         .eq('selected', true)
         .like('error_message', 'pending_task:%')
         .limit(200)
-    : { data: [] as any[] }
+    : { data: [] as PendingLocation[] }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">

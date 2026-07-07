@@ -34,7 +34,7 @@ export async function GET(req: NextRequest, props: Params) {
 
   const { data: bot } = await service.from('agents').select('id, org_id').eq('id', params.id).single()
   if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
-  if (!isAdmin && (bot as any).org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!isAdmin && (bot as { org_id: string }).org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const includeHidden = req.nextUrl.searchParams.get('include_hidden') === '1'
 
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest, props: Params) {
   if (!includeHidden) query = query.eq('hidden', false)
 
   const { data: rows, error } = await query
-  if (error) return serverError(error, 'bots.entities.list', { orgId: (bot as any).org_id })
+  if (error) return serverError(error, 'bots.entities.list', { orgId: (bot as { org_id: string }).org_id })
 
   // Latest refresh metadata for the "Last extracted" header strip.
   const { data: lastRefresh } = await service
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest, props: Params) {
     const merged = Array.from(new Set([...((existing as { aliases: string[] }).aliases ?? []), ...aliases]))
     // Record human provenance — manual is the highest authority, so this row now
     // owns its canonical outright.
-    const provenance = mergeProvenance(((existing as any).provenance ?? {}) as Provenance, 'manual', null, 1)
+    const provenance = mergeProvenance(((existing as { provenance?: Provenance }).provenance ?? {}) as Provenance, 'manual', null, 1)
     const { data: updated, error } = await service
       .from('entity_catalog')
       .update({ canonical, aliases: merged, category, source: 'manual', provenance, hidden: false, last_seen_at: new Date().toISOString() })

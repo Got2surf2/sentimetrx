@@ -25,6 +25,11 @@ const MAX_RECIPIENTS = 25
 const MAX_NOTE_LEN = 2000
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+// Narrow a caught value to its message string without asserting `any`.
+function errMessage(e: unknown): string | undefined {
+  return e instanceof Error ? e.message : typeof e === 'string' ? e : undefined
+}
+
 // Accepts an array or a comma/newline/semicolon-separated string; trims,
 // lowercases, validates, dedupes, caps. Returns valid + rejected for feedback.
 function parseRecipients(raw: unknown): { valid: string[]; rejected: string[] } {
@@ -105,8 +110,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     try {
       const { buffer, fileName } = await renderRecordingReportPdf(service, rec, { includeTranscript })
       attachments = [{ filename: fileName, content: buffer.toString('base64') }]
-    } catch (e: any) {
-      console.error({ at: 'recording-report-send', msg: 'pdf render failed', err: e?.message })
+    } catch (e: unknown) {
+      console.error({ at: 'recording-report-send', msg: 'pdf render failed', err: errMessage(e) })
       return NextResponse.json({ error: 'Could not generate the PDF attachment.' }, { status: 500 })
     }
   }
@@ -133,9 +138,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     try {
       await provider.send({ to, from: REPORT_FROM, replyTo: senderEmail, subject, html, text, attachments })
       results.push({ email: to, status: 'sent' })
-    } catch (e: any) {
-      console.error({ at: 'recording-report-send', msg: 'send failed', to, err: e?.message })
-      results.push({ email: to, status: 'failed', error: e?.message || 'send failed' })
+    } catch (e: unknown) {
+      console.error({ at: 'recording-report-send', msg: 'send failed', to, err: errMessage(e) })
+      results.push({ email: to, status: 'failed', error: errMessage(e) || 'send failed' })
     }
   }
 

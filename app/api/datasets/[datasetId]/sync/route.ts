@@ -30,7 +30,7 @@ export async function POST(req: Request, props: Params) {
     // and wipe / re-import another tenant's data.
     const { data: userData } = await supabase
       .from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
-    const orgRel = (userData as any)?.organizations
+    const orgRel = (userData as { organizations?: { is_admin_org?: boolean } | { is_admin_org?: boolean }[] } | null)?.organizations
     const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org === true : orgRel?.is_admin_org === true
 
     const { data: dataset, error: dsErr } = await service
@@ -84,7 +84,7 @@ export async function POST(req: Request, props: Params) {
         .range(offset, offset + PAGE - 1)
       if (!batch || batch.length === 0) break
       for (const row of batch) {
-        const rid = (row.data as any)?.response_id
+        const rid = (row.data as { response_id?: unknown } | null)?.response_id
         if (rid) existingIds.add(String(rid))
       }
       if (batch.length < PAGE) break
@@ -170,7 +170,7 @@ export async function POST(req: Request, props: Params) {
     }
 
     return NextResponse.json({ synced: newRows.length, total: newTotal, dataset_id: dataset.id })
-  } catch (err: any) {
+  } catch (err: unknown) {
     return serverError(err, 'datasets.sync')
   }
 }

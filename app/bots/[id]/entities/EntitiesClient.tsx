@@ -141,8 +141,8 @@ export default function EntitiesClient({
           ? `Linked to brand “${next}”. Curated entities now roll up to its shared catalog.`
           : 'Brand link cleared.')
       }
-    } catch (e: any) {
-      setBrandMessage('Save failed: ' + (e?.message || 'network error'))
+    } catch (e: unknown) {
+      setBrandMessage('Save failed: ' + ((e instanceof Error && e.message) || 'network error'))
     } finally {
       setBrandSaving(false)
     }
@@ -166,8 +166,8 @@ export default function EntitiesClient({
         )
         await reload({ includeHidden: showHidden })
       }
-    } catch (e: any) {
-      setExtractMessage('Extract failed: ' + (e?.message || 'network error'))
+    } catch (e: unknown) {
+      setExtractMessage('Extract failed: ' + ((e instanceof Error && e.message) || 'network error'))
     } finally {
       setExtracting(false)
     }
@@ -191,8 +191,8 @@ export default function EntitiesClient({
       if (d?.error) { setAddError(d.error); return }
       setAddOpen(false); setAddCanonical(''); setAddAliases(''); setAddCategory('person')
       await reload({ includeHidden: showHidden })
-    } catch (e: any) {
-      setAddError(e?.message || 'network error')
+    } catch (e: unknown) {
+      setAddError((e instanceof Error && e.message) || 'network error')
     } finally {
       setAddSaving(false)
     }

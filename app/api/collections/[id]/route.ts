@@ -5,10 +5,13 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { buildMergedCollectionSchema } from '@/lib/collectionSchema'
+import type { ThemeModel } from '@/lib/analyzeTypes'
 
 export const dynamic = 'force-dynamic'
 
 interface Props { params: Promise<{ id: string }> }
+
+type OrgRow = { is_admin_org?: boolean } | null | undefined
 
 export async function GET(_req: Request, props: Props) {
   const params = await props.params;
@@ -19,7 +22,7 @@ export async function GET(_req: Request, props: Props) {
   const { data: userData } = await supabase.from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
   const orgId = userData?.org_id
   if (!orgId) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
-  const orgRow: any = Array.isArray(userData?.organizations) ? userData?.organizations[0] : userData?.organizations
+  const orgRow: OrgRow = Array.isArray(userData?.organizations) ? userData?.organizations[0] : userData?.organizations
   const isAdmin = !!orgRow?.is_admin_org
 
   const service = createServiceRoleClient()
@@ -56,8 +59,8 @@ export async function GET(_req: Request, props: Props) {
     .select('id, name, row_count, source')
     .in('id', memberIds)
 
-  const stateMap: Record<string, any> = {}
-  ;(states || []).forEach(function(s) { stateMap[s.dataset_id] = s.theme_model })
+  const stateMap: Record<string, ThemeModel | null> = {}
+  ;(states || []).forEach(function(s) { stateMap[s.dataset_id] = s.theme_model as ThemeModel | null })
 
   const dsMap: Record<string, { name: string; row_count: number; source: string }> = {}
   ;(memberDs || []).forEach(function(d) { dsMap[d.id] = { name: d.name, row_count: d.row_count || 0, source: d.source } })
@@ -90,7 +93,7 @@ export async function DELETE(req: Request, props: Props) {
   const { data: userData } = await supabase.from('users').select('org_id, organizations(is_admin_org)').eq('id', user.id).single()
   const orgId = userData?.org_id
   if (!orgId) return NextResponse.json({ error: 'Org not found' }, { status: 403 })
-  const orgRow: any = Array.isArray(userData?.organizations) ? userData?.organizations[0] : userData?.organizations
+  const orgRow: OrgRow = Array.isArray(userData?.organizations) ? userData?.organizations[0] : userData?.organizations
   const isAdmin = !!orgRow?.is_admin_org
 
   const url = new URL(req.url)

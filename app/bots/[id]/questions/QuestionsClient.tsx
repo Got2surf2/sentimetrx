@@ -229,7 +229,7 @@ export default function QuestionsClient({
       if (!r.ok) { setImportMsg(d?.error || 'Import failed'); return }
       setImportText(''); setImportBatch(''); setImportOpen(false)
       await refreshQuestions()
-    } catch (e: any) { setImportMsg(e?.message || 'Network error') }
+    } catch (e: unknown) { setImportMsg((e instanceof Error && e.message) || 'Network error') }
     finally { setImporting(false) }
   }
 
@@ -247,8 +247,8 @@ export default function QuestionsClient({
       } else if (d?.error) {
         alert('Update failed: ' + d.error)
       }
-    } catch (e: any) {
-      alert('Update failed: ' + (e?.message || 'network error'))
+    } catch (e: unknown) {
+      alert('Update failed: ' + ((e instanceof Error && e.message) || 'network error'))
     } finally {
       setSavingId(null)
     }
@@ -279,8 +279,8 @@ export default function QuestionsClient({
       } else if (d?.error) {
         alert('Save failed: ' + d.error)
       }
-    } catch (e: any) {
-      alert('Save failed: ' + (e?.message || 'network error'))
+    } catch (e: unknown) {
+      alert('Save failed: ' + ((e instanceof Error && e.message) || 'network error'))
     } finally {
       setAnsweringId(null)
     }

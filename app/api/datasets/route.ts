@@ -23,7 +23,7 @@ export async function GET() {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (!orgData?.features?.analyze) {
     return NextResponse.json({ error: 'Analyze module not enabled' }, { status: 403 })
   }
@@ -40,8 +40,10 @@ export async function GET() {
 
   if (error) return serverError(error, 'datasets.list', { orgId })
 
-  const enriched = (datasets || []).map(function(d: any) {
-    const studyName = d.studies?.name ?? null
+  const enriched = (datasets || []).map(function(d) {
+    // Supabase types the to-one `studies(name)` relation as an array, but at
+    // runtime it resolves to a single object (or null); reflect that here.
+    const studyName = (d.studies as unknown as { name?: string | null } | null)?.name ?? null
     const { studies: _s, ...rest } = d
     return { ...rest, study_name: studyName }
   })
@@ -60,7 +62,7 @@ export async function POST(req: NextRequest) {
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
   if (!orgData?.features?.analyze) {
     return NextResponse.json({ error: 'Analyze module not enabled' }, { status: 403 })
   }

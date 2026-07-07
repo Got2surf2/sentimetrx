@@ -134,8 +134,8 @@ export default function RecordingsListClient({ rows: initial, showOrg, isAdmin =
       setXferTarget(null)
       setXferOrgId('')
       router.refresh()
-    } catch (e: any) {
-      setError(e.message || 'Transfer failed')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Transfer failed')
     } finally {
       setXferring(false)
     }
@@ -173,8 +173,8 @@ export default function RecordingsListClient({ rows: initial, showOrg, isAdmin =
       const d = await res.json().catch(() => ({}))
       if (!res.ok || !d.id) throw new Error(d.error || `Duplicate failed (${res.status})`)
       router.push(`/recordings/${d.id}/status`)
-    } catch (e: any) {
-      setError(e.message || 'Duplicate failed')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Duplicate failed')
       setDuplicating(false)
     }
   }
@@ -192,8 +192,8 @@ export default function RecordingsListClient({ rows: initial, showOrg, isAdmin =
       setRows(prev => prev.filter(r => r.id !== target.id))
       setTarget(null)
       router.refresh()
-    } catch (e: any) {
-      setError(e.message || 'Delete failed')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Delete failed')
     } finally {
       setDeleting(false)
     }

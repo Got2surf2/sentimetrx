@@ -91,14 +91,15 @@ export async function POST(request: Request, props: Props) {
         messages: [{ role: 'user', content: userMsg }],
         apiKey,
       })
-    } catch (e: any) {
-      const status = e.status || 500
-      if (status === 401) return NextResponse.json({ error: 'AUTH_ERROR: ' + e.message }, { status: 401 })
-      if (status === 429) return NextResponse.json({ error: 'QUOTA_ERROR: ' + e.message }, { status: 429 })
-      return NextResponse.json({ error: 'API_' + status + ': ' + e.message }, { status })
+    } catch (e: unknown) {
+      const err = e as { status?: number; message?: string }
+      const status = err.status || 500
+      if (status === 401) return NextResponse.json({ error: 'AUTH_ERROR: ' + err.message }, { status: 401 })
+      if (status === 429) return NextResponse.json({ error: 'QUOTA_ERROR: ' + err.message }, { status: 429 })
+      return NextResponse.json({ error: 'API_' + status + ': ' + err.message }, { status })
     }
 
-    logUsage({ org_id: (dataset as any).org_id ?? undefined, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'merge_themes' }, result.usage)
+    logUsage({ org_id: (dataset as { org_id?: string | null }).org_id ?? undefined, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'merge_themes' }, result.usage)
 
     const clean = result.text.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()
     let parsed: { themes?: unknown[]; summary?: string }
@@ -114,6 +115,6 @@ export async function POST(request: Request, props: Props) {
 
     return NextResponse.json(parsed)
   } catch (e: unknown) {
-    return serverError(e, 'datasets.mergeThemes', { orgId: (dataset as any).org_id })
+    return serverError(e, 'datasets.mergeThemes', { orgId: (dataset as { org_id?: string | null }).org_id ?? undefined })
   }
 }

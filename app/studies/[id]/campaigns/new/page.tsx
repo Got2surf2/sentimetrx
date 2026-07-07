@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg } from '@/lib/resolveOrg'
 import NewCampaignClient from './NewCampaignClient'
+import type { SurveyQuestion } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +18,7 @@ export default async function NewCampaignPage(props: { params: Promise<{ id: str
     .eq('id', user.id)
     .single()
 
-  const orgData = resolveOrg(userData?.organizations) as any
+  const orgData = resolveOrg(userData?.organizations)
 
   // Fetch the study
   const { data: study } = await supabase
@@ -30,9 +31,9 @@ export default async function NewCampaignPage(props: { params: Promise<{ id: str
 
   // Extract hidden fields from study config
   const config = study.config || {}
-  const hiddenFields: string[] = (config.questions || [])
-    .filter((q: any) => q.type === 'hidden' && q.paramKey)
-    .map((q: any) => q.paramKey)
+  const hiddenFields: string[] = ((config.questions || []) as SurveyQuestion[])
+    .filter((q: SurveyQuestion) => q.type === 'hidden' && q.paramKey)
+    .map((q: SurveyQuestion) => q.paramKey as string)
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.sentimetrx.ai'
   const surveyPath = '/s/' + (study.slug || study.guid)

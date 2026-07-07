@@ -24,7 +24,7 @@ export async function GET(_req: NextRequest, props: Params) {
   try {
     const items = await listOrgSnapshots(params.orgId, 100)
     return NextResponse.json({ snapshots: items })
-  } catch (e: any) {
+  } catch (e: unknown) {
     return serverError(e, 'admin.orgSnapshots.list', { orgId: params.orgId })
   }
 }
@@ -43,13 +43,13 @@ export async function POST(_req: NextRequest, props: Params) {
     const { manifestKey, meta } = await dumpOrgSnapshotV2(service, params.orgId, s3SnapshotStore())
     return NextResponse.json({
       ok: Object.keys(meta.fetch_errors).length === 0,
-      org_name: (org as any).name,
+      org_name: (org as { name: string }).name,
       key: manifestKey,
       size_bytes: meta.total_bytes,
       row_counts: meta.table_row_counts,
       ...(Object.keys(meta.fetch_errors).length > 0 ? { fetch_errors: meta.fetch_errors } : {}),
     })
-  } catch (e: any) {
+  } catch (e: unknown) {
     return serverError(e, 'admin.orgSnapshots.create', { orgId: params.orgId })
   }
 }

@@ -14,9 +14,9 @@ interface Entry {
   actor_email: string | null
   action: string
   summary: string
-  before: any
-  after: any
-  metadata: Record<string, any>
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+  metadata: Record<string, unknown>
   created_at: string
 }
 

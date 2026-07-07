@@ -18,7 +18,7 @@ const DN = {
   purpleLight: 'EDE9FE',
 }
 
-function hdr(slide: any, title: string, subtitle?: string) {
+function hdr(slide: PptxGenJS.Slide, title: string, subtitle?: string) {
   slide.addShape('rect', { x: 0, y: 0, w: W, h: 1.1, fill: { color: DN.ink } })
   slide.addShape('rect', { x: 0, y: 0, w: 0.06, h: 1.1, fill: { color: DN.sarinaBlue } })
   slide.addText(title, { x: 0.6, y: 0.12, w: 10, h: 0.55, fontSize: 26, fontFace: 'Arial', color: DN.white, bold: true })
@@ -30,13 +30,13 @@ function hdr(slide: any, title: string, subtitle?: string) {
   )
 }
 
-function ftr(slide: any, page: number) {
+function ftr(slide: PptxGenJS.Slide, page: number) {
   slide.addText('datanautix.com', { x: 0.5, y: H - 0.38, w: 3, h: 0.3, fontSize: 8, color: DN.slate, fontFace: 'Arial' })
   slide.addText('Proprietary & Confidential', { x: W / 2 - 1.5, y: H - 0.38, w: 3, h: 0.3, fontSize: 8, color: DN.slate, fontFace: 'Arial', align: 'center' })
   slide.addText(String(page), { x: W - 1, y: H - 0.38, w: 0.5, h: 0.3, fontSize: 8, color: DN.slate, fontFace: 'Arial', align: 'right' })
 }
 
-function card(slide: any, x: number, y: number, w: number, h: number, title: string, body: string, accent: string = DN.sarinaBlue) {
+function card(slide: PptxGenJS.Slide, x: number, y: number, w: number, h: number, title: string, body: string, accent: string = DN.sarinaBlue) {
   slide.addShape('roundRect', { x, y, w, h, rectRadius: 0.08, fill: { color: DN.white }, line: { color: 'E5E7EB', width: 0.5 } })
   slide.addShape('rect', { x, y, w: 0.05, h, fill: { color: accent } })
   slide.addText(title, { x: x + 0.2, y: y + 0.08, w: w - 0.35, h: 0.35, fontSize: 13, fontFace: 'Arial', color: DN.navy, bold: true })

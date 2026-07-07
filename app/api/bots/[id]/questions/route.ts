@@ -51,7 +51,19 @@ export async function GET(_req: NextRequest, props: Params) {
 
 const norm = (s: string | null) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
 
-async function attachAgentResponses(service: any, botId: string, rows: any[]): Promise<any[]> {
+type ServiceClient = ReturnType<typeof createServiceRoleClient>
+
+interface LoggedQuestionRow {
+  session_id: string
+  user_message: string | null
+  [key: string]: unknown
+}
+
+async function attachAgentResponses(
+  service: ServiceClient,
+  botId: string,
+  rows: LoggedQuestionRow[],
+): Promise<(LoggedQuestionRow & { agent_response: string | null })[]> {
   const sessionIds = [...new Set(rows.map(r => r.session_id).filter(Boolean))]
   if (sessionIds.length === 0) return rows.map(r => ({ ...r, agent_response: null }))
 
@@ -63,9 +75,18 @@ async function attachAgentResponses(service: any, botId: string, rows: any[]): P
     .in('conversations.session_id', sessionIds)
     .order('turn_number', { ascending: true })
 
-  // session_id -> ordered turns
+  // session_id -> ordered turns. The typed client models the `!inner` embed as
+  // an array, but a to-one join returns a single object at runtime — cast to the
+  // shape the code actually consumes.
+  const turnRows = (turns || []) as unknown as {
+    turn_number: number
+    role: string
+    content: string
+    content_en: string | null
+    conversations: { session_id: string; bot_id: string } | null
+  }[]
   const bySession = new Map<string, { turn_number: number; role: string; content: string; content_en: string | null }[]>()
-  for (const t of (turns || [])) {
+  for (const t of turnRows) {
     const sid = t.conversations?.session_id
     if (!sid) continue
     if (!bySession.has(sid)) bySession.set(sid, [])

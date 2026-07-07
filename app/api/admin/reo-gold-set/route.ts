@@ -13,7 +13,7 @@ async function adminOrgId(): Promise<string | null> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
   const { data } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-  return (data as any)?.org_id ?? null
+  return (data as { org_id: string | null } | null)?.org_id ?? null
 }
 
 export async function GET() {
@@ -31,7 +31,7 @@ export async function GET() {
   if (error) return serverError(error, 'admin.reoGoldSet.list', { orgId })
 
   const reviews = data || []
-  const counts = reviews.reduce((a: Record<string, number>, r: any) => {
+  const counts = reviews.reduce((a: Record<string, number>, r: { status: string }) => {
     a[r.status] = (a[r.status] || 0) + 1; return a
   }, {})
   return NextResponse.json({ reviews, total: reviews.length, counts })
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
       if (o?.severity && !(REO_SEVERITIES as readonly string[]).includes(o.severity))
         return NextResponse.json({ error: `invalid severity: ${o.severity}` }, { status: 400 })
     }
-    gold = body.gold.map((o: any): ReoObservation => ({
+    gold = body.gold.map((o: ReoObservation): ReoObservation => ({
       domain: o.domain, aspect: o.aspect, sentiment: o.sentiment,
       evidence: o.evidence || undefined,
       severity: o.severity || 'none',

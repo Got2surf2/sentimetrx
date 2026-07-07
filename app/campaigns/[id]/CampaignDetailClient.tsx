@@ -14,7 +14,7 @@ const HERMES = '#E8632A'
 interface CampaignData {
   id: string; name: string; status: CampaignStatus; study_id: string
   study_url: string; hidden_fields: string[]; target_responses: number | null
-  email_provider: string; email_config: any; send_thank_you: boolean; send_incomplete: boolean
+  email_provider: string; email_config: Record<string, unknown>; send_thank_you: boolean; send_incomplete: boolean
   study_name?: string; study_status?: string; study_guid?: string; study_slug?: string
   created_at: string
 }
@@ -70,7 +70,7 @@ function parseJSON(text: string): ParsedData {
   const arr = Array.isArray(data) ? data : data.respondents || data.data || data.rows || []
   if (arr.length === 0) return { headers: [], rows: [] }
   const headers = Object.keys(arr[0]).filter(k => typeof arr[0][k] !== 'object')
-  const rows = arr.map((item: any) => {
+  const rows = (arr as Record<string, unknown>[]).map((item) => {
     const row: Record<string, string> = {}
     headers.forEach(h => { row[h] = item[h] != null ? String(item[h]) : '' })
     return row
@@ -82,7 +82,7 @@ async function parseExcel(buffer: ArrayBuffer): Promise<ParsedData> {
   const XLSX = await import('xlsx')
   const wb = XLSX.read(buffer, { type: 'array' })
   const sheet = wb.Sheets[wb.SheetNames[0]]
-  const json = XLSX.utils.sheet_to_json<Record<string, any>>(sheet)
+  const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet)
   if (json.length === 0) return { headers: [], rows: [] }
   const headers = Object.keys(json[0])
   const rows = json.map(item => {

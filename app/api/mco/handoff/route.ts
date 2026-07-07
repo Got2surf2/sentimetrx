@@ -10,6 +10,7 @@
 // cleanup via the cron worker — not yet wired). Public, CORS-open, no auth.
 
 import { NextResponse, type NextRequest } from 'next/server'
+import type { PostgrestError } from '@supabase/supabase-js'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -38,7 +39,7 @@ function makeCode(): string {
 interface Message { role: 'user' | 'assistant'; content: string }
 
 export async function POST(req: NextRequest) {
-  let body: any
+  let body: Record<string, unknown>
   try { body = await req.json() } catch { return NextResponse.json({ error: 'invalid json' }, { status: 400, headers: cors }) }
 
   const sessionId = typeof body?.session_id === 'string' ? body.session_id.slice(0, 80) : ''
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
 
   // Generate a code and retry once on collision (extremely unlikely at 32^6).
   let code = ''
-  let lastErr: any = null
+  let lastErr: PostgrestError | null = null
   for (let attempt = 0; attempt < 3; attempt++) {
     code = makeCode()
     const { error } = await service.from('mco_handoff_sessions').insert({
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
     if (!error) { lastErr = null; break }
     lastErr = error
     // Postgres unique_violation = 23505
-    if ((error as any).code !== '23505') break
+    if (error.code !== '23505') break
   }
   if (lastErr) {
     console.error('[mco/handoff] insert failed:', lastErr)
