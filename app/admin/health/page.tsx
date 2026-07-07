@@ -2,6 +2,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg } from '@/lib/resolveOrg'
 import { probeBalances, getServiceHealthRows } from '@/lib/serviceHealth'
+import { getAnthropicSpend } from '@/lib/anthropicCost'
 import HealthClient from './HealthClient'
 
 export const dynamic = 'force-dynamic'
@@ -140,6 +141,14 @@ export default async function HealthPage() {
   let serviceCredits: Awaited<ReturnType<typeof getServiceHealthRows>> = []
   try { serviceCredits = await getServiceHealthRows() } catch {}
 
+  // ── Claude API month-to-date spend (Anthropic Cost API) ─────────────
+  // Spend, not remaining balance — Anthropic exposes no balance API. Needs
+  // an Admin key (ANTHROPIC_ADMIN_KEY); degrades to "not configured" without.
+  const anthropicSpend = await getAnthropicSpend()
+
+  // Whether the service-balance cron's credit alerts have anywhere to go.
+  const alertRecipientSet = !!(process.env.CREDITS_ALERT_TO || process.env.SENTRY_ALERT_TO)
+
   return (
     <HealthClient
       logoUrl={orgData?.logo_url || ''}
@@ -152,6 +161,8 @@ export default async function HealthPage() {
       totalResponses24h={totalResponses24h || 0}
       totalComplete24h={totalComplete24h || 0}
       serviceCredits={serviceCredits}
+      anthropicSpend={anthropicSpend}
+      alertRecipientSet={alertRecipientSet}
       sentry={{
         dsnSet: sentryDsnSet,
         tokenSet: !!sentryToken,

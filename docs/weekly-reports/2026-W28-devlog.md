@@ -207,3 +207,13 @@ WHY: Owner asked to "set up a daily Sentry monitor + a system-health page for al
 Two surgical fixes: (1) added a "System Health" card to `AdminHub` Operations so `/admin/health` is discoverable; (2) `app/admin/health/page.tsx` read `SENTRY_ORG`/`SENTRY_PROJECT` but the env only defines `SENTRY_ORG_SLUG`/`SENTRY_PROJECT_SLUG` (the names `lib/sentry.ts` + the working daily digest use) → the live-error section never rendered. Aligned to the correct env names. No new cron needed. tsc clean. LOCAL/unpushed.
 
 Also (earlier this session): applied `sql/159_research_probes.sql` to prod to clear the 201-event `agents.research_probes does not exist` Sentry error; reloaded PostgREST cache for `service_health`.
+
+## Claude API spend + credit-failure surfacing on /admin/health (Jul 7)
+
+WHY: Owner asked for "the API account balance — if that runs out AI calls stop." Verified against Anthropic's live docs: there is NO remaining-prepaid-balance API. The Admin Cost API (/v1/organizations/cost_report) reports spend only; /v1/organizations/me has no balance. So a true balance readout is impossible — documented this so we don't chase it again.
+
+What the failure actually needs was already half-built: lib/ai.ts:364 catches a 402/"credit balance too low" from Claude and calls recordCreditError('anthropic'), flipping the service_health row to 'error' + the service-balance cron emails CREDITS_ALERT_TO. Made that loud and added the closest proactive signal:
+- lib/anthropicCost.ts — getAnthropicSpend() polls the Cost API (needs an Admin key ANTHROPIC_ADMIN_KEY; degrades to "not configured"). Sums month-to-date + trailing-7d spend (amount is cents → /100). Burn rate, not balance.
+- HealthClient: loud red "vendor calls may be degraded" banner whenever any tier-2 vendor is in 'error' (the live "AI calls failing now" signal); a "Claude API spend (this month)" tile; and a red warning when CREDITS_ALERT_TO is unset (alerts would reach no one).
+
+Real safeguard (owner action, not code): turn on auto-reload/threshold billing in the Anthropic Console so credits never hit zero. tsc clean; /admin/health smoke-tested (307 → /login, compiles). No new lint warnings (ratchet stays 358). LOCAL/unpushed.

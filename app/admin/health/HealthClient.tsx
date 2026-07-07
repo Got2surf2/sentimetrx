@@ -41,6 +41,14 @@ interface ServiceCredit {
   last_error_msg: string | null
 }
 
+interface AnthropicSpend {
+  configured: boolean
+  mtdUsd: number | null
+  last7Usd: number | null
+  asOf: string | null
+  error: string | null
+}
+
 interface Props {
   logoUrl: string
   orgName: string
@@ -53,6 +61,8 @@ interface Props {
   totalComplete24h: number
   sentry: SentryHealth
   serviceCredits: ServiceCredit[]
+  anthropicSpend: AnthropicSpend
+  alertRecipientSet: boolean
 }
 
 function relTime(iso: string | null): string {
@@ -73,10 +83,17 @@ function StatusDot({ ok }: { ok: boolean }) {
 export default function HealthClient({
   logoUrl, orgName, fullName, userEmail,
   dbOk, dbLatency, studyHealth, totalResponses24h, totalComplete24h, sentry, serviceCredits,
+  anthropicSpend, alertRecipientSet,
 }: Props) {
   const platform24hRate = totalResponses24h > 0
     ? Math.round((totalComplete24h / totalResponses24h) * 100)
     : 0
+
+  // A tier-2 vendor in 'error' state means a live credit/quota failure — for
+  // Anthropic/OpenAI that's "AI calls are failing right now." This is the
+  // reactive signal that matters most (Anthropic has no balance API to warn
+  // ahead of time): a 402 from lib/ai.ts flips the row to 'error'.
+  const creditFailures = serviceCredits.filter(s => s.status === 'error')
 
   // Sentry health classification: green if 0 events, amber if <10, red if 10+.
   const sentryFullyConfigured = sentry.dsnSet && sentry.tokenSet && sentry.orgSlug && sentry.projectSlug
@@ -98,6 +115,28 @@ export default function HealthClient({
 
       <div className="max-w-5xl mx-auto px-6 py-8 flex flex-col gap-6">
         <h1 className="text-2xl font-black text-gray-800">Platform Health</h1>
+
+        {/* ── Loud degradation banner — a live vendor credit/quota failure ── */}
+        {creditFailures.length > 0 && (
+          <div className="rounded-2xl border-2 border-red-500 bg-red-50 p-5">
+            <p className="text-sm font-black text-red-700 uppercase tracking-wide">
+              ⚠️ Vendor calls may be degraded
+            </p>
+            <ul className="mt-2 flex flex-col gap-1">
+              {creditFailures.map(s => (
+                <li key={s.service} className="text-sm text-red-800">
+                  <span className="font-bold">{s.display_name}</span> reported a credit/quota error
+                  {s.last_error_at ? ` ${relTime(s.last_error_at)}` : ''}
+                  {s.last_error_code ? ` (${s.last_error_code})` : ''}
+                  {s.last_error_msg ? ` — ${s.last_error_msg}` : ''}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-red-700">
+              If this is Anthropic (Claude) or OpenAI, AI features are likely failing now — top up credits in the vendor console.
+            </p>
+          </div>
+        )}
 
         {/* Infrastructure status */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -125,6 +164,36 @@ export default function HealthClient({
                   : 'No responses in 24h'}
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* ── Claude API spend (Anthropic Cost API — spend, not balance) ──── */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-5">
+          <div className="flex items-baseline justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-sm font-bold text-gray-800">Claude API spend (this month)</p>
+              <p className="text-xs text-gray-500">
+                Anthropic has no remaining-balance API — this is month-to-date <span className="font-semibold">spend</span>, not credits left.
+              </p>
+            </div>
+            {anthropicSpend.configured && anthropicSpend.mtdUsd != null ? (
+              <div className="text-right">
+                <p className="text-3xl font-black" style={{ color: HERMES }}>
+                  ${anthropicSpend.mtdUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                {anthropicSpend.last7Usd != null && (
+                  <p className="text-xs text-gray-400">
+                    ${anthropicSpend.last7Usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} in the last 7 days
+                  </p>
+                )}
+              </div>
+            ) : anthropicSpend.error ? (
+              <p className="text-xs text-red-600 max-w-xs text-right">{anthropicSpend.error}</p>
+            ) : (
+              <p className="text-xs text-gray-400 max-w-xs text-right">
+                Set <code className="bg-gray-100 px-1 rounded">ANTHROPIC_ADMIN_KEY</code> (an <code className="bg-gray-100 px-1 rounded">sk-ant-admin01-…</code> key) to show spend.
+              </p>
+            )}
           </div>
         </div>
 
@@ -206,6 +275,11 @@ export default function HealthClient({
                   <p className="text-xs text-gray-600">
                     Vendor account balances (polled) + last credit/quota error. Alerts via the service-balance cron (every 6h).
                   </p>
+                  {!alertRecipientSet && (
+                    <p className="text-xs text-red-600 font-semibold mt-0.5">
+                      No CREDITS_ALERT_TO set — credit alerts won&apos;t reach anyone. Add it in Vercel env.
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
