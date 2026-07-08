@@ -28,8 +28,10 @@ export default async function HealthPage() {
   let dbOk = false
   let dbLatency = 0
   try {
+    // eslint-disable-next-line react-hooks/purity -- server component: renders once per request, timing a real DB round-trip
     const t0 = Date.now()
     await service.from('organizations').select('id', { count: 'exact', head: true })
+    // eslint-disable-next-line react-hooks/purity -- see above
     dbLatency = Date.now() - t0
     dbOk = true
   } catch {}
