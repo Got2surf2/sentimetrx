@@ -28,6 +28,8 @@ function timeAgo(iso: string): string {
 export default function SentryDigest() {
   const [digest, setDigest] = useState<Digest | null>(null)
   const [loading, setLoading] = useState(true)
+  const [pending, setPending] = useState<Record<string, 'resolved' | 'ignored'>>({})
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const fetchIssues = async () => {
     setLoading(true)
@@ -40,6 +42,26 @@ export default function SentryDigest() {
       setDigest({ ok: false, configured: true, reason: message, fetchedAt: new Date().toISOString(), total: 0, issues: [] })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const setStatus = async (id: string, status: 'resolved' | 'ignored') => {
+    setActionError(null)
+    setPending(p => ({ ...p, [id]: status }))
+    try {
+      const res = await fetch('/api/admin/sentry/issues', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.ok) throw new Error(data.reason || `Request failed (${res.status})`)
+      // Success — drop the row; it's no longer unresolved.
+      setDigest(d => d ? { ...d, issues: d.issues.filter(it => it.id !== id), total: Math.max(0, d.total - 1) } : d)
+    } catch (e: unknown) {
+      setActionError(e instanceof Error ? e.message : 'Update failed')
+    } finally {
+      setPending(p => { const { [id]: _drop, ...rest } = p; return rest })
     }
   }
 
@@ -81,6 +103,14 @@ export default function SentryDigest() {
         </div>
       )}
 
+      {/* Action error — a resolve/archive call failed */}
+      {actionError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4 flex items-start justify-between gap-3">
+          <p className="text-xs text-red-800">{actionError}</p>
+          <button onClick={() => setActionError(null)} className="text-xs text-red-600 hover:text-red-800 font-medium flex-shrink-0">Dismiss</button>
+        </div>
+      )}
+
       {/* Loading */}
       {loading && !digest && (
         <div className="bg-white border border-gray-200 rounded-2xl p-12 text-center text-gray-500">Loading…</div>
@@ -105,26 +135,26 @@ export default function SentryDigest() {
             <div className="divide-y divide-gray-100">
               {digest.issues.map((it: SentryIssue) => {
                 const lvl = LEVEL_COLOR[it.level] || LEVEL_COLOR.error
+                const busy = pending[it.id]
                 return (
-                  <a
-                    key={it.id}
-                    href={it.permalink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block px-5 py-4 hover:bg-gray-50 transition-colors"
-                    style={{ textDecoration: 'none' }}
-                  >
+                  <div key={it.id} className="px-5 py-4">
                     <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0 flex-1">
+                      <a
+                        href={it.permalink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="min-w-0 flex-1 group"
+                        style={{ textDecoration: 'none' }}
+                      >
                         <div className="flex items-center gap-2 flex-wrap mb-1">
                           <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: lvl.bg, color: lvl.fg, border: '1px solid ' + lvl.border, textTransform: 'uppercase' }}>
                             {it.level}
                           </span>
                           <span className="text-xs text-gray-400 font-mono">{it.shortId}</span>
                         </div>
-                        <div className="text-sm font-semibold text-gray-800 truncate">{it.title}</div>
+                        <div className="text-sm font-semibold text-gray-800 truncate group-hover:underline">{it.title}</div>
                         {it.culprit && <div className="text-xs text-gray-500 mt-0.5 truncate">{it.culprit}</div>}
-                      </div>
+                      </a>
                       <div className="text-right flex-shrink-0">
                         <div className="text-sm font-bold text-gray-800">{it.count.toLocaleString()}</div>
                         <div className="text-xs text-gray-400">events</div>
@@ -132,7 +162,23 @@ export default function SentryDigest() {
                         <div className="text-xs text-gray-400 mt-1">{timeAgo(it.lastSeen)}</div>
                       </div>
                     </div>
-                  </a>
+                    <div className="flex items-center gap-2 mt-3">
+                      <button
+                        onClick={() => { void setStatus(it.id, 'resolved') }}
+                        disabled={!!busy}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                      >
+                        {busy === 'resolved' ? 'Resolving…' : 'Resolve'}
+                      </button>
+                      <button
+                        onClick={() => { void setStatus(it.id, 'ignored') }}
+                        disabled={!!busy}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100 transition-colors disabled:opacity-50"
+                      >
+                        {busy === 'ignored' ? 'Archiving…' : 'Archive'}
+                      </button>
+                    </div>
+                  </div>
                 )
               })}
             </div>

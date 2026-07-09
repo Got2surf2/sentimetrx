@@ -152,3 +152,48 @@ export async function fetchUnresolvedIssues(limit = 50): Promise<SentryDigest> {
     issues,
   }
 }
+
+export type SentryIssueStatus = 'resolved' | 'ignored' | 'unresolved'
+
+export interface SentryUpdateResult {
+  ok:         boolean
+  configured: boolean
+  reason?:    string
+}
+
+/**
+ * Change an issue's status (resolve / archive / reopen). Admin-gated at the
+ * route layer; the write scope (event:write / project:write) lives on the
+ * same org token as the read path. Uses Sentry's project-scoped bulk-mutate
+ * endpoint with a single id, mirroring fetchUnresolvedIssues' project scope.
+ * "ignored" is Sentry's API value for what the newer UI labels "archived".
+ */
+export async function updateIssueStatus(id: string, status: SentryIssueStatus): Promise<SentryUpdateResult> {
+  const { token, org, project } = readEnv()
+
+  if (!token || !org || !project) {
+    return { ok: false, configured: false, reason: 'SENTRY_AUTH_TOKEN, SENTRY_ORG_SLUG, and SENTRY_PROJECT_SLUG must be set.' }
+  }
+
+  const url = new URL(`${BASE}/projects/${org}/${project}/issues/`)
+  url.searchParams.set('id', id)
+
+  let res: Response
+  try {
+    res = await fetch(url.toString(), {
+      method:  'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ status }),
+      cache:   'no-store',
+    })
+  } catch (e: unknown) {
+    return { ok: false, configured: true, reason: `Network error: ${e instanceof Error ? e.message : String(e)}` }
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    return { ok: false, configured: true, reason: `Sentry API ${res.status}: ${body.slice(0, 200)}` }
+  }
+
+  return { ok: true, configured: true }
+}

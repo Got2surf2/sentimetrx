@@ -271,6 +271,19 @@ its corresponding entry.
   strings in breadcrumb messages. Also drops the Microsoft Office
   "Object Not Found Matching Id…" content-script false positive.
   SECURITY.md Open `<TBD>` item 1 is closed.
+- **`/admin/sentry` triage (`components/admin/SentryDigest.tsx`, added
+  2026-07-09):** the digest page lists live unresolved issues (read via
+  `fetchUnresolvedIssues`) and now lets an admin **Resolve** or **Archive**
+  each one in place. The mutation goes through `POST /api/admin/sentry/issues`
+  (`requireAdmin`-gated, validates `status ∈ {resolved,ignored,unresolved}`)
+  → `updateIssueStatus` in `lib/sentry.ts`, which PUTs Sentry's project-scoped
+  issues endpoint server-side so the encrypted `SENTRY_AUTH_TOKEN` never
+  reaches the browser. "Archive" maps to Sentry's API status `ignored`.
+  Resolving is safe-by-default: Sentry auto-reopens a resolved issue on the
+  next event, so a wrong call resurfaces as new signal rather than hiding a
+  live bug. The token/org/project are only set in prod (encrypted Vercel env),
+  so the write is exercised in production; `tests/unit/sentryUpdate.test.ts`
+  locks the request shape + ok/non-ok/unconfigured branches via a mocked fetch.
 - **`serverError()` is the standard 500 (`lib/apiError.ts`, added
   2026-07-02).** Route handlers catch their own errors and return
   JSON, so those errors never reach Sentry's auto-instrumentation

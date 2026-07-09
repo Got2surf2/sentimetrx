@@ -128,7 +128,13 @@ shortlist for Claude; here is the longer policy:
 
 - **Internal-only routes (`/admin/*`, deck generators, strategy
   endpoints) wrap with `requireAdmin` (`lib/auth/requireAdmin.ts`)
-  from the first commit.** URL obscurity is not a defense.
+  from the first commit.** URL obscurity is not a defense. This includes
+  routes that mutate **external** state, not just our DB: `POST /api/admin/
+  sentry/issues` (resolve/archive a Sentry issue, added 2026-07-09) is
+  `requireAdmin`-gated and validates `status` against an allow-list before
+  calling Sentry. The `SENTRY_AUTH_TOKEN` is used only server-side in
+  `lib/sentry.ts` (`updateIssueStatus`) and is never sent to the client —
+  the browser posts an issue id + status, never a credential.
 
 - **Export routes are a high-leak surface — gate every one.** A deck/
   HTML/CSV export fetches a tenant resource by id via the service role
