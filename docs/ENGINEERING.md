@@ -316,7 +316,16 @@ its corresponding entry.
   destructures `error` and fire-and-forgets `logError`, with zero
   control-flow change. Route-level `{data}`-only reads in `app/api/**`
   (~600) remain opportunistic — capture when touching a route; new
-  code must not discard `error` silently.
+  code must not discard `error` silently. **Title carries `where`
+  (2026-07-10):** a plain-object error (Supabase/fetch shape) whose
+  message is empty serializes to a context-free `{"message":""}` — a
+  useless Sentry title that groups unrelated failures. `logError` now
+  prefixes the synthesized `Error` with `where`
+  (`signalStats.resolveDatasetIds: {"message":""}`), so distinct
+  operations get distinct issues; real `Error` instances keep their own
+  message + stack. Pass the identifying id (e.g. `{datasetId}`) in
+  `fields` so the specific failing row rides along in Sentry extra data —
+  `lib/signalStats.ts` does this at all six `logError` sites.
 - **Request IDs (DONE, corrects an earlier stale note):** `proxy.ts`
   stamps `x-request-id` on **every** inbound request (generating one if
   the client didn't send it) and echoes it on the response;

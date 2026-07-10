@@ -56,7 +56,14 @@ export async function logError(where: string, err: unknown, fields: LogFields = 
     console.error({ at: where, request_id: requestId, org_id: fields.orgId ?? null, err: message, ...extras(fields) })
   } catch { /* logging must never break the caller */ }
   try {
-    Sentry.captureException(err instanceof Error ? err : new Error(message), {
+    // A plain-object error (Supabase/fetch shape) has no stack and, when its
+    // message is empty, serializes to a context-free `{"message":""}` — which
+    // becomes a useless Sentry title that groups unrelated failures together.
+    // Prefix the synthesized Error with `where` so the title says WHAT failed
+    // (e.g. `signalStats.resolveDatasetIds: {"message":""}`) and distinct
+    // operations get distinct issues. Real Error instances keep their own
+    // message + stack untouched.
+    Sentry.captureException(err instanceof Error ? err : new Error(`${where}: ${message}`), {
       tags: {
         where,
         ...(requestId ? { request_id: requestId } : {}),

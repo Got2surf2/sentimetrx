@@ -81,7 +81,7 @@ async function resolveDatasetIds(
     .select('id, source')
     .eq('id', datasetId)
     .single()
-  if (dsErr) void logError('signalStats.resolveDatasetIds', dsErr)
+  if (dsErr) void logError('signalStats.resolveDatasetIds', dsErr, { datasetId })
   if (!ds) return []
   if ((ds as { source?: string }).source !== 'collection') return [datasetId]
   const { data: coll, error: collErr } = await service
@@ -89,13 +89,13 @@ async function resolveDatasetIds(
     .select('id')
     .eq('dataset_id', datasetId)
     .single()
-  if (collErr) void logError('signalStats.resolveDatasetIds', collErr)
+  if (collErr) void logError('signalStats.resolveDatasetIds', collErr, { datasetId })
   if (!coll) return []
   const { data: members, error: membersErr } = await service
     .from('collection_members')
     .select('dataset_id')
     .eq('collection_id', (coll as { id: string }).id)
-  if (membersErr) void logError('signalStats.resolveDatasetIds', membersErr)
+  if (membersErr) void logError('signalStats.resolveDatasetIds', membersErr, { datasetId })
   return ((members || []) as { dataset_id: string }[]).map(m => m.dataset_id)
 }
 
@@ -117,7 +117,7 @@ async function totalRowCount(
     .from('dataset_rows_flat')
     .select('id', { count: 'exact', head: true })
     .in('dataset_id', datasetIds)
-  if (countErr) void logError('signalStats.totalRowCount', countErr)
+  if (countErr) void logError('signalStats.totalRowCount', countErr, { datasetIds })
   return count || 0
 }
 
@@ -135,7 +135,7 @@ export async function computeSignalStatsRaw(
     .select('theme_model')
     .eq('dataset_id', datasetId)
     .single()
-  if (stateRowErr) void logError('signalStats.computeSignalStatsRaw', stateRowErr)
+  if (stateRowErr) void logError('signalStats.computeSignalStatsRaw', stateRowErr, { datasetId })
   const themeModel = (stateRow as { theme_model: ThemeModel | null } | null)?.theme_model || null
 
   const themes = (themeModel?.themes || []).filter(
@@ -248,7 +248,7 @@ export async function computeSignalStats(
     .select('theme_model, analytics')
     .eq('dataset_id', datasetId)
     .single()
-  if (stateRowErr) void logError('signalStats.computeSignalStats', stateRowErr)
+  if (stateRowErr) void logError('signalStats.computeSignalStats', stateRowErr, { datasetId })
   if (!stateRow) {
     // No state row at all — fall back to raw compute (will return empties).
     return computeSignalStatsRaw(service, datasetId)
