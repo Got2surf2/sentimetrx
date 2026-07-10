@@ -113,13 +113,20 @@ export function computeFieldStats(
   }
 
   if (detectedType === 'numeric') {
+    // Single pass for min/max/sum. Math.min/max.apply(null, nums) spreads the
+    // whole column as call arguments and overflows V8's argument limit (~65K) —
+    // it crashed schema detection on the first 100K+ dataset with a numeric
+    // column (a 128,619-row upload, 2026-07-10). A reduce-style scan is both
+    // crash-proof and one pass instead of three.
     const nums = nonNull.map(Number)
-    return {
-      ...base,
-      min: Math.min.apply(null, nums),
-      max: Math.max.apply(null, nums),
-      avg: (nums.reduce(function(a: number, b) { return a + b }, 0) / nums.length).toFixed(1),
+    let min = Infinity, max = -Infinity, sum = 0
+    for (let i = 0; i < nums.length; i++) {
+      const n = nums[i]
+      if (n < min) min = n
+      if (n > max) max = n
+      sum += n
     }
+    return { ...base, min, max, avg: (sum / nums.length).toFixed(1) }
   }
   if (detectedType === 'categorical' || detectedType === 'date') {
     // Cap distinct-value list to keep schema JSON bounded. 500 matches the

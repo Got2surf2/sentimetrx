@@ -35,6 +35,17 @@ describe('datasetUtils — computeFieldStats type detection', () => {
     expect(s.max).toBe(5)
   })
 
+  it('computes numeric min/max without stack overflow on very large columns', () => {
+    // Regression: Math.min/max.apply(null, nums) spread the whole column as call
+    // args and overflowed V8's ~65K arg limit, crashing schema detection on the
+    // first 100K+ dataset with a numeric column (128,619-row upload, 2026-07-10).
+    const big = Array.from({ length: 200_000 }, (_, i) => (i % 500) + 1) // non-unique -> numeric, not id
+    const s = computeFieldStats('score', big)
+    expect(s.type).toBe('numeric')
+    expect(s.min).toBe(1)
+    expect(s.max).toBe(500)
+  })
+
   it('detects id by name and by all-unique-numeric', () => {
     expect(computeFieldStats('id', ['a', 'b', 'c']).type).toBe('id')
     expect(computeFieldStats('order_no', [10, 11, 12, 13]).type).toBe('id') // unique numeric, n>3
