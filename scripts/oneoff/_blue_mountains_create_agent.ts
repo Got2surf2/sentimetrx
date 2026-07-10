@@ -208,11 +208,22 @@ async function main() {
   const service = createClient(url, key, { auth: { persistSession: false } })
   console.log(`▶ Seeding Blue Mountains agent → ${USE_PROD ? '⚠️  PRODUCTION' : 'TEST'} (${url.replace(/^https:\/\//, '').replace(/\.supabase\.co.*/, '')})`)
 
-  // Resolve org (first org in the target project).
-  const { data: orgs, error: orgErr } = await service.from('organizations').select('id, name').order('created_at', { ascending: true }).limit(1)
-  if (orgErr || !orgs?.length) { console.error('No organization found:', orgErr?.message); process.exit(1) }
-  const orgId = orgs[0].id
-  console.log(`  org: ${orgs[0].name} (${orgId})`)
+  // Resolve org: --org <id> if given, else the first org in the target project.
+  // (Datanautix is b72e9ee6-… in both prod and the test clone.)
+  const orgFlagIdx = process.argv.indexOf('--org')
+  const explicitOrg = orgFlagIdx >= 0 ? process.argv[orgFlagIdx + 1] : null
+  let orgId: string
+  if (explicitOrg) {
+    const { data: org, error: e } = await service.from('organizations').select('id, name').eq('id', explicitOrg).maybeSingle()
+    if (e || !org) { console.error('--org not found:', explicitOrg, e?.message); process.exit(1) }
+    orgId = org.id
+    console.log(`  org: ${org.name} (${orgId})`)
+  } else {
+    const { data: orgs, error: orgErr } = await service.from('organizations').select('id, name').order('created_at', { ascending: true }).limit(1)
+    if (orgErr || !orgs?.length) { console.error('No organization found:', orgErr?.message); process.exit(1) }
+    orgId = orgs[0].id
+    console.log(`  org: ${orgs[0].name} (${orgId})`)
+  }
 
   const { data: existing } = await service.from('agents').select('id').eq('slug', AGENT_SLUG).maybeSingle()
   const agentPayload = {

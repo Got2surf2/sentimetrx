@@ -288,7 +288,47 @@ The dual role is the whole idea: the public gets a better experience, and the ag
   )
 
   // ═══════════════════════════════════════════════════════════════
-  // SLIDE 7 — "WE KNOW WHAT PEOPLE ARE ASKING"
+  // SLIDE 7 — THE AGENT IN ACTION (real, unscripted transcript)
+  // ═══════════════════════════════════════════════════════════════
+  const sC = pptx.addSlide()
+  pg++
+  addHeader(sC, 'The agent in action', 'A real, unscripted exchange from the live demo agent')
+  addFooter(sC, pg)
+  const bubbles = [
+    { who: 'user', t: 'How does the proposed action affect grazing?', h: 0.5 },
+    { who: 'agent', t: 'Officials considered but rejected a proposal that would have greatly reduced grazing, so existing allotments largely continue. Concerns from ranchers and conservation advocates — especially around streams and riparian areas — are very much in play.', h: 1.15 },
+    { who: 'user', t: "I run cattle on a Wallowa-Whitman allotment and I'm worried the new plan cuts my access. What can I do?", h: 0.82 },
+    { who: 'agent', t: 'Your concern is worth putting on the record — the comment period closes September 30, 2026. The most effective comments are specific: name your allotment, describe the access impact, and tie it to plan language. What worries you most — road closures, grazing terms, or something else?', h: 1.5 },
+  ]
+  let by = 1.32
+  bubbles.forEach(b => {
+    const isUser = b.who === 'user'
+    const w = isUser ? 4.7 : 5.6
+    const x = isUser ? (8.2 - w) : 0.6
+    sC.addText(isUser ? 'Commenter' : '🌲 Plan Assistant', { x, y: by - 0.2, w, h: 0.18, fontSize: 8.5, fontFace: 'Arial', color: C.slate, align: isUser ? 'right' : 'left', bold: true })
+    sC.addShape('rect', { x, y: by, w, h: b.h, fill: { color: isUser ? C.pineMid : C.card }, rectRadius: 0.09, line: isUser ? { color: C.pineMid, width: 0.5 } : { color: C.slateLight, width: 1 } })
+    sC.addText(b.t, { x: x + 0.2, y: by + 0.08, w: w - 0.4, h: b.h - 0.16, fontSize: 11.5, fontFace: 'Arial', color: isUser ? C.white : C.ink, valign: 'middle', lineSpacing: 16 })
+    by += b.h + 0.42
+  })
+  // Right rail — "what just happened"
+  sC.addShape('rect', { x: 8.55, y: 1.32, w: 4.18, h: 5.28, fill: { color: C.pine }, rectRadius: 0.1 })
+  sC.addText('What just happened', { x: 8.82, y: 1.52, w: 3.7, h: 0.4, fontSize: 15, fontFace: 'Arial', color: C.moss, bold: true })
+  const rail = [
+    'Answered from the plan knowledgebase — neutral and sourced, never taking a side.',
+    'Heard the specific concern: grazing access on a named Wallowa-Whitman allotment.',
+    'Surfaced the Sept 30 deadline and what makes a comment substantive.',
+    'Tagged grazing · access · concern-captured — and fed the "what people are asking" view.',
+  ]
+  rail.forEach((r, i) => {
+    sC.addShape('ellipse', { x: 8.82, y: 2.2 + i * 1.05, w: 0.13, h: 0.13, fill: { color: C.moss } })
+    sC.addText(r, { x: 9.08, y: 2.04 + i * 1.05, w: 3.5, h: 0.95, fontSize: 11, fontFace: 'Arial', color: C.white, valign: 'top', lineSpacing: 15 })
+  })
+  sC.addNotes(
+`This is a REAL, unscripted exchange captured from the live prod agent (sentimetrx.ai/b/blue-mountains) — not a mockup (per the no-fabricated-data rule). It shows the dual role on one screen: a neutral, sourced info answer + concern capture + routing to a substantive comment, with the tags that feed the insight view. Offer to open the live agent and let them ask their own question — and to share a full saved conversation.`,
+  )
+
+  // ═══════════════════════════════════════════════════════════════
+  // SLIDE 8 — "WE KNOW WHAT PEOPLE ARE ASKING"
   // ═══════════════════════════════════════════════════════════════
   const s7 = pptx.addSlide()
   pg++
@@ -431,7 +471,65 @@ Legal anchors: issue exhaustion (must raise it to litigate it) + "hard look." Ke
   )
 
   // ═══════════════════════════════════════════════════════════════
-  // SLIDE 12 — WHAT WE'D STAND UP + THE ASK
+  // SLIDE 13 — OLD WORLD vs NEW WORLD: WHEN YOU GET THE SIGNAL
+  // ═══════════════════════════════════════════════════════════════
+  const sT = pptx.addSlide()
+  pg++
+  addHeader(sT, 'When you learn what the public is worried about', 'The whole value in one picture: time')
+  addFooter(sT, pg)
+
+  const wx0 = 2.4, wx1 = 8.55   // the comment window (Jul 2 → Sep 30)
+  const dx0 = 9.0               // downstream outcomes start here
+
+  // ── Band 1: TODAY ──────────────────────────────────────────────
+  const y1 = 1.9
+  sT.addText('TODAY', { x: 0.55, y: y1 + 0.15, w: 1.75, h: 0.35, fontSize: 15, fontFace: 'Arial', color: C.slate, bold: true })
+  sT.addText('manual · at the deadline', { x: 0.55, y: y1 + 0.52, w: 1.8, h: 0.5, fontSize: 10, fontFace: 'Arial', color: C.slate, lineSpacing: 13 })
+  sT.addShape('rect', { x: wx0, y: y1 + 0.42, w: wx1 - wx0, h: 0.18, fill: { color: C.slateLight } })
+  sT.addShape('rect', { x: wx1 - 0.5, y: y1 + 0.28, w: 0.5, h: 0.46, fill: { color: C.red } }) // insight = a spike only at the deadline
+  sT.addText('Jul 2', { x: wx0 - 0.2, y: y1 + 0.66, w: 1.0, h: 0.24, fontSize: 8.5, color: C.slate, fontFace: 'Arial' })
+  sT.addText('Sep 30', { x: wx1 - 0.85, y: y1 + 0.66, w: 1.0, h: 0.24, fontSize: 8.5, color: C.slate, fontFace: 'Arial', align: 'right' })
+  sT.addText('No running signal — the first real read on public concern arrives as filed objections, at the deadline. Too late to reconcile.', { x: wx0, y: y1 + 0.98, w: wx1 - wx0 + 0.1, h: 0.55, fontSize: 10.5, color: C.ink, fontFace: 'Arial', italic: true, lineSpacing: 14 })
+  const badOut = ['Objections', 'Litigation', 'Delay / re-do']
+  badOut.forEach((o, i) => {
+    const cx = dx0 + i * 1.3
+    sT.addShape('rect', { x: cx, y: y1 + 0.32, w: 1.12, h: 0.5, fill: { color: C.redTint }, rectRadius: 0.06 })
+    sT.addText(o, { x: cx, y: y1 + 0.32, w: 1.12, h: 0.5, fontSize: 9, color: C.red, fontFace: 'Arial', bold: true, align: 'center', valign: 'middle' })
+    if (i < badOut.length - 1) sT.addText('→', { x: cx + 1.1, y: y1 + 0.32, w: 0.22, h: 0.5, fontSize: 12, color: C.slate, align: 'center', valign: 'middle' })
+  })
+
+  sT.addShape('rect', { x: 0.55, y: 3.85, w: 12.2, h: 0.014, fill: { color: C.slateLight } })
+
+  // ── Band 2: WITH THE AGENT ─────────────────────────────────────
+  const y2 = 4.2
+  sT.addText('WITH THE AGENT', { x: 0.55, y: y2 + 0.08, w: 1.8, h: 0.5, fontSize: 15, fontFace: 'Arial', color: C.mossDeep, bold: true, lineSpacing: 16 })
+  sT.addText('real-time · from day one', { x: 0.55, y: y2 + 0.6, w: 1.8, h: 0.5, fontSize: 10, fontFace: 'Arial', color: C.mossDeep, lineSpacing: 13 })
+  sT.addShape('rect', { x: wx0, y: y2 + 0.42, w: wx1 - wx0, h: 0.18, fill: { color: C.moss } }) // running signal across the whole window
+  for (let i = 0; i < 7; i++) {
+    const dxi = wx0 + 0.35 + i * ((wx1 - wx0 - 0.7) / 6)
+    sT.addShape('ellipse', { x: dxi, y: y2 + 0.33, w: 0.15, h: 0.15, fill: { color: C.pine } })
+  }
+  sT.addText('Jul 2', { x: wx0 - 0.2, y: y2 + 0.66, w: 1.0, h: 0.24, fontSize: 8.5, color: C.slate, fontFace: 'Arial' })
+  sT.addText('Sep 30', { x: wx1 - 0.85, y: y2 + 0.66, w: 1.0, h: 0.24, fontSize: 8.5, color: C.slate, fontFace: 'Arial', align: 'right' })
+  sT.addText('◄——  weeks of runway to act  ——►', { x: wx0, y: y2 + 0.92, w: wx1 - wx0, h: 0.28, fontSize: 10, color: C.mossDeep, fontFace: 'Arial', bold: true, align: 'center' })
+  sT.addText('Concern is visible from the first week — ranked and rising — with runway to strengthen the record before the deadline.', { x: wx0, y: y2 + 1.22, w: wx1 - wx0 + 0.1, h: 0.5, fontSize: 10.5, color: C.ink, fontFace: 'Arial', italic: true, lineSpacing: 14 })
+  const goodOut = ['Concerns addressed', 'Decision holds']
+  goodOut.forEach((o, i) => {
+    const cx = dx0 + i * 1.95
+    sT.addShape('rect', { x: cx, y: y2 + 0.32, w: 1.78, h: 0.5, fill: { color: C.cardTint }, rectRadius: 0.06 })
+    sT.addText(o, { x: cx, y: y2 + 0.32, w: 1.78, h: 0.5, fontSize: 9, color: C.mossDeep, fontFace: 'Arial', bold: true, align: 'center', valign: 'middle' })
+    if (i < goodOut.length - 1) sT.addText('→', { x: cx + 1.76, y: y2 + 0.32, w: 0.22, h: 0.5, fontSize: 12, color: C.slate, align: 'center', valign: 'middle' })
+  })
+
+  // Value-prop banner
+  sT.addShape('rect', { x: 0.55, y: 6.28, w: 12.2, h: 0.72, fill: { color: C.pine }, rectRadius: 0.08 })
+  sT.addText('The value is time: we surface concern months before the deadline — the window to pre-empt objections, litigation, and delay.', { x: 0.85, y: 6.28, w: 11.6, h: 0.72, fontSize: 13.5, color: C.white, fontFace: 'Arial', bold: true, valign: 'middle' })
+  sT.addNotes(
+`The one-picture differentiator. Today, the first real read on public concern IS the objection — at the deadline — which is exactly how the last plan died. With the agent, concern is legible from week one, so there's runway to reconcile it into the record before the decision is signed. The value prop is TIME to pre-empt downstream litigation and delay.`,
+  )
+
+  // ═══════════════════════════════════════════════════════════════
+  // SLIDE 14 — WHAT WE'D STAND UP + THE ASK
   // ═══════════════════════════════════════════════════════════════
   const s12 = pptx.addSlide()
   pg++

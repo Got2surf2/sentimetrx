@@ -28,7 +28,7 @@ const DECKS: Deck[] = [
     title: 'NEPA Comment Analysis — Forest Service (Blue Mountains)',
     subtitle: 'Capability briefing for the USDA Forest Service: turn the NEPA public-comment period into a real-time objection-risk read. Anchored to the live Blue Mountains Forest Plan Revision (Malheur · Umatilla · Wallowa-Whitman) — the 15-year effort withdrawn at the 2019 objection deadline, now re-opened for comment (Jul 2 – Sep 30, 2026). Front-facing info+concern-capture agent, semantic dedup + template-delta extraction, substantive-vs-form-letter classification, human-in-the-loop response generation, objection-risk/defensibility layer. Every load-bearing fact sourced; no invented counts.',
     audience: 'USDA Forest Service · NEPA planning / Region 6 decision team',
-    slides: '12 slides',
+    slides: '14 slides',
     accent: '#2D6A4F',
     badge: 'GOV · NEPA',
     logKey: 'nepa-comment-deck',
