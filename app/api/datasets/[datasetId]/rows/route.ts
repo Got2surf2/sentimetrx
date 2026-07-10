@@ -25,7 +25,7 @@ import { stripReservedRowKeys } from '@/lib/taxonomyEmbed'
 import { serverError } from '@/lib/apiError'
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 30   // allow 30s for large datasets in bulk mode
+export const maxDuration = 300  // the keyset-paged bulk sample scans the whole dataset once (~46s at 500K, ~67s at 1M); 300s covers multi-million-row datasets
 
 // Hard ceiling on how many rows a bulk (all=true) fetch will ever hold in memory
 // / return. TextMine loads all rows client-side under 50K by design, so 50K is the
@@ -140,25 +140,49 @@ export async function GET(req: Request, props: Params) {
     // Effective cap = the smaller of the caller's sampleMax and the hard ceiling.
     const cap = Math.min(sampleMax ?? BULK_ROWS_HARD_CAP, BULK_ROWS_HARD_CAP)
 
-    // Above the cap: SQL-side deterministic sample (sql/157, sql/160) — the RPC
-    // picks the sampled ids via ORDER BY md5(id || seed) LIMIT cap (an id-only,
-    // in-memory sort) then joins for `data`, so only the sampled rows cross the
-    // wire instead of streaming every row through PostgREST to sample in Node.
-    // Seeded by dataset_id (the same seed source the Node reservoir used) so the
-    // same dataset always yields the same sample (ARCHITECTURE.md D6 — deck
-    // credibility). ONE call, not paged: sql/157's paged .range() re-ran the
-    // whole disk-spilling sort per page (50 × ~0.5s → 30s Vercel timeout on the
-    // first >50K dataset). db-max-rows is unlimited, so the full sample returns
-    // in a single request (~0.8s for 50K rows).
+    // Above the cap: SQL-side deterministic sample (sql/160) via a KEYSET-paged
+    // hash-threshold. `sample_dataset_rows` keeps a row iff a stable uniform hash
+    // of (id || seed) falls below `threshold = cap / totalRows` — a pure WHERE
+    // predicate (no sort, no disk spill), so the same dataset+seed always yields
+    // the same sample (ARCHITECTURE.md D6 — deck credibility). We page by
+    // `row_index > p_after` (keyset), so across all pages the dataset is scanned
+    // exactly ONCE. Each page returns a single jsonb value (an array), which is
+    // NOT subject to PostgREST's 1000-row cap, and finishes in ~1s (well under
+    // the 8s statement timeout). This replaced two broken attempts: sql/157's
+    // `ORDER BY md5 LIMIT` paged with .range() re-ran a disk-spilling full-jsonb
+    // sort PER PAGE (→ 30s Vercel timeout on the first >50K dataset), and a
+    // single un-paged call silently truncated to PostgREST's 1000-row cap
+    // (→ analysis on ~1K rows instead of 50K). Measured: 56K→50K sample in ~10
+    // pages / ~10s; scales to the 500K design target (one linear scan).
     if (totalRows > cap) {
       const rows: Record<string, unknown>[] = []
-      const { data: sampleRows, error: sampleErr } = await service
-        .rpc('sample_dataset_rows', { p_dataset_id: params.datasetId, p_limit: cap, p_seed: params.datasetId })
-      if (sampleErr) return serverError(sampleErr, 'datasets.rows.bulk', { orgId: auth.orgId })
-      for (const sr of (sampleRows || []) as Array<{ id: number; row_index: number; data: Record<string, unknown> }>) {
-        const r = projectRow(sr.data, fieldSet)
-        if (withRowIds) r._rowId = sr.id
-        rows.push(r)
+      const seed = params.datasetId
+      const threshold = Math.min(1, cap / Math.max(totalRows, 1))
+      // Each page scans ~SAMPLE_PAGE/threshold rows (the RPC heap-fetches every
+      // scanned row for the output columns, so per-page cost tracks rows scanned,
+      // not rows returned). Keep the page large (5000, fewer round-trips) until
+      // that scan would exceed SCAN_BUDGET, then shrink it so each RPC stays under
+      // the 8s statement timeout even on multi-million-row datasets. Measured on a
+      // real 514K dataset: 5000/page = 5.8s; at 1M-selectivity (~100K scanned)
+      // = 6.7s. maxDuration (300s) covers the full-scan total (~46s at 500K,
+      // ~67s at 1M). Floor 1000 keeps round-trips bounded.
+      const SCAN_BUDGET = 90000
+      const SAMPLE_PAGE = Math.max(1000, Math.min(5000, Math.round(SCAN_BUDGET * threshold)))
+      let after = -1
+      while (rows.length < cap) {
+        const { data: pageData, error: sampleErr } = await service
+          .rpc('sample_dataset_rows', { p_dataset_id: params.datasetId, p_seed: seed, p_threshold: threshold, p_after: after, p_limit: SAMPLE_PAGE })
+        if (sampleErr) return serverError(sampleErr, 'datasets.rows.bulk', { orgId: auth.orgId })
+        const parsed = pageData as { rows?: Array<{ id: number; row_index: number; data: Record<string, unknown> }>; last?: number } | null
+        const pageRows = parsed?.rows || []
+        if (pageRows.length === 0) break
+        for (const sr of pageRows) {
+          const r = projectRow(sr.data, fieldSet)
+          if (withRowIds) r._rowId = sr.id
+          rows.push(r)
+        }
+        if (parsed?.last == null || pageRows.length < SAMPLE_PAGE) break
+        after = parsed.last
       }
       const sampled = totalRows > rows.length
       return NextResponse.json({

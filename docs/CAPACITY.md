@@ -197,14 +197,32 @@ suddenly) retired most of them.
   across calls.
   - **Timeout fix (sql/160, 2026-07-10):** the first dataset to ever
     cross the 50K cap (a 56,117-row upload) hit a 30s Vercel timeout.
-    Two causes: (1) sql/157 sorted the full row incl. the ~840-byte
-    `data` jsonb, forcing a disk-spilling external-merge sort; (2) the
-    route paged the RPC in 50 × 1000-row `.range()` slices, and
-    PostgREST applies OFFSET/LIMIT *outside* the function, so every page
-    re-ran the whole sort (50 × ~0.5s → 25s+). sql/160 sorts on the id
-    alone (in-memory quicksort, no spill) then joins for `data`, and the
-    route calls it **once** (db-max-rows is unlimited): 50K-row sample
-    in ~0.8s, one request. Same sample SET; determinism unchanged.
+    The real path (PostgREST + service role) has three hard constraints,
+    all confirmed by measuring the REST call (not just psql/EXPLAIN):
+    **(a)** a set-returning result is capped at **1000 rows** (must page
+    or silently truncate); **(b)** an **8s statement_timeout** per call
+    (a one-shot `jsonb_agg` of 50K blew it); **(c)** the route's function
+    budget. sql/157 (`ORDER BY md5 LIMIT`) met none: paged with `.range()`
+    it re-ran a disk-spilling full-jsonb sort per page (→ 30s timeout);
+    un-paged it truncated to 1000 (→ analysis on ~1K rows). sql/160
+    replaces the sort with a **keyset-pageable hash predicate**: keep a
+    row iff `hash(id‖seed) < cap/total`, page by `row_index > p_after`,
+    return each page as a single **jsonb** value (bypasses the 1000-row
+    cap). No sort → no spill; the dataset is scanned exactly once across
+    pages. Deterministic (same id set across calls). **Measured on real
+    datasets loaded into TEST (via REST):** 56K→~50K ~10s; 128K ~20s;
+    **514K (real) 46s, slowest page 5.8s**; 1M-selectivity per page 5.8s
+    (adaptive page). The RPC heap-fetches every *scanned* row for the
+    output columns, so per-page cost tracks rows scanned (≈ page/threshold),
+    not rows returned. Two guards keep it safe at multi-million scale:
+    **(1)** the route shrinks the page below 5000 once a page would scan
+    >90K rows, so each RPC stays under the 8s statement timeout; **(2)**
+    `maxDuration` is 300s (a full 1M scan is ~67s; a 2M scan ~130s). The
+    cost is O(total scan), not O(sample) — the natural next step for
+    routine multi-million-row datasets is a **stored generated `sample_key`
+    column + index** so sampling becomes an index range scan that touches
+    only the ~50K sampled rows (flat ~10-15s at any size); not built yet
+    (largest real prod dataset is 128K).
 - **Collection recompute buffering** → streams member rows in 1000-row
   pages into an incremental accumulator (`createAnalyticsAccumulator`);
   output verified byte-identical to the buffered computation.
