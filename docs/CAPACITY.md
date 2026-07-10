@@ -195,34 +195,31 @@ suddenly) retired most of them.
   at/below the cap the full-fetch path is unchanged. Route-level and
   SQL-level samples proven identical (same id-list hash) and stable
   across calls.
-  - **Timeout fix (sql/160, 2026-07-10):** the first dataset to ever
-    cross the 50K cap (a 56,117-row upload) hit a 30s Vercel timeout.
-    The real path (PostgREST + service role) has three hard constraints,
-    all confirmed by measuring the REST call (not just psql/EXPLAIN):
-    **(a)** a set-returning result is capped at **1000 rows** (must page
-    or silently truncate); **(b)** an **8s statement_timeout** per call
-    (a one-shot `jsonb_agg` of 50K blew it); **(c)** the route's function
-    budget. sql/157 (`ORDER BY md5 LIMIT`) met none: paged with `.range()`
-    it re-ran a disk-spilling full-jsonb sort per page (→ 30s timeout);
-    un-paged it truncated to 1000 (→ analysis on ~1K rows). sql/160
-    replaces the sort with a **keyset-pageable hash predicate**: keep a
-    row iff `hash(id‖seed) < cap/total`, page by `row_index > p_after`,
-    return each page as a single **jsonb** value (bypasses the 1000-row
-    cap). No sort → no spill; the dataset is scanned exactly once across
-    pages. Deterministic (same id set across calls). **Measured on real
-    datasets loaded into TEST (via REST):** 56K→~50K ~10s; 128K ~20s;
-    **514K (real) 46s, slowest page 5.8s**; 1M-selectivity per page 5.8s
-    (adaptive page). The RPC heap-fetches every *scanned* row for the
-    output columns, so per-page cost tracks rows scanned (≈ page/threshold),
-    not rows returned. Two guards keep it safe at multi-million scale:
-    **(1)** the route shrinks the page below 5000 once a page would scan
-    >90K rows, so each RPC stays under the 8s statement timeout; **(2)**
-    `maxDuration` is 300s (a full 1M scan is ~67s; a 2M scan ~130s). The
-    cost is O(total scan), not O(sample) — the natural next step for
-    routine multi-million-row datasets is a **stored generated `sample_key`
-    column + index** so sampling becomes an index range scan that touches
-    only the ~50K sampled rows (flat ~10-15s at any size); not built yet
-    (largest real prod dataset is 128K).
+  - **O(sample) rewrite (sql/160, 2026-07-10):** the first dataset to ever
+    cross the 50K cap (a 56,117-row upload) hit a 30s Vercel timeout, and
+    the fix had to hold as datasets keep GROWING (syncs/appends), so the
+    per-load cost must not scale with total size. The real path (PostgREST
+    + service role) has hard constraints, confirmed by measuring the REST
+    call (not just psql/EXPLAIN): a set-returning result is capped at
+    **1000 rows** (must page/return jsonb) and there's an **8s
+    statement_timeout** per call. sql/157 (`ORDER BY md5 LIMIT`) re-sorted
+    per page (→ timeout); an interim `row_index` keyset over a hash
+    *predicate* still heap-fetched every *scanned* row (Index Scan, not
+    Index-Only) → O(total), climbing with growth (real 514K = 46s, 1M
+    ≈ 67s). **Final design:** an **expression index**
+    `idx_drf_sample (dataset_id, hash(id‖dataset_id), id)` makes the sample
+    the `cap` rows with the smallest hash, served as an **index range
+    scan** — only the ~50K sampled rows are heap-fetched, so a load costs
+    the same at 100K, 1M, or 10M rows. Paged by `(hash, id)` keyset, each
+    page a single **jsonb** value (bypasses the 1000-row cap). Because it's
+    an expression index it **self-maintains on every insert** — appended
+    rows participate immediately and proportionally, no reindex/backfill.
+    Deterministic (same rows → same sample; the sample evolves as rows are
+    added, correct for a live dataset). **Measured on TEST via REST:** ~50K
+    in 10 pages, ~16-22s, slowest page 2.8s — **flat** after appending 20K
+    rows (the new rows took their proportional ~6.7K share). `maxDuration`
+    60s. Index build is a plain `CREATE INDEX` in-tx (per sql/131; prod
+    table ~264K rows/438MB, brief build lock acceptable).
 - **Collection recompute buffering** → streams member rows in 1000-row
   pages into an incremental accumulator (`createAnalyticsAccumulator`);
   output verified byte-identical to the buffered computation.

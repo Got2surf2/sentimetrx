@@ -129,14 +129,21 @@ cached `signal_stats`. **Bulk-row cap (2026-07-02):** `GET
 `BULK_ROWS_HARD_CAP` (50K), so it never buffers a full 500K-row dataset into
 memory even when the client omits `sampleMax` (the cap previously lived only in
 the TextMine client). **Above the cap**, the route takes a SQL-side
-deterministic sample via `sample_dataset_rows` (`ORDER BY md5(id||seed) LIMIT
-cap`, seeded by dataset_id per D6). **Timeout fix (sql/160, 2026-07-10):** the
-first dataset to ever cross the cap (a 56,117-row upload) hit the route's 30s
-budget — sql/157 sorted the full row incl. the ~840-byte `data` jsonb (disk
-spill) and the route paged the RPC in 50 × 1000-row `.range()` slices, each of
-which re-ran the whole sort (PostgREST applies OFFSET/LIMIT outside the
-function). sql/160 sorts on the id alone (in-memory) then joins for `data`, and
-the route calls it **once** (db-max-rows unlimited): 50K-row sample in ~0.8s. **Poisoned-cache self-heal (2026-06-25):** the cache key (hash + row_count) can't see a *malformed* cached value, so a cache with `records === 0` but `signals/inThemes > 0` (impossible — `records ≥ inThemes`) is treated as poisoned and force-recomputed. This shape came from `computeSignalStatsRaw` swallowing a transient statement-timeout on the exact-count `records` query (→ `null → 0`) while the theme-match RPCs in the same parallel batch succeeded; the records query now **throws** on error so a bad partial is never persisted (the batch endpoint catches → next load retries). **Error visibility (2026-07-10):** the other Supabase `if (error)` branches in `signalStats` fire-and-forget `logError` (they degrade gracefully — a card just renders without its stats line, not a 500). Each now passes `{datasetId}` so Sentry names the failing dataset, and `logError` prefixes the operation (`where`) into the title so an empty-message driver error reads `signalStats.resolveDatasetIds: {"message":""}` instead of a context-free `{"message":""}` that groups unrelated failures. The row-count key matters because a sync that adds
+deterministic **O(sample)** sample via `sample_dataset_rows` (sql/160): the
+`cap` rows with the smallest uniform `hash(id‖dataset_id)`, served by the
+`idx_drf_sample` expression index as an **index range scan**, paged by the
+`(hash, id)` keyset with each page a single jsonb value. Only the ~50K sampled
+rows are heap-fetched, so a load costs the same at 100K, 1M, or 10M rows — and
+the expression index self-maintains on every insert, so appended rows
+participate immediately (datasets grow continuously via syncs/appends). **Fix
+history (sql/160, 2026-07-10):** the first dataset to cross the cap (56,117-row
+upload) hit the route budget. sql/157 (`ORDER BY md5 LIMIT`) re-sorted a
+disk-spilling full-jsonb sort per page (→ 30s timeout); an un-paged jsonb call
+truncated to PostgREST's 1000-row cap (→ themes mined from ~1K rows instead of
+~43K, owner-caught); an interim `row_index` keyset over a hash predicate was
+O(total)-scan and climbed with dataset size (real 514K = 46s). The indexed
+design is flat (~16-22s at any size, verified stable after appending 20K rows).
+Deterministic per dataset (D6). `maxDuration` 60s. **Poisoned-cache self-heal (2026-06-25):** the cache key (hash + row_count) can't see a *malformed* cached value, so a cache with `records === 0` but `signals/inThemes > 0` (impossible — `records ≥ inThemes`) is treated as poisoned and force-recomputed. This shape came from `computeSignalStatsRaw` swallowing a transient statement-timeout on the exact-count `records` query (→ `null → 0`) while the theme-match RPCs in the same parallel batch succeeded; the records query now **throws** on error so a bad partial is never persisted (the batch endpoint catches → next load retries). **Error visibility (2026-07-10):** the other Supabase `if (error)` branches in `signalStats` fire-and-forget `logError` (they degrade gracefully — a card just renders without its stats line, not a 500). Each now passes `{datasetId}` so Sentry names the failing dataset, and `logError` prefixes the operation (`where`) into the title so an empty-message driver error reads `signalStats.resolveDatasetIds: {"message":""}` instead of a context-free `{"message":""}` that groups unrelated failures. The row-count key matters because a sync that adds
 rows leaves the theme model (and its hash) untouched, which previously left the
 strip frozen at a stale snapshot while the live Themes panel counted the new
 rows (Coalition Donor collection, 67 cached vs 80 live). Note this strip can
