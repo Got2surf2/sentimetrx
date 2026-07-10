@@ -65,7 +65,9 @@ async function codeBatch(texts: string[]): Promise<Coded[]> {
 }
 
 async function main() {
-  const { comments } = JSON.parse(readFileSync(process.argv[2], 'utf-8')) as { comments: Comment[] }
+  const corpus = JSON.parse(readFileSync(process.argv[2], 'utf-8')) as { comments: Comment[]; reported_total?: number }
+  const comments = corpus.comments
+  const submitted = corpus.reported_total || comments.length // live CARA total (grows daily)
   const out = process.argv[3]
   const labels = clusterLabels(comments.map(c => shingles(c.comment)))
   const groups = new Map<number, number[]>()
@@ -101,9 +103,9 @@ async function main() {
   })
 
   const total = comments.length, distinct = clusters.length
-  const held = 926 - total // reported total is 926
+  const held = Math.max(0, submitted - total)
   console.log(`\n════ FUNNEL ════`)
-  console.log(`  926   submitted (CARA)`)
+  console.log(`  ${submitted}   submitted (CARA)`)
   console.log(`  ${held.toString().padStart(3)}   held / not yet posted`)
   console.log(`  ${total}   available & analyzed`)
   console.log(`  ${distinct}   distinct voices        (near-dup removed ${total - distinct} copies, ${Math.round((total - distinct) / total * 100)}%)`)
@@ -114,7 +116,7 @@ async function main() {
   console.log(`\n════ STANCE (distinct voices) ════`)
   console.log(`  oppose ${stanceVoices.oppose} · support ${stanceVoices.support} · mixed ${stanceVoices.mixed} · unclear ${stanceVoices.unclear}`)
 
-  writeFileSync(out, JSON.stringify({ funnel: { submitted: 926, held, available: total, distinct, substantiveVoices, substantiveVolume }, issueVoices, issueVolume, issueSubstantive, stanceVoices }, null, 2))
+  writeFileSync(out, JSON.stringify({ funnel: { submitted, held, available: total, distinct, substantiveVoices, substantiveVolume }, issueVoices, issueVolume, issueSubstantive, stanceVoices }, null, 2))
   console.log(`\n✔ wrote → ${out}`)
 }
 main().catch(e => { console.error(e); process.exit(1) })

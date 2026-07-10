@@ -17,7 +17,7 @@ import { createClient } from '@supabase/supabase-js'
 const ORG_ID = 'b72e9ee6-0466-459a-8440-988a8bd6d3c5'
 const BOT_ID = '5845cdb8-f33e-4a2e-9500-5ed0b37e471c'
 const BASE = 'https://www.sentimetrx.ai'
-const AS_OF = 'July 10, 2026'
+const AS_OF = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
 const ISSUE_LABEL: Record<string, string> = {
   access_roads: 'Access & roads', recreation: 'Recreation', timber_logging: 'Timber / logging',
