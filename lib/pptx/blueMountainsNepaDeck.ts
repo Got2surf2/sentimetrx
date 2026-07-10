@@ -416,7 +416,82 @@ No invented numbers here — the dashboard shape is described qualitatively; in 
   )
 
   // ═══════════════════════════════════════════════════════════════
-  // SLIDE 10 — INTELLIGENT RESPONSE GENERATION
+  // SLIDE 10 — REAL-DATA FUNNEL (the live corpus)
+  // ═══════════════════════════════════════════════════════════════
+  const sF = pptx.addSlide()
+  pg++
+  addHeader(sF, 'Your live comment period, in one funnel', 'Real analysis of the open Blue Mountains DEIS comments · pulled Jul 10, 2026')
+  addFooter(sF, pg)
+  const funnelStages = [
+    { n: '926', label: 'Comments submitted', w: 11.6, c: C.pine },
+    { n: '732', label: 'Available & analyzed', w: 9.3, c: C.pineMid },
+    { n: '505', label: 'Distinct voices', w: 6.5, c: C.mossDeep },
+    { n: '377', label: 'Substantive — must respond', w: 4.9, c: C.moss },
+  ]
+  const drops = [
+    '▼  194 held pending PII review — the daily pull sweeps them up as they post',
+    '▼  227 near-duplicate copies removed (31%) — one form letter alone was 172 of them',
+    '▼  128 non-substantive (bare position / form sentiment)',
+  ]
+  let fy = 1.4
+  funnelStages.forEach((f, i) => {
+    const x = 6.67 - f.w / 2
+    sF.addShape('rect', { x, y: fy, w: f.w, h: 0.9, fill: { color: f.c }, rectRadius: 0.06 })
+    sF.addText([{ text: f.n + '   ', options: { fontSize: 25, bold: true } }, { text: f.label, options: { fontSize: 14 } }],
+      { x: x + 0.3, y: fy, w: f.w - 0.5, h: 0.9, color: C.white, fontFace: 'Arial', valign: 'middle' })
+    if (i < drops.length) sF.addText(drops[i], { x: 1.0, y: fy + 0.93, w: 11.3, h: 0.26, fontSize: 10.5, italic: true, color: C.amber, fontFace: 'Arial', align: 'center' })
+    fy += 1.28
+  })
+  sF.addShape('rect', { x: 0.55, y: 6.35, w: 12.2, h: 0.62, fill: { color: C.cardTint }, rectRadius: 0.06 })
+  sF.addShape('rect', { x: 0.55, y: 6.35, w: 0.12, h: 0.62, fill: { color: C.moss } })
+  sF.addText('926 comments in → 377 you are legally obligated to answer. Dedup counts are exact; “substantive” is an automated first pass, human-reviewed in delivery.',
+    { x: 0.85, y: 6.35, w: 11.7, h: 0.62, fontSize: 11.5, color: C.ink, fontFace: 'Arial', valign: 'middle', italic: true })
+  sF.addNotes(
+`REAL numbers from the live corpus (732 of 926 pulled 7/10/2026; the rest held pending PII review). Near-dup dedup is deterministic/exact (shingle-Jaccard): 505 distinct voices, 227 redundant copies, a single 172-copy form letter. Substantive/issue/stance are an automated Haiku first pass — labelled as such; in a real engagement a Forest Service reviewer confirms. The funnel IS the pitch: 926 → 377 must-respond.`,
+  )
+
+  // ═══════════════════════════════════════════════════════════════
+  // SLIDE 11 — REAL-DATA ISSUES + STANCE
+  // ═══════════════════════════════════════════════════════════════
+  const sI = pptx.addSlide()
+  pg++
+  addHeader(sI, 'What they are actually raising', 'Top issues by distinct voice — and why raw volume misleads')
+  addFooter(sI, pg)
+  const issues = [
+    { k: 'Access & roads', v: 239, vol: 444 },
+    { k: 'Recreation', v: 215, vol: 414 },
+    { k: 'Timber / logging', v: 198, vol: 405 },
+    { k: 'Wildlife', v: 183, vol: 224 },
+    { k: 'Old growth / 21-inch rule', v: 158, vol: 181 },
+    { k: 'Enforceable standards', v: 140, vol: 166 },
+    { k: 'Water & fish', v: 122, vol: 145 },
+    { k: 'Fire & fuels', v: 112, vol: 134 },
+  ]
+  const maxV = 444, barX = 3.6, barMaxW = 6.7
+  sI.addText('distinct voices', { x: barX, y: 1.2, w: 2, h: 0.26, fontSize: 9.5, color: C.pineMid, bold: true, fontFace: 'Arial' })
+  sI.addText('total volume (incl. duplicate copies)', { x: barX + 2.1, y: 1.2, w: 4, h: 0.26, fontSize: 9.5, color: C.slate, fontFace: 'Arial' })
+  let iy = 1.6
+  issues.forEach(it => {
+    const volW = barMaxW * it.vol / maxV, voxW = barMaxW * it.v / maxV
+    sI.addText(it.k, { x: 0.55, y: iy, w: 2.95, h: 0.4, fontSize: 11, color: C.ink, fontFace: 'Arial', valign: 'middle' })
+    sI.addShape('rect', { x: barX, y: iy + 0.05, w: volW, h: 0.3, fill: { color: C.cardTint }, line: { color: C.slateLight, width: 0.5 } })
+    sI.addShape('rect', { x: barX, y: iy + 0.05, w: voxW, h: 0.3, fill: { color: C.pineMid } })
+    sI.addText(`${it.vol}`, { x: barX + volW + 0.06, y: iy, w: 0.6, h: 0.4, fontSize: 9, color: C.slate, fontFace: 'Arial', valign: 'middle' })
+    sI.addText(`${it.v}`, { x: barX + voxW - 0.52, y: iy + 0.03, w: 0.46, h: 0.34, fontSize: 9.5, color: C.white, bold: true, fontFace: 'Arial', valign: 'middle', align: 'right' })
+    iy += 0.52
+  })
+  sI.addShape('rect', { x: 0.55, y: 5.95, w: 6.0, h: 0.82, fill: { color: C.pine }, rectRadius: 0.06 })
+  sI.addText([{ text: '≈ 2 : 1 opposed', options: { fontSize: 15, bold: true, color: C.moss } }, { text: '   320 oppose · 143 support · 29 mixed · 13 unclear', options: { fontSize: 11, color: C.white } }],
+    { x: 0.8, y: 5.95, w: 5.6, h: 0.82, fontFace: 'Arial', valign: 'middle' })
+  sI.addShape('rect', { x: 6.75, y: 5.95, w: 6.0, h: 0.82, fill: { color: C.amberTint }, rectRadius: 0.06 })
+  sI.addText('Volume ≠ weight: access shows 444 comments but only 239 distinct voices — a 172-copy form letter inflates the raw count.',
+    { x: 6.98, y: 5.95, w: 5.6, h: 0.82, fontSize: 10.5, color: C.amber, fontFace: 'Arial', valign: 'middle' })
+  sI.addNotes(
+`Real issue coding on the 505 distinct voices (Haiku, one representative per cluster). The voices-vs-volume gap is the teachable moment: access/recreation look huge by raw count but a single form letter drives most of it — count voices, not copies. Stance ≈ 2:1 opposed to the proposed action. Dedup exact; issue/stance automated first pass.`,
+  )
+
+  // ═══════════════════════════════════════════════════════════════
+  // SLIDE 12 — INTELLIGENT RESPONSE GENERATION
   // ═══════════════════════════════════════════════════════════════
   const s10 = pptx.addSlide()
   pg++
