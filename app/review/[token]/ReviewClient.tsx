@@ -119,11 +119,11 @@ export default function ReviewClient({ token, agentName, batchLabel, initial }: 
                   <span className="rv-ai-badge">✦ Suggested by {agentName}</span>
                   <span style={{ flex: 1 }} />
                   <button onClick={() => { void generateDraft() }} disabled={drafting} className="rv-link" style={{ fontWeight: 600 }}>
-                    {drafting ? 'Drafting…' : '↻ Re-draft'}
+                    {drafting ? 'Drafting…' : cur.aiDraft ? '↻ Re-draft' : '✦ Generate response'}
                   </button>
                 </div>
                 <div style={{ fontSize: 14.5, lineHeight: 1.6, color: '#143e3c', whiteSpace: 'pre-wrap', maxHeight: 220, overflow: 'auto' }}>
-                  {cur.aiDraft || <span style={{ color: '#7fa3a0' }}>No suggestion yet — tap “Re-draft”.</span>}
+                  {cur.aiDraft || <span style={{ color: '#7fa3a0' }}>No suggestion yet — tap “Generate response”.</span>}
                 </div>
                 {cur.aiDraft && (
                   <button onClick={useSuggested} className="rv-use">↧ Use this as my response</button>
