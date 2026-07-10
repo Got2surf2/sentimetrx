@@ -25,19 +25,30 @@ const ISSUE_LABEL: Record<string, string> = {
   water_fish: 'Water & fish', fire_fuels: 'Fire & fuels', economics_jobs: 'Economics & jobs', grazing: 'Grazing',
   restoration_pace: 'Pace & scale', salvage: 'Salvage logging', tribal: 'Tribal treaty rights', other: 'Other',
 }
+const QTYPE_LABEL: Record<string, string> = {
+  alternative_specifics: 'What does each alternative do?', access_recreation: 'Access & recreation specifics',
+  science_data: 'Science & data', effects_impact: 'Effects & impacts', process_deadline: 'Process & deadlines',
+  wildlife_habitat: 'Wildlife & habitat', economics_jobs: 'Economics & jobs', grazing_permits: 'Grazing & permits', other: 'Other',
+}
 const esc = (s: string) => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
-function build(corpus: any, analysis: any, coded: any): string {
+function build(corpus: any, analysis: any, coded: any, qfunnel: any, answer: any): string {
   const f = coded.funnel
   const C = { pine: '#1B4332', pineMid: '#2D6A4F', moss: '#52B788', mossDeep: '#40916C', teal: '#0F7173', orange: '#E8632A', ink: '#1B2D26', slate: '#7C8B84', card: '#F4F7F5', line: '#E7EDE9', amber: '#B45309', red: '#B91C1C' }
 
-  // Funnel stages
+  // Funnel stages — extended with the open-questions layer when qfunnel is present.
   const stages = [
     { n: f.submitted, label: 'Comments submitted', sub: 'logged in CARA' },
     { n: f.available, label: 'Available & analyzed', sub: `${f.held} held pending PII review` },
     { n: f.distinct, label: 'Distinct voices', sub: `${f.available - f.distinct} duplicate copies removed (${Math.round((f.available - f.distinct) / f.available * 100)}%)` },
     { n: f.substantiveVoices, label: 'Substantive — must respond', sub: `${f.distinct - f.substantiveVoices} non-substantive` },
   ]
+  if (qfunnel?.pctSubstantiveWithAnsQ) {
+    // Nest under the (deterministic) must-respond count: ~all substantive comments pose an
+    // answerable question, so cap at f.substantiveVoices to keep the funnel monotone.
+    const n = Math.round(f.substantiveVoices * Math.min(100, qfunnel.pctSubstantiveWithAnsQ) / 100)
+    stages.push({ n, label: 'Pose an answerable question', sub: `virtually all of the must-respond set — the answering labor, and it repeats` })
+  }
   const maxN = f.submitted
   const funnelHtml = stages.map(s => {
     const w = Math.round(s.n / maxN * 100)
@@ -79,6 +90,38 @@ function build(corpus: any, analysis: any, coded: any): string {
     .filter((_: any, i: number) => i % 37 === 0).slice(0, 3)
   const sampleHtml = samples.map((c: any) => `<div class="voice"><div class="vname">${esc([c.first, c.last].filter(Boolean).join(' ') || c.organization || 'Commenter')}</div><div class="vtext">“${esc((c.comment || '').replace(/\s+/g, ' ').slice(0, 320))}…”</div></div>`).join('')
 
+  // Open-questions layer (present only when qfunnel + answerability were passed).
+  let questionsHtml = ''
+  if (qfunnel?.funnel?.answerableQuestions && answer?.tested) {
+    const qf = qfunnel, a = answer
+    const types = Object.entries(qf.typeVoices as Record<string, number>).sort((x, y) => y[1] - x[1]).slice(0, 6)
+    const maxT = types.length ? types[0][1] : 1
+    const typeBars = types.map(([k, v]) => `<div class="irow"><div class="ilab">${esc(QTYPE_LABEL[k] || k)}</div><div class="itrack"><div class="ivox" style="width:${Math.round(v / maxT * 100)}%"><span>${v}</span></div></div></div>`).join('')
+    const segTot = a.high + a.partial + a.no
+    const aseg = [['high', a.high, C.mossDeep, 'usable first draft'], ['partial', a.partial, '#E8B84B', 'on-topic, incomplete'], ['not yet', a.no, C.line, 'outside the demo brain']]
+      .map(([lab, n, c]: any) => `<div style="width:${(n / segTot * 100).toFixed(1)}%;background:${c}" title="${lab} ${n}"><span>${Math.round(n / segTot * 100)}%</span></div>`).join('')
+    const highs = (a.results || []).filter((r: any) => r.verdict === 'high').slice(0, 3)
+    // Strip the agent's light markdown (**bold**, "- " bullets) — the dashboard is plain HTML.
+    const demark = (s: string) => (s || '').replace(/\*\*/g, '').replace(/\s*[-•]\s+/g, ' — ').replace(/\s+/g, ' ').trim()
+    const qaHtml = highs.map((r: any) => `<div class="qa"><div class="qq">Q · ${esc(r.text)}</div><div class="qaa">${esc(demark(r.answer).slice(0, 300))}…</div></div>`).join('')
+    const top25pct = qf.totalAnsVolume ? Math.round(qf.top25Volume / qf.totalAnsVolume * 100) : 0
+    questionsHtml = `
+  <h2>The next layer: open questions</h2>
+  <p style="font-size:12.5px;color:${C.ink};line-height:1.6;margin:0 0 14px">Not every comment is a question — many are positions. But the questions are the answerable labor, and <b>virtually every must-respond comment (${qf.pctSubstantiveWithAnsQ}%)</b> contains at least one question that can be answered from the Draft EIS and the plan process. Those comments carry <b>~${qf.totalAnsVolume.toLocaleString()}</b> question-instances — but they repeat heavily: the <b>top 25 distinct questions cover ${top25pct}%</b> of every ask. Answer the recurring ones once and most of the response burden is done.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="b">${qf.pctSubstantiveWithAnsQ}%</div><div class="l">of must-respond comments<br>pose an answerable question</div></div>
+    <div class="kpi"><div class="b">${top25pct}%</div><div class="l">of all asks covered by<br>the top 25 questions</div></div>
+    <div class="kpi"><div class="b">${a.pctHigh}%</div><div class="l">answered at HIGH confidence<br>by the live assistant today</div></div>
+    <div class="kpi"><div class="b">${a.pctHighPartial}%</div><div class="l">at least partially<br>answered</div></div>
+  </div>
+  <h3 class="qh">What people are actually asking</h3>
+  ${typeBars}
+  <h3 class="qh">Can the deployed assistant answer them? · ${a.tested} most-asked questions tested</h3>
+  <div class="aseg">${aseg}</div>
+  <p style="font-size:11px;color:${C.slate};margin:6px 0 0">Each question was put to the live Blue Mountains assistant, one clean turn, and graded by a strict independent judge (a “submit-a-comment” deflection counts as <i>not answered</i>). This is an early demo brain (~28 knowledge chunks, not the full 371-page DEIS); nearly every miss is a niche topic not yet ingested — a floor that rises with a fuller document load.</p>
+  ${qaHtml ? `<h3 class="qh">Real answers from the live assistant</h3>${qaHtml}` : ''}`
+  }
+
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Blue Mountains Comment Intelligence</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:${C.ink};background:#fbfcfb}
@@ -96,7 +139,12 @@ function build(corpus: any, analysis: any, coded: any): string {
   .fbar{background:${C.pineMid};color:#fff;border-radius:7px;padding:11px 16px;display:flex;align-items:baseline;gap:12px;min-width:180px}
   .fbar .fn{font-size:22px;font-weight:800} .fbar .fl{font-size:13px}
   .fsub{font-size:11px;color:${C.amber};font-style:italic;margin:5px 0 0 4px}
-  .fstage:nth-child(1) .fbar{background:${C.pine}} .fstage:nth-child(3) .fbar{background:${C.mossDeep}} .fstage:nth-child(4) .fbar{background:${C.moss}}
+  .fstage:nth-child(1) .fbar{background:${C.pine}} .fstage:nth-child(3) .fbar{background:${C.mossDeep}} .fstage:nth-child(4) .fbar{background:${C.moss}} .fstage:nth-child(5) .fbar{background:${C.teal}}
+  h3.qh{font-size:12px;font-weight:800;color:${C.pineMid};margin:18px 0 8px;text-transform:uppercase;letter-spacing:.3px}
+  .aseg{display:flex;height:30px;border-radius:6px;overflow:hidden;margin:2px 0}
+  .aseg>div{height:100%;display:flex;align-items:center;justify-content:center} .aseg>div span{font-size:12px;font-weight:800;color:#fff} .aseg>div:nth-child(3) span{color:${C.slate}}
+  .qa{background:#fff;border:1px solid ${C.line};border-left:4px solid ${C.moss};border-radius:8px;padding:11px 14px;margin:8px 0}
+  .qq{font-size:12px;font-weight:700;color:${C.pine};margin-bottom:5px} .qaa{font-size:12px;color:${C.ink};line-height:1.5}
   .irow{display:flex;align-items:center;gap:12px;margin:7px 0;font-size:12px}
   .ilab{width:150px;flex-shrink:0;color:${C.ink}}
   .itrack{position:relative;flex:1;height:22px;background:${C.card};border-radius:4px;overflow:hidden}
@@ -140,7 +188,7 @@ function build(corpus: any, analysis: any, coded: any): string {
   <h2>Stance on the proposed action</h2>
   <div class="stance">${stanceSeg}</div>
   <div class="stlab"><b>≈2:1 opposed</b> — ${st.oppose} oppose · ${st.support} support · ${st.mixed} mixed · ${st.unclear} unclear</div>
-
+${questionsHtml}
   <h2>Form-letter campaigns detected</h2>
   <table><tr><td class="csz">copies</td><td>representative text</td><td class="cper">personalized</td></tr>${campHtml}</table>
 
@@ -155,14 +203,18 @@ function build(corpus: any, analysis: any, coded: any): string {
 </div></body></html>`
 }
 
+const flag = (name: string) => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : null }
+
 async function main() {
   const [corpusP, analysisP, codedP] = process.argv.slice(2, 5)
-  const tokIdx = process.argv.indexOf('--token')
-  const token = tokIdx >= 0 ? process.argv[tokIdx + 1] : null
+  const token = flag('--token')
+  const qfunnelP = flag('--qfunnel'), answerP = flag('--answer')
   const corpus = JSON.parse(readFileSync(corpusP, 'utf-8'))
   const analysis = JSON.parse(readFileSync(analysisP, 'utf-8'))
   const coded = JSON.parse(readFileSync(codedP, 'utf-8'))
-  const html = build(corpus, analysis, coded)
+  const qfunnel = qfunnelP ? JSON.parse(readFileSync(qfunnelP, 'utf-8')) : null
+  const answer = answerP ? JSON.parse(readFileSync(answerP, 'utf-8')) : null
+  const html = build(corpus, analysis, coded, qfunnel, answer)
 
   const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } })
   const expires = new Date(Date.now() + 550 * 24 * 3600 * 1000).toISOString()

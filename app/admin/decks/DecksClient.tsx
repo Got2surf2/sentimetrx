@@ -23,6 +23,17 @@ type Deck = {
 
 const DECKS: Deck[] = [
   {
+    href: '/api/nepa-cara-deck',
+    filename: 'Datanautix-If-We-Built-CARA-Today.pptx',
+    title: 'If We Built CARA Today — Federal NEPA comment analysis',
+    subtitle: 'Reimagining the federal comment-analysis stack (CARA for the Forest Service, PEPC for the Park Service / DOI), worked live on the Blue Mountains comment record. Walks the CARA-equivalent view (funnel, dedup, issues, stance), then the NEXT funnel layer — the open questions buried in the comments — and a MEASURED answerability test: the deployed Blue Mountains assistant was pointed at the most-asked real questions and graded by a strict independent judge (20% high-confidence, 52% at least partial from a 28-chunk demo brain; framed honestly as a floor a full DEIS ingest raises). Closes on the labor-reduction and human-in-the-loop story. Every number from the real corpus + live agent; no invented stats.',
+    audience: 'Federal land-management NEPA teams · Forest Service / NPS / DOI',
+    slides: '12 slides',
+    accent: '#2D6A4F',
+    badge: 'GOV · NEPA',
+    logKey: 'nepa-cara-deck',
+  },
+  {
     href: '/api/nepa-comment-deck',
     filename: 'Datanautix-Blue-Mountains-NEPA.pptx',
     title: 'NEPA Comment Analysis — Forest Service (Blue Mountains)',
