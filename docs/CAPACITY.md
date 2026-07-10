@@ -195,6 +195,16 @@ suddenly) retired most of them.
   at/below the cap the full-fetch path is unchanged. Route-level and
   SQL-level samples proven identical (same id-list hash) and stable
   across calls.
+  - **Timeout fix (sql/160, 2026-07-10):** the first dataset to ever
+    cross the 50K cap (a 56,117-row upload) hit a 30s Vercel timeout.
+    Two causes: (1) sql/157 sorted the full row incl. the ~840-byte
+    `data` jsonb, forcing a disk-spilling external-merge sort; (2) the
+    route paged the RPC in 50 × 1000-row `.range()` slices, and
+    PostgREST applies OFFSET/LIMIT *outside* the function, so every page
+    re-ran the whole sort (50 × ~0.5s → 25s+). sql/160 sorts on the id
+    alone (in-memory quicksort, no spill) then joins for `data`, and the
+    route calls it **once** (db-max-rows is unlimited): 50K-row sample
+    in ~0.8s, one request. Same sample SET; determinism unchanged.
 - **Collection recompute buffering** → streams member rows in 1000-row
   pages into an incremental accumulator (`createAnalyticsAccumulator`);
   output verified byte-identical to the buffered computation.

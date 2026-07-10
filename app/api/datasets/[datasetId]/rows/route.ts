@@ -140,30 +140,25 @@ export async function GET(req: Request, props: Params) {
     // Effective cap = the smaller of the caller's sampleMax and the hard ceiling.
     const cap = Math.min(sampleMax ?? BULK_ROWS_HARD_CAP, BULK_ROWS_HARD_CAP)
 
-    // Above the cap: SQL-side deterministic sample (sql/157) — Postgres orders
-    // by md5(id || seed) and LIMITs to `cap`, so only the sampled rows cross
-    // the wire instead of streaming every row through PostgREST to sample in
-    // Node. Seeded by dataset_id (the same seed source the Node reservoir
-    // used) so the same dataset always yields the same sample (ARCHITECTURE.md
-    // D6 — deck credibility). Paged in FLAT_PAGE ranges because PostgREST caps
-    // rows per request; each page re-runs the same deterministic ORDER BY, so
-    // pages never overlap or drift.
+    // Above the cap: SQL-side deterministic sample (sql/157, sql/160) — the RPC
+    // picks the sampled ids via ORDER BY md5(id || seed) LIMIT cap (an id-only,
+    // in-memory sort) then joins for `data`, so only the sampled rows cross the
+    // wire instead of streaming every row through PostgREST to sample in Node.
+    // Seeded by dataset_id (the same seed source the Node reservoir used) so the
+    // same dataset always yields the same sample (ARCHITECTURE.md D6 — deck
+    // credibility). ONE call, not paged: sql/157's paged .range() re-ran the
+    // whole disk-spilling sort per page (50 × ~0.5s → 30s Vercel timeout on the
+    // first >50K dataset). db-max-rows is unlimited, so the full sample returns
+    // in a single request (~0.8s for 50K rows).
     if (totalRows > cap) {
       const rows: Record<string, unknown>[] = []
-      const SAMPLE_PAGE = 1000
-      for (let sOffset = 0; sOffset < cap; sOffset += SAMPLE_PAGE) {
-        const pageEnd = Math.min(sOffset + SAMPLE_PAGE, cap)
-        const { data: sampleRows, error: sampleErr } = await service
-          .rpc('sample_dataset_rows', { p_dataset_id: params.datasetId, p_limit: cap, p_seed: params.datasetId })
-          .range(sOffset, pageEnd - 1)
-        if (sampleErr) return serverError(sampleErr, 'datasets.rows.bulk', { orgId: auth.orgId })
-        if (!sampleRows || sampleRows.length === 0) break
-        for (const sr of sampleRows as Array<{ id: number; row_index: number; data: Record<string, unknown> }>) {
-          const r = projectRow(sr.data, fieldSet)
-          if (withRowIds) r._rowId = sr.id
-          rows.push(r)
-        }
-        if (sampleRows.length < pageEnd - sOffset) break
+      const { data: sampleRows, error: sampleErr } = await service
+        .rpc('sample_dataset_rows', { p_dataset_id: params.datasetId, p_limit: cap, p_seed: params.datasetId })
+      if (sampleErr) return serverError(sampleErr, 'datasets.rows.bulk', { orgId: auth.orgId })
+      for (const sr of (sampleRows || []) as Array<{ id: number; row_index: number; data: Record<string, unknown> }>) {
+        const r = projectRow(sr.data, fieldSet)
+        if (withRowIds) r._rowId = sr.id
+        rows.push(r)
       }
       const sampled = totalRows > rows.length
       return NextResponse.json({
