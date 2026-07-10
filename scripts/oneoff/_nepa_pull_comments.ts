@@ -87,22 +87,30 @@ async function main() {
   const cap = process.argv[3] ? parseInt(process.argv[3], 10) : Infinity
   if (!out) { console.error('Usage: … _nepa_pull_comments.ts <out.json> [maxLetters]'); process.exit(1) }
 
-  // 1) Enumerate letter ids from the paginated reading room.
+  // 1) Enumerate letter ids from EVERY listing page. Many rows are listed
+  // (counted in the reported total) but withheld pending PII review and carry
+  // no download link, so per-page link counts vary and a page can repeat
+  // already-seen ids — do NOT break on "no fresh ids". Walk to the last page
+  // (reported_total/25 + slack) and stop only after several consecutive pages
+  // with zero download links.
+  const seen = new Set<string>()
   const ids: string[] = []
   let total = Infinity
-  for (let page = 1; ids.length < total && ids.length < cap; page++) {
-    const html = await getText(`${BASE}/ReadingRoom?project=${PROJECT}&List-size=25&List-page=${page}`)
-    if (!html) break
-    if (total === Infinity) { const t = html.match(/of\s+([0-9,]+)/); if (t) total = parseInt(t[1].replace(/,/g, ''), 10) }
+  let emptyStreak = 0
+  const firstHtml = await getText(`${BASE}/ReadingRoom?project=${PROJECT}&List-size=25&List-page=1`)
+  { const t = firstHtml.match(/of\s+([0-9,]+)/); if (t) total = parseInt(t[1].replace(/,/g, ''), 10) }
+  const maxPage = total === Infinity ? 80 : Math.ceil(total / 25) + 4
+  for (let page = 1; page <= maxPage && ids.length < cap; page++) {
+    const html = page === 1 ? firstHtml : await getText(`${BASE}/ReadingRoom?project=${PROJECT}&List-size=25&List-page=${page}`)
     const pageIds = [...html.matchAll(/DownloadCommentFile\?letterid=(\d+)/g)].map(m => m[1])
-    const fresh = pageIds.filter(id => !ids.includes(id))
-    if (!fresh.length) break
-    ids.push(...fresh)
-    if (page % 5 === 0) console.log(`  …enumerated ${ids.length}/${total === Infinity ? '?' : total}`)
-    await sleep(DELAY_MS)
+    if (pageIds.length === 0) { if (++emptyStreak >= 3) break; await sleep(DELAY_MS); continue }
+    emptyStreak = 0
+    for (const id of pageIds) if (!seen.has(id)) { seen.add(id); ids.push(id) }
+    if (page % 5 === 0) console.log(`  …page ${page}/${maxPage} · unique ${ids.length}/${total === Infinity ? '?' : total}`)
+    if (page > 1) await sleep(DELAY_MS)
   }
   const targetIds = ids.slice(0, cap)
-  console.log(`[ids] ${targetIds.length} letters to pull (reported total ${total})`)
+  console.log(`[ids] ${targetIds.length} unique downloadable letters (reported total ${total}; withheld ≈ ${total === Infinity ? '?' : total - targetIds.length})`)
 
   // 2) Download + parse each.
   const dir = mkdtempSync(join(tmpdir(), 'nepa-'))
