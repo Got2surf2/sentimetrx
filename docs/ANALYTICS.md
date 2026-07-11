@@ -81,6 +81,20 @@ TextMine is **four peer sections** in a persistent **two-row bar** — the share
   on the platform key; usage is logged per-org in `usage_log`. The body accepts an
   optional `apiKey` override but it is not required — there is no localStorage-only mode.
 
+**Multiple open-ended columns → ONE theme model (current behavior; per-field is scoped, not built).**
+A dataset stores a **single** `theme_model` per dataset (one jsonb blob in `dataset_state`),
+bound to the active open-ended column(s) via `fieldName`/`fieldNames`. The Text toggle in the
+TextMine nav (`TextMineNav` `viewsExtra`, shown when a dataset has >1 open-ended column) is a
+**multi-select**: pick one field → its themes; check several → `prepareCorpus()`
+(`TextMineModule.tsx:1752`) **concatenates** those columns' text per row (`fields.map(f=>row[f]).join(' ')`)
+and mines ONE combined set (`fieldName: effectiveFields[0]`; UI shows "Combining N fields").
+**Default = only the first open-ended column** (`openFields[0]`), so on a most/least dataset
+"Liked Most" is themed and "Liked Least" isn't unless selected. Switching the active field
+**re-mines and overwrites** the single slot — there is no way to hold distinct theme sets for two
+prompts at once. This is a known limitation for opposing prompts (praise vs. complaints); the
+per-field theme-model enhancement (theme_model keyed by field; each prompt its own persistent set)
+is **scoped but not built** — see the per-field-theme-model memory + `docs/db` `theme_model` jsonb.
+
 ### API: `POST /api/datasets/[datasetId]/merge-themes` (collection theme-merge)
 On a **collection** dataset, TextMine's "merge" mode ("import component topics") fetches each member's existing `theme_model` (members with ≥1 AI-mined theme; needs ≥2 such members) and calls this route to AI-merge them into one unified set (shared vs. unique themes, tagged with `memberLabels`). **Same key policy as mine-themes** — falls back to the platform `ANTHROPIC_API_KEY` when no personal `apiKey` is supplied (the **2026-06-28 fix** removed a stale `NO_API_KEY` rejection that blocked the merge for orgs without a personal key, even though mining worked); `merge_themes` usage is logged per-org. **Members without mined themes are silently excluded** — mine themes on each member first to include it.
 
