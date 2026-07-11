@@ -66,6 +66,90 @@ function isDateLike(vals: string[]): boolean {
   return sample.length > 0 && hits / sample.length >= 0.7
 }
 
+// ── Freeform-text vs identifier/PII detection (2026-07-11) ──────────────────
+// High-cardinality short text (Store IDs, person names, emails, addresses)
+// used to fall through to `open-ended` and get theme-mined / entity-scanned
+// platform-wide until the user fixed the Schema by hand. Real prose is
+// recognizable: values run several words and contain everyday function words.
+// The stopword net is deliberately multilingual (en/es/fr/de/pt) so
+// non-English comments still register as prose.
+const FREEFORM_STOPWORDS = new Set([
+  // en
+  'the', 'and', 'was', 'were', 'is', 'are', 'a', 'an', 'to', 'of', 'it', 'for', 'my', 'we', 'i',
+  'they', 'but', 'not', 'with', 'very', 'had', 'have', 'this', 'that', 'so', 'on', 'in', 'at',
+  'be', 'as', 'me', 'our', 'you', 'when', 'there', 'been',
+  // es
+  'el', 'la', 'los', 'las', 'de', 'que', 'y', 'en', 'un', 'una', 'es', 'muy', 'no', 'con', 'por',
+  'para', 'se', 'lo', 'mi', 'fue',
+  // fr
+  'le', 'les', 'des', 'et', 'est', 'une', 'du', 'je', 'pas', 'pour', 'dans', 'au', 'sur', 'avec',
+  // de
+  'der', 'die', 'das', 'und', 'ist', 'ein', 'eine', 'nicht', 'mit', 'war', 'sehr', 'ich', 'wir',
+  'zu', 'auf',
+  // pt (beyond the es overlap)
+  'o', 'os', 'as', 'um', 'uma', 'nao', 'com', 'mas', 'foi',
+])
+
+export type FieldSemantic = NonNullable<SchemaFieldConfig['semantic']>
+
+// Content analysis for a text column: how much of it reads as freeform prose
+// (multi-word values containing function words), and whether the values match
+// a recognizable non-prose shape (email/url/phone/identifier/name/address).
+// Semantic tags only fire when the column is clearly NOT prose — a comments
+// field where some people paste an email must stay open-ended.
+export function analyzeTextContent(
+  strVals: string[],
+  fieldName: string,
+  uniqueRatio: number,
+): { freeformShare: number; semantic?: FieldSemantic } {
+  // Even-stride sample — plenty for shape detection, keeps 50K+ columns cheap.
+  let sample = strVals
+  if (strVals.length > 800) {
+    const step = strVals.length / 800
+    sample = Array.from({ length: 800 }, function(_, i) { return strVals[Math.floor(i * step)] })
+  }
+  let n = 0
+  let email = 0, url = 0, phone = 0, ident = 0, personName = 0, addr = 0, freeform = 0
+  for (const raw of sample) {
+    const v = String(raw).trim()
+    if (!v) continue
+    n++
+    if (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(v)) { email++; continue }
+    if (/^https?:\/\/\S+$/i.test(v) || /^www\.\S+\.\S+/i.test(v)) { url++; continue }
+    const digitsOnly = v.replace(/[\s().+-]/g, '')
+    if (/^\d{7,15}$/.test(digitsOnly) && /^[\d\s().+-]+$/.test(v)) { phone++; continue }
+    const tokens = v.split(/\s+/)
+    if (tokens.length === 1 && /^[A-Za-z0-9_/#-]+$/.test(v) && /\d/.test(v)) { ident++; continue }
+    if (tokens.length >= 2 && tokens.length <= 4 && tokens.every(function(t) { return /^[A-Z][a-zA-Z'.-]*$/.test(t) })) personName++
+    if (/^\d+\s+\S+/.test(v) && tokens.length >= 3 && tokens.length <= 9) addr++
+    if (tokens.length >= 4) {
+      let hasStop = false
+      for (const t of tokens) {
+        if (FREEFORM_STOPWORDS.has(t.toLowerCase().replace(/[^a-zà-ÿ']/g, ''))) { hasStop = true; break }
+      }
+      // Long multi-word values without a recognized stopword still count —
+      // prose in a language outside the net shouldn't be demoted.
+      if (hasStop || tokens.length >= 8) freeform++
+    }
+  }
+  if (n === 0) return { freeformShare: 0 }
+  const freeformShare = freeform / n
+  const lname = fieldName.toLowerCase()
+  let semantic: FieldSemantic | undefined
+  if (email / n >= 0.6) semantic = 'email'
+  else if (url / n >= 0.6) semantic = 'url'
+  else if (phone / n >= 0.6) semantic = 'phone'
+  else if (freeformShare < 0.1) {
+    if (ident / n >= 0.7 && uniqueRatio >= 0.3) semantic = 'identifier'
+    else if (addr / n >= 0.5 || (/(address|street|\baddr)/.test(lname) && addr / n >= 0.3)) semantic = 'address'
+    // Person names: repeated values (cities, menu items) are excluded by the
+    // uniqueness gate; without a name-ish header the pattern bar is higher.
+    else if (personName / n >= 0.6 && uniqueRatio >= 0.4 && /(name|author|customer|user|guest|reviewer|contact)/.test(lname)) semantic = 'name'
+    else if (personName / n >= 0.8 && uniqueRatio >= 0.6) semantic = 'name'
+  }
+  return { freeformShare, semantic }
+}
+
 export function computeFieldStats(
   fieldName: string,
   values: unknown[]
@@ -95,13 +179,25 @@ export function computeFieldStats(
     (allNum && uniqueRatio === 1 && nonNull.length > 3)
 
   let detectedType: AnaFieldType
+  let semantic: FieldSemantic | undefined
   if (isIdField) detectedType = 'id'
   else if (allNum) detectedType = 'numeric'
   else if (dateLike) detectedType = 'date'
   else if (uniqueArr.length <= 15 && avgWords < 3) detectedType = 'categorical'
-  else if (avgWords >= 5 || avgLen >= 30 || maxLen >= 50) detectedType = 'open-ended'
-  else if (uniqueArr.length <= 30) detectedType = 'categorical'
-  else detectedType = 'open-ended'
+  else {
+    // Content-based split (2026-07-11). `open-ended` used to be the fallback
+    // for any high-cardinality text — Store IDs, names, emails and addresses
+    // all landed there and were theme-mined platform-wide. Now open-ended
+    // requires the column to actually READ as prose; recognizable non-prose
+    // shapes are tagged and everything else defaults to categorical.
+    const content = analyzeTextContent(strVals, fieldName, uniqueRatio)
+    semantic = content.semantic
+    if (semantic) detectedType = 'categorical'
+    // 15% of respondents writing real sentences = a comments column, even
+    // when the majority answer is terse ("Nothing", "N/A", one-word items).
+    else if (content.freeformShare >= 0.15 || avgWords >= 4) detectedType = 'open-ended'
+    else detectedType = 'categorical'
+  }
 
   const base: Partial<SchemaFieldConfig> & { type: AnaFieldType } = {
     type:         detectedType,
@@ -110,6 +206,7 @@ export function computeFieldStats(
     avgLen:       avgLen.toFixed(0),
     avgWords:     avgWords.toFixed(1),
     uniqueRatio:  (uniqueRatio * 100).toFixed(0),
+    ...(semantic ? { semantic } : {}),
   }
 
   if (detectedType === 'numeric') {

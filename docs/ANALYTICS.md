@@ -124,6 +124,34 @@ level exports as before). Regression: `tests/integration/export-perfield-themes.
 Still scoped-not-built: per-field `__themes__` chart counts; signals-pptx + share/analytics
 stay on the active set.
 
+**First-open multi-question setup (2026-07-11).** When TextMine opens with rows but no themes
+and the dataset has **>1 open-ended field**, the empty state shows a **question checklist**
+("Which questions should get themes?", all checked by default, per-question answer counts) and
+the mine CTA becomes "Mine themes — N questions": `mineFieldsSequentially()` mines each checked
+question **sequentially into its own per-field set**, persisting after every field (a failure
+partway keeps everything already mined), then lands on the first mined question. Smart
+Dimensions auto-enable runs once, off the first field's foodService verdict. Un-checking a
+mis-flagged column is the escape hatch at setup time; fixing its type on the Schema tab removes
+it permanently.
+
+**Open-ended detection is content-based (2026-07-11, `computeFieldStats`/`analyzeTextContent`
+in `lib/datasetUtils`).** `open-ended` used to be the fallback for any high-cardinality text —
+Store IDs, person names, emails and street addresses all landed there and were theme-mined /
+entity-scanned platform-wide until the user fixed the Schema by hand. Now a text column is
+open-ended only when it **reads as prose**: ≥15% of (sampled) values are ≥4 words containing an
+everyday function word (multilingual en/es/fr/de/pt stopword net; ≥8-word values count even
+without a recognized stopword so unsupported-language prose isn't demoted), or the column
+averages ≥4 words. Recognizable non-prose shapes get a **`semantic` tag** on the schema field
+(`email` / `url` / `phone` / `identifier` / `name` / `address` — `SchemaFieldConfig.semantic`)
+and stay **`categorical`** in the core type system (charts/filters/exports unchanged; the tag
+records why the column isn't open text and feeds future PII handling). Person-name tagging
+needs high uniqueness (repeated city/menu values stay plain categorical) and a name-ish header
+for the lower pattern bar; a comments column where some respondents paste an email stays
+open-ended (semantic tags require the column to be clearly non-prose). Anything else
+high-cardinality now defaults to **categorical**, not open-ended. Existing datasets keep their
+stored schema — detection applies at upload/auto-detect time; the Schema tab remains the
+override. Tests: `tests/unit/datasetUtils.test.ts` ("freeform vs identifier/PII detection").
+
 ### API: `POST /api/datasets/[datasetId]/merge-themes` (collection theme-merge)
 On a **collection** dataset, TextMine's "merge" mode ("import component topics") fetches each member's existing `theme_model` (members with ≥1 AI-mined theme; needs ≥2 such members) and calls this route to AI-merge them into one unified set (shared vs. unique themes, tagged with `memberLabels`). **Same key policy as mine-themes** — falls back to the platform `ANTHROPIC_API_KEY` when no personal `apiKey` is supplied (the **2026-06-28 fix** removed a stale `NO_API_KEY` rejection that blocked the merge for orgs without a personal key, even though mining worked); `merge_themes` usage is logged per-org. **Members without mined themes are silently excluded** — mine themes on each member first to include it.
 

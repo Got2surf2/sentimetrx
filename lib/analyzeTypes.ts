@@ -32,6 +32,12 @@ export interface SchemaFieldConfig {
   // skip it. Lets the user keep entity NER off fields like a free-text
   // location or name column. Non-open-ended fields are never eligible.
   entityExtraction?: boolean
+  // Content-detected meaning of a text column (2026-07-11): set at schema
+  // detection when the values match a recognizable non-prose shape. These
+  // stay `categorical` in the core type system (charts/filters unchanged) —
+  // the tag records WHY the column isn't open-ended and feeds future PII
+  // handling. See computeFieldStats/analyzeTextContent (lib/datasetUtils).
+  semantic?: 'email' | 'url' | 'phone' | 'identifier' | 'name' | 'address'
   nonNullCount?:  number
   avgLen?:        string
   avgWords?:      string

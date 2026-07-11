@@ -69,6 +69,80 @@ describe('datasetUtils — computeFieldStats type detection', () => {
   })
 })
 
+describe('datasetUtils — freeform vs identifier/PII detection (2026-07-11)', () => {
+  // High-cardinality generators — enough rows that the ≤15/≤30-unique
+  // categorical shortcuts never fire, so the content heuristic decides.
+  const gen = (n: number, fn: (i: number) => string) => Array.from({ length: n }, (_, i) => fn(i))
+
+  it('alphanumeric store IDs → categorical + identifier (the Store ID trap)', () => {
+    const s = computeFieldStats('store_id', gen(200, i => 'C' + String(1000 + i)))
+    expect(s.type).toBe('categorical')
+    expect(s.semantic).toBe('identifier')
+  })
+
+  it('emails → categorical + email', () => {
+    const s = computeFieldStats('guest_email', gen(120, i => 'guest' + i + '@example.com'))
+    expect(s.type).toBe('categorical')
+    expect(s.semantic).toBe('email')
+  })
+
+  it('phone numbers → categorical + phone', () => {
+    const s = computeFieldStats('phone', gen(120, i => '(407) 555-' + String(1000 + i)))
+    expect(s.type).toBe('categorical')
+    expect(s.semantic).toBe('phone')
+  })
+
+  it('person names with a name-ish header → categorical + name', () => {
+    const first = ['James', 'Maria', 'Robert', 'Linda', 'Michael', 'Sarah', 'David', 'Karen']
+    const last = ['Smith', 'Garcia', 'Johnson', 'Miller', 'Davis', 'Lopez', 'Wilson', 'Moore']
+    const s = computeFieldStats('customer_name', gen(160, i => first[i % 8] + ' ' + last[Math.floor(i / 8) % 8] + ' ' + last[i % 7]))
+    expect(s.type).toBe('categorical')
+    expect(s.semantic).toBe('name')
+  })
+
+  it('street addresses → categorical + address', () => {
+    const s = computeFieldStats('address', gen(150, i => String(100 + i) + ' North Main Street Suite ' + (i % 40)))
+    expect(s.type).toBe('categorical')
+    expect(s.semantic).toBe('address')
+  })
+
+  it('repeated city names stay plain categorical (no name tag, low uniqueness)', () => {
+    const cities = ['New York', 'San Francisco', 'Orlando', 'Austin', 'Chicago', 'Boston']
+    // 40+ per city keeps uniqueness low but count above the ≤30-unique branch?
+    // 6 uniques → caught by the ≤15-unique categorical shortcut, which is the point.
+    const s = computeFieldStats('city', gen(240, i => cities[i % 6]))
+    expect(s.type).toBe('categorical')
+    expect(s.semantic).toBeUndefined()
+  })
+
+  it('a real comments column stays open-ended even when most answers are terse', () => {
+    // 80% say "Nothing" / one-worders; 20% write sentences — still a comments field
+    const s = computeFieldStats('liked_least', gen(200, i =>
+      i % 5 === 0 ? 'The wait for our table was far too long and the bar was noisy' :
+      i % 5 === 1 ? 'Nothing' : i % 5 === 2 ? 'N/A' : i % 5 === 3 ? 'Nothing really' : 'All good ' + i))
+    expect(s.type).toBe('open-ended')
+  })
+
+  it('Spanish prose registers as open-ended via the multilingual stopword net', () => {
+    const s = computeFieldStats('comentario', gen(120, i =>
+      'La comida fue muy buena y el servicio excelente en la visita ' + i))
+    expect(s.type).toBe('open-ended')
+  })
+
+  it('long prose in an unrecognized language still counts as freeform (8+ tokens)', () => {
+    const s = computeFieldStats('comment', gen(120, i =>
+      'Ruoka oli todella hyvaa mutta palvelu kesti aivan liian kauan taalla ' + i))
+    expect(s.type).toBe('open-ended')
+  })
+
+  it('a comments column where some people paste an email stays open-ended', () => {
+    const s = computeFieldStats('feedback', gen(100, i =>
+      i % 10 === 0 ? 'reachme' + i + '@example.com' : 'The service was slow and my order arrived cold today ' + i))
+    expect(s.type).toBe('open-ended')
+    expect(s.semantic).toBeUndefined()
+  })
+})
+
 describe('datasetUtils — schema detection & merging', () => {
   it('autoDetectSchema maps every column and flags the first open-ended as primary', () => {
     const schema = autoDetectSchema([

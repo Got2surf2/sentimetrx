@@ -1405,6 +1405,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // First-open multi-field setup: which questions the user checked for the
+  // mine-them-all pass (null = default all), and the live progress line.
+  const [setupChecked, setSetupChecked] = useState<string[] | null>(null)
+  const [multiMineStatus, setMultiMineStatus] = useState<string | null>(null)
   const [samplePct, setSamplePct] = useState(0)
   const [lastRunPct, setLastRunPct] = useState<number | null>(null)
   const [showMineChoice, setShowMineChoice] = useState(false)
@@ -1957,6 +1961,94 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     setLoading(false)
   }
 
+  // First-open setup: mine each selected question SEQUENTIALLY into its own
+  // per-field set, persisting after every field (the state route merges, so
+  // a failure partway keeps everything already mined). Lands on the first
+  // mined question. Corpus comes straight from `rows` — setup runs before
+  // any filtering matters — with the same 95%-CI sampling as a single mine.
+  async function mineFieldsSequentially(fieldsToMine: string[]) {
+    var liveAi = false; try { liveAi = localStorage.getItem('sentimetrx_ai_enabled') === '1' } catch {}
+    if (!liveAi) { setAiEnabled(false); setError('AI is turned off. Enable AI in the header to mine themes.'); return }
+    var liveKey = ''; try { liveKey = localStorage.getItem('sentimetrx_tm_apikey') || '' } catch {}
+    if (liveKey) setApiKey(liveKey)
+    if (!fieldsToMine.length || !rows.length) return
+    setLoading(true)
+    setError(null)
+    var schemaCtx = schema.fields.map(function(f) {
+      return f.field + ':' + f.type + (f.type === 'categorical' && f.values ? ' (' + f.values.slice(0, 6).join(',') + ')' : '')
+    }).join('; ')
+    var newModels: Record<string, ThemeModel> = {}
+    var firstFoodService: boolean | null = null
+    try {
+      for (var i = 0; i < fieldsToMine.length; i++) {
+        var f = fieldsToMine[i]
+        setMultiMineStatus('Mining “' + fieldLabel(f) + '” — ' + (i + 1) + ' of ' + fieldsToMine.length)
+        var texts = rows
+          .map(function(r) { return String(r[f] || '').trim() })
+          .filter(function(t) { return t.length > 0 })
+        if (!texts.length) continue
+        var total = texts.length
+        var sampled = evenSample(texts, Math.max(1, sampleSize95(total)))
+        var res = await fetch('/api/datasets/' + datasetId + '/mine-themes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: liveKey, texts: sampled, fieldName: f, schemaCtx: schemaCtx }),
+        })
+        var data = await res.json()
+        if (!res.ok) {
+          var errMsg = data.error || 'Mining failed'
+          if (errMsg.startsWith('AUTH_ERROR')) throw new Error('AUTH_ERROR')
+          if (errMsg.startsWith('QUOTA_ERROR')) throw new Error('QUOTA_ERROR')
+          throw new Error(errMsg)
+        }
+        if (!data.themes) throw new Error('No themes returned for ' + fieldLabel(f))
+        var tm: ThemeModel = {
+          themes: data.themes,
+          summary: data.summary || '',
+          fieldName: f,
+          fieldNames: [f],
+          themeSource: 'ai',
+          themeLibName: null,
+          samplingInfo: { sampled: sampled.length, total: total },
+        }
+        newModels[themeFieldKey([f])] = tm
+        // Persist as we go — each PATCH merges into the stored per-field map.
+        await fetch('/api/datasets/' + datasetId + '/state', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ theme_model: tm }),
+        })
+        if (firstFoodService === null && typeof data.foodService === 'boolean') firstFoodService = data.foodService
+      }
+      var minedFields = fieldsToMine.filter(function(mf) { return !!newModels[themeFieldKey([mf])] })
+      if (minedFields.length > 0) {
+        setFieldModels(function(prev) { return { ...prev, ...newModels } })
+        var firstField = minedFields[0]
+        var first = newModels[themeFieldKey([firstField])]
+        setActiveFields([firstField])
+        setActiveField(firstField)
+        setThemes(first)
+        setThemeSource('ai')
+        setThemeLibName(null)
+        setSamplingInfo(first.samplingInfo || null)
+        setIsDirty(false)
+        setSaved(true)
+        setTimeout(function() { setSaved(false) }, 3000)
+        setSection('themes'); setView('overview')
+        void fetchServerThemeCounts(first, [firstField])
+        void enrichSearchInterest(first)
+        // Smart Dimensions: same auto-enable as a single mine, driven by the
+        // first field's foodService verdict, classified once.
+        if (firstFoodService === true) void autoEnableDimensions([firstField])
+        else if (firstFoodService === false) void autoTagEmotion([firstField])
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Mining failed')
+    }
+    setMultiMineStatus(null)
+    setLoading(false)
+  }
+
   function applyIndustryThemes(themeArr: Theme[], libName: string, source: string) {
     if (!effectiveFields.length || !filteredRows.length) return
     // Don't recount here — the useEffect will pick up the theme change and recount with loading indicator
@@ -2336,7 +2428,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 {loading && (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: 80, paddingBottom: 80 }}>
                     <LottieLoader size={96} message="Analyzing your responses…" />
-                    <div style={{ fontSize: 12, color: T.textMute, marginTop: 8 }}>Ana is reading and grouping themes...</div>
+                    <div style={{ fontSize: 12, color: T.textMute, marginTop: 8 }}>{multiMineStatus || 'Ana is reading and grouping themes...'}</div>
                   </div>
                 )}
 
@@ -2392,15 +2484,52 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         </p>
                       </>
                     )}
+                    {/* Multi-question setup (2026-07-11): pick which open-ended
+                        questions get their own theme set, then mine them all in
+                        one pass \u2014 each lands as its own per-field set. */}
+                    {rows.length > 0 && openFields.length > 1 && !aiDisabledByOrg && (function() {
+                      var checked = setupChecked ?? openFields.map(function(f) { return f.field })
+                      return (
+                        <div style={{ maxWidth: 420, margin: '0 auto 18px', textAlign: 'left', background: 'white', border: '1px solid ' + T.border, borderRadius: 12, padding: '14px 16px' }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+                            Which questions should get themes?
+                          </div>
+                          {openFields.map(function(f) {
+                            var on = checked.includes(f.field)
+                            return (
+                              <label key={f.field} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', cursor: 'pointer', fontSize: 12.5, color: T.text }}>
+                                <input type="checkbox" checked={on} style={{ accentColor: T.accent, width: 14, height: 14, flexShrink: 0 }}
+                                  onChange={function() {
+                                    var next = on ? checked.filter(function(x) { return x !== f.field }) : checked.concat([f.field])
+                                    setSetupChecked(next)
+                                  }} />
+                                <span style={{ flex: 1, lineHeight: 1.35 }}>{fieldLabel(f.field)}</span>
+                                {typeof f.nonNullCount === 'number' && (
+                                  <span style={{ fontSize: 10.5, color: T.textFaint, flexShrink: 0 }}>{f.nonNullCount.toLocaleString()} answers</span>
+                                )}
+                              </label>
+                            )
+                          })}
+                          <div style={{ fontSize: 10.5, color: T.textMute, marginTop: 8, lineHeight: 1.5 }}>
+                            Each question gets its own theme set. If a column here isn\u2019t really free-form text, un-check it \u2014 and set its type on the Schema tab so it stops appearing.
+                          </div>
+                        </div>
+                      )
+                    })()}
                     {rows.length > 0 && (
                       <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-                        {!aiDisabledByOrg && (
-                          <button onClick={function() { void mineThemes() }} disabled={!canMine || !aiEnabled}
-                            title={!aiEnabled ? (apiKey ? 'Turn on AI in the header bar' : 'Add an API key via the AI button in the header') : ''}
-                            style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: canMine && aiEnabled ? T.accent : T.borderMid, color: canMine && aiEnabled ? 'white' : T.textFaint, border: 'none', borderRadius: 9, cursor: canMine && aiEnabled ? 'pointer' : 'not-allowed' }}>
-                            {'\u29E1'} Mine with AI
-                          </button>
-                        )}
+                        {!aiDisabledByOrg && (function() {
+                          var checked = setupChecked ?? openFields.map(function(f) { return f.field })
+                          var multi = openFields.length > 1
+                          var canRun = canMine && aiEnabled && (!multi || checked.length > 0)
+                          return (
+                            <button onClick={function() { multi ? void mineFieldsSequentially(checked) : void mineThemes() }} disabled={!canRun}
+                              title={!aiEnabled ? (apiKey ? 'Turn on AI in the header bar' : 'Add an API key via the AI button in the header') : (multi && checked.length === 0 ? 'Check at least one question' : '')}
+                              style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: canRun ? T.accent : T.borderMid, color: canRun ? 'white' : T.textFaint, border: 'none', borderRadius: 9, cursor: canRun ? 'pointer' : 'not-allowed' }}>
+                              {'\u29E1'} {multi ? 'Mine themes \u2014 ' + checked.length + ' question' + (checked.length !== 1 ? 's' : '') : 'Mine with AI'}
+                            </button>
+                          )
+                        })()}
                         <button onClick={function() { setShowThemeEditor(true) }}
                           style={{ padding: '10px 22px', fontSize: 13, fontWeight: 700, background: T.bg, border: '2px solid ' + T.borderMid, color: T.textMid, borderRadius: 9, cursor: 'pointer' }}>
                           {'\u2261'} {anaLibrary ? 'Apply ' + (INDUSTRY_LABELS[anaLibrary as Industry] || anaLibrary) + ' themes' : 'Choose theme library'}
