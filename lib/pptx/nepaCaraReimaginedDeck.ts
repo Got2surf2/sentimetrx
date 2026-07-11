@@ -85,6 +85,20 @@ const A = {
   ] as { q: string; a: string }[],
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PII TRIAGE — filled from scripts/oneoff/_nepa_pii_scan.ts over the 755 released
+// comments (deterministic regex + LLM contextual). Numbers redaction-safe (no PII).
+// ─────────────────────────────────────────────────────────────────────────────
+const PII = {
+  scanned: 755,
+  held: F.held,         // FS comments held pending manual PII review (the backlog)
+  structured: 7,        // released comments with an exact email/phone/address (regex)
+  contextual: 83,       // released comments the AI flagged for a name/location/detail
+  flagged: 87,          // union — the reviewer's worklist
+  pctCleared: 88,       // auto-cleared, no reviewer needed
+  pctFlagged: 12,
+}
+
 // Palette — land-management pine + Datanautix brand accents.
 const C = {
   pine: '1B4332', pineMid: '2D6A4F', moss: '52B788', mossDeep: '40916C',
@@ -397,6 +411,27 @@ export function buildNepaCaraReimaginedDeck(pptx: PptxGenJS) {
     { text: 'The labor that used to go into re-reading and re-answering the same questions becomes review-and-approve. That is where the hours come back.', options: { color: C.slateLight } },
   ], { x: 0.95, y: 5.55, w: 11.5, h: 0.85, fontSize: 13.5, fontFace: 'Arial', valign: 'top', lineSpacing: 20 })
   s10.addNotes(`FILL A.pctHigh. No fabricated hours/$ — the honest levers are: distinct questions are finite (real counts), the most-asked repeats ${CAMPAIGN_COPIES}x (real), and the assistant pre-answers the majority (measured). Frame savings as a shift to review-and-approve, not a headcount claim.`)
+
+  // ═══ SLIDE 10b — PII TRIAGE ═══
+  const sP = pptx.addSlide(); pg++
+  addHeader(sP, 'Clear the PII backlog — flag, don’t publish', 'The step holding comments back, turned into a same-day reviewer queue')
+  addFooter(sP, pg)
+  sP.addText([
+    { text: `Remember the ~${PII.held} comments held “pending PII review.” `, options: { color: C.pine, bold: true } },
+    { text: 'That manual review is the bottleneck between “a comment arrived” and “it’s in the public record.” A detection pass makes it a triage queue instead of a serial read.', options: { color: C.ink } },
+  ], { x: 0.6, y: 1.25, w: 12.1, h: 0.7, fontSize: 15.5, fontFace: 'Arial', valign: 'middle', lineSpacing: 21 })
+  cardRow(sP, 2.15, 2.5, [
+    { t: 'Two-pass detection', d: 'A deterministic pass catches structured PII exactly — emails, phone numbers, street addresses. An AI pass catches the contextual kind — a third party named, a home location, a sensitive detail.', c: C.dnTeal },
+    { t: 'Flag, never auto-publish', d: 'Every candidate goes to a human. Nothing is redacted-and-released without a reviewer’s sign-off — the agency stays the records custodian. It ranks the queue; it doesn’t make the call.', c: C.mossDeep },
+    { t: 'Weeks → same day', d: `Point it at the ${PII.held} held comments and they clear as a ranked reviewer queue — look at exactly what’s flagged, confirm the rest is clean, release. Not a comment-by-comment manual pass.`, c: C.moss },
+  ])
+  sP.addShape('rect', { x: 0.6, y: 4.95, w: 12.13, h: 1.5, fill: { color: C.pine }, rectRadius: 0.1 })
+  sP.addText(`Run on all ${PII.scanned} released comments: ${PII.pctCleared}% auto-cleared, ${PII.pctFlagged}% to a reviewer`, { x: 0.95, y: 5.13, w: 11.4, h: 0.4, fontSize: 14, fontFace: 'Arial', color: C.moss, bold: true })
+  sP.addText([
+    { text: `The reviewer never reads all ${PII.scanned} — only the ${PII.flagged} the detector flags (${PII.structured} with an exact email/phone/address, plus others where the text names a third party, a location, or a sensitive detail). `, options: { color: C.white, bold: true } },
+    { text: 'It flags conservatively — even a spouse’s name or a signature — because a missed address published is far worse than a five-second glance that clears. The 88% it clears, it clears with confidence.', options: { color: C.slateLight } },
+  ], { x: 0.95, y: 5.55, w: 11.5, h: 0.85, fontSize: 12.5, fontFace: 'Arial', valign: 'top', lineSpacing: 18 })
+  sP.addNotes(`FILL PII.* from _nepa_pii_scan.ts. Honest framing: the released set is nearly clean (validates both the FS process AND the detector's precision); the value is speed on the ~195 held backlog + a safety net, and "flag for a human, never auto-publish" (the agency keeps custody). No raw PII anywhere — counts and redacted examples only. Ties back to the funnel's "held pending PII" stage.`)
 
   // ═══ SLIDE 11 — HUMAN-IN-THE-LOOP + DEFENSIBILITY ═══
   const s11 = pptx.addSlide(); pg++
