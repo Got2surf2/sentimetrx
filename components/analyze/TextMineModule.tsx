@@ -2486,7 +2486,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     )}
                     {/* Multi-question setup (2026-07-11): pick which open-ended
                         questions get their own theme set, then mine them all in
-                        one pass \u2014 each lands as its own per-field set. */}
+                        one pass — each lands as its own per-field set. */}
                     {rows.length > 0 && openFields.length > 1 && !aiDisabledByOrg && (function() {
                       var checked = setupChecked ?? openFields.map(function(f) { return f.field })
                       return (
@@ -2511,7 +2511,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                             )
                           })}
                           <div style={{ fontSize: 10.5, color: T.textMute, marginTop: 8, lineHeight: 1.5 }}>
-                            Each question gets its own theme set. If a column here isn\u2019t really free-form text, un-check it \u2014 and set its type on the Schema tab so it stops appearing.
+                            Each question gets its own theme set. If a column here isn’t really free-form text, un-check it — and set its type on the Schema tab so it stops appearing.
                           </div>
                         </div>
                       )
