@@ -725,6 +725,11 @@ export async function POST(req: Request, props: Params) {
   const activeSetKey = themeModelKey(stateRow.theme_model as ThemeModel | null)
   const extraThemeSets: ThemeFieldSet[] = themeSetsForExport(stateRow.theme_model as ThemeModel | null)
     .filter(s => s.key !== activeSetKey)
+    // Single-question sets only: multi-field entries are artifacts of the
+    // retired combine-on-multi-select toggle ("muddy" per the owner) and
+    // don't earn a deck section. An ACTIVE combined model still exports via
+    // the canonical path above.
+    .filter(s => s.fields.length === 1)
     .filter(s => s.fields.some(fk => selectedFields.some(sf => sf.type === 'open-ended' && sf.field === fk)))
     .map(s => {
       const sel = selectedThemesByField[s.key]

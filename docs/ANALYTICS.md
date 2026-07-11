@@ -95,12 +95,16 @@ field's entry is preserved. Legacy blobs (no map) wrap lazily as one entry under
 (`themeFieldEntries()`); no backfill migration. This means even a legacy-shaped write (Ana's
 theme edits, a stale tab) can never clobber another field's set — verified live on the
 Carrabba's most/least TEST replica.
-In **TextMine**, the Text toggle (multi-select checkboxes in `TextMineNav` `viewsExtra`) now
-**switches between per-field sets**: a swap effect stashes the on-screen model under its key and
-loads the new selection's set (or clears to the mine prompt for a never-mined field); mined /
-library-applied models update the map; Save persists the active model plus every set mined this
-session. Checking several fields still concatenates per row (`prepareCorpus()`) but the combined
-set is **its own keyed entry** (e.g. `a + b`) — it no longer overwrites the single-field sets.
+In **TextMine**, the Text toggle (`TextMineNav` `viewsExtra`) is a **single-select switch**
+(2026-07-11, same day): clicking a question selects it ALONE and swaps to its own set (stash-
+then-swap; a never-mined question shows the mine prompt and its pill is dimmed with a `+`).
+The old checkbox toggle silently created a combined `a + b` corpus — the owner clicked "Liked
+Least" on an already-mined dataset and unknowingly mined both verbatims concatenated ("very
+nominal match"). Combining is retired from the UI; stored multi-field entries are treated as
+artifacts (excluded from deck sections and the export picker — an ACTIVE combined model still
+exports via the canonical path). **AI mining now auto-saves** the freshly mined set
+(`persistThemeModel`, same as library-apply always did) — a mined set costs a real AI call and
+must not depend on remembering the Save press.
 Models with **no field binding** (pre-mining empties; keyless legacy blobs) keep the old
 show-as-is behavior. Default remains the saved selection, else the first open-ended column.
 **Exports surface every set (2026-07-11).** The PPTX deck (`export/pptx`) renders **one Theme

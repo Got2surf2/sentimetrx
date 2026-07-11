@@ -236,7 +236,9 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
         const activeSet = allSets.find(function(s) { return s.key === activeSetKey })
         setActiveThemeLabel(activeSet ? fieldLabelOf(activeSet.fields) : '')
         const extras = allSets
-          .filter(function(s) { return s.key !== activeSetKey && s.model.themes.length > 0 })
+          // Single-question sets only — multi-field entries are artifacts of
+          // the retired combine-on-multi-select toggle, never offered here.
+          .filter(function(s) { return s.key !== activeSetKey && s.fields.length === 1 && s.model.themes.length > 0 })
           .map(function(s) { return { key: s.key, label: fieldLabelOf(s.fields), fields: s.fields, themes: s.model.themes as ExportTheme[] } })
         setExtraThemeSets(extras)
         const extraSelInit: Record<string, Set<string>> = {}

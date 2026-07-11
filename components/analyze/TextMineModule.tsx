@@ -1902,7 +1902,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         setSamplingInfo({ sampled: filteredRows.length, total: filteredRows.length })
         setLastRunPct(samplePct)
         setSection('themes'); setView('overview')
-        setIsDirty(true)
+        void persistThemeModel(tm)
         void fetchServerThemeCounts(tm, effectiveFields)
         void enrichSearchInterest(tm)
       } else {
@@ -1938,7 +1938,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         setSamplingInfo({ sampled: texts.length, total: total })
         setLastRunPct(samplePct)
         setSection('themes'); setView('overview')
-        setIsDirty(true)
+        void persistThemeModel(tm2)
         void fetchServerThemeCounts(tm2, effectiveFields)
         void enrichSearchInterest(tm2)
         // Smart Dimensions: the AI flagged this as restaurant/food-service data →
@@ -1988,16 +1988,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     setShowThemeEditor(false)
     setSection('themes'); setView('overview')
     // Auto-save immediately so the user doesn't need a separate Save press
-    setSaving(true)
-    fetch('/api/datasets/' + datasetId + '/state', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ theme_model: themeSaveBlob(tm) }),
-    }).then(function() {
-      setSaved(true)
-      setIsDirty(false)
-      setTimeout(function() { setSaved(false) }, 3000)
-    }).catch(function() {}).finally(function() { setSaving(false) })
+    void persistThemeModel(tm)
   }
 
   // Save payload: the active model at the top level plus every per-field set
@@ -2010,20 +2001,27 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     return Object.keys(entries).length > 0 ? { ...stripFieldEntries(tm), fields: entries } : stripFieldEntries(tm)
   }
 
-  async function saveThemeModel() {
-    if (!themes) return
+  // Persist a model now. AI mining costs a real API call — a freshly mined
+  // set must never depend on the user remembering to press Save (2026-07-11:
+  // a mined Liked-Least set evaporated exactly that way).
+  async function persistThemeModel(tm: ThemeModel) {
     setSaving(true)
     try {
       await fetch('/api/datasets/' + datasetId + '/state', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ theme_model: themeSaveBlob(themes) }),
+        body: JSON.stringify({ theme_model: themeSaveBlob(tm) }),
       })
       setSaved(true)
       setIsDirty(false)
       setTimeout(function() { setSaved(false) }, 3000)
-    } catch { /* ignore */ }
+    } catch { setIsDirty(true) }
     setSaving(false)
+  }
+
+  async function saveThemeModel() {
+    if (!themes) return
+    await persistThemeModel(themes)
   }
 
   // Navigate the two-row bar: section/view ARE the state now (renderers read the
@@ -2244,23 +2242,28 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 <span style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', display: 'inline-flex', alignItems: 'center' }}>
                   Text
                   <HelpHint title="Multiple text fields" placement="bottom">
-                    Your dataset has more than one open-ended column (e.g. a comment + an owner response). Each column keeps its own theme set — switch between them here. Checking several combines them into a separate combined set.
+                    Your dataset has more than one open-ended column (e.g. Liked Most + Liked Least). Each column keeps its own theme set — click a question to switch to its themes. A question without themes yet shows the mining prompt.
                   </HelpHint>
                 </span>
                 {openFields.map(function(f) {
                   var sel = activeFields.includes(f.field)
+                  var hasSet = !!fieldModels[themeFieldKey([f.field])]
                   return (
+                    // Exclusive switch (2026-07-11): a click SELECTS this question
+                    // alone. The old checkbox toggle silently created a combined
+                    // "a + b" corpus — the owner mined "Liked Least", got both
+                    // verbatims concatenated, and the per-field set never landed.
                     <button key={f.field} onClick={function() {
-                      var next = sel ? activeFields.filter(function(x) { return x !== f.field }) : activeFields.concat([f.field])
-                      var fin = next.length ? next : [f.field]
-                      setActiveFields(fin)
-                      setActiveField(fin[0])
+                      setActiveFields([f.field])
+                      setActiveField(f.field)
                     }}
-                      style={{ padding: '2px 9px', fontSize: 11, fontWeight: sel ? 700 : 500, background: sel ? T.accentBg : T.bgCard, border: '1px solid ' + (sel ? T.accent : T.border), color: sel ? T.accent : T.textMid, borderRadius: 16, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                      <span style={{ width: 11, height: 11, borderRadius: 3, border: '1.5px solid ' + (sel ? T.accent : T.borderMid), background: sel ? T.accent : 'transparent', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: 'white', flexShrink: 0 }}>
+                      title={hasSet || sel ? undefined : 'No themes yet — switch to mine this question'}
+                      style={{ padding: '2px 9px', fontSize: 11, fontWeight: sel ? 700 : 500, background: sel ? T.accentBg : T.bgCard, border: '1px solid ' + (sel ? T.accent : T.border), color: sel ? T.accent : (hasSet ? T.textMid : T.textFaint), borderRadius: 16, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ width: 11, height: 11, borderRadius: '50%', border: '1.5px solid ' + (sel ? T.accent : T.borderMid), background: sel ? T.accent : 'transparent', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: 'white', flexShrink: 0 }}>
                         {sel ? '✓' : ''}
                       </span>
                       {fieldLabel(f.field)}
+                      {!hasSet && !sel && <span style={{ fontSize: 9, color: T.textFaint }}>+</span>}
                     </button>
                   )
                 })}

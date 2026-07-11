@@ -26,6 +26,12 @@ const THEME_MODEL = {
   fields: {
     liked_most:  { themes: MOST_THEMES,  summary: '', fieldName: 'liked_most',  fieldNames: ['liked_most'] },
     liked_least: { themes: LEAST_THEMES, summary: '', fieldName: 'liked_least', fieldNames: ['liked_least'] },
+    // Artifact of the retired combine-on-multi-select toggle — multi-field
+    // entries must NOT get their own deck section or picker group.
+    'liked_least + liked_most': {
+      themes: [{ id: 't1', name: 'Muddy Combined', description: '', keywords: ['pasta', 'wait'], sentiment: 'mixed', count: 0, percentage: 0, relatedThemes: [] }],
+      summary: '', fieldName: 'liked_most', fieldNames: ['liked_most', 'liked_least'],
+    },
   },
 }
 const ROWS = [
@@ -135,6 +141,9 @@ describe('per-field theme sets — PPTX deck', () => {
     for (const c of leastCards) expect(c.count).toBeGreaterThan(0)
     const mostCards = cardSlides.flatMap(s => s.cards || []).filter(c => c.name === 'Fresh Pasta' || c.name === 'Great Service')
     expect(mostCards.length).toBe(2)
+    // The combined-set artifact gets neither a section nor cards
+    expect(sections.some(s => (s.title || '').includes(' + '))).toBe(false)
+    expect(cardSlides.flatMap(s => s.cards || []).some(c => c.name === 'Muddy Combined')).toBe(false)
   })
 
   it('selectedThemesByField filters a non-active set (colliding ids stay per-set)', async () => {
