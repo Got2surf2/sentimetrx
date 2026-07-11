@@ -18,16 +18,21 @@ interface RowsState {
   totalRows: number
   sampled: boolean
   sampledCount: number
-  // Bytes received so far while the bulk payload streams in (0 until the
-  // response starts). A ≥50K-row sample is tens of MB, which used to sit
-  // behind a blind spinner long enough to look hung — surfaces real progress.
+  // Live progress while the bulk payload streams in (0 until the response
+  // starts). A ≥50K-row sample is tens of MB, which used to sit behind a
+  // blind spinner long enough to look hung. rowsProgressRows counts rows as
+  // they arrive (each carries a "_rowId" marker); rowsExpected is the known
+  // denominator (min(dataset row_count, 50K sample cap)) for a % display.
   rowsProgressBytes: number
+  rowsProgressRows: number
+  rowsExpected: number
   fetchRows: () => void
 }
 
 var RowsContext = createContext<RowsState>({
   rows: [], rowsLoaded: false, rowsLoading: false, rowsError: null,
-  totalRows: 0, sampled: false, sampledCount: 0, rowsProgressBytes: 0, fetchRows: function() {},
+  totalRows: 0, sampled: false, sampledCount: 0,
+  rowsProgressBytes: 0, rowsProgressRows: 0, rowsExpected: 0, fetchRows: function() {},
 })
 
 export function useRows(): RowsState {
@@ -38,10 +43,13 @@ interface ProviderProps {
   datasetId: string
   schemaFields: SchemaField[]
   datasetSource: string
+  // Dataset row_count when the caller knows it — enables "N of M rows · %"
+  // progress instead of raw MB while the bulk payload streams in.
+  expectedRows?: number
   children: React.ReactNode
 }
 
-export function RowsProvider({ datasetId, schemaFields, datasetSource, children }: ProviderProps) {
+export function RowsProvider({ datasetId, schemaFields, datasetSource, expectedRows, children }: ProviderProps) {
   var [rows, setRows] = useState<Record<string, unknown>[]>([])
   var [rowsLoaded, setRowsLoaded] = useState(false)
   var [rowsLoading, setRowsLoading] = useState(false)
@@ -50,6 +58,8 @@ export function RowsProvider({ datasetId, schemaFields, datasetSource, children 
   var [sampled, setSampled] = useState(false)
   var [sampledCount, setSampledCount] = useState(0)
   var [rowsProgressBytes, setRowsProgressBytes] = useState(0)
+  var [rowsProgressRows, setRowsProgressRows] = useState(0)
+  var rowsExpected = expectedRows && expectedRows > 0 ? Math.min(expectedRows, SAMPLE_CAP) : 0
 
   var fetchRows = useCallback(function() {
     if (rowsLoaded || rowsLoading) return
@@ -69,18 +79,32 @@ export function RowsProvider({ datasetId, schemaFields, datasetSource, children 
         var parts: string[] = []
         var received = 0
         var lastReported = 0
+        // Rows counted as they stream: every row object carries one "_rowId"
+        // key (withRowIds=true above). The 7-char tail carry handles a marker
+        // split across chunk boundaries (the 8-char token can never sit fully
+        // inside the 7-char tail, so no double counting).
+        var MARKER = '"_rowId"'
+        var rowsSeen = 0
+        var tail = ''
         for (;;) {
           var chunk = await reader.read()
           if (chunk.done) break
           received += chunk.value.byteLength
-          parts.push(decoder.decode(chunk.value, { stream: true }))
+          var text = decoder.decode(chunk.value, { stream: true })
+          parts.push(text)
+          var scan = tail + text
+          var idx = scan.indexOf(MARKER)
+          while (idx !== -1) { rowsSeen++; idx = scan.indexOf(MARKER, idx + MARKER.length) }
+          tail = scan.slice(-(MARKER.length - 1))
           if (received - lastReported > 2 * 1024 * 1024) {
             lastReported = received
             setRowsProgressBytes(received)
+            setRowsProgressRows(rowsSeen)
           }
         }
         parts.push(decoder.decode())
         setRowsProgressBytes(received)
+        setRowsProgressRows(rowsSeen)
         return JSON.parse(parts.join(''))
       })
       .then(function(data) {
@@ -120,7 +144,7 @@ export function RowsProvider({ datasetId, schemaFields, datasetSource, children 
   }, [datasetId, rowsLoaded, rowsLoading, schemaFields, datasetSource])
 
   return (
-    <RowsContext.Provider value={{ rows: rows, rowsLoaded: rowsLoaded, rowsLoading: rowsLoading, rowsError: rowsError, totalRows: totalRows, sampled: sampled, sampledCount: sampledCount, rowsProgressBytes: rowsProgressBytes, fetchRows: fetchRows }}>
+    <RowsContext.Provider value={{ rows: rows, rowsLoaded: rowsLoaded, rowsLoading: rowsLoading, rowsError: rowsError, totalRows: totalRows, sampled: sampled, sampledCount: sampledCount, rowsProgressBytes: rowsProgressBytes, rowsProgressRows: rowsProgressRows, rowsExpected: rowsExpected, fetchRows: fetchRows }}>
       {children}
     </RowsContext.Provider>
   )

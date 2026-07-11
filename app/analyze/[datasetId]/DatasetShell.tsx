@@ -298,7 +298,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
 export default function DatasetShell(props: Props) {
   return (
     <FilterProvider>
-      <RowsProvider datasetId={props.datasetId} schemaFields={props.schemaFields} datasetSource={props.dataset.source}>
+      <RowsProvider datasetId={props.datasetId} schemaFields={props.schemaFields} datasetSource={props.dataset.source} expectedRows={props.dataset.row_count}>
         <ShellInner {...props} />
       </RowsProvider>
     </FilterProvider>

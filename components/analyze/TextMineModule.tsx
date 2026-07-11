@@ -1067,10 +1067,17 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
 
 export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, taxonomyEnabled, taxonomySuppressed, anaLibrary, initialOpenEditor, outletCount, initialHasEntities }: Props) {
   const totalRows = analytics?.totalRows ?? 0
-  const { rows, rowsLoaded, rowsLoading, rowsError, fetchRows: triggerRowFetch, sampled: rowsSampled, sampledCount, totalRows: rowsTotalRows, rowsProgressBytes } = useRows()
+  const { rows, rowsLoaded, rowsLoading, rowsError, fetchRows: triggerRowFetch, sampled: rowsSampled, sampledCount, totalRows: rowsTotalRows, rowsProgressBytes, rowsProgressRows, rowsExpected } = useRows()
   // Live progress caption for the bulk row load — a ≥50K-row sample is tens of
-  // MB, long enough to look hung behind a bare spinner.
-  const rowsProgressLabel = rowsProgressBytes > 0 ? Math.round(rowsProgressBytes / (1024 * 1024)) + ' MB received' : ''
+  // MB, long enough to look hung behind a bare spinner. Prefers "N of M rows
+  // · %" (rows counted off the stream, denominator = min(row_count, cap));
+  // falls back to MB before the first row lands.
+  const rowsProgressLabel = rowsProgressRows > 0
+    ? rowsProgressRows.toLocaleString()
+      + (rowsExpected > 0
+        ? ' of ' + rowsExpected.toLocaleString() + ' rows · ' + Math.min(99, Math.round(rowsProgressRows / rowsExpected * 100)) + '%'
+        : ' rows')
+    : (rowsProgressBytes > 0 ? Math.round(rowsProgressBytes / (1024 * 1024)) + ' MB received' : '')
 
   // Fields the user has hidden in the Schema editor. Honored across analysis
   // surfaces — Insights here, the Filter UI server-side, and Charts/Stats
