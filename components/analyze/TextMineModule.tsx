@@ -1067,7 +1067,10 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
 
 export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, taxonomyEnabled, taxonomySuppressed, anaLibrary, initialOpenEditor, outletCount, initialHasEntities }: Props) {
   const totalRows = analytics?.totalRows ?? 0
-  const { rows, rowsLoaded, rowsLoading, rowsError, fetchRows: triggerRowFetch, sampled: rowsSampled, sampledCount, totalRows: rowsTotalRows } = useRows()
+  const { rows, rowsLoaded, rowsLoading, rowsError, fetchRows: triggerRowFetch, sampled: rowsSampled, sampledCount, totalRows: rowsTotalRows, rowsProgressBytes } = useRows()
+  // Live progress caption for the bulk row load — a ≥50K-row sample is tens of
+  // MB, long enough to look hung behind a bare spinner.
+  const rowsProgressLabel = rowsProgressBytes > 0 ? Math.round(rowsProgressBytes / (1024 * 1024)) + ' MB received' : ''
 
   // Fields the user has hidden in the Schema editor. Honored across analysis
   // surfaces — Insights here, the Filter UI server-side, and Charts/Stats
@@ -2257,7 +2260,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
               </>
             ) : undefined}
           >
-              {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Loading…</span>}
+              {rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Loading…{rowsProgressLabel ? ' ' + rowsProgressLabel : ''}</span>}
               {computing && !rowsLoading && <span style={{ fontSize: 11, color: T.textMute, display: 'flex', alignItems: 'center', gap: 4 }}><LottieLoader size={14} /> Computing themes…</span>}
               {themeSource && (
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: themeSource === 'ai' ? T.accentBg : T.amberBg, color: themeSource === 'ai' ? T.accent : T.amber, border: '1px solid ' + (themeSource === 'ai' ? T.accentMid : T.amberMid) }}>
@@ -2342,7 +2345,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 {/* Rows still loading */}
                 {!rowsLoaded && rowsLoading && !rowsError && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, paddingTop: 60, paddingBottom: 60 }}>
-                    <LottieLoader size={120} message="Loading dataset rows..." />
+                    <LottieLoader size={120} message={rowsProgressLabel ? 'Loading dataset rows... ' + rowsProgressLabel : 'Loading dataset rows...'} />
                   </div>
                 )}
 

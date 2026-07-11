@@ -18,12 +18,16 @@ interface RowsState {
   totalRows: number
   sampled: boolean
   sampledCount: number
+  // Bytes received so far while the bulk payload streams in (0 until the
+  // response starts). A ≥50K-row sample is tens of MB, which used to sit
+  // behind a blind spinner long enough to look hung — surfaces real progress.
+  rowsProgressBytes: number
   fetchRows: () => void
 }
 
 var RowsContext = createContext<RowsState>({
   rows: [], rowsLoaded: false, rowsLoading: false, rowsError: null,
-  totalRows: 0, sampled: false, sampledCount: 0, fetchRows: function() {},
+  totalRows: 0, sampled: false, sampledCount: 0, rowsProgressBytes: 0, fetchRows: function() {},
 })
 
 export function useRows(): RowsState {
@@ -45,6 +49,7 @@ export function RowsProvider({ datasetId, schemaFields, datasetSource, children 
   var [totalRows, setTotalRows] = useState(0)
   var [sampled, setSampled] = useState(false)
   var [sampledCount, setSampledCount] = useState(0)
+  var [rowsProgressBytes, setRowsProgressBytes] = useState(0)
 
   var fetchRows = useCallback(function() {
     if (rowsLoaded || rowsLoading) return
@@ -53,9 +58,30 @@ export function RowsProvider({ datasetId, schemaFields, datasetSource, children 
     // withRowIds=true attaches `_rowId` (the flat row id) to each row so Charts can
     // pass the filtered row-id set to server-side dimension aggregates (view-level).
     fetch('/api/datasets/' + datasetId + '/rows?all=true&withRowIds=true&sampleMax=' + SAMPLE_CAP)
-      .then(function(r) {
+      .then(async function(r) {
         if (!r.ok) throw new Error('Failed to load rows')
-        return r.json()
+        // Stream the body so the UI can show real progress while the bulk
+        // payload arrives; fall back to plain json() when streaming isn't
+        // available. Updates throttle to every 2MB to avoid render churn.
+        if (!r.body || typeof TextDecoder === 'undefined') return r.json()
+        var reader = r.body.getReader()
+        var decoder = new TextDecoder()
+        var parts: string[] = []
+        var received = 0
+        var lastReported = 0
+        for (;;) {
+          var chunk = await reader.read()
+          if (chunk.done) break
+          received += chunk.value.byteLength
+          parts.push(decoder.decode(chunk.value, { stream: true }))
+          if (received - lastReported > 2 * 1024 * 1024) {
+            lastReported = received
+            setRowsProgressBytes(received)
+          }
+        }
+        parts.push(decoder.decode())
+        setRowsProgressBytes(received)
+        return JSON.parse(parts.join(''))
       })
       .then(function(data) {
         var loadedRows: Record<string, unknown>[] = data.rows || []
@@ -94,7 +120,7 @@ export function RowsProvider({ datasetId, schemaFields, datasetSource, children 
   }, [datasetId, rowsLoaded, rowsLoading, schemaFields, datasetSource])
 
   return (
-    <RowsContext.Provider value={{ rows: rows, rowsLoaded: rowsLoaded, rowsLoading: rowsLoading, rowsError: rowsError, totalRows: totalRows, sampled: sampled, sampledCount: sampledCount, fetchRows: fetchRows }}>
+    <RowsContext.Provider value={{ rows: rows, rowsLoaded: rowsLoaded, rowsLoading: rowsLoading, rowsError: rowsError, totalRows: totalRows, sampled: sampled, sampledCount: sampledCount, rowsProgressBytes: rowsProgressBytes, fetchRows: fetchRows }}>
       {children}
     </RowsContext.Provider>
   )
