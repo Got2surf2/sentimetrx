@@ -13,8 +13,16 @@ import 'server-only'
 //      Nominatim (OpenStreetMap). Both free, no API key.
 //   2. NIFC/WFIGS current-incident points within RADIUS_MILES (public
 //      ArcGIS feed, no key), sorted by distance.
-//   3. NWS active alerts for the point (api.weather.gov), filtered to
+//   3. NIFC/WFIGS current fire PERIMETERS near the point — joined to the
+//      incidents by IRWIN id, giving distance-to-fire-EDGE (and an
+//      inside-the-perimeter check), which is what actually matters when
+//      a fire is large: the origin point can be 20 mi away while the
+//      fire edge is 2 mi away.
+//   4. NWS active alerts for the point (api.weather.gov), filtered to
 //      fire-relevant events (Red Flag, Fire Weather, Evacuation, Smoke…).
+//   5. Current air quality from AirNow (airnowgovapi.com — the keyless
+//      API behind airnow.gov): official EPA monitor observations with
+//      AQI category and reporting agency.
 // All fetches fail-soft; empty string when no live intent matches.
 //
 // Gated by chatCore on bot.config.liveContext === 'wildfire' — a config
@@ -27,6 +35,9 @@ const UA = 'sentimetrx-wildfire-agent/1.0 (https://www.sentimetrx.ai)'
 
 const WFIGS_URL =
   'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0/query'
+const WFIGS_PERIMETERS_URL =
+  'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0/query'
+const AIRNOW_URL = 'https://airnowgovapi.com/reportingarea/get'
 
 interface GeoPoint {
   lat: number
@@ -38,6 +49,7 @@ interface GeoPoint {
 }
 
 interface WfigsAttributes {
+  IrwinID: string | null
   IncidentName: string | null
   IncidentSize: number | null
   PercentContained: number | null
@@ -63,6 +75,26 @@ interface NwsAlert {
   severity: string
   headline: string
   ends: string | null
+}
+
+interface FirePerimeter {
+  name: string
+  irwinId: string | null
+  acres: number | null
+  /** Statute miles from the user's point to the nearest mapped fire edge; 0 when inside. */
+  edgeMiles: number
+  /** The user's point falls inside the mapped perimeter. */
+  inside: boolean
+}
+
+interface AirQuality {
+  aqi: number
+  category: string
+  parameter: string
+  reportingArea: string
+  agency: string
+  /** 'O' = monitor observation, 'F' = today's forecast (used when no observation). */
+  dataType: 'O' | 'F'
 }
 
 // ── Intent + location detection ─────────────────────────────────────
@@ -127,6 +159,54 @@ export function compassDirection(fromLat: number, fromLng: number, toLat: number
   return dirs[Math.round(bearing / 45) % 8]
 }
 
+// Perimeter rings come back as [lng, lat] vertex arrays. For edge distance
+// we work in a local equirectangular projection (x scaled by cos(lat)) —
+// plenty accurate at these radii — and do standard point-to-segment math.
+type Ring = number[][]
+
+/** Ray-cast point-in-polygon over one or more rings. Exported for tests. */
+export function pointInRings(lat: number, lng: number, rings: Ring[]): boolean {
+  let inside = false
+  for (const ring of rings) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i]
+      const [xj, yj] = ring[j]
+      if (yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+        inside = !inside
+      }
+    }
+  }
+  return inside
+}
+
+/** Miles from a point to the nearest edge of the rings; 0 when inside. Exported for tests. */
+export function distanceToRingsMiles(lat: number, lng: number, rings: Ring[]): number {
+  if (pointInRings(lat, lng, rings)) return 0
+  const MILES_PER_DEG = 69.05
+  const cosLat = Math.cos((lat * Math.PI) / 180)
+  const px = lng * cosLat
+  const py = lat
+  let best = Infinity
+  for (const ring of rings) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const ax = ring[j][0] * cosLat, ay = ring[j][1]
+      const bx = ring[i][0] * cosLat, by = ring[i][1]
+      const abx = bx - ax, aby = by - ay
+      const lenSq = abx * abx + aby * aby
+      const t = lenSq === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * abx + (py - ay) * aby) / lenSq))
+      const dx = px - (ax + t * abx), dy = py - (ay + t * aby)
+      const d = Math.sqrt(dx * dx + dy * dy) * MILES_PER_DEG
+      if (d < best) best = d
+    }
+  }
+  return best
+}
+
+/** Normalize IRWIN ids for joining ("{ABC-123}" vs "abc-123"). */
+function irwinKey(id: string | null | undefined): string {
+  return (id || '').replace(/[{}]/g, '').toUpperCase()
+}
+
 // ── Geocoding ───────────────────────────────────────────────────────
 
 async function fetchJson(url: string): Promise<unknown> {
@@ -185,7 +265,7 @@ async function fetchNearbyIncidents(point: GeoPoint): Promise<Incident[]> {
     distance: String(RADIUS_MILES),
     units: 'esriSRUnit_StatuteMile',
     outFields:
-      'IncidentName,IncidentSize,PercentContained,FireDiscoveryDateTime,ModifiedOnDateTime_dt,POOCity,POOCounty,POOState,IncidentTypeCategory,FireBehaviorGeneral,TotalIncidentPersonnel',
+      'IrwinID,IncidentName,IncidentSize,PercentContained,FireDiscoveryDateTime,ModifiedOnDateTime_dt,POOCity,POOCounty,POOState,IncidentTypeCategory,FireBehaviorGeneral,TotalIncidentPersonnel',
     returnGeometry: 'true',
     outSR: '4326',
     resultRecordCount: '100',
@@ -209,6 +289,80 @@ async function fetchNearbyIncidents(point: GeoPoint): Promise<Incident[]> {
     })
   }
   return incidents.sort((a, b) => a.distanceMiles - b.distanceMiles)
+}
+
+async function fetchNearbyPerimeters(point: GeoPoint): Promise<FirePerimeter[]> {
+  const params = new URLSearchParams({
+    where: '1=1',
+    geometry: `${point.lng},${point.lat}`,
+    geometryType: 'esriGeometryPoint',
+    inSR: '4326',
+    spatialRel: 'esriSpatialRelIntersects',
+    distance: String(RADIUS_MILES),
+    units: 'esriSRUnit_StatuteMile',
+    outFields: 'poly_IncidentName,poly_IRWINID,poly_GISAcres',
+    returnGeometry: 'true',
+    outSR: '4326',
+    // Generalize the polygons (~100m tolerance, 4-decimal coords) — we only
+    // need edge distance, not survey-grade outlines, and full perimeters
+    // can carry thousands of vertices.
+    maxAllowableOffset: '0.001',
+    geometryPrecision: '4',
+    resultRecordCount: '50',
+    f: 'json',
+  })
+  const data = (await fetchJson(`${WFIGS_PERIMETERS_URL}?${params}`)) as {
+    features?: Array<{
+      attributes: { poly_IncidentName: string | null; poly_IRWINID: string | null; poly_GISAcres: number | null }
+      geometry?: { rings?: Ring[] }
+    }>
+    error?: { message?: string }
+  }
+  if (data.error) throw new Error(data.error.message || 'WFIGS perimeter query error')
+  const perimeters: FirePerimeter[] = []
+  for (const f of data.features || []) {
+    const rings = f.geometry?.rings
+    if (!rings?.length) continue
+    perimeters.push({
+      name: (f.attributes.poly_IncidentName || 'Unnamed').trim(),
+      irwinId: f.attributes.poly_IRWINID,
+      acres: f.attributes.poly_GISAcres,
+      edgeMiles: distanceToRingsMiles(point.lat, point.lng, rings),
+      inside: pointInRings(point.lat, point.lng, rings),
+    })
+  }
+  return perimeters.sort((a, b) => a.edgeMiles - b.edgeMiles)
+}
+
+async function fetchAirQuality(point: GeoPoint): Promise<AirQuality | null> {
+  const url = `${AIRNOW_URL}?latitude=${point.lat.toFixed(4)}&longitude=${point.lng.toFixed(4)}&maxDistance=50&format=json`
+  const data = (await fetchJson(url)) as Array<{
+    dataType?: string
+    isPrimary?: boolean
+    aqi?: number
+    category?: string
+    parameter?: string
+    reportingArea?: string
+    reportingAgency?: string
+    validDate?: string
+  }>
+  if (!Array.isArray(data)) return null
+  const pick = (type: string) => {
+    const rows = data.filter(r => r.dataType === type && typeof r.aqi === 'number' && r.aqi >= 0)
+    if (!rows.length) return null
+    // Worst primary pollutant wins — that's the AQI a citizen should act on.
+    return rows.sort((a, b) => (b.aqi || 0) - (a.aqi || 0))[0]
+  }
+  const row = pick('O') || pick('F')
+  if (!row) return null
+  return {
+    aqi: row.aqi as number,
+    category: row.category || 'Unknown',
+    parameter: row.parameter || 'PM2.5',
+    reportingArea: row.reportingArea || point.label,
+    agency: row.reportingAgency || 'AirNow',
+    dataType: row.dataType === 'O' ? 'O' : 'F',
+  }
 }
 
 const FIRE_ALERT_RE = /fire|smoke|red flag|evacuation|air quality|dust/i
@@ -247,15 +401,24 @@ function fmtAcres(size: number | null): string {
   return `${Math.round(size).toLocaleString('en-US')} acres`
 }
 
-function incidentLine(inc: Incident): string {
+function fmtMiles(miles: number): string {
+  return miles < 1 ? '<1' : String(Math.round(miles))
+}
+
+function incidentLine(inc: Incident, perimeter?: FirePerimeter): string {
   const prescribed = inc.IncidentTypeCategory === 'RX'
   const name = (inc.IncidentName || 'Unnamed incident').trim()
   const where = [inc.POOCounty ? inc.POOCounty + ' County' : inc.POOCity, (inc.POOState || '').replace(/^US-/, '')]
     .filter(Boolean)
     .join(', ')
+  const proximity = perimeter
+    ? perimeter.inside
+      ? `THIS LOCATION IS INSIDE THE MAPPED FIRE PERIMETER (fire origin ${fmtMiles(inc.distanceMiles)} mi ${inc.compass})`
+      : `mapped fire EDGE ~${fmtMiles(perimeter.edgeMiles)} mi from this location (origin ${fmtMiles(inc.distanceMiles)} mi ${inc.compass})`
+    : `${fmtMiles(inc.distanceMiles)} mi ${inc.compass} of this location (origin point; no mapped perimeter yet)`
   const parts = [
     `${name}${prescribed ? ' (PRESCRIBED BURN — planned, not a wildfire)' : ''}`,
-    `${inc.distanceMiles < 1 ? '<1' : Math.round(inc.distanceMiles)} mi ${inc.compass} of this location`,
+    proximity,
     fmtAcres(inc.IncidentSize),
     inc.PercentContained != null ? `${Math.round(inc.PercentContained)}% contained` : 'containment not reported',
     `discovered ${fmtEpochDay(inc.FireDiscoveryDateTime)}`,
@@ -322,13 +485,33 @@ export async function buildWildfireLiveContext(
     )
   }
 
-  const [incidents, alerts] = await Promise.all([
+  const [incidents, perimeters, alerts, airQuality] = await Promise.all([
     fetchNearbyIncidents(point).catch(() => null),
+    fetchNearbyPerimeters(point).catch(() => [] as FirePerimeter[]),
     fetchFireAlerts(point).catch(() => null),
+    fetchAirQuality(point).catch(() => null),
   ])
+
+  // Join perimeters to incidents by IRWIN id (fall back to name).
+  const perimeterByIrwin = new Map<string, FirePerimeter>()
+  const perimeterByName = new Map<string, FirePerimeter>()
+  for (const p of perimeters) {
+    if (p.irwinId) perimeterByIrwin.set(irwinKey(p.irwinId), p)
+    perimeterByName.set(p.name.toUpperCase(), p)
+  }
+  const perimeterFor = (inc: Incident): FirePerimeter | undefined =>
+    (inc.IrwinID ? perimeterByIrwin.get(irwinKey(inc.IrwinID)) : undefined) ||
+    perimeterByName.get((inc.IncidentName || '').trim().toUpperCase())
 
   const sections: string[] = []
   sections.push(`LOCATION FOR THIS LOOKUP: ${point.label} (from "${point.raw}")`)
+
+  const insidePerimeter = perimeters.find(p => p.inside)
+  if (insidePerimeter) {
+    sections.push(
+      `⚠️ URGENT: this location falls INSIDE the mapped perimeter of the ${insidePerimeter.name} fire. LEAD your reply with this. Tell them to check for evacuation orders with local officials IMMEDIATELY and to call 911 if they see fire or are unsure they can leave safely. Perimeter maps lag reality — being inside the mapped edge is an act-now signal, not a nuance.`
+    )
+  }
 
   if (incidents === null) {
     sections.push(
@@ -341,11 +524,20 @@ export async function buildWildfireLiveContext(
     )
   } else {
     const shown = incidents.slice(0, MAX_INCIDENTS)
-    const lines = shown.map(incidentLine).join('\n')
+    const lines = shown.map(inc => incidentLine(inc, perimeterFor(inc))).join('\n')
     const more = incidents.length > shown.length ? `\n  … and ${incidents.length - shown.length} more within ${RADIUS_MILES} miles.` : ''
     sections.push(
-      `ACTIVE INCIDENTS WITHIN ${RADIUS_MILES} MILES, NEAREST FIRST (NIFC/WFIGS interagency feed, retrieved just now):\n${lines}${more}`
+      `ACTIVE INCIDENTS WITHIN ${RADIUS_MILES} MILES, NEAREST FIRST (NIFC/WFIGS interagency feed, retrieved just now; "EDGE" distances are to the mapped fire perimeter — cite the EDGE distance as how close the fire is when available):\n${lines}${more}`
     )
+  }
+
+  if (airQuality) {
+    const basis = airQuality.dataType === 'O' ? 'current monitor reading' : "today's forecast (no live monitor reading nearby)"
+    sections.push(
+      `AIR QUALITY (AirNow/EPA via ${airQuality.agency}, ${basis} for the ${airQuality.reportingArea} reporting area): AQI ${airQuality.aqi} — ${airQuality.category} (primary pollutant ${airQuality.parameter}). Interpret with the standard AQI categories; for the live map point to fire.airnow.gov.`
+    )
+  } else {
+    sections.push('AIR QUALITY: no AirNow reading could be retrieved for this location this turn — point them to fire.airnow.gov for current smoke and AQI.')
   }
 
   if (alerts === null) {
