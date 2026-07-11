@@ -7,6 +7,26 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { serverError } from '@/lib/apiError'
+import { mergeThemeModelWrite, type ThemeModel } from '@/lib/themeUtils'
+
+// Per-field theme sets: every theme_model write merges with the stored blob
+// so saving one field's set never clobbers another field's (the map lives in
+// theme_model.fields; the top level stays the active model). This route is
+// the single choke point for TextMine saves, industry-library autosaves, and
+// Ana's theme edits.
+async function mergeThemeModelWithStored(
+  service: ReturnType<typeof createServiceRoleClient>,
+  datasetId: string,
+  incoming: unknown,
+): Promise<unknown> {
+  if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) return incoming
+  const { data: row } = await service
+    .from('dataset_state')
+    .select('theme_model')
+    .eq('dataset_id', datasetId)
+    .maybeSingle()
+  return mergeThemeModelWrite(incoming as ThemeModel, (row?.theme_model as ThemeModel | null) ?? null)
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -51,11 +71,12 @@ export async function PUT(req: Request, props: Params) {
   const { schema_config, theme_model, saved_charts, saved_stats, filter_state, session_state } = body
 
   const service = createServiceRoleClient()
+  const mergedThemeModel = await mergeThemeModelWithStored(service, params.datasetId, theme_model)
   const { error } = await service
     .from('dataset_state')
     .update({
       schema_config: schema_config,
-      theme_model:   theme_model,
+      theme_model:   mergedThemeModel,
       saved_charts:  saved_charts || [],
       saved_stats:   saved_stats  || [],
       filter_state:  filter_state || {},
@@ -104,6 +125,9 @@ export async function PATCH(req: Request, props: Params) {
   }
 
   const service = createServiceRoleClient()
+  if (patch.theme_model !== undefined) {
+    patch.theme_model = await mergeThemeModelWithStored(service, params.datasetId, patch.theme_model)
+  }
   const { error } = await service
     .from('dataset_state')
     .update(patch)

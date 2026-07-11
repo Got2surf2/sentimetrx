@@ -15,6 +15,7 @@ import { THEME_PALETTE,
   recountThemes, sampleSize95, evenSample,
   commentMatchesTheme, getRowText, sentColor, sentBg,
   ratingColor,
+  themeFieldKey, themeModelKey, themeFieldEntries, stripFieldEntries,
 } from '@/lib/themeUtils'
 import { expandEntityTerms } from '@/lib/entityVariants'
 import { computeThemeEntities, themeKey } from '@/lib/themeEntities'
@@ -1083,6 +1084,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [displayThemes, setDisplayThemes] = useState<ThemeModel | null>(null)
   const overallBoxRef = useRef<{ topBoxPct: number; bottomBoxPct: number } | null>(null)
   const [themes, setThemes] = useState<ThemeModel | null>(savedThemeModel || null)
+  // Per-field theme sets: one model per Text selection, keyed by themeFieldKey.
+  // Seeded from the saved blob (legacy single models wrap as one entry); kept
+  // fresh on mine/apply and stashed on selection switches so no set is lost.
+  const [fieldModels, setFieldModels] = useState<Record<string, ThemeModel>>(function() { return themeFieldEntries(savedThemeModel) })
   const [themeSource, setThemeSource] = useState<string | null>(savedThemeModel?.themeSource || (savedThemeModel as (ThemeModel & { source?: string | null }) | null)?.source || null)
   const [themeLibName, setThemeLibName] = useState<string | null>(savedThemeModel?.themeLibName || (savedThemeModel as (ThemeModel & { libName?: string | null }) | null)?.libName || null)
   const [samplingInfo, setSamplingInfo] = useState<{ sampled: number; total: number } | null>(null)
@@ -1358,7 +1363,18 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         .then(function(r) { return r.json() })
         .then(function(state) {
           if (state?.theme_model) {
-            setThemes(state.theme_model)
+            // Per-field sets: reseed the map from the stored blob, then show
+            // the refreshed set for whichever selection is on screen (keyless
+            // legacy blobs keep the old show-the-whole-blob behavior).
+            var blob = state.theme_model as ThemeModel
+            var entries = themeFieldEntries(blob)
+            setFieldModels(function(prevMap) { return { ...prevMap, ...entries } })
+            setThemes(function(prev) {
+              var prevK = prev ? themeModelKey(prev) : ''
+              if (prevK && entries[prevK]) return entries[prevK]
+              if (prev && !prevK) return blob
+              return prev
+            })
             setIsDirty(false)
           }
         })
@@ -1567,14 +1583,49 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     if (rowsSampled) {
       setSamplingInfo({ sampled: sampledCount, total: rowsTotalRows || totalRows })
     }
-    // Fetch accurate server-side counts on the full dataset
+    // Fetch accurate server-side counts on the full dataset — only when the
+    // saved model belongs to the active Text selection (a restored session may
+    // open on a different field; the per-field swap effect below handles that
+    // field's own set instead, and enriching a non-active model would clobber
+    // the swapped-in themes).
     if (savedThemeModel && savedThemeModel.themes) {
       const field = savedThemeModel.fieldNames || savedThemeModel.fieldName
       const fields = Array.isArray(field) ? field : (field ? [field] : [])
-      if (fields.length > 0) void fetchServerThemeCounts(savedThemeModel, fields)
-      void enrichSearchInterest(savedThemeModel)
+      const activeKey = themeFieldKey(effectiveFields)
+      if (fields.length > 0 && (!activeKey || activeKey === themeModelKey(savedThemeModel))) {
+        void fetchServerThemeCounts(savedThemeModel, fields)
+        void enrichSearchInterest(savedThemeModel)
+      }
     }
   }, [rowsLoaded])
+
+  // Per-field theme sets: when the Text selection changes, show that
+  // selection's own stored set — stash the current one first so nothing is
+  // lost, then swap (or clear, prompting a fresh mine for a never-mined
+  // field). Models with no field binding (legacy blobs) stay shown as-is.
+  useEffect(function() {
+    var k = themeFieldKey(effectiveFields)
+    if (!k) return
+    var currentK = themes ? themeModelKey(themes) : ''
+    if (themes && !currentK) return
+    if (currentK === k) return
+    var nextMap = fieldModels
+    if (themes && themes.themes && themes.themes.length > 0 && currentK) {
+      nextMap = { ...fieldModels }
+      nextMap[currentK] = stripFieldEntries(themes)
+      setFieldModels(nextMap)
+    }
+    var next = nextMap[k] || null
+    setThemes(next)
+    setThemeSource(next ? (next.themeSource || null) : null)
+    setThemeLibName(next ? (next.themeLibName || null) : null)
+    setSamplingInfo(next && next.samplingInfo ? next.samplingInfo : null)
+    if (next) {
+      void fetchServerThemeCounts(next, effectiveFields)
+      void enrichSearchInterest(next)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveFields.join('\u001F')])
 
   // ── Unified Comments filter ────────────────────────────────────────────────
   // serverMode: any entity or dimension facet selected → results come from the
@@ -1835,6 +1886,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
           samplingInfo: { sampled: filteredRows.length, total: filteredRows.length },
         }
         setThemes(tm)
+        setFieldModels(function(prev) { return { ...prev, [themeModelKey(tm)]: stripFieldEntries(tm) } })
         setThemeSource('ai')
         setThemeLibName(null)
         setSamplingInfo({ sampled: filteredRows.length, total: filteredRows.length })
@@ -1870,6 +1922,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
           samplingInfo: { sampled: texts.length, total: total },
         }
         setThemes(tm2)
+        setFieldModels(function(prev) { return { ...prev, [themeModelKey(tm2)]: stripFieldEntries(tm2) } })
         setThemeSource('ai')
         setThemeLibName(null)
         setSamplingInfo({ sampled: texts.length, total: total })
@@ -1908,6 +1961,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       samplingInfo: { sampled: total, total: total },
     }
     setThemes(tm)
+    setFieldModels(function(prev) { return { ...prev, [themeModelKey(tm)]: stripFieldEntries(tm) } })
     setThemeSource(source)
     setThemeLibName(libName)
     setSamplingInfo({ sampled: total, total })
@@ -1928,12 +1982,22 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     fetch('/api/datasets/' + datasetId + '/state', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ theme_model: tm }),
+      body: JSON.stringify({ theme_model: themeSaveBlob(tm) }),
     }).then(function() {
       setSaved(true)
       setIsDirty(false)
       setTimeout(function() { setSaved(false) }, 3000)
     }).catch(function() {}).finally(function() { setSaving(false) })
+  }
+
+  // Save payload: the active model at the top level plus every per-field set
+  // mined this session (the state route re-merges with what's stored, so a
+  // save from one field never clobbers another's persisted set).
+  function themeSaveBlob(tm: ThemeModel): ThemeModel {
+    var k = themeModelKey(tm)
+    var entries: Record<string, ThemeModel> = { ...fieldModels }
+    if (k) entries[k] = stripFieldEntries(tm)
+    return Object.keys(entries).length > 0 ? { ...stripFieldEntries(tm), fields: entries } : stripFieldEntries(tm)
   }
 
   async function saveThemeModel() {
@@ -1943,7 +2007,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       await fetch('/api/datasets/' + datasetId + '/state', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ theme_model: themes }),
+        body: JSON.stringify({ theme_model: themeSaveBlob(themes) }),
       })
       setSaved(true)
       setIsDirty(false)
@@ -2170,7 +2234,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 <span style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', display: 'inline-flex', alignItems: 'center' }}>
                   Text
                   <HelpHint title="Multiple text fields" placement="bottom">
-                    Your dataset has more than one open-ended column (e.g. a comment + an owner response). Pick which one to analyze — or check several to combine them into one model.
+                    Your dataset has more than one open-ended column (e.g. a comment + an owner response). Each column keeps its own theme set — switch between them here. Checking several combines them into a separate combined set.
                   </HelpHint>
                 </span>
                 {openFields.map(function(f) {

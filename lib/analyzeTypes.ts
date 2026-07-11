@@ -151,6 +151,11 @@ export interface ThemeModel {
   industry?:   string
   aiGenerated: boolean
   version:     number
+  fieldName?:  string
+  fieldNames?: string[]
+  // Per-field theme sets keyed by themeFieldKey (lib/themeUtils) — the top
+  // level stays the active selection's model; see themeUtils.ThemeModel.
+  fields?:     Record<string, ThemeModel>
 }
 
 export interface SavedChart {

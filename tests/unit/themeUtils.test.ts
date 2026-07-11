@@ -4,7 +4,8 @@ import {
   sampleSize95, evenSample, highlightKeywords,
   sentColor, sentBg, ratingColor, ratingBg, getThemeColor, getRowText,
   THEME_PALETTE,
-  type Theme,
+  themeFieldKey, themeModelKey, stripFieldEntries, themeFieldEntries, mergeThemeModelWrite,
+  type Theme, type ThemeModel,
 } from '@/lib/themeUtils'
 
 const theme = (keywords: string[]): Theme => ({
@@ -92,5 +93,84 @@ describe('themeUtils — display helpers', () => {
   it('getRowText joins fields and trims, coercing nullish to empty', () => {
     expect(getRowText({ a: 'hello', b: 'world', c: null }, ['a', 'b', 'c'])).toBe('hello world')
     expect(getRowText({}, ['x'])).toBe('')
+  })
+})
+
+// ── Per-field theme sets (2026-07-11) ──────────────────────────────────────
+const model = (fieldName: string, names: string[], extra?: Partial<ThemeModel>): ThemeModel => ({
+  themes: names.map((n, i) => ({
+    id: 't' + (i + 1), name: n, description: '', keywords: [n.toLowerCase()],
+    sentiment: 'neutral', count: 0, percentage: 0, relatedThemes: [],
+  })),
+  summary: 's', fieldName, ...extra,
+})
+
+describe('themeUtils — per-field theme sets', () => {
+  it('themeFieldKey matches the taxonomy convention: sorted " + " join, single field unchanged', () => {
+    expect(themeFieldKey(['liked_most'])).toBe('liked_most')
+    expect(themeFieldKey(['b_field', 'a_field'])).toBe('a_field + b_field')
+    expect(themeFieldKey([])).toBe('')
+  })
+
+  it('themeModelKey prefers fieldNames over fieldName and is "" when unbound', () => {
+    expect(themeModelKey(model('a', ['X']))).toBe('a')
+    expect(themeModelKey({ fieldName: 'a', fieldNames: ['b', 'a'] })).toBe('a + b')
+    expect(themeModelKey({ fieldName: '' })).toBe('')
+    expect(themeModelKey(null)).toBe('')
+  })
+
+  it('themeFieldEntries legacy-wraps a pre-map blob as one entry under its own key', () => {
+    const legacy = model('liked_most', ['Food'])
+    expect(themeFieldEntries(legacy)).toEqual({ liked_most: legacy })
+  })
+
+  it('themeFieldEntries: top level wins over a stale map entry for the same key', () => {
+    const stale = model('a', ['Old'])
+    const fresh = model('a', ['New'], { fields: { a: stale } })
+    expect(themeFieldEntries(fresh).a.themes[0].name).toBe('New')
+  })
+
+  it('themeFieldEntries skips empty top levels and malformed entries, and strips nesting', () => {
+    const inner = model('b', ['B'], { fields: { b: model('b', ['nested']) } })
+    const tm = model('a', [], { fields: { b: inner, junk: { no: 'themes' } as unknown as ThemeModel } })
+    const entries = themeFieldEntries(tm)
+    expect(Object.keys(entries)).toEqual(['b'])
+    expect(entries.b.fields).toBeUndefined()
+  })
+
+  it('mergeThemeModelWrite: mining a second field keeps the first field\'s set', () => {
+    const stored = model('liked_most', ['Food'])                     // legacy blob
+    const incoming = model('liked_least', ['Wait'])
+    const merged = mergeThemeModelWrite(incoming, stored)
+    expect(merged.fieldName).toBe('liked_least')                     // top = active
+    expect(merged.themes[0].name).toBe('Wait')
+    expect(merged.fields!.liked_most.themes[0].name).toBe('Food')    // other set kept
+    expect(merged.fields!.liked_least.themes[0].name).toBe('Wait')   // mirrored
+  })
+
+  it('mergeThemeModelWrite: re-saving the same field overwrites only that entry', () => {
+    const stored = mergeThemeModelWrite(model('b', ['Old B']), model('a', ['A']))
+    const merged = mergeThemeModelWrite(model('b', ['New B']), stored)
+    expect(merged.fields!.b.themes[0].name).toBe('New B')
+    expect(merged.fields!.a.themes[0].name).toBe('A')
+  })
+
+  it('mergeThemeModelWrite: a keyless incoming write keeps existing entries', () => {
+    const stored = mergeThemeModelWrite(model('a', ['A']), null)
+    const merged = mergeThemeModelWrite({ themes: [], summary: '', fieldName: '' }, stored)
+    expect(merged.fields!.a.themes[0].name).toBe('A')
+    expect(merged.themes).toEqual([])
+  })
+
+  it('mergeThemeModelWrite: no entries on either side stays a plain blob (no empty map)', () => {
+    const merged = mergeThemeModelWrite({ themes: [], summary: '', fieldName: '' }, null)
+    expect(merged.fields).toBeUndefined()
+  })
+
+  it('stripFieldEntries removes only the map', () => {
+    const tm = model('a', ['A'], { fields: { a: model('a', ['A']) } })
+    const stripped = stripFieldEntries(tm)
+    expect(stripped.fields).toBeUndefined()
+    expect(stripped.themes.length).toBe(1)
   })
 })

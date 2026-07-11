@@ -4,6 +4,7 @@
 
 import { expandLemma } from './lemmas'
 import { POSITIVE_WORDS as POS_WORDS, NEGATIVE_WORDS as NEG_WORDS, NEGATORS } from './sentimentLexicon'
+import { taxonomyFieldKey } from './dimensionFields'
 
 /**
  * Score a block of text for sentiment using the lexicon.
@@ -80,6 +81,58 @@ export interface ThemeModel {
   themeSource?: string | null
   themeLibName?: string | null
   samplingInfo?: { sampled: number; total: number } | null
+  // Per-field theme sets (2026-07-11): one persistent model per open-ended
+  // selection, keyed by themeFieldKey(). The top level stays the ACTIVE
+  // selection's model — every consumer that reads `.themes` keeps working
+  // unchanged. Entries never nest (no `fields` inside an entry). Maintained
+  // centrally by the dataset state route via mergeThemeModelWrite().
+  fields?: Record<string, ThemeModel>
+}
+
+// Canonical key for the open-ended selection a theme set was mined from —
+// same convention as taxonomyFieldKey (lib/dimensionFields): a single field
+// is its own name; multiple selected fields sort + ' + '-join, so the same
+// set maps to the same key regardless of selection order.
+export function themeFieldKey(fields: string[]): string {
+  return taxonomyFieldKey(fields)
+}
+
+// The key of the selection a model's top level is bound to ('' when the
+// model carries no field binding — e.g. a pre-mining empty model).
+export function themeModelKey(tm: Pick<ThemeModel, 'fieldName' | 'fieldNames'> | null | undefined): string {
+  if (!tm) return ''
+  const flds = tm.fieldNames && tm.fieldNames.length ? tm.fieldNames : (tm.fieldName ? [tm.fieldName] : [])
+  return themeFieldKey(flds)
+}
+
+// A model with its per-field map removed — the shape stored as a map entry.
+export function stripFieldEntries(tm: ThemeModel): ThemeModel {
+  const { fields: _fields, ...rest } = tm
+  return rest
+}
+
+// All per-field sets a stored blob holds, legacy-wrapping the top level: a
+// pre-map blob is one entry keyed by its own fieldName(s). The top level wins
+// over a map entry for the same key — it's the latest save of that set.
+export function themeFieldEntries(tm: ThemeModel | null | undefined): Record<string, ThemeModel> {
+  if (!tm) return {}
+  const entries: Record<string, ThemeModel> = {}
+  const map = tm.fields || {}
+  for (const k of Object.keys(map)) {
+    if (map[k] && Array.isArray(map[k].themes)) entries[k] = stripFieldEntries(map[k])
+  }
+  const key = themeModelKey(tm)
+  if (key && Array.isArray(tm.themes) && tm.themes.length > 0) entries[key] = stripFieldEntries(tm)
+  return entries
+}
+
+// Merge a theme-model write with what's already stored so saving one field's
+// set never clobbers another field's. The top level stays the incoming
+// (active) model; the map accumulates every set seen on either side.
+export function mergeThemeModelWrite(incoming: ThemeModel, existing: ThemeModel | null | undefined): ThemeModel {
+  const entries = { ...themeFieldEntries(existing), ...themeFieldEntries(incoming) }
+  if (Object.keys(entries).length === 0) return stripFieldEntries(incoming)
+  return { ...stripFieldEntries(incoming), fields: entries }
 }
 
 export interface TextSegment {

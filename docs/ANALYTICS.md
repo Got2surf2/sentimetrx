@@ -81,19 +81,30 @@ TextMine is **four peer sections** in a persistent **two-row bar** — the share
   on the platform key; usage is logged per-org in `usage_log`. The body accepts an
   optional `apiKey` override but it is not required — there is no localStorage-only mode.
 
-**Multiple open-ended columns → ONE theme model (current behavior; per-field is scoped, not built).**
-A dataset stores a **single** `theme_model` per dataset (one jsonb blob in `dataset_state`),
-bound to the active open-ended column(s) via `fieldName`/`fieldNames`. The Text toggle in the
-TextMine nav (`TextMineNav` `viewsExtra`, shown when a dataset has >1 open-ended column) is a
-**multi-select**: pick one field → its themes; check several → `prepareCorpus()`
-(`TextMineModule.tsx:1752`) **concatenates** those columns' text per row (`fields.map(f=>row[f]).join(' ')`)
-and mines ONE combined set (`fieldName: effectiveFields[0]`; UI shows "Combining N fields").
-**Default = only the first open-ended column** (`openFields[0]`), so on a most/least dataset
-"Liked Most" is themed and "Liked Least" isn't unless selected. Switching the active field
-**re-mines and overwrites** the single slot — there is no way to hold distinct theme sets for two
-prompts at once. This is a known limitation for opposing prompts (praise vs. complaints); the
-per-field theme-model enhancement (theme_model keyed by field; each prompt its own persistent set)
-is **scoped but not built** — see the per-field-theme-model memory + `docs/db` `theme_model` jsonb.
+**Multiple open-ended columns → one theme set PER column (per-field theme sets, 2026-07-11).**
+`dataset_state.theme_model` still keeps the legacy shape at the **top level** — the *active*
+selection's model, bound via `fieldName`/`fieldNames` — so every consumer that reads
+`theme_model.themes` (exports, share, signalStats, projectReportLoad, entities, collections,
+Charts `__themes__`) keeps working unchanged. New alongside it: **`theme_model.fields`**, a map of
+one persistent `ThemeModel` per Text selection, keyed by `themeFieldKey()` (`lib/themeUtils` —
+same convention as `taxonomyFieldKey`: single field = its name, multi = sorted `' + '`-join).
+The **dataset state route** (`/api/datasets/[id]/state` PUT/PATCH) is the single choke point:
+every `theme_model` write is merged with the stored blob via `mergeThemeModelWrite()` — the
+incoming model becomes the top level AND is mirrored into `fields[key]`, while every other
+field's entry is preserved. Legacy blobs (no map) wrap lazily as one entry under their own key
+(`themeFieldEntries()`); no backfill migration. This means even a legacy-shaped write (Ana's
+theme edits, a stale tab) can never clobber another field's set — verified live on the
+Carrabba's most/least TEST replica.
+In **TextMine**, the Text toggle (multi-select checkboxes in `TextMineNav` `viewsExtra`) now
+**switches between per-field sets**: a swap effect stashes the on-screen model under its key and
+loads the new selection's set (or clears to the mine prompt for a never-mined field); mined /
+library-applied models update the map; Save persists the active model plus every set mined this
+session. Checking several fields still concatenates per row (`prepareCorpus()`) but the combined
+set is **its own keyed entry** (e.g. `a + b`) — it no longer overwrites the single-field sets.
+Models with **no field binding** (pre-mining empties; keyless legacy blobs) keep the old
+show-as-is behavior. Default remains the saved selection, else the first open-ended column.
+Downstream consumers still read the top-level (active) model only; surfacing BOTH sets in
+exports/decks and per-field `__themes__` chart counts is a scoped follow-up.
 
 ### API: `POST /api/datasets/[datasetId]/merge-themes` (collection theme-merge)
 On a **collection** dataset, TextMine's "merge" mode ("import component topics") fetches each member's existing `theme_model` (members with ≥1 AI-mined theme; needs ≥2 such members) and calls this route to AI-merge them into one unified set (shared vs. unique themes, tagged with `memberLabels`). **Same key policy as mine-themes** — falls back to the platform `ANTHROPIC_API_KEY` when no personal `apiKey` is supplied (the **2026-06-28 fix** removed a stale `NO_API_KEY` rejection that blocked the merge for orgs without a personal key, even though mining worked); `merge_themes` usage is logged per-org. **Members without mined themes are silently excluded** — mine themes on each member first to include it.
