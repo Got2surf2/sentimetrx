@@ -2,7 +2,7 @@
 // SERVER-SIDE ONLY — never imported by client components.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { countNonEmptyRows } from './signalStats'
+import { countNonEmptyRows } from './nonEmptyCount'
 import type {
   SchemaConfig,
   SchemaFieldConfig,

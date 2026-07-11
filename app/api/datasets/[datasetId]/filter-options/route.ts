@@ -6,7 +6,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
-import { countNonEmptyRows } from '@/lib/signalStats'
+import { countNonEmptyRows } from '@/lib/nonEmptyCount'
 
 interface Props { params: Promise<{ datasetId: string }> }
 

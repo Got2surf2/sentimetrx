@@ -13,6 +13,7 @@ import { createHash } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { mergeDatasetAnalytics, deleteDatasetAnalyticsKey } from '@/lib/datasetAnalytics'
 import { logError } from '@/lib/log'
+import { countNonEmptyRows } from '@/lib/nonEmptyCount'
 
 export interface SignalStats {
   records: number
@@ -56,44 +57,6 @@ export function themeModelHash(tm: ThemeModel | null | undefined): string {
       : (tm.fieldName ? [tm.fieldName] : []),
   }
   return createHash('md5').update(JSON.stringify(sig)).digest('hex').slice(0, 12)
-}
-
-/**
- * Non-empty row count for one field, safe for ANY column name. The legacy
- * `.not('data->' + field, ...)` PostgREST filter silently matches NOTHING
- * when the column name contains a comma (filter-grammar separator) — survey
- * columns are full question sentences ("What, if anything, did you like
- * LEAST ...?"), which blanked the metric strip and skewed denominators.
- * Uses the parameterized count_nonempty_rows RPC (sql/161); falls back to
- * the legacy filter until the migration reaches the target database — the
- * fallback is exactly the old behavior, so pre-migration is never worse.
- */
-export async function countNonEmptyRows(
-  service: SupabaseClient,
-  datasetId: string,
-  field: string,
-): Promise<number> {
-  const { data, error } = await service.rpc('count_nonempty_rows', {
-    p_dataset_id: datasetId,
-    p_field: field,
-  })
-  if (!error && typeof data === 'number') return data
-  // Fall back to the legacy filter ONLY while the RPC isn't deployed yet
-  // (PGRST202 = function not in the schema cache). Any other failure THROWS —
-  // a transient-timeout zero once got cached as records:0 and permanently hid
-  // the listing card's signal-stats line (Rubio's/BareBurger); callers that
-  // can tolerate a degraded count catch at their own call site.
-  if (error && error.code !== 'PGRST202') {
-    throw new Error('count_nonempty_rows failed for ' + datasetId + ': ' + error.message)
-  }
-  const { count, error: legacyErr } = await service
-    .from('dataset_rows_flat')
-    .select('id', { count: 'exact', head: true })
-    .eq('dataset_id', datasetId)
-    .not('data->' + field, 'is', null)
-    .neq('data->>' + field, '')
-  if (legacyErr) throw new Error('non-empty count failed for ' + datasetId + ': ' + legacyErr.message)
-  return count || 0
 }
 
 function emptyStats(themeCount: number): SignalStats {
