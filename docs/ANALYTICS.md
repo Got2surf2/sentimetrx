@@ -152,6 +152,25 @@ high-cardinality now defaults to **categorical**, not open-ended. Existing datas
 stored schema — detection applies at upload/auto-detect time; the Schema tab remains the
 override. Tests: `tests/unit/datasetUtils.test.ts` ("freeform vs identifier/PII detection").
 
+**Metric strip + listing cards (2026-07-11).** The dataset metric strip (`DatasetMetricStrip`,
+every /analyze/[id] tab: comments · signals · Theme fit band/%) now (1) **re-fetches when themes
+are saved in-session** ('dataset-themes-saved' fires on every theme-model persist; fresh uploads
+used to mine in the first visit and the strip stayed hidden until reload), and (2) **follows the
+active Text pill**: TextMine dispatches 'dataset-active-field-changed' (themeFieldKey) and the
+strip fetches `/signal-stats?field=<key>` — `computeSignalStatsForSet` serves that stored set's
+stats (active set cached; other sets compute fresh/uncached behind the skeleton — per-set caching
+is a scoped follow-up). Non-empty "records" counts are **comma-safe** via `count_nonempty_rows`
+(sql/161, field as bind parameter) shared by signalStats / theme-counts / filter-options blanks /
+analyticsCompute through `lib/nonEmptyCount.countNonEmptyRows` — the raw `data->field` PostgREST
+filter silently matched nothing for question-sentence column names (comma = filter separator).
+The Comments KPI tile shows **"N% substantive"** for the active question (`isSubstantiveText`,
+lib/datasetUtils: ≥5 words, or ≥4 containing a function word; deterministic, client-side
+aggregate — per-row scoring/banding/filtering deliberately NOT built, owner 2026-07-11).
+**Listing cards carry data facts only** (rows, fields/members, last-updated) — the per-card
+records/signals/theme-fit line and its signal-stats-batch fetch were removed as a confusion
+source (the numbers described one question's set without saying which); analysis metrics live
+in-dataset where the question context exists.
+
 ### API: `POST /api/datasets/[datasetId]/merge-themes` (collection theme-merge)
 On a **collection** dataset, TextMine's "merge" mode ("import component topics") fetches each member's existing `theme_model` (members with ≥1 AI-mined theme; needs ≥2 such members) and calls this route to AI-merge them into one unified set (shared vs. unique themes, tagged with `memberLabels`). **Same key policy as mine-themes** — falls back to the platform `ANTHROPIC_API_KEY` when no personal `apiKey` is supplied (the **2026-06-28 fix** removed a stale `NO_API_KEY` rejection that blocked the merge for orgs without a personal key, even though mining worked); `merge_themes` usage is logged per-org. **Members without mined themes are silently excluded** — mine themes on each member first to include it.
 
