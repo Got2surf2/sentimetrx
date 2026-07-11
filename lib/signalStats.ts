@@ -14,6 +14,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { mergeDatasetAnalytics, deleteDatasetAnalyticsKey } from '@/lib/datasetAnalytics'
 import { logError } from '@/lib/log'
 import { countNonEmptyRows } from '@/lib/nonEmptyCount'
+import { themeFieldEntries, themeModelKey, type ThemeModel as UtilThemeModel } from '@/lib/themeUtils'
 
 export interface SignalStats {
   records: number
@@ -129,15 +130,20 @@ async function totalRowCount(
 export async function computeSignalStatsRaw(
   service: SupabaseClient,
   datasetId: string,
+  modelOverride?: ThemeModel | null,
 ): Promise<SignalStats> {
-  // Load theme model
-  const { data: stateRow, error: stateRowErr } = await service
-    .from('dataset_state')
-    .select('theme_model')
-    .eq('dataset_id', datasetId)
-    .single()
-  if (stateRowErr) void logError('signalStats.computeSignalStatsRaw', stateRowErr, { datasetId })
-  const themeModel = (stateRow as { theme_model: ThemeModel | null } | null)?.theme_model || null
+  // Load theme model (or take the caller's — the per-field path passes one
+  // stored set so switching the Text pill gets that question's own stats)
+  let themeModel = modelOverride || null
+  if (!themeModel) {
+    const { data: stateRow, error: stateRowErr } = await service
+      .from('dataset_state')
+      .select('theme_model')
+      .eq('dataset_id', datasetId)
+      .single()
+    if (stateRowErr) void logError('signalStats.computeSignalStatsRaw', stateRowErr, { datasetId })
+    themeModel = (stateRow as { theme_model: ThemeModel | null } | null)?.theme_model || null
+  }
 
   const themes = (themeModel?.themes || []).filter(
     (t): t is Required<Pick<Theme, 'keywords'>> & Theme =>
@@ -287,6 +293,33 @@ export async function computeSignalStats(
   })
 
   return stats
+}
+
+/**
+ * Signal stats for ONE stored per-field theme set, selected by its
+ * themeFieldKey (2026-07-11 — the metric strip follows the active Text
+ * pill). The ACTIVE set delegates to the cached path above; any other set
+ * computes fresh and uncached (v1 — the single cache slot is keyed to the
+ * active model; per-set caching is a scoped follow-up, the strip shows its
+ * skeleton for the 1–4s compute meanwhile). Unknown key = active path.
+ */
+export async function computeSignalStatsForSet(
+  service: SupabaseClient,
+  datasetId: string,
+  fieldKey: string,
+): Promise<SignalStats> {
+  const { data: stateRow, error: stateRowErr } = await service
+    .from('dataset_state')
+    .select('theme_model')
+    .eq('dataset_id', datasetId)
+    .single()
+  if (stateRowErr) void logError('signalStats.computeSignalStatsForSet', stateRowErr, { datasetId })
+  const tm = (stateRow as { theme_model: UtilThemeModel | null } | null)?.theme_model || null
+  const entries = themeFieldEntries(tm)
+  if (!entries[fieldKey] || themeModelKey(tm) === fieldKey) {
+    return computeSignalStats(service, datasetId)
+  }
+  return computeSignalStatsRaw(service, datasetId, entries[fieldKey] as unknown as ThemeModel)
 }
 
 /**

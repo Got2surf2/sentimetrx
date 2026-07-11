@@ -48,20 +48,34 @@ const BAND_STYLES: Record<SignalStats['themeFitBand'], { fg: string; bg: string;
 }
 
 export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
-  const [stats, setStats] = useState<SignalStats | null>(null)
-  const [loaded, setLoaded] = useState(false)
+  // Result is KEYED by the field it was fetched for — a key mismatch (pill
+  // switched, response not back yet) renders the skeleton, no state reset
+  // needed. `stats: null` = fetch finished with nothing to show.
+  const [result, setResult] = useState<{ key: string; stats: SignalStats | null } | null>(null)
+  // Per-field theme sets: the strip follows TextMine's active Text pill
+  // ('dataset-active-field-changed' carries the themeFieldKey). '' = the
+  // dataset's active (top-level) set — the default on every other tab.
+  const [fieldKey, setFieldKey] = useState('')
+
+  useEffect(function() {
+    function onFieldChange(e: Event) {
+      const k = (e as CustomEvent<{ fieldKey?: string }>).detail?.fieldKey
+      setFieldKey(typeof k === 'string' ? k : '')
+    }
+    window.addEventListener('dataset-active-field-changed', onFieldChange)
+    return function() { window.removeEventListener('dataset-active-field-changed', onFieldChange) }
+  }, [])
 
   useEffect(function() {
     let cancelled = false
     function fetchStats() {
-      fetch('/api/datasets/' + datasetId + '/signal-stats')
+      fetch('/api/datasets/' + datasetId + '/signal-stats' + (fieldKey ? '?field=' + encodeURIComponent(fieldKey) : ''))
         .then(function(r) { return r.ok ? r.json() : null })
         .then(function(d) {
           if (cancelled) return
-          if (d && typeof d.records === 'number') setStats(d as SignalStats)
-          setLoaded(true)
+          setResult({ key: fieldKey, stats: (d && typeof d.records === 'number') ? d as SignalStats : null })
         })
-        .catch(function() { if (!cancelled) setLoaded(true) })
+        .catch(function() { if (!cancelled) setResult({ key: fieldKey, stats: null }) })
     }
     fetchStats()
     // Re-fetch when themes change in-session: on a fresh upload the strip
@@ -76,9 +90,13 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
       window.removeEventListener('dataset-themes-saved', fetchStats)
       window.removeEventListener('ana-themes-changed', fetchStats)
     }
-  }, [datasetId])
+  }, [datasetId, fieldKey])
 
-  // Loading placeholder
+  const loaded = result != null && result.key === fieldKey
+  const stats = loaded ? result!.stats : null
+
+  // Loading placeholder — also covers a pill switch awaiting that set's
+  // stats (non-active sets are uncached, ~1-4s on large datasets).
   if (!loaded) {
     const loadStyle: CSSProperties = embedded
       ? { display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, minWidth: 0 }

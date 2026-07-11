@@ -20,6 +20,7 @@ import { THEME_PALETTE,
 import { expandEntityTerms } from '@/lib/entityVariants'
 import { computeThemeEntities, themeKey } from '@/lib/themeEntities'
 import { DIM_AXIS_LABEL, dimSubLabel, AXIS_COLOR, type Axis } from '@/lib/dimensionFields'
+import { isSubstantiveText } from '@/lib/datasetUtils'
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
 import { sigTest, welchTTest } from '@/lib/statsUtils'
@@ -1638,6 +1639,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       void fetchServerThemeCounts(next, effectiveFields)
       void enrichSearchInterest(next)
     }
+    // The header metric strip (comments · signals · theme fit) follows the
+    // active question — tell it which set is on screen now.
+    try { window.dispatchEvent(new CustomEvent('dataset-active-field-changed', { detail: { fieldKey: k } })) } catch { /* SSR-safe */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveFields.join('\u001F')])
 
@@ -1813,6 +1817,22 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     var ths = (displayThemes || themes)?.themes || []
     return computeThemeEntities(ths, filteredRows, effectiveFields, entityCatalogRows)
   }, [displayThemes, themes, filteredRows, effectiveFields, entityCatalogRows])
+
+  // "% of comments that carried usable feedback" (owner ask 2026-07-11):
+  // deterministic per-comment test (isSubstantiveText — ≥5 words, or ≥4 with
+  // an everyday function word), computed client-side over the loaded rows for
+  // the ACTIVE question. Aggregate-only v1; per-row scoring is scoped.
+  var substantiveShare = useMemo(function() {
+    if (!effectiveFields.length || !filteredRows.length) return null
+    var nonEmpty = 0, substantive = 0
+    filteredRows.forEach(function(r) {
+      var txt = effectiveFields.map(function(f) { return String(r[f] || '') }).join(' ').trim()
+      if (!txt) return
+      nonEmpty++
+      if (isSubstantiveText(txt)) substantive++
+    })
+    return nonEmpty > 0 ? Math.round(substantive / nonEmpty * 100) : null
+  }, [filteredRows, effectiveFields])
 
   // Prepare corpus sample for mining (combines all active fields)
   function prepareCorpus() {
@@ -2025,6 +2045,16 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         setFieldModels(function(prev) { return { ...prev, ...newModels } })
         var firstField = minedFields[0]
         var first = newModels[themeFieldKey([firstField])]
+        // Re-persist the LANDING field's model last so the stored top level
+        // (what the metric strip / exports / listing default to) matches the
+        // question on screen — the loop's final PATCH was the last field.
+        if (minedFields.length > 1) {
+          await fetch('/api/datasets/' + datasetId + '/state', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ theme_model: first }),
+          })
+        }
         setActiveFields([firstField])
         setActiveField(firstField)
         setThemes(first)
@@ -2628,6 +2658,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                 <div>
                                   <div style={{ fontSize: 22, fontWeight: 800, color: T.accent, lineHeight: 1 }}>{totalResp.toLocaleString()}</div>
                                   <div style={{ fontSize: 10, color: T.textMute, marginTop: 3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Comments</div>
+                                  {substantiveShare != null && (
+                                    <div title="Comments with real feedback: 5+ words, or 4+ words of natural sentence text. One-word and \u201cNothing / N/A\u201d answers don\u2019t count."
+                                      style={{ fontSize: 11, color: T.textMid, marginTop: 5 }}>
+                                      <strong>{substantiveShare}%</strong> substantive
+                                    </div>
+                                  )}
                                 </div>
                                 {isSampled && (
                                   <div style={{ textAlign: 'right' }}>

@@ -6,14 +6,14 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
-import { computeSignalStats } from '@/lib/signalStats'
+import { computeSignalStats, computeSignalStatsForSet } from '@/lib/signalStats'
 
 interface Props { params: Promise<{ datasetId: string }> }
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-export async function GET(_req: Request, props: Props) {
+export async function GET(req: Request, props: Props) {
   const params = await props.params;
   const supabase = await createClient()
   const user = await getAuthUser(supabase)
@@ -35,7 +35,12 @@ export async function GET(_req: Request, props: Props) {
     }
   }
 
-  const stats = await computeSignalStats(service, params.datasetId)
+  // ?field=<themeFieldKey> — stats for that stored per-field theme set (the
+  // metric strip follows TextMine's active Text pill). Default: active set.
+  const fieldKey = new URL(req.url).searchParams.get('field')
+  const stats = fieldKey
+    ? await computeSignalStatsForSet(service, params.datasetId, fieldKey)
+    : await computeSignalStats(service, params.datasetId)
 
   // Date range covered by the dataset, from its stored download window
   // (instant — no row scan). Read via the RLS-enforced user client so it

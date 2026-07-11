@@ -150,6 +150,23 @@ export function analyzeTextContent(
   return { freeformShare, semantic }
 }
 
+// Binary "does this comment carry usable feedback" test (owner ask
+// 2026-07-11): ≥5 words outright (keyword-style feedback like "cold food
+// slow service dirty table" counts), or ≥4 words containing an everyday
+// function word. One-word / "Nothing" / "N/A" answers fail. Shares the
+// stopword vocabulary with the open-ended schema detection above. Used for
+// the aggregate "% substantive" readout; a per-row parse-time usefulness
+// flag (filter/score by it) is scoped, not built.
+export function isSubstantiveText(v: string): boolean {
+  const tokens = String(v).trim().split(/\s+/).filter(Boolean)
+  if (tokens.length >= 5) return true
+  if (tokens.length < 4) return false
+  for (const t of tokens) {
+    if (FREEFORM_STOPWORDS.has(t.toLowerCase().replace(/[^a-zà-ÿ']/g, ''))) return true
+  }
+  return false
+}
+
 export function computeFieldStats(
   fieldName: string,
   values: unknown[]
