@@ -103,8 +103,22 @@ session. Checking several fields still concatenates per row (`prepareCorpus()`) 
 set is **its own keyed entry** (e.g. `a + b`) — it no longer overwrites the single-field sets.
 Models with **no field binding** (pre-mining empties; keyless legacy blobs) keep the old
 show-as-is behavior. Default remains the saved selection, else the first open-ended column.
-Downstream consumers still read the top-level (active) model only; surfacing BOTH sets in
-exports/decks and per-field `__themes__` chart counts is a scoped follow-up.
+**Exports surface every set (2026-07-11).** The PPTX deck (`export/pptx`) renders **one Theme
+Analysis block per stored set** — section + theme-card grids + per-theme quote slides — each
+**counted against its own field(s)** (`computeCanonicalThemes`/`themeDetailQuotes` take a
+fields override); with a single set the deck is unchanged, with several each block is labeled
+with its prompt (section titles hard-truncate to one line — a wrapped title strikes through
+the divider rule; the subtitle carries the full question). The HTML report gives each
+open-ended field **its own set's** themes (falling back to the active set when a field has
+none — the pre-map behavior). The export dialog groups the theme picker by prompt with
+independent per-set selection, sent as **`selectedThemesByField`** keyed by `themeFieldKey`
+(theme ids repeat across sets — `t1..tN` in each — so the flat `selectedThemeIds` list can
+only address the active set; empty array = skip that set; extra sets are also gated on their
+field being among the export's selected fields). `themeSetsForExport()` (`lib/themeUtils`) is
+the shared enumerator (active set first; keyless legacy blobs yield no entries so their top
+level exports as before). Regression: `tests/integration/export-perfield-themes.test.ts`.
+Still scoped-not-built: per-field `__themes__` chart counts; signals-pptx + share/analytics
+stay on the active set.
 
 ### API: `POST /api/datasets/[datasetId]/merge-themes` (collection theme-merge)
 On a **collection** dataset, TextMine's "merge" mode ("import component topics") fetches each member's existing `theme_model` (members with ≥1 AI-mined theme; needs ≥2 such members) and calls this route to AI-merge them into one unified set (shared vs. unique themes, tagged with `memberLabels`). **Same key policy as mine-themes** — falls back to the platform `ANTHROPIC_API_KEY` when no personal `apiKey` is supplied (the **2026-06-28 fix** removed a stale `NO_API_KEY` rejection that blocked the merge for orgs without a personal key, even though mining worked); `merge_themes` usage is logged per-org. **Members without mined themes are silently excluded** — mine themes on each member first to include it.

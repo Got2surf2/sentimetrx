@@ -9,7 +9,7 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { pickBestComments } from '@/lib/export/scoreComments'
 import { smartOrder, isOrdinalScale } from '@/lib/scaleUtils'
 import { aliasedCounts } from '@/lib/aliasUtils'
-import { buildKwRegex } from '@/lib/themeUtils'
+import { buildKwRegex, themeSetsForExport, themeModelKey, themeFieldKey, type ThemeModel } from '@/lib/themeUtils'
 import { deserializeFilters, applyFilters, type SerializedFilters } from '@/lib/filterUtils'
 
 export const dynamic     = 'force-dynamic'
@@ -854,6 +854,9 @@ export async function POST(req: Request, props: Params) {
   const instructions:        string   = body.instructions || ''
   const includeThemeSlides:  boolean  = body.includeThemeSlides !== false
   const selectedThemeIds:    string[] = body.selectedThemeIds || []
+  // Per-field theme sets: per-set theme selection keyed by themeFieldKey
+  // (ids repeat across sets). Absent key = whole set; empty array = skip set.
+  const selectedThemesByField: Record<string, string[]> = (body.selectedThemesByField && typeof body.selectedThemesByField === 'object') ? body.selectedThemesByField : {}
   const rawFilters: Record<string, unknown> = body.filters || {}
   const skipAI:              boolean  = body.skipAI === true
   const hasFilters = Object.keys(rawFilters).length > 0
@@ -1051,6 +1054,21 @@ export async function POST(req: Request, props: Params) {
   const openEndedFields = selectedFields.filter(f => f.type === 'open-ended')
   const multiOE = openEndedFields.length > 1
 
+  // Per-field theme sets: an open-ended field with its own stored set uses
+  // THAT set's themes; fields without one keep the active (top-level) set —
+  // the pre-map behavior. Per-set selection comes from selectedThemesByField;
+  // the active set keeps the flat legacy selectedThemeIds filter.
+  const storedThemeSets = themeSetsForExport(stateRow.theme_model as ThemeModel | null)
+  const activeThemeSetKey = themeModelKey(stateRow.theme_model as ThemeModel | null)
+  function themesForField(fieldKey: string): Theme[] {
+    const k = themeFieldKey([fieldKey])
+    const set = storedThemeSets.find(s => s.key === k)
+    if (!set || k === activeThemeSetKey) return sortedThemes
+    const sel = selectedThemesByField[k]
+    const list = (set.model.themes as unknown as Theme[]).filter(t => !sel || sel.includes(t.id))
+    return [...list].sort((a, b) => (b.count || 0) - (a.count || 0))
+  }
+
   // Re-compute theme counts per field: denominator = rows with text in THIS field,
   // multi-match so percentage = "% of respondents who mentioned this theme."
   function computeFieldThemes(fieldKey: string, themeList: Theme[]): Theme[] {
@@ -1081,8 +1099,9 @@ export async function POST(req: Request, props: Params) {
     if (f.type === 'categorical') return buildCategoricalSlide(ctx, f, ai)
     if (f.type === 'numeric')     return buildNumericSlide(ctx, f, ai, allRows, rowKeyMap)
     if (f.type === 'open-ended') {
-      const fieldThemes = includeThemeSlides && sortedThemes.length > 0
-        ? (allRows.length > 0 ? computeFieldThemes(f.field, sortedThemes) : sortedThemes).slice(0, 8)
+      const setThemes = themesForField(f.field)
+      const fieldThemes = includeThemeSlides && setThemes.length > 0
+        ? (allRows.length > 0 ? computeFieldThemes(f.field, setThemes) : setThemes).slice(0, 8)
         : []
       return buildOpenEndedSlide(ctx, f, ai, fieldThemes)
     }
@@ -1093,8 +1112,9 @@ export async function POST(req: Request, props: Params) {
     const s = await renderField(f)
     if (s) slides.push(s)
     // After each open-ended slide, add per-theme detail slides with field-specific counts
-    if (f.type === 'open-ended' && includeThemeSlides && sortedThemes.length > 0) {
-      const fieldThemes = allRows.length > 0 ? computeFieldThemes(f.field, sortedThemes) : sortedThemes
+    const setThemes = f.type === 'open-ended' ? themesForField(f.field) : []
+    if (f.type === 'open-ended' && includeThemeSlides && setThemes.length > 0) {
+      const fieldThemes = allRows.length > 0 ? computeFieldThemes(f.field, setThemes) : setThemes
       const themeSlides = await buildThemeDetailSlides(ctx, fieldThemes, f.label, allRows, rowKeyMap, [f.field], skipAI ? undefined : (dataset as DatasetRow).org_id)
       themeSlides.forEach(ts => slides.push(ts))
     }

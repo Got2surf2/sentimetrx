@@ -4,7 +4,7 @@ import {
   sampleSize95, evenSample, highlightKeywords,
   sentColor, sentBg, ratingColor, ratingBg, getThemeColor, getRowText,
   THEME_PALETTE,
-  themeFieldKey, themeModelKey, stripFieldEntries, themeFieldEntries, mergeThemeModelWrite,
+  themeFieldKey, themeModelKey, stripFieldEntries, themeFieldEntries, mergeThemeModelWrite, themeSetsForExport,
   type Theme, type ThemeModel,
 } from '@/lib/themeUtils'
 
@@ -172,5 +172,35 @@ describe('themeUtils — per-field theme sets', () => {
     const stripped = stripFieldEntries(tm)
     expect(stripped.fields).toBeUndefined()
     expect(stripped.themes.length).toBe(1)
+  })
+})
+
+describe('themeUtils — themeSetsForExport', () => {
+  it('legacy single blob → one set bound to its own field', () => {
+    const sets = themeSetsForExport(model('liked_most', ['Food']))
+    expect(sets.length).toBe(1)
+    expect(sets[0].key).toBe('liked_most')
+    expect(sets[0].fields).toEqual(['liked_most'])
+    expect(sets[0].model.themes[0].name).toBe('Food')
+  })
+
+  it('active set first, then the other stored sets', () => {
+    const stored = mergeThemeModelWrite(model('liked_least', ['Wait']), model('liked_most', ['Food']))
+    const sets = themeSetsForExport(stored)
+    expect(sets.map(s => s.key)).toEqual(['liked_least', 'liked_most'])
+    expect(sets[0].model.themes[0].name).toBe('Wait')
+    expect(sets[1].model.themes[0].name).toBe('Food')
+  })
+
+  it('combined-selection entries expose their member fields', () => {
+    const combo = model('a', ['C'], { fieldNames: ['b', 'a'] })
+    const sets = themeSetsForExport(mergeThemeModelWrite(combo, model('a', ['A'])))
+    const comboSet = sets.find(s => s.key === 'a + b')
+    expect(comboSet!.fields).toEqual(['b', 'a'])
+  })
+
+  it('keyless legacy blob → no sets (exporters read its top level directly)', () => {
+    expect(themeSetsForExport({ themes: [{ id: 't1', name: 'X', description: '', keywords: ['x'], sentiment: 'neutral', count: 0, percentage: 0, relatedThemes: [] }], summary: '', fieldName: '' })).toEqual([])
+    expect(themeSetsForExport(null)).toEqual([])
   })
 })

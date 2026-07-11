@@ -135,6 +135,25 @@ export function mergeThemeModelWrite(incoming: ThemeModel, existing: ThemeModel 
   return { ...stripFieldEntries(incoming), fields: entries }
 }
 
+// One theme set per stored field selection, for exports/reports: the active
+// (top-level) set first, then every other per-field set in map order. A
+// keyless legacy blob yields no entries — exporters keep reading its top
+// level directly, so keyless models are exactly as exportable as before.
+export interface ThemeFieldSet { key: string; fields: string[]; model: ThemeModel }
+export function themeSetsForExport(tm: ThemeModel | null | undefined): ThemeFieldSet[] {
+  const entries = themeFieldEntries(tm)
+  const activeKey = themeModelKey(tm)
+  const ordered = [
+    ...(activeKey && entries[activeKey] ? [activeKey] : []),
+    ...Object.keys(entries).filter(function(k) { return k !== activeKey }),
+  ]
+  return ordered.map(function(k) {
+    const m = entries[k]
+    const flds = m.fieldNames && m.fieldNames.length ? m.fieldNames : (m.fieldName ? [m.fieldName] : [])
+    return { key: k, fields: flds, model: m }
+  })
+}
+
 export interface TextSegment {
   text: string
   matched: boolean

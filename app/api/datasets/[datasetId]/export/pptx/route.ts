@@ -10,7 +10,7 @@ import { smartOrder, isOrdinalScale } from '@/lib/scaleUtils'
 import { aliasedCounts } from '@/lib/aliasUtils'
 import { deserializeFilters, applyFilters, type SerializedFilters } from '@/lib/filterUtils'
 import { pickBestComments } from '@/lib/export/scoreComments'
-import { buildKwRegex } from '@/lib/themeUtils'
+import { buildKwRegex, themeSetsForExport, themeModelKey, type ThemeModel, type ThemeFieldSet } from '@/lib/themeUtils'
 import { computeThemeImpact } from '@/lib/themeImpact'
 import { DN as DN_SHARED, trunc } from '@/lib/pptx/shared'
 import { renderDeck, type DeckSpec, type SlideSpec, type DistBarsSlide, type NumericStatsSlide, type CompactGridSlide } from '@/lib/pptx/slideRenderer'
@@ -375,6 +375,11 @@ export async function POST(req: Request, props: Params) {
   // Themes per slide on the Theme Analysis grid: 0/undefined = auto, else 1/2/4/6.
   const themesPerSlide: number        = Number(body.themesPerSlide) || 0
   const selectedThemeIds: string[]    = body.selectedThemeIds   || []
+  // Per-field theme sets: theme-id selection for the NON-active sets, keyed by
+  // themeFieldKey (theme ids repeat across sets — t1..tN in each — so a flat id
+  // list can't address them). Absent key = include that set in full; an empty
+  // array = user deselected every theme in that set, skip it.
+  const selectedThemesByField: Record<string, string[]> = (body.selectedThemesByField && typeof body.selectedThemesByField === 'object') ? body.selectedThemesByField : {}
   const rawFilters: SerializedFilters = body.filters || {}
   const hasFilters = Object.keys(rawFilters).length > 0
   const reportTitle: string             = body.reportTitle || ''
@@ -711,14 +716,32 @@ export async function POST(req: Request, props: Params) {
     : (themeModelAny.fieldName ? [themeModelAny.fieldName]
        : selectedFields.filter(f => f.type === 'open-ended').map(f => f.field))
 
+  // Per-field theme sets beyond the active one: each gets its own Theme
+  // Analysis section counted against ITS OWN field(s). Gated to sets whose
+  // field is among the export's selected open-ended fields (quick mode picks
+  // fields; a set for an unselected prompt shouldn't ride along), and to the
+  // per-set theme selection from the export dialog. The active set keeps the
+  // existing selectedThemeIds path, so single-set decks are unchanged.
+  const activeSetKey = themeModelKey(stateRow.theme_model as ThemeModel | null)
+  const extraThemeSets: ThemeFieldSet[] = themeSetsForExport(stateRow.theme_model as ThemeModel | null)
+    .filter(s => s.key !== activeSetKey)
+    .filter(s => s.fields.some(fk => selectedFields.some(sf => sf.type === 'open-ended' && sf.field === fk)))
+    .map(s => {
+      const sel = selectedThemesByField[s.key]
+      if (!sel) return s
+      return { ...s, model: { ...s.model, themes: s.model.themes.filter(t => sel.includes(t.id)) } }
+    })
+    .filter(s => s.model.themes.length > 0)
+
   // Canonical theme set — counted ONCE across all theme fields (not per open-ended
   // field), so the executive summary, the Theme Analysis slides, and the in-app Themes
   // page all report the same %. Also computes per-keyword frequency (kwFreqs) so the
   // theme-cloud slides can size each keyword by how often it appears.
-  function computeCanonicalThemes(themeList: DeckTheme[]): DeckTheme[] {
-    if (!themeList.length || !allRows.length || !themeFields.length) return themeList
+  function computeCanonicalThemes(themeList: DeckTheme[], fieldsOverride?: string[]): DeckTheme[] {
+    const countFields = fieldsOverride && fieldsOverride.length ? fieldsOverride : themeFields
+    if (!themeList.length || !allRows.length || !countFields.length) return themeList
     const rowTexts = allRows
-      .map(function(row) { return themeFields.map(function(fk) { return rowVal(row, fk) }).join('  ').toLowerCase() })
+      .map(function(row) { return countFields.map(function(fk) { return rowVal(row, fk) }).join('  ').toLowerCase() })
       .filter(function(txt) { return txt.trim().length > 0 })
     const total = rowTexts.length || 1
     return themeList
@@ -1202,9 +1225,10 @@ export async function POST(req: Request, props: Params) {
       const lower = text.toLowerCase()
       return regexes.some(function(re) { return re.test(lower) })
     }
-    async function themeDetailQuotes(t: DeckTheme): Promise<{ text: string }[]> {
-      if (!allRows.length || !themeFields.length) return []
-      const keys = themeFields.map(fk => rowKeyMap[normalize(fk)] || fk)
+    async function themeDetailQuotes(t: DeckTheme, fieldsOverride?: string[]): Promise<{ text: string }[]> {
+      const quoteFields = fieldsOverride && fieldsOverride.length ? fieldsOverride : themeFields
+      if (!allRows.length || !quoteFields.length) return []
+      const keys = quoteFields.map(fk => rowKeyMap[normalize(fk)] || fk)
       const kwRegexes = ((t.keywords || []) as string[]).map(function(kw) {
         const e = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
         return new RegExp('(?<![a-z])' + e + '\\w*', 'i')
@@ -1244,26 +1268,62 @@ export async function POST(req: Request, props: Params) {
         }
       }
 
-      if (includeThemeSlides && canonicalThemes.length > 0) {
-        slides.push({ type: 'section', title: 'Theme Analysis', subtitle: 'Themes across all open-ended responses · keywords sized by how often each idea appears', eyebrow: 'Themes' })
-        const perGrid = themesPerSlide && themesPerSlide > 0 ? Math.min(themesPerSlide, 5) : 5
-        for (let pg = 0; pg < canonicalThemes.length; pg += perGrid) {
-          const page = canonicalThemes.slice(pg, pg + perGrid)
-          slides.push({ type: 'theme_cards', title: 'Theme Analysis', subtitle: metaSub(canonicalThemes.length + ' themes identified'),
+      // Field label for a theme set's section title ("Liked Most" not the raw
+      // column name) — used only when more than one set is in the deck. Survey
+      // labels are often the full question sentence, so titles truncate.
+      const setFieldLabel = (flds: string[]) => trunc(flds
+        .map(fk => { const sf = (schema?.fields || []).find((s) => s.field === fk); return sf?.label || fk })
+        .join(' + '), 60)
+      const multiSetDeck = extraThemeSets.length > 0
+      const perGrid = themesPerSlide && themesPerSlide > 0 ? Math.min(themesPerSlide, 5) : 5
+
+      // One Theme Analysis block per set. The active set renders exactly as
+      // before (same titles/meta) unless other sets exist, in which case every
+      // block is labeled with its prompt so praise/complaint sets read apart.
+      const renderThemeBlock = async (blockThemes: DeckTheme[], blockFields: string[], labeled: boolean) => {
+        if (blockThemes.length === 0) return
+        const label = setFieldLabel(blockFields)
+        // Section-slide titles render on ONE line before the divider rule —
+        // a wrapped second line strikes through it (QC'd 2026-07-11) — so the
+        // section gets a hard-truncated label and the subtitle carries the
+        // full question. Card-slide headers wrap cleanly, so they keep more.
+        const sectionTitle = labeled ? 'Theme Analysis — ' + trunc(label, 30) : 'Theme Analysis'
+        const cardsTitle = labeled ? 'Theme Analysis — ' + label : 'Theme Analysis'
+        const comments = blockThemes[0]?.totalResponses ?? allRows.filter(r => blockFields.some(fk => rowVal(r, fk).trim().length > 0)).length
+        const signals = blockThemes.reduce((sum, t) => sum + (t.count || 0), 0)
+        const blockMeta = (base: string) => base + ' · ' + comments.toLocaleString() + ' comments · ' + signals.toLocaleString() + ' signals'
+        const sub = labeled ? blockMeta : metaSub
+        slides.push({ type: 'section', title: sectionTitle,
+          subtitle: labeled ? 'Themes in “' + label + '” · counted against that question’s responses' : 'Themes across all open-ended responses · keywords sized by how often each idea appears',
+          eyebrow: 'Themes' })
+        for (let pg = 0; pg < blockThemes.length; pg += perGrid) {
+          const page = blockThemes.slice(pg, pg + perGrid)
+          slides.push({ type: 'theme_cards', title: cardsTitle, subtitle: sub(blockThemes.length + ' themes identified'),
             cards: page.map((t) => ({ name: t.name || '', pct: t.percentage || 0, count: t.count, total: t.totalResponses, sentiment: sentLabel(t.sentiment),
               keywords: ((t.kwFreqs && t.kwFreqs.length) ? t.kwFreqs : (t.keywords || []).map((w: string) => ({ word: w, pct: 0 }))).slice(0, 8).map((k: { word: string; pct: number }) => ({ word: k.word, pct: k.pct })) })) })
         }
         // Quote-picking per theme is AI-bound (~1-2s each) — run 3 at a time,
         // then push slides in the original theme order.
-        const themeQuotes = await runPool(canonicalThemes.map(t => () => themeDetailQuotes(t)), 3)
-        canonicalThemes.forEach((t, ti) => {
+        const themeQuotes = await runPool(blockThemes.map(t => () => themeDetailQuotes(t, blockFields)), 3)
+        blockThemes.forEach((t, ti) => {
           const q = themeQuotes[ti]
           if (q.length > 0) {
             slides.push({ type: 'quotes', title: t.name || 'Theme',
-              subtitle: metaSub((t.percentage || 0) + '% · ' + (t.count || 0).toLocaleString() + ' of ' + (t.totalResponses || 0).toLocaleString() + (t.sentiment ? ' · ' + sentLabel(t.sentiment) : '')),
+              subtitle: sub((t.percentage || 0) + '% · ' + (t.count || 0).toLocaleString() + ' of ' + (t.totalResponses || 0).toLocaleString() + (t.sentiment ? ' · ' + sentLabel(t.sentiment) : '')),
               quotes: q, insight: t.description || undefined })
           }
         })
+      }
+
+      if (includeThemeSlides && canonicalThemes.length > 0) {
+        await renderThemeBlock(canonicalThemes, themeFields, multiSetDeck)
+      }
+      if (includeThemeSlides) {
+        for (const set of extraThemeSets) {
+          const setSorted = [...(set.model.themes as DeckTheme[])].sort((a, b) => (b.count || 0) - (a.count || 0))
+          const setCounted = allRows.length > 0 ? visibleThemes(computeCanonicalThemes(setSorted, set.fields)) : setSorted
+          await renderThemeBlock(setCounted, set.fields, true)
+        }
       }
     }
 

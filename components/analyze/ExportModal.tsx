@@ -10,6 +10,7 @@ import LottieLoader from '@/components/ui/LottieLoader'
 import GhostTextarea from '@/components/ui/GhostTextarea'
 import type { SchemaFieldConfig as SchemaField } from '@/lib/analyzeTypes'
 import { deckStyleOptions, DEFAULT_DECK_STYLE } from '@/lib/pptx/styles'
+import { themeSetsForExport, themeModelKey, type ThemeModel } from '@/lib/themeUtils'
 
 const HERMES = '#e8622a'
 
@@ -87,6 +88,10 @@ interface ExportRequestBody {
   includeThemeSlides: boolean
   themesPerSlide: number
   selectedThemeIds: string[]
+  // Per-field theme sets beyond the active one: selection keyed by
+  // themeFieldKey (theme ids repeat across sets, so a flat list can't
+  // address them). Empty array = user deselected the whole set.
+  selectedThemesByField?: Record<string, string[]>
   skipAI: boolean
   includeCustomDecks: boolean
   includeProvenance: boolean
@@ -144,6 +149,12 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
   const [impactOEFields,     setImpactOEFields]     = useState<Set<string>>(new Set())
   const [impactScoreFields,  setImpactScoreFields]  = useState<Set<string>>(new Set())
   const [selectedThemeIds,   setSelectedThemeIds]   = useState<Set<string>>(new Set())
+  // Per-field theme sets beyond the active one (e.g. a Liked-LEAST set next
+  // to the active Liked-MOST set) — each renders as its own labeled group in
+  // the picker with independent selection.
+  const [extraThemeSets,     setExtraThemeSets]     = useState<{ key: string; label: string; fields: string[]; themes: ExportTheme[] }[]>([])
+  const [extraSelected,      setExtraSelected]      = useState<Record<string, Set<string>>>({})
+  const [activeThemeLabel,   setActiveThemeLabel]   = useState('')
   // Entity analysis: which open-ended fields to run org/charity entity analysis on,
   // and whether to drop the theme/verbatim text-analytics slides entirely.
   const [entityFields,       setEntityFields]       = useState<Set<string>>(new Set())
@@ -215,9 +226,26 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
         const themeList: ExportTheme[] = tm.themes || []
         setThemes(themeList)
         setSelectedThemeIds(new Set(themeList.map(function(t) { return t.id })))
+        // Per-field theme sets: every stored non-active set becomes its own
+        // labeled picker group (praise vs complaints prompts side by side).
+        const activeSetKey = themeModelKey(tm as ThemeModel)
+        const fieldLabelOf = function(flds: string[]): string {
+          return flds.map(function(fk) { const sf = f.find(function(x: SchemaField) { return x.field === fk }); return (sf && sf.label) || fk }).join(' + ')
+        }
+        const allSets = themeSetsForExport(tm as ThemeModel)
+        const activeSet = allSets.find(function(s) { return s.key === activeSetKey })
+        setActiveThemeLabel(activeSet ? fieldLabelOf(activeSet.fields) : '')
+        const extras = allSets
+          .filter(function(s) { return s.key !== activeSetKey && s.model.themes.length > 0 })
+          .map(function(s) { return { key: s.key, label: fieldLabelOf(s.fields), fields: s.fields, themes: s.model.themes as ExportTheme[] } })
+        setExtraThemeSets(extras)
+        const extraSelInit: Record<string, Set<string>> = {}
+        extras.forEach(function(s) { extraSelInit[s.key] = new Set(s.themes.map(function(t) { return t.id })) })
+        setExtraSelected(extraSelInit)
         // The saved theme_model persists count/percentage as 0 (real counts are
         // computed live in TextMine, never written back), which made the picker
-        // cards read n=0 / 0%. Fetch live per-theme counts and merge them in.
+        // cards read n=0 / 0%. Fetch live per-theme counts and merge them in —
+        // for the active set and for each extra set against ITS OWN field(s).
         const tmFields: string[] = (tm.fieldNames && tm.fieldNames.length)
           ? tm.fieldNames
           : (tm.fieldName ? [tm.fieldName] : [])
@@ -243,6 +271,30 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
             })
             .catch(function() { /* picker just shows 0 if counts can't load */ })
         }
+        extras.forEach(function(s) {
+          if (s.themes.length === 0 || s.fields.length === 0) return
+          fetch('/api/datasets/' + datasetId + '/theme-counts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              themes: s.themes.map(function(t) { return { id: t.id, keywords: t.keywords || [] } }),
+              fields: s.fields,
+            }),
+          })
+            .then(function(r) { return r.ok ? r.json() : null })
+            .then(function(data: { counts?: ThemeCount[] } | null) {
+              if (!data || !Array.isArray(data.counts)) return
+              const byId: Record<string, { count: number; percentage: number }> = {}
+              data.counts.forEach(function(c) { byId[c.id] = { count: c.count, percentage: c.percentage } })
+              setExtraThemeSets(function(prev) {
+                return prev.map(function(es) {
+                  if (es.key !== s.key) return es
+                  return { ...es, themes: es.themes.map(function(t) { return byId[t.id] ? Object.assign({}, t, byId[t.id]) : t }) }
+                })
+              })
+            })
+            .catch(function() { /* group just shows 0 if counts can't load */ })
+        })
       })
       .catch(function() { setError('Could not load dataset fields') })
       .finally(function() { setLoading(false) })
@@ -305,6 +357,9 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
 
     try {
       const body: ExportRequestBody = { fields: fieldsToSend, audience, mode, commentConfig, commentAnnotations, commentColorField, includeThemeSlides, themesPerSlide, selectedThemeIds: Array.from(selectedThemeIds), skipAI: !aiEnabled, includeCustomDecks, includeProvenance, includeRecap, includeDimensions }
+      if (extraThemeSets.length > 0) {
+        body.selectedThemesByField = Object.fromEntries(extraThemeSets.map(function(s) { return [s.key, Array.from(extraSelected[s.key] || new Set())] }))
+      }
       if (entityFields.size > 0) body.entityFields = Array.from(entityFields)
       if (skipTextAnalytics) body.skipTextAnalytics = true
       if (reportTitle.trim()) body.reportTitle = reportTitle.trim()
@@ -654,7 +709,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
                   <AudiencePicker audience={audience} setAudience={setAudience} />
                   {format === 'pptx' && <StylePicker deckStyle={deckStyle} setDeckStyle={setDeckStyle} />}
                   <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} fieldCounts={fieldCounts} />
-                  <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} themesPerSlide={themesPerSlide} setThemesPerSlide={setThemesPerSlide} />
+                  <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} themesPerSlide={themesPerSlide} setThemesPerSlide={setThemesPerSlide} activeLabel={activeThemeLabel} extraSets={extraThemeSets} extraSelected={extraSelected} setExtraSelected={setExtraSelected} />
                   <EntityAnalysisPicker fields={fields} entityFields={entityFields} setEntityFields={setEntityFields} skipTextAnalytics={skipTextAnalytics} setSkipTextAnalytics={setSkipTextAnalytics} aiEnabled={aiEnabled} />
                   {audience === 'full' && <ImpactFieldPicker fields={fields} impactOEFields={impactOEFields} setImpactOEFields={setImpactOEFields} impactScoreFields={impactScoreFields} setImpactScoreFields={setImpactScoreFields} />}
                   <CommentConfig fields={fields} fieldCounts={fieldCounts} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
@@ -739,7 +794,7 @@ export default function ExportModal({ datasetId, datasetName, datasetSource, aiE
                     </div>
                     <FieldPicker byType={byType} selected={selected} toggleField={toggleField} selectAllType={selectAllType} fields={fields} setSelected={setSelected} fieldCounts={fieldCounts} />
                   </div>
-                  <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} themesPerSlide={themesPerSlide} setThemesPerSlide={setThemesPerSlide} />
+                  <ThemePicker themes={themes} includeThemeSlides={includeThemeSlides} setIncludeThemeSlides={setIncludeThemeSlides} selectedThemeIds={selectedThemeIds} setSelectedThemeIds={setSelectedThemeIds} themesPerSlide={themesPerSlide} setThemesPerSlide={setThemesPerSlide} activeLabel={activeThemeLabel} extraSets={extraThemeSets} extraSelected={extraSelected} setExtraSelected={setExtraSelected} />
                   <EntityAnalysisPicker fields={fields} entityFields={entityFields} setEntityFields={setEntityFields} skipTextAnalytics={skipTextAnalytics} setSkipTextAnalytics={setSkipTextAnalytics} aiEnabled={aiEnabled} />
                   {audience === 'full' && <ImpactFieldPicker fields={fields} impactOEFields={impactOEFields} setImpactOEFields={setImpactOEFields} impactScoreFields={impactScoreFields} setImpactScoreFields={setImpactScoreFields} />}
                   <CommentConfig fields={fields} fieldCounts={fieldCounts} commentConfig={commentConfig} setCommentConfig={setCommentConfig} commentAnnotations={commentAnnotations} setCommentAnnotations={setCommentAnnotations} commentColorField={commentColorField} setCommentColorField={setCommentColorField} />
@@ -1225,7 +1280,7 @@ const THEME_COLORS = ['#0F7173','#E8B84B','#7C3AED','#059669','#E85A1A','#0891B2
 
 function ThemePicker({
   themes, includeThemeSlides, setIncludeThemeSlides, selectedThemeIds, setSelectedThemeIds,
-  themesPerSlide, setThemesPerSlide,
+  themesPerSlide, setThemesPerSlide, activeLabel, extraSets, extraSelected, setExtraSelected,
 }: {
   themes: ExportTheme[]
   includeThemeSlides: boolean
@@ -1234,8 +1289,18 @@ function ThemePicker({
   setSelectedThemeIds: (fn: (prev: Set<string>) => Set<string>) => void
   themesPerSlide: number
   setThemesPerSlide: (v: number) => void
+  // Per-field theme sets: when present, the picker renders one labeled group
+  // per set (the active set first) with independent selection per group.
+  activeLabel?: string
+  extraSets?: { key: string; label: string; themes: ExportTheme[] }[]
+  extraSelected?: Record<string, Set<string>>
+  setExtraSelected?: (fn: (prev: Record<string, Set<string>>) => Record<string, Set<string>>) => void
 }) {
-  if (themes.length === 0) return null
+  const groups = extraSets || []
+  const grouped = groups.length > 0
+  const totalThemes = themes.length + groups.reduce(function(n, g) { return n + g.themes.length }, 0)
+  const totalSelected = selectedThemeIds.size + groups.reduce(function(n, g) { return n + ((extraSelected && extraSelected[g.key]) ? extraSelected[g.key].size : 0) }, 0)
+  if (totalThemes === 0) return null
 
   const sortedThemes = [...themes].sort(function(a, b) { return (b.count || 0) - (a.count || 0) })
 
@@ -1245,6 +1310,26 @@ function ThemePicker({
       next.has(id) ? next.delete(id) : next.add(id)
       return next
     })
+  }
+
+  function toggleExtra(key: string, id: string) {
+    if (!setExtraSelected) return
+    setExtraSelected(function(prev) {
+      const cur = new Set(prev[key] || [])
+      cur.has(id) ? cur.delete(id) : cur.add(id)
+      return { ...prev, [key]: cur }
+    })
+  }
+
+  function selectAll(on: boolean) {
+    setSelectedThemeIds(function() { return on ? new Set(sortedThemes.map(function(t) { return t.id })) : new Set() })
+    if (setExtraSelected && groups.length > 0) {
+      setExtraSelected(function() {
+        const next: Record<string, Set<string>> = {}
+        groups.forEach(function(g) { next[g.key] = on ? new Set(g.themes.map(function(t) { return t.id })) : new Set() })
+        return next
+      })
+    }
   }
 
   return (
@@ -1263,7 +1348,7 @@ function ThemePicker({
       {includeThemeSlides && (
         <>
           <div style={{ fontSize: 10, color: S.textFaint, marginBottom: 8 }}>
-            Select which themes to include — {selectedThemeIds.size} of {themes.length} selected
+            Select which themes to include — {totalSelected} of {totalThemes} selected{grouped ? ' · each question keeps its own theme set' : ''}
           </div>
           {/* Themes per slide on the Theme Analysis grid */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
@@ -1280,69 +1365,97 @@ function ThemePicker({
           </div>
           {/* Select all / none */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            <button onClick={function() { setSelectedThemeIds(function() { return new Set(sortedThemes.map(function(t) { return t.id })) }) }}
+            <button onClick={function() { selectAll(true) }}
               style={{ fontSize: 10, color: HERMES, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, padding: 0 }}>
               All
             </button>
             <span style={{ fontSize: 10, color: S.textFaint }}>·</span>
-            <button onClick={function() { setSelectedThemeIds(function() { return new Set() }) }}
+            <button onClick={function() { selectAll(false) }}
               style={{ fontSize: 10, color: S.textFaint, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>
               None
             </button>
           </div>
+          {/* Group subheader for the active set — only when other sets follow */}
+          {grouped && (
+            <div style={{ fontSize: 10, fontWeight: 800, color: '#0D2B45', textTransform: 'uppercase' as const, letterSpacing: '.06em', margin: '2px 0 6px' }}>
+              {activeLabel || 'Current themes'} · {selectedThemeIds.size}/{themes.length}
+            </div>
+          )}
           {/* Theme cards grid — sorted by frequency */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
             {sortedThemes.map(function(t, idx: number) {
-              const color   = t.color || THEME_COLORS[idx % THEME_COLORS.length]
-              const checked = selectedThemeIds.has(t.id)
-              const sent    = t.sentiment || 'neutral'
-              return (
-                <div key={t.id} onClick={function() { toggleTheme(t.id) }}
-                  style={{ border: '2px solid ' + (checked ? color : S.border), borderRadius: 10, padding: '10px 12px', cursor: 'pointer', background: checked ? color + '0D' : S.white, transition: 'all .12s', position: 'relative' }}>
-                  {/* Checked indicator */}
-                  {checked && (
-                    <div style={{ position: 'absolute', top: 7, right: 8, width: 16, height: 16, borderRadius: '50%', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ color: 'white', fontSize: 9, fontWeight: 900 }}>✓</span>
-                    </div>
-                  )}
-                  {/* Color dot + sentiment */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                    <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 20, background: SENT_BG[sent] || SENT_BG.neutral, color: SENT_COLOR[sent] || SENT_COLOR.neutral, fontWeight: 700, textTransform: 'capitalize' as const }}>{sent}</span>
-                  </div>
-                  {/* Name */}
-                  <div style={{ fontSize: 12, fontWeight: 800, color: S.text, marginBottom: 3, lineHeight: 1.3 }}>{t.name}</div>
-                  {/* Description */}
-                  {t.description && (
-                    <div style={{ fontSize: 10, color: S.textMute, lineHeight: 1.4, marginBottom: 6, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' }}>
-                      {t.description}
-                    </div>
-                  )}
-                  {/* Keywords */}
-                  {(t.keywords || []).length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 3, marginBottom: 6 }}>
-                      {(t.keywords as string[]).slice(0, 3).map(function(k: string) {
-                        return <span key={k} style={{ fontSize: 9, padding: '1px 5px', background: S.bg, color: S.textFaint, borderRadius: 20, border: '1px solid ' + S.border }}>{k}</span>
-                      })}
-                    </div>
-                  )}
-                  {/* Count / % */}
-                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', borderTop: '1px solid ' + S.border, paddingTop: 6 }}>
-                    <span style={{ fontSize: 10, color: S.textFaint }}>n={t.count || 0}</span>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: color }}>{Math.round(t.percentage || 0)}%</span>
-                  </div>
-                  {/* Mini bar */}
-                  <div style={{ height: 3, background: S.border, borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: Math.round(t.percentage || 0) + '%', background: color, borderRadius: 2 }} />
-                  </div>
-                </div>
-              )
+              return themeCard(t, idx, selectedThemeIds.has(t.id), function() { toggleTheme(t.id) })
             })}
           </div>
+          {/* Additional per-field sets — one labeled group per question */}
+          {groups.map(function(g) {
+            const gSel = (extraSelected && extraSelected[g.key]) || new Set<string>()
+            const gSorted = [...g.themes].sort(function(a, b) { return (b.count || 0) - (a.count || 0) })
+            return (
+              <div key={g.key} style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: '#0D2B45', textTransform: 'uppercase' as const, letterSpacing: '.06em', margin: '2px 0 6px' }}>
+                  {g.label} · {gSel.size}/{g.themes.length}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
+                  {gSorted.map(function(t, idx: number) {
+                    return themeCard(t, idx, gSel.has(t.id), function() { toggleExtra(g.key, t.id) })
+                  })}
+                </div>
+              </div>
+            )
+          })}
         </>
       )}
     </div>
   )
+
+  // One selectable theme card — shared by the active grid and every per-field
+  // group (ids repeat across sets, so checked/toggle come from the caller).
+  function themeCard(t: ExportTheme, idx: number, checked: boolean, onToggle: () => void) {
+    const color = t.color || THEME_COLORS[idx % THEME_COLORS.length]
+    const sent  = t.sentiment || 'neutral'
+    return (
+      <div key={t.id} onClick={onToggle}
+        style={{ border: '2px solid ' + (checked ? color : S.border), borderRadius: 10, padding: '10px 12px', cursor: 'pointer', background: checked ? color + '0D' : S.white, transition: 'all .12s', position: 'relative' }}>
+        {/* Checked indicator */}
+        {checked && (
+          <div style={{ position: 'absolute', top: 7, right: 8, width: 16, height: 16, borderRadius: '50%', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ color: 'white', fontSize: 9, fontWeight: 900 }}>✓</span>
+          </div>
+        )}
+        {/* Color dot + sentiment */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+          <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 20, background: SENT_BG[sent] || SENT_BG.neutral, color: SENT_COLOR[sent] || SENT_COLOR.neutral, fontWeight: 700, textTransform: 'capitalize' as const }}>{sent}</span>
+        </div>
+        {/* Name */}
+        <div style={{ fontSize: 12, fontWeight: 800, color: S.text, marginBottom: 3, lineHeight: 1.3 }}>{t.name}</div>
+        {/* Description */}
+        {t.description && (
+          <div style={{ fontSize: 10, color: S.textMute, lineHeight: 1.4, marginBottom: 6, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' }}>
+            {t.description}
+          </div>
+        )}
+        {/* Keywords */}
+        {(t.keywords || []).length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 3, marginBottom: 6 }}>
+            {(t.keywords as string[]).slice(0, 3).map(function(k: string) {
+              return <span key={k} style={{ fontSize: 9, padding: '1px 5px', background: S.bg, color: S.textFaint, borderRadius: 20, border: '1px solid ' + S.border }}>{k}</span>
+            })}
+          </div>
+        )}
+        {/* Count / % */}
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', borderTop: '1px solid ' + S.border, paddingTop: 6 }}>
+          <span style={{ fontSize: 10, color: S.textFaint }}>n={t.count || 0}</span>
+          <span style={{ fontSize: 13, fontWeight: 800, color: color }}>{Math.round(t.percentage || 0)}%</span>
+        </div>
+        {/* Mini bar */}
+        <div style={{ height: 3, background: S.border, borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: Math.round(t.percentage || 0) + '%', background: color, borderRadius: 2 }} />
+        </div>
+      </div>
+    )
+  }
 }
 
 function EntityAnalysisPicker({
