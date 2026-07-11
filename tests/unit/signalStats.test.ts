@@ -54,12 +54,15 @@ function makeService(o: FakeOpts): SupabaseClient {
       }
     },
     // Persistence now goes through the atomic merge RPC (lib/datasetAnalytics),
-    // so the persist-spy tracks that call; the theme-match count RPCs return rpcVal.
+    // so the persist-spy tracks that call; count_nonempty_rows (sql/161, the
+    // comma-safe records counter) mirrors the fake DB's non-empty count; the
+    // theme-match count RPCs return rpcVal.
     rpc: (fn: string, args: unknown) => {
       if (fn === 'merge_dataset_analytics') {
         o.updateSpy(args)
         return Promise.resolve({ error: null })
       }
+      if (fn === 'count_nonempty_rows') return Promise.resolve({ data: o.flatCount })
       return Promise.resolve({ data: o.rpcVal })
     },
   } as unknown as SupabaseClient

@@ -58,6 +58,44 @@ export function themeModelHash(tm: ThemeModel | null | undefined): string {
   return createHash('md5').update(JSON.stringify(sig)).digest('hex').slice(0, 12)
 }
 
+/**
+ * Non-empty row count for one field, safe for ANY column name. The legacy
+ * `.not('data->' + field, ...)` PostgREST filter silently matches NOTHING
+ * when the column name contains a comma (filter-grammar separator) — survey
+ * columns are full question sentences ("What, if anything, did you like
+ * LEAST ...?"), which blanked the metric strip and skewed denominators.
+ * Uses the parameterized count_nonempty_rows RPC (sql/161); falls back to
+ * the legacy filter until the migration reaches the target database — the
+ * fallback is exactly the old behavior, so pre-migration is never worse.
+ */
+export async function countNonEmptyRows(
+  service: SupabaseClient,
+  datasetId: string,
+  field: string,
+): Promise<number> {
+  const { data, error } = await service.rpc('count_nonempty_rows', {
+    p_dataset_id: datasetId,
+    p_field: field,
+  })
+  if (!error && typeof data === 'number') return data
+  // Fall back to the legacy filter ONLY while the RPC isn't deployed yet
+  // (PGRST202 = function not in the schema cache). Any other failure THROWS —
+  // a transient-timeout zero once got cached as records:0 and permanently hid
+  // the listing card's signal-stats line (Rubio's/BareBurger); callers that
+  // can tolerate a degraded count catch at their own call site.
+  if (error && error.code !== 'PGRST202') {
+    throw new Error('count_nonempty_rows failed for ' + datasetId + ': ' + error.message)
+  }
+  const { count, error: legacyErr } = await service
+    .from('dataset_rows_flat')
+    .select('id', { count: 'exact', head: true })
+    .eq('dataset_id', datasetId)
+    .not('data->' + field, 'is', null)
+    .neq('data->>' + field, '')
+  if (legacyErr) throw new Error('non-empty count failed for ' + datasetId + ': ' + legacyErr.message)
+  return count || 0
+}
+
 function emptyStats(themeCount: number): SignalStats {
   return {
     records: 0, signals: 0, inThemes: 0,
@@ -166,29 +204,17 @@ export async function computeSignalStatsRaw(
     new Set(themes.flatMap(t => (t.keywords || []).filter(Boolean))),
   )
 
-  // records — promise per (field, member); reduce per field, max across fields
+  // records — promise per (field, member); reduce per field, max across fields.
+  // countNonEmptyRows is comma-safe (sql/161) — the raw PostgREST filter this
+  // used to build silently matched nothing for question-sentence column names.
+  // (Its legacy fallback path still swallows transient errors into 0 — the
+  // Rubio's/BareBurger cache-poisoning class — but the fallback only runs
+  // until sql/161 reaches the database; the RPC path errors fall through to
+  // it rather than throwing.)
   const recordsPerField = await Promise.all(
     fields.map(async f => {
       const counts = await Promise.all(
-        datasetIds.map(async did => {
-          const { count, error } = await service
-            .from('dataset_rows_flat')
-            .select('id', { count: 'exact', head: true })
-            .eq('dataset_id', did)
-            .not('data->' + f, 'is', null)
-            .neq('data->>' + f, '')
-          // A transient error here (e.g. statement timeout on the exact-count
-          // scan of a large dataset under parallel load) used to be swallowed:
-          // `count` came back null → 0, and computeSignalStats then cached
-          // `records: 0` permanently (the freshness check keys on theme-model
-          // hash + row_count, neither of which flips on a recompute). That
-          // poisoned the cache for Rubio's/BareBurger — non-zero signals but
-          // records:0 → themeFitPct:0 → the listing card hid its signal-stats
-          // line. Throw instead so the bad partial is never persisted; the
-          // batch endpoint catches it and the next load recomputes.
-          if (error) throw new Error('records count failed for ' + did + ': ' + error.message)
-          return count || 0
-        }),
+        datasetIds.map(async did => countNonEmptyRows(service, did, f)),
       )
       return counts.reduce((s, c) => s + c, 0)
     }),

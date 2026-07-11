@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { countNonEmptyRows } from '@/lib/signalStats'
 
 interface Props { params: Promise<{ datasetId: string }> }
 
@@ -113,13 +114,10 @@ export async function POST(req: Request, props: Props) {
     for (const f of fields) {
       let fieldTotal = 0
       for (const did of datasetIds) {
-        const { count: nonEmpty } = await service
-          .from('dataset_rows_flat')
-          .select('id', { count: 'exact', head: true })
-          .eq('dataset_id', did)
-          .not('data->' + f, 'is', null)
-          .neq('data->>' + f, '')
-        fieldTotal += nonEmpty || 0
+        // Comma-safe count (sql/161) — the raw PostgREST filter used here
+        // silently returned 0 for question-sentence column names, zeroing
+        // the percentage denominator. Degrade to 0 on failure (old behavior).
+        try { fieldTotal += await countNonEmptyRows(service, did, f) } catch { /* keep old swallow */ }
       }
       totalNonEmpty = Math.max(totalNonEmpty, fieldTotal)
     }

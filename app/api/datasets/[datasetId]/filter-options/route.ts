@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { countNonEmptyRows } from '@/lib/signalStats'
 
 interface Props { params: Promise<{ datasetId: string }> }
 
@@ -59,13 +60,11 @@ export async function GET(_req: Request, props: Props) {
       // True blank count for this field (null key OR empty string). The filter
       // modal is fed synthetic rows (one per distinct value), so it can't derive
       // blank counts itself — it must come from here, against the live table.
-      const { count: nonBlank } = await service
-        .from('dataset_rows_flat')
-        .select('id', { count: 'exact', head: true })
-        .eq('dataset_id', params.datasetId)
-        .not('data->' + f.field, 'is', null)
-        .neq('data->>' + f.field, '')
-      opt.blanks = Math.max(0, (flatCount || 0) - (nonBlank || 0))
+      // Comma-safe count (sql/161): the raw PostgREST filter counted 0 non-blank
+      // for question-sentence column names, marking EVERY row blank.
+      let nonBlank = 0
+      try { nonBlank = await countNonEmptyRows(service, params.datasetId, f.field) } catch { /* blanks stay best-effort */ }
+      opt.blanks = Math.max(0, (flatCount || 0) - nonBlank)
 
       if (f.type === 'categorical' || f.type === 'open-ended') {
         const { data } = await service.rpc('count_field_values', {

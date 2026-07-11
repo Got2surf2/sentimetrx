@@ -2,6 +2,7 @@
 // SERVER-SIDE ONLY — never imported by client components.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { countNonEmptyRows } from './signalStats'
 import type {
   SchemaConfig,
   SchemaFieldConfig,
@@ -428,11 +429,13 @@ export async function computeAnalyticsSQL(
         if (v.length > maxLen) maxLen = v.length
         if (oeSample.length < 20) oeSample.push(v)
       })
-      // Get accurate nonNull count from SQL
-      var oeCountRes = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true })
-        .eq('dataset_id', datasetId).not('data->>' + f.field, 'is', null)
+      // Get accurate nonNull count from SQL — comma-safe (sql/161): the raw
+      // PostgREST filter returned 0 for question-sentence column names,
+      // silently falling back to the sampled count below.
+      var oeSqlCount = 0
+      try { oeSqlCount = await countNonEmptyRows(service, datasetId, f.field) } catch { /* sampled fallback below */ }
       return {
-        type: 'open-ended', nonNull: oeCountRes.count || oeNonNull,
+        type: 'open-ended', nonNull: oeSqlCount || oeNonNull,
         avgWordCount: oeNonNull > 0 ? parseFloat((totalWords / oeNonNull).toFixed(1)) : 0,
         avgCharLen: oeNonNull > 0 ? Math.round(totalChars / oeNonNull) : 0,
         maxCharLen: maxLen, sample: oeSample,
