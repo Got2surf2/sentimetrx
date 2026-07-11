@@ -44,14 +44,6 @@ interface DonutSummary {
 // by dataset id, fetched in one batch from /api/datasets/signal-stats-batch.
 // Cards render skeleton until their entry lands so the listing doesn't
 // flash + reflow.
-export interface SignalStatsBrief {
-  records: number
-  signals: number
-  inThemes: number
-  themeFitPct: number
-  themeFitBand: 'Tight' | 'Mixed' | 'Diffuse'
-  themeCount: number
-}
 
 interface Props {
   dataset:             DatasetWithState
@@ -62,7 +54,6 @@ interface Props {
   isAdmin?:            boolean
   allOrgs?:            OrgOption[]
   onTransfer?:         (datasetId: string, studyId: string | null, orgId: string) => Promise<void>
-  signalStats?:        SignalStatsBrief | null  // undefined = still loading, null = no themes/data
   onDrillIn?:          (collectionId: string, name: string) => void  // brand cards only
   onManageMembers?:    (collectionDatasetId: string, name: string) => void  // collection cards only
   initialFavorited?:   boolean
@@ -73,11 +64,6 @@ const HERMES_BG = '#fff4ef'
 const HERMES_MID = '#fcd5c0'
 const INDIGO = '#6366f1'
 
-const FIT_BAND: Record<SignalStatsBrief['themeFitBand'], { fg: string; bg: string; border: string }> = {
-  Tight:   { fg: '#047857', bg: '#ecfdf5', border: '#a7f3d0' },
-  Mixed:   { fg: '#92400e', bg: '#fffbeb', border: '#fde68a' },
-  Diffuse: { fg: '#9f1239', bg: '#fff1f2', border: '#fecdd3' },
-}
 
 function timeAgo(iso: string): string {
   const diff  = Date.now() - new Date(iso).getTime()
@@ -100,7 +86,7 @@ function Badge({ label, color, bg, border }: { label: string, color: string, bg:
   )
 }
 
-export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisibility, onToggleArchive, isAdmin = false, allOrgs = [], onTransfer, signalStats, onDrillIn, onManageMembers, initialFavorited = false }: Props) {
+export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisibility, onToggleArchive, isAdmin = false, allOrgs = [], onTransfer, onDrillIn, onManageMembers, initialFavorited = false }: Props) {
   const router = useRouter()
   const [menuOpen,      setMenuOpen]      = useState(false)
   const [renaming,      setRenaming]      = useState(false)
@@ -677,17 +663,8 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <span style={{ fontSize: 15, lineHeight: 1 }}>&#8803;</span>
-          {signalStats && signalStats.records > 0 ? (
-            <>
-              <span style={{ fontWeight: 700, color: '#111827' }}>{signalStats.records.toLocaleString()}</span>
-              <span style={{ color: '#9ca3af' }}>comments</span>
-            </>
-          ) : (
-            <>
-              <span style={{ fontWeight: 700, color: '#111827' }}>{dataset.row_count.toLocaleString()}</span>
-              <span style={{ color: '#9ca3af' }}>rows</span>
-            </>
-          )}
+          <span style={{ fontWeight: 700, color: '#111827' }}>{dataset.row_count.toLocaleString()}</span>
+          <span style={{ color: '#9ca3af' }}>rows</span>
         </div>
         {fieldCount !== null && !isReviews && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -721,41 +698,6 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
           {timeAgo(dataset.updated_at)}
         </div>
       </div>
-
-      {/* Phase C signal-stats block. Undefined until the batch fetch
-          returns (skeleton); null when the dataset has no themes
-          (block hides). Same vocabulary as the dataset detail strip:
-          records · signals · Theme-fit band + %. */}
-      {signalStats === undefined && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
-          <span style={{ height: 12, width: 100, background: '#f3f4f6', borderRadius: 6 }} />
-          <span style={{ height: 12, width: 80, background: '#f3f4f6', borderRadius: 6 }} />
-        </div>
-      )}
-      {signalStats && signalStats.themeCount > 0 && signalStats.records > 0 && (function() {
-        const fit = FIT_BAND[signalStats.themeFitBand]
-        const tip = signalStats.themeFitPct + '% of comments (' + signalStats.inThemes.toLocaleString() +
-          ' of ' + signalStats.records.toLocaleString() + ') match at least one of the ' +
-          signalStats.themeCount + ' themes.'
-        return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 11 }}>
-            <span style={{ color: '#6b7280' }} title="Sum of per-theme comment matches (a comment in N themes contributes N).">
-              <strong style={{ color: '#111827' }}>{signalStats.signals.toLocaleString()}</strong> signals
-              {' '}<span style={{ color: '#9ca3af' }} title="Average number of theme signals per commenting record (signals ÷ comments).">
-                ({(signalStats.signals / signalStats.records).toFixed(1)} per comment)
-              </span>
-            </span>
-            <span style={{ color: '#d1d5db' }}>·</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} title={tip}>
-              <span style={{ color: '#6b7280' }}>Theme fit</span>
-              <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 10, background: fit.bg, color: fit.fg, border: '1px solid ' + fit.border }}>
-                {signalStats.themeFitBand}
-              </span>
-              <strong style={{ color: '#111827' }}>{signalStats.themeFitPct}%</strong>
-            </span>
-          </div>
-        )
-      })()}
 
       {/* 3b. Scoring donut — shows when a scored field exists with analytics */}
       {(function() {

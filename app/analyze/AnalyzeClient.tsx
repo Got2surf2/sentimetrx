@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import DatasetCard, { type SignalStatsBrief } from '@/components/analyze/DatasetCard'
+import DatasetCard from '@/components/analyze/DatasetCard'
 import DatasetFilterBar from '@/components/analyze/DatasetFilterBar'
 import NewCollectionModal from '@/components/analyze/NewCollectionModal'
 import ManageMembersModal from '@/components/analyze/ManageMembersModal'
@@ -42,10 +42,6 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
   // Brand drill-in: when set, the grid shows only that brand-collection's
   // member datasets instead of the flat listing. Cleared by "Back to all".
   const [drillIn, setDrillIn] = useState<{ collectionId: string; name: string } | null>(null)
-  // Phase C: batched signal stats. `undefined` means "not yet fetched"
-  // for that dataset (cards render skeleton); after the batch returns,
-  // the entry is either a SignalStatsBrief or null (no themes).
-  const [signalStatsMap, setSignalStatsMap] = useState<Record<string, SignalStatsBrief | null>>({})
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set())
   const [sortMode, setSortMode] = useState<'updated' | 'created' | 'name'>('updated')
 
@@ -76,39 +72,6 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
     setSortMode(next)
     if (typeof window !== 'undefined') window.localStorage.setItem('sentimetrx.sort.analyze', next)
   }
-
-  useEffect(function() {
-    const ids = initialDatasets.map(function(d) { return d.id })
-    if (ids.length === 0) return
-    let cancelled = false
-    // 50/batch matches the server-side cap; chunk if a user has more
-    // than that on their listing.
-    const CHUNK = 50
-    async function run() {
-      for (let i = 0; i < ids.length; i += CHUNK) {
-        const slice = ids.slice(i, i + CHUNK)
-        try {
-          const res = await fetch('/api/datasets/signal-stats-batch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ids: slice }),
-          })
-          if (!res.ok) continue
-          const data = await res.json()
-          if (cancelled || !data?.stats) continue
-          setSignalStatsMap(function(prev) {
-            const next: Record<string, SignalStatsBrief | null> = { ...prev }
-            for (const id of slice) {
-              next[id] = (data.stats as Record<string, SignalStatsBrief>)[id] || null
-            }
-            return next
-          })
-        } catch { /* silent */ }
-      }
-    }
-    void run()
-    return function() { cancelled = true }
-  }, [initialDatasets])
 
   // A brand is "active" only with ≥2 members: it then shows as a Brand
   // card with members hidden behind drill-in. With 0-1 members the brand
@@ -339,7 +302,6 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
                     isAdmin={isAdmin}
                     allOrgs={allOrgs}
                     onTransfer={handleTransfer}
-                    signalStats={signalStatsMap[dataset.id]}
                     onDrillIn={function(collectionId, name) { setDrillIn({ collectionId: collectionId, name: name }) }}
                     onManageMembers={handleManageMembers}
                     initialFavorited={favoriteIds.has(dataset.id)}
