@@ -672,6 +672,25 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
     if (debugMode) _debug.push('mco-live-context: ' + ((e as Error)?.message || String(e)))
   }
 
+  // Wildfire live-data injection — same top-of-prompt placement and
+  // rationale as the MCO block above. Gated by a config flag (not a bot
+  // id) so the same agent definition works across TEST and prod:
+  // config.liveContext === 'wildfire'. Recent user messages are passed so
+  // a ZIP/city shared earlier in the conversation carries forward.
+  if (bot.config?.liveContext === 'wildfire') {
+    try {
+      const { buildWildfireLiveContext } = await import('@/lib/wildfireLiveContext')
+      const recentUser = messages
+        .filter(function (m: ChatMessage) { return m.role === 'user' })
+        .slice(-8, -1)
+        .map(function (m: ChatMessage) { return String(m.content || '') })
+      const fireBlock = await buildWildfireLiveContext(lastUserMsg?.content || '', recentUser)
+      if (fireBlock) systemParts.push(fireBlock)
+    } catch (e) {
+      if (debugMode) _debug.push('wildfire-live-context: ' + ((e as Error)?.message || String(e)))
+    }
+  }
+
   if (bot.personality) {
     systemParts.push('PERSONALITY & COMMUNICATION STYLE:\n' + bot.personality + '\n\nAdapt your tone, vocabulary, and communication style to match this personality description. Stay in character throughout the conversation.')
   }

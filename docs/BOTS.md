@@ -476,7 +476,7 @@ The heart of the module. **No auth.** Rate-limited 30 req/60s per IP.
    - **Demographics** runs independently when `demographic_inference === true` and `userTurnCount >= 3`. Same cadence (every 5th turn). Stored in the same `bot_session_personas` row's `demographics` column.
    - Merge logic: explicit-source overrides inferred; confidence only upgrades. `concerns[]` is union-deduplicated.
 10. **Knowledge retrieval** — see § 8. Skipped entirely when `intentHasAction === true`.
-11. **Prompt assembly** — see § 7 for the full system-prompt structure.
+11. **Prompt assembly** — see § 7 for the full system-prompt structure. Includes the per-turn live-data injection for agents with `config.liveContext` set (below) and the MCO live block (bot-id-gated, `docs/MCO_AGENT.md`).
 12. **Main response** — `callAI({ tier: 'advanced', maxTokens: 400, timeoutMs: 30000 })`. **Note:** the tier was temporarily bumped from `'fast'` (Haiku 4.5) to `'advanced'` (Sonnet 4.6) on 2026-05-16 for the Vindman demo. Auxiliary callAI invocations (summary compression, deflection, intent matching, persona extraction) remain on `'fast'`. Revert to `'fast'` here if ongoing Sonnet spend is not authorized post-demo.
 13. **Post-processing** — `sanitizeBotReply(text)` (from `lib/guardrails.ts`) scrubs leaked evaluator/meta-prompt scaffolding from the model output; if `leaked`, a safe fallback reply is served and a warning is logged. (`cleanDeflectResponse` is used only inside the deflection branch, step 7.)
 14. **Persist** — fire-and-forget update of `bots.last_session_at`. If `session_id` is provided, the user + assistant turns are **awaited** into `bot_conversation_turns` BEFORE returning the response (since 2026-05-20). Prior to that fix, the turn-storage block was a fire-and-forget IIFE that ran AFTER `return NextResponse.json(...)`; on Vercel the Lambda freezes once the response is sent, and the IIFE got killed mid-execution on long sessions where storage took longer than the platform's grace window — producing silent storage loss with the chat endpoint returning 200 OK and the AI reply rendering successfully. Awaiting storage adds ~50–200ms to the response and guarantees the insert lands.
@@ -491,6 +491,19 @@ The heart of the module. **No auth.** Rate-limited 30 req/60s per IP.
 15. **Return** `{ reply, _debug?, _signals? }` with CORS headers. On AI exception, returns a friendly "I'm having trouble right now…" reply (still 200).
 
 > **Phantom feature note:** The `bot_conversation_turns.content_en` column exists for future translation work but is **not populated** today. The chat route propagates `botLang` only to inject a "respond in <language>" instruction into the system prompt; no actual translation step runs.
+
+### Live-data context injection — `config.liveContext` (2026-07-11)
+
+Per-turn deterministic injection of LIVE external data into the system prompt, generalizing the MCO pattern (`lib/mcoLiveContext.ts`, which stays bot-id-gated) behind a **config flag** so the same agent definition works across TEST/prod ids. Placed at the TOP of the system prompt (same placement + rationale as the MCO block: anti-fabrication rules further down otherwise make the model ignore injected live data).
+
+- **`config.liveContext === 'wildfire'`** → `lib/wildfireLiveContext.buildWildfireLiveContext(userMessage, recentUserMessages)`. Regex intent + location detection (no AI call): a live-fire question with a ZIP / "City, ST" / "near <place>" in the current or recent user messages (location carries forward across turns) triggers, in parallel and fail-soft:
+  - **Geocode** — ZIP via `api.zippopotam.us`, city via Nominatim (OpenStreetMap). Both free/keyless.
+  - **NIFC/WFIGS current incidents** (public ArcGIS feed, keyless) within 150 statute miles, sorted by haversine distance with compass direction; prescribed burns (RX) labeled as planned, not wildfires.
+  - **NWS active alerts** for the point (`api.weather.gov`), filtered to fire/smoke/evacuation/air-quality events.
+  - The block's footer enforces safety behavior for the turn: never declare the person safe, lead with any evacuation alert, 911-first on described immediate danger, freshness caveat (feed is not real-time), county named but **no constructed local URLs** (allowed URLs are pinned to the official set).
+  - No location in the conversation → a small block instructs the model to ask for ZIP/City-State only (never a street address). Unresolvable location or feed outage → honest fallbacks pointing to inciweb.wildfire.gov / weather.gov.
+- Fetches share a 6s timeout; any failure degrades to instructions to consult official sources — never invented data. Unit coverage: `tests/unit/wildfireLiveContext.test.ts`.
+- First consumer: the **Ember** wildfire agent (`scripts/oneoff/_wildfire_create_agent.ts`, slug `wildfire`).
 
 ### Rate limit
 
