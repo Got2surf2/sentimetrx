@@ -53,15 +53,29 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
 
   useEffect(function() {
     let cancelled = false
-    fetch('/api/datasets/' + datasetId + '/signal-stats')
-      .then(function(r) { return r.ok ? r.json() : null })
-      .then(function(d) {
-        if (cancelled) return
-        if (d && typeof d.records === 'number') setStats(d as SignalStats)
-        setLoaded(true)
-      })
-      .catch(function() { if (!cancelled) setLoaded(true) })
-    return function() { cancelled = true }
+    function fetchStats() {
+      fetch('/api/datasets/' + datasetId + '/signal-stats')
+        .then(function(r) { return r.ok ? r.json() : null })
+        .then(function(d) {
+          if (cancelled) return
+          if (d && typeof d.records === 'number') setStats(d as SignalStats)
+          setLoaded(true)
+        })
+        .catch(function() { if (!cancelled) setLoaded(true) })
+    }
+    fetchStats()
+    // Re-fetch when themes change in-session: on a fresh upload the strip
+    // mounts with zero themes (renders nothing) and mining now happens in the
+    // same visit — without this it stayed invisible until a full reload.
+    // 'dataset-themes-saved' fires on every theme-model persist (TextMine);
+    // 'ana-themes-changed' on Ana theme edits.
+    window.addEventListener('dataset-themes-saved', fetchStats)
+    window.addEventListener('ana-themes-changed', fetchStats)
+    return function() {
+      cancelled = true
+      window.removeEventListener('dataset-themes-saved', fetchStats)
+      window.removeEventListener('ana-themes-changed', fetchStats)
+    }
   }, [datasetId])
 
   // Loading placeholder

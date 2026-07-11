@@ -2041,6 +2041,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         // first field's foodService verdict, classified once.
         if (firstFoodService === true) void autoEnableDimensions([firstField])
         else if (firstFoodService === false) void autoTagEmotion([firstField])
+        // Wake the metric strip (comments · signals · theme fit) — it mounted
+        // before any themes existed on a fresh upload.
+        try { window.dispatchEvent(new Event('dataset-themes-saved')) } catch { /* SSR-safe */ }
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Mining failed')
@@ -2107,6 +2110,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       setSaved(true)
       setIsDirty(false)
       setTimeout(function() { setSaved(false) }, 3000)
+      // Tell the metric strip (comments · signals · theme fit) to re-fetch —
+      // on a fresh upload it mounted before any themes existed. Distinct from
+      // 'ana-themes-changed', which THIS component listens to (self-loop).
+      try { window.dispatchEvent(new Event('dataset-themes-saved')) } catch { /* SSR-safe */ }
     } catch { setIsDirty(true) }
     setSaving(false)
   }
