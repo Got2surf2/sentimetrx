@@ -2523,9 +2523,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     )}
                     {/* Multi-question setup (2026-07-11): pick which open-ended
                         questions get their own theme set, then mine them all in
-                        one pass — each lands as its own per-field set. */}
+                        one pass — each lands as its own per-field set. Questions
+                        that ALREADY have a set start unchecked with a badge —
+                        checking one is an explicit re-mine-and-replace (owner hit
+                        this switching to an unmined field: both were checked and
+                        Continue would have re-mined the mined one too). */}
                     {rows.length > 0 && openFields.length > 1 && !aiDisabledByOrg && (function() {
-                      var checked = setupChecked ?? openFields.map(function(f) { return f.field })
+                      var checked = setupChecked ?? openFields.filter(function(f) { return !fieldModels[themeFieldKey([f.field])] }).map(function(f) { return f.field })
                       return (
                         <div style={{ maxWidth: 420, margin: '0 auto 18px', textAlign: 'left', background: 'white', border: '1px solid ' + T.border, borderRadius: 12, padding: '14px 16px' }}>
                           <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
@@ -2541,6 +2545,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                     setSetupChecked(next)
                                   }} />
                                 <span style={{ flex: 1, lineHeight: 1.35 }}>{fieldLabel(f.field)}</span>
+                                {!!fieldModels[themeFieldKey([f.field])] && (
+                                  <span title="This question already has a theme set — checking it re-mines and replaces that set."
+                                    style={{ fontSize: 9.5, fontWeight: 700, color: '#047857', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 10, padding: '1px 7px', flexShrink: 0 }}>
+                                    ✓ has themes
+                                  </span>
+                                )}
                                 {typeof f.nonNullCount === 'number' && (
                                   <span style={{ fontSize: 10.5, color: T.textFaint, flexShrink: 0 }}>{f.nonNullCount.toLocaleString()} answers</span>
                                 )}
@@ -2556,7 +2566,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     {rows.length > 0 && (
                       <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
                         {!aiDisabledByOrg && (function() {
-                          var checked = setupChecked ?? openFields.map(function(f) { return f.field })
+                          var checked = setupChecked ?? openFields.filter(function(f) { return !fieldModels[themeFieldKey([f.field])] }).map(function(f) { return f.field })
                           var multi = openFields.length > 1
                           var canRun = canMine && aiEnabled && (!multi || checked.length > 0)
                           return (
