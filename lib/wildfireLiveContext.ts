@@ -23,6 +23,10 @@ import 'server-only'
 //   5. Current air quality from AirNow (airnowgovapi.com — the keyless
 //      API behind airnow.gov): official EPA monitor observations with
 //      AQI category and reporting agency.
+//   6. Drought conditions from the U.S. Drought Monitor (NDMC/USDA/NOAA,
+//      the data behind drought.gov) — the weekly D0–D4 class at the
+//      point. Presented as official fuel-dryness CONTEXT only; the block
+//      forbids converting it into a personal fire-risk rating.
 // All fetches fail-soft; empty string when no live intent matches.
 //
 // Gated by chatCore on bot.config.liveContext === 'wildfire' — a config
@@ -38,6 +42,8 @@ const WFIGS_URL =
 const WFIGS_PERIMETERS_URL =
   'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0/query'
 const AIRNOW_URL = 'https://airnowgovapi.com/reportingarea/get'
+const USDM_URL =
+  'https://services5.arcgis.com/0OTVzJS4K09zlixn/arcgis/rest/services/USDM_current/FeatureServer/0/query'
 
 interface GeoPoint {
   lat: number
@@ -87,6 +93,20 @@ interface FirePerimeter {
   inside: boolean
 }
 
+interface DroughtStatus {
+  /** USDM class 0–4, or null when the point is in no drought polygon. */
+  level: number | null
+  releaseDate: number | null
+}
+
+const USDM_LABELS: Record<number, string> = {
+  0: 'D0 — Abnormally Dry',
+  1: 'D1 — Moderate Drought',
+  2: 'D2 — Severe Drought',
+  3: 'D3 — Extreme Drought',
+  4: 'D4 — Exceptional Drought',
+}
+
 interface AirQuality {
   aqi: number
   category: string
@@ -100,7 +120,7 @@ interface AirQuality {
 // ── Intent + location detection ─────────────────────────────────────
 
 const LIVE_INTENT_RE =
-  /\b(near(est|by| me)?|close(st)?|around (me|here|us)|my (area|town|city|home|house|neighborhood|county|zip)|current(ly)?|active|right now|today|burning|any (fires?|wildfires?)|how (close|far)|danger|threat|safe(ty)?|evacuat\w*|alert|warning|red flag|air quality|aqi|smoke)\b/i
+  /\b(near(est|by| me)?|close(st)?|around (me|here|us)|my (area|town|city|home|house|neighborhood|county|zip)|current(ly)?|active|right now|today|burning|any (fires?|wildfires?)|how (close|far|dry)|danger|threat|risk|conditions?|drought|dry|safe(ty)?|evacuat\w*|alert|warning|red flag|air quality|aqi|smoke)\b/i
 
 // "City, ST" — capitalized city tokens + uppercase two-letter state code
 // (lowercase "near boise" still resolves via PREPOSITION_PLACE_RE below).
@@ -365,6 +385,34 @@ async function fetchAirQuality(point: GeoPoint): Promise<AirQuality | null> {
   }
 }
 
+async function fetchDroughtStatus(point: GeoPoint): Promise<DroughtStatus> {
+  const params = new URLSearchParams({
+    where: '1=1',
+    geometry: `${point.lng},${point.lat}`,
+    geometryType: 'esriGeometryPoint',
+    inSR: '4326',
+    spatialRel: 'esriSpatialRelIntersects',
+    outFields: 'DM,ReleaseDate',
+    returnGeometry: 'false',
+    f: 'json',
+  })
+  const data = (await fetchJson(`${USDM_URL}?${params}`)) as {
+    features?: Array<{ attributes?: { DM?: number; ReleaseDate?: number } }>
+    error?: { message?: string }
+  }
+  if (data.error) throw new Error(data.error.message || 'USDM query error')
+  let level: number | null = null
+  let releaseDate: number | null = null
+  for (const f of data.features || []) {
+    const dm = f.attributes?.DM
+    if (typeof dm === 'number' && (level === null || dm > level)) {
+      level = dm
+      releaseDate = f.attributes?.ReleaseDate ?? null
+    }
+  }
+  return { level, releaseDate }
+}
+
 const FIRE_ALERT_RE = /fire|smoke|red flag|evacuation|air quality|dust/i
 
 async function fetchFireAlerts(point: GeoPoint): Promise<NwsAlert[]> {
@@ -442,7 +490,7 @@ const SAFETY_FOOTER =
   'THIS BLOCK IS THE GROUND TRUTH FOR THIS TURN. It SUPERSEDES any rule below that says you have no live fire data. For this turn ONLY:\n' +
   '1. Cite the incidents, distances, sizes, containment, and alerts above AS FACT, and start by echoing the location back (e.g. "Based on ZIP 83702 — Boise, Idaho…") so the person can correct it.\n' +
   '2. ALWAYS include the freshness caveat: this feed is interagency-reported, not real-time — brand-new fires and fast-moving changes may not appear yet, and it is NOT a substitute for official local alerts.\n' +
-  '3. NEVER tell the person they are safe, out of danger, or "fine" — you cannot determine that. Report distances and official alerts, then direct them to their county emergency management / local alerting system (and sheriff or fire department social channels) for evacuation status. Name the county, but NEVER construct a URL, phone number, or address for a county or local agency — tell them to search "<county> emergency alerts" instead. The ONLY URLs you may give are inciweb.wildfire.gov, fire.airnow.gov, weather.gov, ready.gov/wildfires, and nifc.gov.\n' +
+  '3. NEVER tell the person they are safe, out of danger, or "fine" — you cannot determine that. Report distances and official alerts, then direct them to their county emergency management / local alerting system (and sheriff or fire department social channels) for evacuation status. Name the county, but NEVER construct a URL, phone number, or address for a county or local agency — tell them to search "<county> emergency alerts" instead. The ONLY URLs you may give are inciweb.wildfire.gov, fire.airnow.gov, weather.gov, drought.gov, ready.gov/wildfires, and nifc.gov.\n' +
   '4. If ANY evacuation-related alert appears above, LEAD with it and tell them to follow official evacuation orders immediately — do not bury it.\n' +
   '5. If the person describes visible flames, nearby fire, or immediate danger, tell them to call 911 FIRST before anything else.\n' +
   '6. For incident details and maps, point to inciweb.wildfire.gov; for smoke and air quality, fire.airnow.gov.'
@@ -485,11 +533,12 @@ export async function buildWildfireLiveContext(
     )
   }
 
-  const [incidents, perimeters, alerts, airQuality] = await Promise.all([
+  const [incidents, perimeters, alerts, airQuality, drought] = await Promise.all([
     fetchNearbyIncidents(point).catch(() => null),
     fetchNearbyPerimeters(point).catch(() => [] as FirePerimeter[]),
     fetchFireAlerts(point).catch(() => null),
     fetchAirQuality(point).catch(() => null),
+    fetchDroughtStatus(point).catch(() => null),
   ])
 
   // Join perimeters to incidents by IRWIN id (fall back to name).
@@ -538,6 +587,17 @@ export async function buildWildfireLiveContext(
     )
   } else {
     sections.push('AIR QUALITY: no AirNow reading could be retrieved for this location this turn — point them to fire.airnow.gov for current smoke and AQI.')
+  }
+
+  if (drought) {
+    const label = drought.level !== null ? USDM_LABELS[drought.level] || `class D${drought.level}` : 'no drought designation (not in any D0–D4 area)'
+    const released = drought.releaseDate ? `, map released ${fmtEpochDay(drought.releaseDate)}` : ''
+    sections.push(
+      `DROUGHT CONDITIONS (U.S. Drought Monitor — NDMC/USDA/NOAA, the weekly map behind drought.gov${released}): ${label} at this location. ` +
+      'Use this ONLY as official context on how dry the landscape is (drier vegetation ignites more easily and carries fire faster). Do NOT convert it into a personal fire-risk rating, score, or prediction — fire danger also depends on wind, humidity, and heat, which is what the NWS Red Flag system above covers. For maps and outlooks point to drought.gov.'
+    )
+  } else {
+    sections.push('DROUGHT CONDITIONS: the U.S. Drought Monitor feed could not be reached this turn — point them to drought.gov for current conditions.')
   }
 
   if (alerts === null) {

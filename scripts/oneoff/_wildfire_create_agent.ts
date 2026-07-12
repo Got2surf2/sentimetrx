@@ -41,7 +41,7 @@ const m = (extra: Record<string, any> = {}): Record<string, any> => ({ source: S
 
 const CHUNKS: Chunk[] = [
   { title: 'What Ember can do — live fire data near you', metadata: m({ kind: 'capability' }), content:
-`Ember can check LIVE national wildfire data for any U.S. location. Share a ZIP code or "City, State" and Ember looks up (1) active fire incidents near you from the National Interagency Fire Center's interagency feed (WFIGS) — each fire's size in acres, percent containment, discovery date, and how close it is, including the distance to the mapped FIRE EDGE (perimeter) when one exists, which matters more than the fire's origin point for large fires; (2) current National Weather Service alerts for your spot, such as Red Flag Warnings, Fire Weather Watches, evacuation notices, and smoke alerts; and (3) the current air quality (AQI) for your area from AirNow/EPA monitor readings. Important limits: the feeds are interagency-reported, not real-time — brand-new fires and fast-moving perimeter changes may take time to appear — and Ember can never tell you whether you are personally safe. For evacuation decisions, always follow your county emergency management and local officials.` },
+`Ember can check LIVE national wildfire data for any U.S. location. Share a ZIP code or "City, State" and Ember looks up (1) active fire incidents near you from the National Interagency Fire Center's interagency feed (WFIGS) — each fire's size in acres, percent containment, discovery date, and how close it is, including the distance to the mapped FIRE EDGE (perimeter) when one exists, which matters more than the fire's origin point for large fires; (2) current National Weather Service alerts for your spot, such as Red Flag Warnings, Fire Weather Watches, evacuation notices, and smoke alerts; (3) the current air quality (AQI) for your area from AirNow/EPA monitor readings; and (4) the current U.S. Drought Monitor class (D0–D4) for your location — official context on how dry the landscape is. Important limits: the feeds are interagency-reported, not real-time — brand-new fires and fast-moving perimeter changes may take time to appear — and Ember can never tell you whether you are personally safe. For evacuation decisions, always follow your county emergency management and local officials.` },
 
   { title: 'The U.S. Wildland Fire Service', metadata: m({ kind: 'overview', url: 'https://www.doi.gov/wildlandfireservice' }), content:
 `The U.S. Wildland Fire Service is a unified federal service launched by the Department of the Interior in January 2026. It manages wildfire prevention, response, and recovery across more than 500 million acres of public and tribal lands. Its three core functions are: PREVENTION (reducing excess vegetation to restore healthy, fire-resistant ecosystems), RESPONSE (suppression operations to extinguish or limit wildfires), and RECOVERY (rehabilitating severely burned areas). Official page: doi.gov/wildlandfireservice.` },
@@ -70,6 +70,9 @@ const CHUNKS: Chunk[] = [
   { title: 'Smoke and air quality', metadata: m({ kind: 'smoke', url: 'https://fire.airnow.gov' }), content:
 `Wildfire smoke can be hazardous far — even hundreds of miles — from the fire itself. Check current conditions on the AirNow Fire and Smoke Map (fire.airnow.gov), which shows monitor readings and smoke plumes using the color-coded Air Quality Index (AQI): Green (Good) → Yellow (Moderate) → Orange (Unhealthy for Sensitive Groups) → Red (Unhealthy) → Purple (Very Unhealthy) → Maroon (Hazardous). When smoke is heavy: stay indoors with windows closed, run HVAC on recirculate or a HEPA filter, avoid strenuous outdoor activity, and use an N95/KN95 (not a cloth or surgical mask) if you must be outside. Children, older adults, pregnant people, and anyone with heart or lung conditions are most at risk.` },
 
+  { title: 'Drought and wildfire: the U.S. Drought Monitor (D0–D4)', metadata: m({ kind: 'terminology', url: 'https://www.drought.gov' }), content:
+`The U.S. Drought Monitor is the weekly national drought map produced by the National Drought Mitigation Center with USDA and NOAA (it powers drought.gov). It classifies conditions on a five-step scale: D0 (Abnormally Dry), D1 (Moderate Drought), D2 (Severe Drought), D3 (Extreme Drought), and D4 (Exceptional Drought). Drought matters for wildfire because prolonged dryness dries out grasses, brush, and timber — dry fuels ignite more easily and carry fire faster. But drought alone is not a fire-risk forecast: day-to-day fire danger also depends on wind, humidity, and temperature, which is what National Weather Service Red Flag Warnings and Fire Weather Watches capture. Ember can report the current Drought Monitor class for your location as official context; for maps, history, and outlooks see drought.gov. A new map is released every Thursday.` },
+
   { title: 'Red Flag Warning and Fire Weather Watch', metadata: m({ kind: 'terminology' }), content:
 `A RED FLAG WARNING is issued by the National Weather Service when weather conditions — typically the combination of strong winds, low humidity, and dry fuels — are occurring or imminent and could cause fires to ignite easily and spread rapidly. A FIRE WEATHER WATCH means those conditions are possible in the next day or two. A Red Flag Warning does NOT mean a fire is burning near you — it means conditions are dangerous: avoid anything that sparks (mowing dry grass, chains dragging, open flames, burning debris), review your evacuation plan, and stay alert to local warnings.` },
 
@@ -92,7 +95,7 @@ Tone: steady and plain-spoken, like a seasoned public information officer at a c
 
 const SYSTEM_PROMPT = `You are Ember, a wildfire information assistant for citizens anywhere in the United States.
 
-YOUR SCOPE: current wildfire activity near a location (via your LIVE data feed), official alerts and what they mean, evacuation terminology and readiness, go-bags and preparedness, defensible space, smoke and air quality, fire terminology (acres, containment, prescribed burns, Red Flag Warnings, preparedness levels), prevention, and where official information lives.
+YOUR SCOPE: current wildfire activity near a location (via your LIVE data feed), official alerts and what they mean, evacuation terminology and readiness, go-bags and preparedness, defensible space, smoke and air quality, drought conditions as fire-context, fire terminology (acres, containment, prescribed burns, Red Flag Warnings, preparedness levels), prevention, and where official information lives.
 
 LIVE DATA: When a person asks about fires near a location — or whether their area is in danger — a LIVE WILDFIRE DATA block will appear at the top of your instructions with real, current incidents and National Weather Service alerts for their location. Use it exactly as instructed there. If no location has been shared yet, ask for a ZIP code (preferred) or City, State. Never ask for a street address — you don't need it.
 
@@ -117,7 +120,8 @@ const GUARDRAILS = [
   'Never declare anyone safe or out of danger, and never predict fire spread or behavior. Report facts and route personal-risk decisions to local officials.',
   'If an evacuation warning or order appears in the live data, lead with it and tell them to follow it immediately.',
   'Answer only from the LIVE WILDFIRE DATA block and your knowledge base. Never invent fire names, sizes, distances, alerts, closures, shelters, or phone numbers.',
-  'Never construct URLs for county or local agencies — name the county and tell people to search "<county> emergency alerts". The only URLs you may give are inciweb.wildfire.gov, fire.airnow.gov, weather.gov, ready.gov/wildfires, readyforwildfire.org, nfpa.org/firewise, doi.gov/wildlandfireservice, and nifc.gov.',
+  'Never construct URLs for county or local agencies — name the county and tell people to search "<county> emergency alerts". The only URLs you may give are inciweb.wildfire.gov, fire.airnow.gov, weather.gov, drought.gov, ready.gov/wildfires, readyforwildfire.org, nfpa.org/firewise, doi.gov/wildlandfireservice, and nifc.gov.',
+  'Drought data is context, never a verdict: report the official U.S. Drought Monitor class and what it means for fuel dryness, but never turn it into a personal fire-risk rating, score, or prediction.',
   'Always include the freshness caveat with live data: the feed is not real-time and new fires may not appear yet; official local alerts outrank it.',
   'Ask only for ZIP code or City, State — never a street address or any other personal information.',
   'You cannot call for help, dispatch resources, or register anyone for alerts — you inform. Say so if asked, and point to 911 / county emergency management.',
@@ -161,7 +165,7 @@ const CONFIG = {
     'What should be in a go-bag?',
     'What does a Red Flag Warning mean?',
     'What does "40% contained" mean?',
-    'How do I sign up for evacuation alerts?',
+    'How dry is my area right now?',
   ],
   dynamicChips: true,
   askName: 'false',
