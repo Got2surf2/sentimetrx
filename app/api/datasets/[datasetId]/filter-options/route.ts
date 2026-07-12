@@ -11,6 +11,12 @@ import { countNonEmptyRows } from '@/lib/nonEmptyCount'
 interface Props { params: Promise<{ datasetId: string }> }
 
 export const dynamic = 'force-dynamic'
+// Serial per-field aggregate RPCs — on wide/large datasets the loop can
+// outlive the default function budget (each statement still bounded by the
+// DB's 8s timeout). Same budget as the peer dataset routes. Note this route
+// only fires when the filter modal opens BEFORE the bulk rows finish loading;
+// afterwards the modal derives options client-side from the loaded sample.
+export const maxDuration = 60
 
 export async function GET(_req: Request, props: Props) {
   const params = await props.params;

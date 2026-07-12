@@ -31,6 +31,8 @@ interface SignalStats {
   avgRating?: number | null
   ratingMax?: number | null
   ratingLabel?: string | null
+  /** avg rating estimated over the deterministic 50K sample (large datasets) */
+  ratingSampled?: boolean
 }
 
 // `embedded` strips the component's own bar wrapper (border/background/padding)
@@ -179,9 +181,9 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
         return (
           <>
             <span style={{ color: '#d1d5db' }}>·</span>
-            <span title={'Average ' + (stats.ratingLabel || 'rating') + ' across ALL reviews with a rating (out of ' + max + '), including rating-only reviews with no comment — so it ties back to the rating shown on Google and in a downloaded export. Per-theme and per-dimension ratings are computed only over reviews that have comment text, so they can sit slightly below this number (comment-leavers tend to rate lower).'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span title={'Average ' + (stats.ratingLabel || 'rating') + ' across ALL reviews with a rating (out of ' + max + '), including rating-only reviews with no comment — so it ties back to the rating shown on Google and in a downloaded export. Per-theme and per-dimension ratings are computed only over reviews that have comment text, so they can sit slightly below this number (comment-leavers tend to rate lower).' + (stats.ratingSampled ? ' Estimated from a deterministic 50,000-row sample (dataset exceeds the exact-count cap).' : '')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <span style={{ color: color }}>{'★'}</span>
-              <strong style={{ color: '#111827' }}>{stats.avgRating!.toFixed(1)}</strong>
+              <strong style={{ color: '#111827' }}>{stats.ratingSampled ? '~' : ''}{stats.avgRating!.toFixed(1)}</strong>
               <span style={{ color: '#6b7280' }}>avg rating</span>
             </span>
           </>

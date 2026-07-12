@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { computeSignalStats, computeSignalStatsForSet } from '@/lib/signalStats'
+import { sampledNumericFieldStats, SIGNAL_SAMPLE_CAP } from '@/lib/sampledSignalCounts'
 
 interface Props { params: Promise<{ datasetId: string }> }
 
@@ -48,7 +49,7 @@ export async function GET(req: Request, props: Props) {
   // the review-sources create route ({ ..., start_date, end_date }).
   let dateMin: string | null = null, dateMax: string | null = null
   const { data: dsRow } = await supabase
-    .from('datasets').select('description').eq('id', params.datasetId).maybeSingle()
+    .from('datasets').select('description, row_count').eq('id', params.datasetId).maybeSingle()
   try {
     const desc = (dsRow as { description?: string } | null)?.description
     const parsed = desc ? JSON.parse(desc) : null
@@ -67,6 +68,7 @@ export async function GET(req: Request, props: Props) {
   // RLS user client (org-enforced, like the dates); only then the service-role RPC.
   // Optional: absent for datasets with no rating-type field (open-text surveys).
   let avgRating: number | null = null, ratingMax: number | null = null, ratingLabel: string | null = null
+  let ratingSampled = false
   try {
     const { data: stateRow } = await supabase
       .from('dataset_state').select('schema_config').eq('dataset_id', params.datasetId).maybeSingle()
@@ -81,17 +83,38 @@ export async function GET(req: Request, props: Props) {
       const aliases = rf.valueAliases
       const isRemapped = !!aliases && typeof aliases === 'object'
         && Object.values(aliases).some(v => /^-?[0-9]+\.?[0-9]*$/.test(String(v)))
-      const { data: ns } = isRemapped
-        ? await service.rpc('field_aliased_avg', { p_dataset_id: params.datasetId, p_field: rf.field, p_present_field: '', p_aliases: aliases })
-        : await service.rpc('numeric_field_stats', { p_dataset_id: params.datasetId, p_field_key: rf.field })
-      const row = Array.isArray(ns) ? ns[0] : null
-      if (row && Number(row.n) > 0 && row.avg_val != null) {
-        avgRating = Math.round(Number(row.avg_val) * 100) / 100
-        ratingMax = row.max_val != null ? Number(row.max_val) : null
-        ratingLabel = rf.label || rf.field
+
+      // Above the sampling cap the exact aggregates are full scans that blow
+      // the DB statement timeout (the ★ silently vanished on large datasets) —
+      // average over the deterministic 50K sample instead (sql/163; unbiased
+      // for a mean, includes rating-only rows per "ratings = all reviews").
+      // Falls back to the exact path if the RPC isn't migrated yet.
+      const totalRows = Number((dsRow as { row_count?: number } | null)?.row_count) || 0
+      if (totalRows > SIGNAL_SAMPLE_CAP) {
+        try {
+          const s = await sampledNumericFieldStats(
+            service, params.datasetId, rf.field, isRemapped ? (aliases as Record<string, string>) : null)
+          if (s.n > 0 && s.avg != null) {
+            avgRating = Math.round(s.avg * 100) / 100
+            ratingMax = s.max
+            ratingLabel = rf.label || rf.field
+            ratingSampled = true
+          }
+        } catch { /* sampled RPC unavailable — exact path below */ }
+      }
+      if (avgRating == null) {
+        const { data: ns } = isRemapped
+          ? await service.rpc('field_aliased_avg', { p_dataset_id: params.datasetId, p_field: rf.field, p_present_field: '', p_aliases: aliases })
+          : await service.rpc('numeric_field_stats', { p_dataset_id: params.datasetId, p_field_key: rf.field })
+        const row = Array.isArray(ns) ? ns[0] : null
+        if (row && Number(row.n) > 0 && row.avg_val != null) {
+          avgRating = Math.round(Number(row.avg_val) * 100) / 100
+          ratingMax = row.max_val != null ? Number(row.max_val) : null
+          ratingLabel = rf.label || rf.field
+        }
       }
     }
   } catch { /* rating field not detectable — leave avgRating unset */ }
 
-  return NextResponse.json({ ...stats, dateMin, dateMax, avgRating, ratingMax, ratingLabel })
+  return NextResponse.json({ ...stats, dateMin, dateMax, avgRating, ratingMax, ratingLabel, ratingSampled })
 }

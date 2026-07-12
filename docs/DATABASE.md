@@ -173,7 +173,10 @@ expression index + `sample_dataset_rows` (O(sample) keyset-paged bulk rows),
 `count_nonempty_rows` (comma-safe non-empty count, field as bind param), and
 `sampled_signal_counts` (single-pass sampled records/per-theme/union counts
 over the same sample — replaces 1+themes+1 full scans per signal-stats
-compute above the cap; service_role-only, like the sampler).
+compute above the cap; service_role-only, like the sampler), and sql/163
+`sampled_numeric_field_stats` (sampled numeric aggregates over the same
+sample — the strip's avg rating above the cap; raw-cast and alias modes
+match numeric_field_stats / field_aliased_avg exactly).
 
 ---
 

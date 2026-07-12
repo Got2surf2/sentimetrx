@@ -93,3 +93,71 @@ export function scaleSampledCount(count: number, totalRows: number, scanned: num
   if (totalRows <= scanned) return count
   return Math.round(count * (totalRows / scanned))
 }
+
+export interface SampledNumericStats {
+  /** numeric-valued rows in the sample (unscaled) */
+  n: number
+  /** mean over the sample — an unbiased estimate of the all-rows mean */
+  avg: number | null
+  min: number | null
+  max: number | null
+  /** rows actually scanned (≤ cap) */
+  scanned: number
+}
+
+interface NumericPageResult {
+  n_scanned: number
+  n: number
+  sum: number | null
+  min: number | null
+  max: number | null
+  last_hash: number | null
+  last_id: number | null
+}
+
+/**
+ * Page sampled_numeric_field_stats (sql/163) up to `cap` rows: numeric field
+ * stats over the same deterministic sample, for datasets where the exact
+ * full-scan aggregates (numeric_field_stats / field_aliased_avg) blow the
+ * statement timeout. `aliases` mirrors field_aliased_avg (remapped rating
+ * fields); null = raw numeric cast. Throws on RPC error — callers fall back
+ * to the exact path.
+ */
+export async function sampledNumericFieldStats(
+  service: SupabaseClient,
+  datasetId: string,
+  field: string,
+  aliases: Record<string, string> | null,
+  cap: number = SIGNAL_SAMPLE_CAP,
+): Promise<SampledNumericStats> {
+  let scanned = 0
+  let n = 0
+  let sum = 0
+  let min: number | null = null
+  let max: number | null = null
+  let afterHash = -1
+  let afterId = -1
+  while (scanned < cap) {
+    const { data, error } = await service.rpc('sampled_numeric_field_stats', {
+      p_dataset_id: datasetId,
+      p_field: field,
+      p_aliases: aliases,
+      p_after_hash: afterHash,
+      p_after_id: afterId,
+      p_limit: Math.min(PAGE_SIZE, cap - scanned),
+    })
+    if (error) throw new Error('sampled_numeric_field_stats failed for ' + datasetId + ': ' + error.message)
+    const page = data as NumericPageResult | null
+    const pageScanned = Number(page?.n_scanned) || 0
+    if (!page || pageScanned === 0) break // fewer rows than the cap — scanned them all
+    scanned += pageScanned
+    n += Number(page.n) || 0
+    sum += Number(page.sum) || 0
+    if (page.min != null) min = min == null ? Number(page.min) : Math.min(min, Number(page.min))
+    if (page.max != null) max = max == null ? Number(page.max) : Math.max(max, Number(page.max))
+    if (page.last_hash == null || page.last_id == null) break
+    afterHash = Number(page.last_hash)
+    afterId = Number(page.last_id)
+  }
+  return { n, avg: n > 0 ? sum / n : null, min, max, scanned }
+}

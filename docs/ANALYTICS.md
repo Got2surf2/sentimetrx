@@ -212,7 +212,14 @@ comment-only ★3.90), not a reconciliation bug. **Remapped rating fields** (a s
 whose stored values are text labels mapped to numbers via the field's `valueAliases`, e.g. "Highly
 Satisfied"→5) are detected (any numeric alias value) and averaged via `field_aliased_avg(field, '', aliases)`
 (sql/110, `presentField=''` = no text gate) — which maps each label to its number before averaging, since
-the raw value is the label (numeric_field_stats would cast nothing). (Earlier this strip was deliberately
+the raw value is the label (numeric_field_stats would cast nothing). **Above the 50K cap** both exact
+aggregates are full scans that blow the statement timeout (the ★ silently vanished on large datasets), so
+the route averages over the deterministic `idx_drf_sample` sample instead — `sampled_numeric_field_stats`
+(sql/163, keyset-paged like sql/162, value predicates byte-identical to both exact functions, alias mode
+included; pager `sampledNumericFieldStats` in `lib/sampledSignalCounts.ts`) — and returns
+`ratingSampled: true` (strip renders `~` + a tooltip note). A uniform sample's mean is unbiased and
+includes rating-only rows, consistent with the all-reviews principle (verified on real 56K data:
+sampled 4.5830 vs exact 4.5823). Exact path is the fallback if the RPC isn't migrated yet. (Earlier this strip was deliberately
 text-only via `numeric_field_stats_present` so it matched the theme/dimension numbers; that was reversed
 under the all-reviews principle — the theme/dimension deltas now compare against this all-reviews baseline,
 see `recountThemes` below.) Read via the RLS-enforced user client (org-safe, no row scan); shown only when present. `records` is the
