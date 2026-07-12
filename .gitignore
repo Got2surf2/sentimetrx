@@ -50,6 +50,7 @@ data/chuys-candidates*.jsonl
 # (docs/CONVERGENCE.md § 4.2).
 scripts/_*.ts
 scripts/_*.mjs
+scripts/_*.js
 scripts/_*.sql
 
 # Promotion manifests (scripts/promote.ts) — reviewable JSON artifacts that
