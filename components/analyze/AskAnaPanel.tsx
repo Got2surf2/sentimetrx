@@ -8,6 +8,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { serializeFilters } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
+import { themeSetForField, type ThemeModel } from '@/lib/themeUtils'
 
 interface AnaAction {
   tool: string
@@ -90,6 +91,21 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
   var [collectionMembers, setCollectionMembers] = useState<CollectionMember[] | null>(null)
   var [customSizeInput, setCustomSizeInput] = useState('')
 
+  // Per-question theme sets: Ana edits the set for TextMine's ACTIVE Text
+  // pill, not blindly the saved top-level one (viewing "Liked LEAST" while
+  // the saved active set is "Liked MOST" used to make her edit the wrong
+  // question's themes). Same event the metric strip follows; '' = the saved
+  // active set (the default on every non-TextMine tab).
+  var [activeFieldKey, setActiveFieldKey] = useState('')
+  useEffect(function() {
+    function onFieldChange(e: Event) {
+      var k = (e as CustomEvent<{ fieldKey?: string }>).detail?.fieldKey
+      setActiveFieldKey(typeof k === 'string' ? k : '')
+    }
+    window.addEventListener('dataset-active-field-changed', onFieldChange)
+    return function() { window.removeEventListener('dataset-active-field-changed', onFieldChange) }
+  }, [])
+
   // Fetch collection members on mount if collection
   useEffect(function() {
     if (datasetSource !== 'collection') return
@@ -151,12 +167,17 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
     }
 
     try {
-      // Fetch current theme model
+      // Fetch current theme model — and resolve the ACTIVE question's set
+      // when TextMine has one selected (activeFieldKey is already a
+      // themeFieldKey, so the single-element wrap passes it through). The
+      // state route's merge-on-write mirrors the edited set back into
+      // theme_model.fields and preserves every other question's set.
       var stateRes = await fetch('/api/datasets/' + datasetId + '/state')
       if (!stateRes.ok) throw new Error('Failed to fetch state')
       var state = await stateRes.json()
-      var themeModel = state.theme_model || { themes: [], aiGenerated: false, version: 1 }
-      var themes: AnaTheme[] = themeModel.themes || []
+      var storedModel = (state.theme_model || { themes: [], aiGenerated: false, version: 1 }) as ThemeModel
+      var themeModel = (activeFieldKey ? themeSetForField(storedModel, [activeFieldKey]) : null) || storedModel
+      var themes: AnaTheme[] = (themeModel.themes as AnaTheme[] | undefined) || []
 
       if (action.tool === 'create_theme') {
         var newTheme = {
@@ -242,8 +263,9 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
         return
       }
 
-      // Save updated theme model
-      themeModel.themes = themes
+      // Save updated theme model (the route merges: this set becomes the
+      // active top level AND its map entry; other questions' sets survive)
+      themeModel.themes = themes as ThemeModel['themes']
       var patchRes = await fetch('/api/datasets/' + datasetId + '/state', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -330,6 +352,9 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
           metadataOnly: isDeciding,
           sampleSize: samplingConfig.sampleSize,
           samplingStrategy: samplingConfig.strategy,
+          // active question's theme set (TextMine pill) — Ana's framework
+          // context + edits target THIS set, not blindly the saved active one
+          themeFieldKey: activeFieldKey || undefined,
         }),
       })
 

@@ -121,7 +121,20 @@ only address the active set; empty array = skip that set; extra sets are also ga
 field being among the export's selected fields). `themeSetsForExport()` (`lib/themeUtils`) is
 the shared enumerator (active set first; keyless legacy blobs yield no entries so their top
 level exports as before). Regression: `tests/integration/export-perfield-themes.test.ts`.
-Still scoped-not-built: per-field `__themes__` chart counts; signals-pptx + share/analytics
+**Charts/Stats + Ana are per-question aware (2026-07-12 — closes the two scoped leftovers).**
+`themeSetForField()` (`lib/themeUtils`) is the shared resolver — "which themes go with this
+question?" answers identically in ChartsModule, StatsModule, AskAnaPanel, and the ask-ana
+route. Charts/Stats: the existing **theme source-field dropdown** no longer just re-targets
+the active set's keywords — a question with its OWN stored set charts/derives `__themes__`
+with THAT set (counts, KPI, pills, table, theme-counts payload all follow; the theme-pill
+selection resets on switch since the old set's names would filter the new set to nothing).
+A never-mined source field falls back to the active set matched against it (pre-map
+behavior); saved charts are untouched (`__themes__` field id unchanged). Ask Ana: the panel
+tracks TextMine's active Text pill (same `dataset-active-field-changed` event as the metric
+strip) and sends `themeFieldKey` — Ana's framework context names the question it belongs to,
+and her create/update/merge/delete edits apply to THAT set (the state route's merge-on-write
+mirrors it into `theme_model.fields`, preserving every other question's set); '' / other
+tabs = the saved active set, as before. Still deliberate: signals-pptx + share/analytics
 stay on the active set.
 
 **First-open multi-question setup (2026-07-11).** When TextMine opens with rows but no themes

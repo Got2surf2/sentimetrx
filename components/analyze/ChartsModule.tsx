@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react'
 import { smartOrder, isOrdinalScale, scaleDirectionLabel } from '@/lib/scaleUtils'
 import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
 import { cachedRequest } from '@/lib/clientRequestCache'
+import { themeSetForField } from '@/lib/themeUtils'
 import { axisOfDimField, isDimField, dimVirtualFields, DIM_AXIS_LABEL_LONG } from '@/lib/dimensionFields'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import type { TimeBucket} from '@/lib/timeBucket';
@@ -1954,14 +1955,23 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     ? (_topRows.rows.map(function(r) { return r._rowId }).filter(function(v: unknown) { return typeof v === 'number' }) as number[])
     : null
 
+  // Per-question theme sets (2026-07-12): the source-field dropdown doesn't
+  // just re-target the ACTIVE set's keywords — a question with its OWN stored
+  // set (theme_model.fields, per-field model) charts with THAT set. Fallback
+  // for a never-mined field = the active set matched against it (pre-map
+  // behavior). All theme consumers below read this, never the raw prop.
+  var effectiveThemeModel = themeSourceField
+    ? (themeSetForField(themeModel, [themeSourceField]) || themeModel)
+    : themeModel
+
   // Set enrichment context for useRows — must be before any inner component renders
-  _enrichCtx = { themeModel: themeModel, schema: schema, enrichKey: enrichKey, themeSourceOverride: themeSourceField || undefined, activeThemeNames: activeThemeNames, datasetSource: datasetSource, filteredRowIds: _filteredRowIds }
+  _enrichCtx = { themeModel: effectiveThemeModel, schema: schema, enrichKey: enrichKey, themeSourceOverride: themeSourceField || undefined, activeThemeNames: activeThemeNames, datasetSource: datasetSource, filteredRowIds: _filteredRowIds }
   var currentColors = COLOR_PALETTES[activePalette]?.colors || CHART_COLORS
   var fields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' && f.hidden !== true })
   var hasData = analytics && analytics.totalRows > 0
 
   // Inject virtual "Themes" field if theme model exists
-  var hasThemes = themeModel && themeModel.themes && themeModel.themes.length > 0
+  var hasThemes = effectiveThemeModel && effectiveThemeModel.themes && effectiveThemeModel.themes.length > 0
 
   // Inject virtual "Dimensions" fields (one per taxonomy axis) when the dataset
   // carries taxonomy classification. Values + averages are computed server-side
@@ -2000,13 +2010,13 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   // server (count_theme_matches SQL → fast for 20K+ row datasets).
   var [liveThemeCounts, setLiveThemeCounts] = useState<Record<string, number> | null>(null)
   var themesSig = hasThemes
-    ? themeModel.themes.map(function(t: any) { return (t.id || t.name) + ':' + (t.keywords || []).join('|') }).join(';;')
+    ? effectiveThemeModel.themes.map(function(t: { id?: string; name?: string; keywords?: string[] }) { return (t.id || t.name) + ':' + (t.keywords || []).join('|') }).join(';;')
     : ''
   useEffect(function() {
     if (!hasThemes || !themeSourceField) { setLiveThemeCounts(null); return }
     var cancelled = false
     var body = JSON.stringify({
-      themes: themeModel.themes.map(function(t: { id?: string; name?: string; keywords?: string[] }) { return { id: t.id || t.name, keywords: t.keywords || [] } }),
+      themes: effectiveThemeModel.themes.map(function(t: { id?: string; name?: string; keywords?: string[] }) { return { id: t.id || t.name, keywords: t.keywords || [] } }),
       fields: [themeSourceField],
     })
     // Cached across module remounts (tab bounces) — the server recomputes
@@ -2025,7 +2035,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
         if (cancelled || !d || !Array.isArray(d.counts)) return
         var counts = d.counts
         var map: Record<string, number> = {}
-        themeModel.themes.forEach(function(t: { id?: string; name: string }) {
+        effectiveThemeModel.themes.forEach(function(t: { id?: string; name: string }) {
           var hit = counts.find(function(c) { return c.id === (t.id || t.name) })
           map[t.name] = hit ? hit.count : 0
         })
@@ -2053,9 +2063,9 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     var extraSummaries: Record<string, FieldSummary> = {}
     if (hasThemes) {
       var themeCounts: Record<string, number> = {}
-      themeModel.themes
-        .filter(function(t: any) { return !activeThemeNames || activeThemeNames.has(t.name || t.label) })
-        .forEach(function(t: any) {
+      effectiveThemeModel.themes
+        .filter(function(t: { name?: string; label?: string }) { return !activeThemeNames || activeThemeNames.has(t.name || t.label || '') })
+        .forEach(function(t: { name: string; label?: string; count?: number }) {
           // Prefer live server-counted value over the persisted (often stale) count.
           var live = liveThemeCounts ? liveThemeCounts[t.name] : undefined
           themeCounts[t.name] = live != null ? live : (t.count || 0)
@@ -2378,7 +2388,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
 
           {/* Theme filter — at bottom of sidebar */}
           {hasThemes && (function() {
-            var allThemesList: any[] = themeModel.themes || []
+            var allThemesList: { name?: string; label?: string }[] = effectiveThemeModel.themes || []
             return (
               <div style={{ borderTop: '1px solid ' + T.border, padding: '8px 12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
@@ -2392,7 +2402,10 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
                 </div>
                 {rawOpenFields.length > 1 && (
                   <div style={{ marginBottom: 6 }}>
-                    <select value={themeSourceField} onChange={function(e) { setThemeSourceField(e.target.value); setEnrichKey(function(k) { return k + 1 }) }}
+                    {/* Switching the question also switches to ITS stored theme set —
+                        clear the theme pill selection (names from the old set would
+                        silently filter the new set to nothing). */}
+                    <select value={themeSourceField} onChange={function(e) { setThemeSourceField(e.target.value); setActiveThemeNames(null); setEnrichKey(function(k) { return k + 1 }) }}
                       style={{ width: '100%', padding: '4px 8px', fontSize: 11, border: '1px solid ' + T.border, borderRadius: 6, background: T.bgCard, color: T.textMid, outline: 'none', cursor: 'pointer' }}>
                       {rawOpenFields.map(function(f) { return <option key={f.field} value={f.field}>{f.label || f.field}</option> })}
                     </select>

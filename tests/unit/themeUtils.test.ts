@@ -5,6 +5,7 @@ import {
   sentColor, sentBg, ratingColor, ratingBg, getThemeColor, getRowText,
   THEME_PALETTE,
   themeFieldKey, themeModelKey, stripFieldEntries, themeFieldEntries, mergeThemeModelWrite, themeSetsForExport,
+  themeSetForField,
   type Theme, type ThemeModel,
 } from '@/lib/themeUtils'
 
@@ -172,6 +173,36 @@ describe('themeUtils — per-field theme sets', () => {
     const stripped = stripFieldEntries(tm)
     expect(stripped.fields).toBeUndefined()
     expect(stripped.themes.length).toBe(1)
+  })
+})
+
+describe('themeUtils — themeSetForField (Charts/Stats/Ana per-question resolution)', () => {
+  const stored = mergeThemeModelWrite(model('liked_least', ['Wait']), model('liked_most', ['Food']))
+
+  it('returns the map entry for a non-active field', () => {
+    const set = themeSetForField(stored, ['liked_most'])
+    expect(set!.themes[0].name).toBe('Food')
+    expect(set!.fields).toBeUndefined() // stripped entry, never nested
+  })
+
+  it('returns the (fresher) top level when it is bound to the requested field', () => {
+    const set = themeSetForField(stored, ['liked_least'])
+    expect(set!.themes[0].name).toBe('Wait')
+  })
+
+  it('returns null for a never-mined field (callers fall back to the active set)', () => {
+    expect(themeSetForField(stored, ['other_question'])).toBeNull()
+  })
+
+  it('a precomputed combined key passes through as a single element', () => {
+    const combo = model('a', ['C'], { fieldNames: ['b', 'a'] })
+    const blob = mergeThemeModelWrite(combo, stored)
+    expect(themeSetForField(blob, ['a + b'])!.themes[0].name).toBe('C')
+  })
+
+  it('null/keyless input → null', () => {
+    expect(themeSetForField(null, ['x'])).toBeNull()
+    expect(themeSetForField(stored, [])).toBeNull()
   })
 })
 

@@ -18,6 +18,7 @@ import { getSourceLabel } from '@/lib/anaContext'
 import { loadAnaSample, resolveCollectionMembers } from '@/lib/anaReportContext'
 import { serverError } from '@/lib/apiError'
 import type { SchemaConfig, SchemaFieldConfig } from '@/lib/analyzeTypes'
+import { themeSetForField, type ThemeModel as UtilThemeModel } from '@/lib/themeUtils'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -172,12 +173,16 @@ export async function POST(req: Request) {
   const user = { id: userId }
 
   const body = await req.json()
-  const { datasetId, question, conversationHistory, filters, metadataOnly } = body as {
+  const { datasetId, question, conversationHistory, filters, metadataOnly, themeFieldKey } = body as {
     datasetId: string
     question: string
     conversationHistory?: Message[]
     filters?: Record<string, unknown>
     metadataOnly?: boolean
+    /** active question's themeFieldKey (TextMine pill) — Ana's framework
+     *  context follows the set the user is LOOKING at, not blindly the saved
+     *  active one; the panel applies her edits to the same set */
+    themeFieldKey?: string
   }
   const sampleSize = Math.max(50, Math.min(body.sampleSize || DEFAULT_SAMPLE, CONTEXT_CAP))
   const samplingStrategy: 'proportional' | 'equal' | 'floor' = body.samplingStrategy || 'proportional'
@@ -215,7 +220,17 @@ export async function POST(req: Request) {
     .select('theme_model, schema_config')
     .eq('dataset_id', datasetId)
     .single()
-  const existingThemes: ExistingTheme[] = (stateRow?.theme_model as { themes?: ExistingTheme[] } | null)?.themes || []
+  // The theme set Ana reasons about/edits: the active question's own stored
+  // set when the client passed its key (per-field theme model), else the
+  // saved active (top-level) set — pre-map behavior.
+  const storedThemeModel = stateRow?.theme_model as UtilThemeModel | null
+  const activeSet = themeFieldKey ? themeSetForField(storedThemeModel, [themeFieldKey]) : null
+  const existingThemes: ExistingTheme[] =
+    ((activeSet || storedThemeModel) as { themes?: ExistingTheme[] } | null)?.themes || []
+  // Which question the framework belongs to — so Ana can say so.
+  const themeSetFields = activeSet
+    ? (activeSet.fieldNames?.length ? activeSet.fieldNames : (activeSet.fieldName ? [activeSet.fieldName] : []))
+    : (storedThemeModel?.fieldNames?.length ? storedThemeModel.fieldNames : (storedThemeModel?.fieldName ? [storedThemeModel.fieldName] : []))
   const schemaFields: SchemaFieldConfig[] = (stateRow?.schema_config as SchemaConfig | null)?.fields || []
 
   // ── Pull top entities so Ana can reason about "who/what was mentioned" ──
@@ -317,7 +332,9 @@ Ask the user 1-2 brief questions about what they're looking to learn, then make 
 
   // Build theme context for the prompt
   const themeContext = existingThemes.length > 0
-    ? '\n\nCurrent analysis framework has ' + existingThemes.length + ' themes:\n' +
+    ? '\n\nCurrent analysis framework' +
+      (themeSetFields.length ? ' (for the question "' + themeSetFields.join(' + ') + '")' : '') +
+      ' has ' + existingThemes.length + ' themes:\n' +
       existingThemes.map(function(t) {
         return '- ' + (t.name || t.label) + ' (' + (t.sentiment || 'neutral') + '): ' +
           (t.keywords || []).slice(0, 6).join(', ') +

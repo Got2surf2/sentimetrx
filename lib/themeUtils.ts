@@ -126,6 +126,24 @@ export function themeFieldEntries(tm: ThemeModel | null | undefined): Record<str
   return entries
 }
 
+// The stored theme set that BELONGS to a field selection: the top level when
+// it's bound to that selection (freshest save), else that selection's map
+// entry, else null (never mined for it — callers fall back to the active set,
+// which for Charts/Stats is the pre-map behavior of matching the active
+// themes against the chosen source field). Shared by ChartsModule /
+// StatsModule / AskAnaPanel / the ask-ana route so "which themes go with this
+// question?" resolves identically everywhere.
+export function themeSetForField(
+  tm: ThemeModel | null | undefined,
+  fields: string[],
+): ThemeModel | null {
+  if (!tm) return null
+  const key = themeFieldKey(fields)
+  if (!key) return null
+  if (themeModelKey(tm) === key) return stripFieldEntries(tm)
+  return themeFieldEntries(tm)[key] || null
+}
+
 // Merge a theme-model write with what's already stored so saving one field's
 // set never clobbers another field's. The top level stays the incoming
 // (active) model; the map accumulates every set seen on either side.

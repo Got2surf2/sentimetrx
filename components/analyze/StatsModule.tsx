@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { readSession, writeSession } from '@/lib/useSessionState'
+import { themeSetForField } from '@/lib/themeUtils'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { injectSignalTier } from '@/lib/signalTier'
 
@@ -1885,8 +1886,6 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
     return schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' && f.hidden !== true })
   }, [schema.fields])
 
-  var hasThemes = !!(themeModel && themeModel.themes && themeModel.themes.length > 0)
-
   var schemaOpenFields = useMemo(function() { return schema.fields.filter(function(f) { return f.type === 'open-ended' }) }, [schema.fields])
   var _stk = 'statsTheme_' + datasetId
   var [themeSourceField, setThemeSourceField] = useState(function() { return (themeModel && themeModel.fieldName) || schema.fields.find(function(f) { return f.type === 'open-ended' })?.field || '' })
@@ -1904,6 +1903,15 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
     writeSession(_stk, { themeSourceField: themeSourceField, activeThemeNames: activeThemeNames ? Array.from(activeThemeNames) : null })
   }, [statsThemeRestored, themeSourceField, activeThemeNames, _stk])
 
+  // Per-question theme sets (2026-07-12): the source-verbatim picker doesn't
+  // just re-target the ACTIVE set's keywords — a question with its OWN stored
+  // set (theme_model.fields) computes with THAT set. Fallback for a
+  // never-mined field = the active set matched against it (pre-map behavior).
+  var effectiveThemeModel = themeSourceField
+    ? (themeSetForField(themeModel, [themeSourceField]) || themeModel)
+    : themeModel
+  var hasThemes = !!(effectiveThemeModel && effectiveThemeModel.themes && effectiveThemeModel.themes.length > 0)
+
   var filteredData = useMemo(function() {
     return applyFilters(rows, filters)
   }, [rows, filters])
@@ -1913,8 +1921,8 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
     var mappedFields = allSchemaFields.filter(function(f) { return f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0 })
     if (!hasThemes && mappedFields.length === 0) return filteredData
     if (filteredData.length === 0) return filteredData
-    var openField = hasThemes ? (themeSourceField || themeModel.fieldName || allSchemaFields.find(function(f) { return f.type === 'open-ended' })?.field || '') : ''
-    var activeThemes = hasThemes ? (activeThemeNames ? themeModel.themes.filter(function(t: any) { return (activeThemeNames as Set<string>).has(t.name || t.label) }) : themeModel.themes) : []
+    var openField = hasThemes ? (themeSourceField || effectiveThemeModel.fieldName || allSchemaFields.find(function(f) { return f.type === 'open-ended' })?.field || '') : ''
+    var activeThemes = hasThemes ? (activeThemeNames ? effectiveThemeModel.themes.filter(function(t: { name?: string; label?: string }) { return (activeThemeNames as Set<string>).has(t.name || t.label || '') }) : effectiveThemeModel.themes) : []
     return filteredData.map(function(row) {
       var enriched = Object.assign({}, row)
       if (hasThemes && openField) {
@@ -1940,7 +1948,7 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
       })
       return enriched
     })
-  }, [filteredData, hasThemes, allSchemaFields, themeModel, themeSourceField, activeThemeNames, themeEnrichKey])
+  }, [filteredData, hasThemes, allSchemaFields, effectiveThemeModel, themeSourceField, activeThemeNames, themeEnrichKey])
 
   var mappedFields = useMemo(function() {
     return allSchemaFields.filter(function(f) { return f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0 })
@@ -2074,7 +2082,7 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
 
           {/* Themes section — source picker + toggle chips */}
           {hasThemes && (function() {
-            var allThemesList: any[] = themeModel.themes || []
+            var allThemesList: { name?: string; label?: string; color?: string }[] = effectiveThemeModel.themes || []
             return (
               <div style={{ borderTop: '1px solid ' + T.border }}>
                 <div style={{ padding: '8px 12px' }}>
@@ -2084,7 +2092,7 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
                   {schemaOpenFields.length > 1 && (
                     <div style={{ marginBottom: 8 }}>
                       <div style={{ fontSize: 10, color: T.textFaint, marginBottom: 3 }}>Source verbatim:</div>
-                      <select value={themeSourceField} onChange={function(e) { setThemeSourceField(e.target.value); setThemeEnrichKey(function(k) { return k + 1 }) }}
+                      <select value={themeSourceField} onChange={function(e) { setThemeSourceField(e.target.value); setActiveThemeNames(null); setThemeEnrichKey(function(k) { return k + 1 }) }}
                         style={{ width: '100%', padding: '5px 8px', fontSize: 11, border: '1px solid ' + T.border, borderRadius: 6, background: T.bgCard, color: T.textMid, outline: 'none', cursor: 'pointer' }}>
                         {schemaOpenFields.map(function(f) { return <option key={f.field} value={f.field}>{f.label || f.field}</option> })}
                       </select>
