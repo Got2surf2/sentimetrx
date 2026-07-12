@@ -60,6 +60,7 @@ tests/
 │   ├── promotion.test.ts     # promotion manifests (lib/promotion) — parseManifest version gates, -copy[N] slug ladder, imports land dormant (draft/paused), allow-list stripping, fresh survey guid + null client_id, PulseIQ dedicated-agent rollback on failed session insert
 │   ├── rateLimit.test.ts
 │   ├── sentiment-slang.test.ts
+│   ├── serviceAlerts.test.ts  # credit-limit alert emails (lib/serviceAlerts) — pickAlertWorthy per-status re-alert windows (low ≈3d "close to the limit", critical/error ≈daily), maybeAlertCreditError claim-then-send (atomic last_alerted_at claim: concurrent 402 burst → one email; loser skips), no-recipients no-op (no DB write)
 │   ├── sentryScrub.test.ts    # Sentry beforeSend PII scrub + Office content-script noise drop
 │   ├── townhallAnalytics.test.ts # PulseIQ detail analytics (lib/townhallAnalytics, shared legacy route + phase-3 adapter) — seed vs organic theme counting, keyword supplement, sentiment_score-preferred trend w/ lexicon backfill, bucket pinning/auto, dismissed-theme exclusion, empty-session shell
 │   ├── snapshotV2.test.ts    # snapshot v2 (lib/orgSnapshotV2 + streaming orgRestore) — uncapped NDJSON dump→open round trip via local store, U+2028-in-text regression, manifest commit marker + listing grouping (manifest-less days hidden), replace-per-parent delete-once semantics, replace-mode zombie deletion, composite-PK reporting

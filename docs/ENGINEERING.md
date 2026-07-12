@@ -348,10 +348,17 @@ its corresponding entry.
   has no balance API (Anthropic, OpenAI, Resend, Google Places) so the
   client error paths call `recordCreditError()` on a 402/429/credit
   failure (`lib/ai.ts`, `lib/dataforseo.ts`, `lib/places.ts`,
-  `lib/email/provider.ts`). The cron emails `CREDITS_ALERT_TO` (falls
-  back to `SENTRY_ALERT_TO`) when any service is low/critical/error,
-  throttled to ~once/day per service. Built after a DataForSEO HTTP 402
-  silently stalled a review load (Rubio's, 2026-06-16). All monitor
+  `lib/email/provider.ts`). **Alerting (`lib/serviceAlerts.ts`,
+  2026-07-12):** emails `CREDITS_ALERT_TO` (falls back to
+  `SENTRY_ALERT_TO`) on TWO paths — the 6h cron (backstop; `low` =
+  "close to the limit" re-alerts ~every 3 days, critical/error ~daily —
+  the cron had only ever sent critical/error despite its header) and a
+  REAL-TIME path: `recordCreditError()` now emails the moment a
+  credit/quota failure lands (claim-then-send on `last_alerted_at`, so
+  a burst of concurrent 402s yields one email; same ~daily throttle).
+  The `/admin/health` Claude credit probe feeds the same path, so
+  exhaustion alerts even on a zero-traffic day. Built after a DataForSEO
+  HTTP 402 silently stalled a review load (Rubio's, 2026-06-16). All monitor
   writes are best-effort and never throw — they must not break the path
   they observe.
 

@@ -17,6 +17,7 @@ import 'server-only'
 // state, not org-scoped data.
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { maybeAlertCreditError } from '@/lib/serviceAlerts'
 import { logError } from '@/lib/log'
 
 export type ServiceKey =
@@ -108,6 +109,10 @@ export async function recordCreditError(
       last_error_msg: (opts.message || '').slice(0, 500) || 'credit/quota error',
       updated_at: now,
     }, { onConflict: 'service' })
+    // Hitting a limit emails the platform admin IMMEDIATELY (throttled ~daily
+    // per service; claim-then-send, so a burst of 402s yields one email) —
+    // the 6h service-balance cron is the backstop, not the pager.
+    await maybeAlertCreditError(key)
   } catch { /* monitoring must never break the caller */ }
 }
 
