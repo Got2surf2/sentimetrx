@@ -71,9 +71,13 @@ const Q = {
 // ─────────────────────────────────────────────────────────────────────────────
 const A = {
   tested: 50,
-  high: 10, partial: 16, no: 24,
-  pctHigh: 20, pctPartial: 32, pctNo: 48, pctHighPartial: 52,
-  pctHighByVol: 27, pctHighPartialByVol: 56,
+  // Measured WITH the full 371-page Draft EIS ingested into the agent's KB.
+  high: 14, partial: 18, no: 18,
+  pctHigh: 28, pctPartial: 36, pctNo: 36, pctHighPartial: 64,
+  pctHighByVol: 31, pctHighPartialByVol: 71,
+  // Before the DEIS ingest (28 curated chunks only) — the lift progression.
+  beforeHigh: 20, beforeHighPartial: 52,
+  targetHighPartial: 80,   // roadmap target with retrieval tuning (projection, not measured)
   // 3 real, unedited high-confidence Q->A pairs from the live prod agent.
   samples: [
     { q: 'By how much would Alternative 2 increase commercial logging vs. current levels?',
@@ -342,11 +346,11 @@ export function buildNepaCaraReimaginedDeck(pptx: PptxGenJS) {
   addHeader(s8, 'We pointed it at the real questions', `${A.tested} of the most-asked questions from the record → the deployed agent, graded by a strict independent judge`)
   addFooter(s8, pg)
   // Segmented outcome bar
-  s8.addText('Every answer, graded high / partial / not-yet', { x: 0.6, y: 1.25, w: 12, h: 0.35, fontSize: 13, fontFace: 'Arial', color: C.pine, bold: true })
+  s8.addText('Every answer, graded high / partial / not-yet — with the full 371-page DEIS ingested', { x: 0.6, y: 1.25, w: 12, h: 0.35, fontSize: 13, fontFace: 'Arial', color: C.pine, bold: true })
   const segs: [string, number, string, string][] = [
     ['HIGH', A.pctHigh, C.mossDeep, 'usable first-draft answer'],
     ['PARTIAL', A.pctPartial, C.gold, 'on-topic but incomplete'],
-    ['NOT YET', A.pctNo, C.slateLight, 'outside the demo brain'],
+    ['NOT YET', A.pctNo, C.slateLight, 'answerable, not yet retrieved'],
   ]
   let bx = 0.6
   segs.forEach(([lab, pct, c]) => {
@@ -358,22 +362,33 @@ export function buildNepaCaraReimaginedDeck(pptx: PptxGenJS) {
   })
   // Headline read
   s8.addText([
-    { text: `1 in 5 answered as a usable first draft (${A.pctHighByVol}% weighted by how often each question is asked); more than half at least partially`, options: { color: C.pine, bold: true } },
-    { text: ' — from an agent carrying ~28 knowledge chunks, not the full 371-page DEIS.', options: { color: C.ink } },
+    { text: `${A.pctHighPartial}% answered at least partially (${A.pctHighPartialByVol}% weighted by how often each question is asked); ${A.pctHigh}% a usable first draft`, options: { color: C.pine, bold: true } },
+    { text: ' — measured against the deployed agent with the Draft EIS loaded.', options: { color: C.ink } },
   ], { x: 0.6, y: 2.95, w: 12.1, h: 0.7, fontSize: 14, fontFace: 'Arial', valign: 'middle', lineSpacing: 20 })
-  // Two callouts
+  // Left callout — the lift progression + the tuning target
   s8.addShape('rect', { x: 0.6, y: 3.9, w: 5.95, h: 2.5, fill: { color: C.pine }, rectRadius: 0.1 })
-  s8.addText('This is a floor, not a ceiling', { x: 0.85, y: 4.08, w: 5.5, h: 0.4, fontSize: 14, fontFace: 'Arial', color: C.moss, bold: true })
-  s8.addText('Nearly every high-confidence miss was a niche topic the demo knowledgebase simply doesn’t contain yet — airstrip/aviation designations, Recreation Opportunity Spectrum classes, specific monitoring programs. These are answerable; they’re just not ingested. Loading the full DEIS raises the number directly.', {
-    x: 0.85, y: 4.5, w: 5.5, h: 1.8, fontSize: 12, fontFace: 'Arial', color: C.white, valign: 'top', lineSpacing: 18,
+  s8.addText('The method scales — measured, then projected', { x: 0.85, y: 4.06, w: 5.5, h: 0.4, fontSize: 13.5, fontFace: 'Arial', color: C.moss, bold: true })
+  const steps8: [string, string, string][] = [
+    ['28 curated chunks', `${A.beforeHigh}% usable`, 'measured'],
+    ['+ full DEIS ingested', `${A.pctHigh}% usable · ${A.pctHighPartial}% partial+`, 'measured'],
+    ['+ retrieval tuning', `target ${A.targetHighPartial}%+`, 'next step'],
+  ]
+  steps8.forEach((s, i) => {
+    const y = 4.5 + i * 0.5
+    s8.addShape('ellipse', { x: 0.9, y: y + 0.06, w: 0.13, h: 0.13, fill: { color: i === 2 ? C.gold : C.moss } })
+    s8.addText([{ text: s[0] + '  ', options: { color: C.white, bold: true } }, { text: '→ ' + s[1], options: { color: i === 2 ? C.gold : C.slateLight } }], { x: 1.15, y, w: 5.2, h: 0.44, fontSize: 11.5, fontFace: 'Arial', valign: 'middle' })
   })
+  s8.addText('The remaining misses are answerable — the DEIS text is already in the agent, so the gap is retrieval, not data. Reranking, prioritizing the curated answers, and cleaning the tables is projected to clear 80%+.', {
+    x: 0.85, y: 6.02, w: 5.7, h: 0.34, fontSize: 9.5, fontFace: 'Arial', color: C.moss, italic: true, valign: 'top', lineSpacing: 12,
+  })
+  // Right callout — strict scoring
   s8.addShape('rect', { x: 6.78, y: 3.9, w: 5.95, h: 2.5, fill: { color: C.card }, rectRadius: 0.1 })
   s8.addText('Scored strictly, on purpose', { x: 7.03, y: 4.08, w: 5.5, h: 0.4, fontSize: 14, fontFace: 'Arial', color: C.pine, bold: true })
   s8.addText([
     { text: 'A separate judge model graded each answer and was told to be skeptical. An answer that only validated the concern or said “submit a comment” without supplying the facts was scored NOT answered', options: { color: C.ink, bold: true } },
-    { text: ' — never a generous partial. So the 20% is the conservative read, and the sample on the next slide shows what “high” actually looks like.', options: { color: C.ink } },
+    { text: ` — never a generous partial. So ${A.pctHigh}% / ${A.pctHighPartial}% is the conservative read, and the sample on the next slide shows what “high” actually looks like.`, options: { color: C.ink } },
   ], { x: 7.03, y: 4.5, w: 5.5, h: 1.8, fontSize: 12, fontFace: 'Arial', valign: 'top', lineSpacing: 18 })
-  s8.addNotes(`Honest framing is the whole point. 50 most-asked distinct questions, live prod agent, one clean turn each, strict independent judge (capture-only = fail). Result: 20% high / 32% partial / 48% not-yet; 27% high by question volume. The misses are dominated by topics absent from the 28-chunk demo KB (airstrips, ROS, monitoring) — a full DEIS ingest is the direct lever. Do NOT oversell; the sample slide carries the quality proof.`)
+  s8.addNotes(`Honest framing is the whole point. 50 most-asked distinct questions, live prod agent, one clean turn each, strict independent judge (capture-only = fail). MEASURED with the full 371-page DEIS ingested: 28% high / 36% partial / 36% not-yet; 64% high+partial (71% by question volume) — up from 20% high / 52% partial+ on the 28 curated chunks alone. Ingesting the DEIS closed the exact niche gaps (airstrips, ROS, roadless, Wilderness, elk). The 80%+ is a TARGET, not measured — most remaining misses are retrieval, not missing data (the DEIS text is already in the agent), so reranking + prioritizing curated chunks + table cleanup is the lever. Say "projected/target," never "we achieve 80%." Sample slide carries the quality proof.`)
 
   // ═══ SLIDE 9 — REAL Q->A PAIRS ═══
   const s9 = pptx.addSlide(); pg++
@@ -401,13 +416,13 @@ export function buildNepaCaraReimaginedDeck(pptx: PptxGenJS) {
   })
   cardRow(s10, 2.1, 2.5, [
     { t: 'Finite, not infinite', d: `The pile is unbounded, but the distinct answerable questions are a knowable set. The most-asked single question shows up ${CAMPAIGN_COPIES}× in the record — and takes one answer.`, c: C.dnTeal },
-    { t: 'Pre-drafted, not blank', d: `A demo agent already answers 1 in 5 at high confidence (${A.pctHighByVol}% weighted by demand) — before the full DEIS is loaded. That share of the record starts as an editable draft, not a blank page, and it climbs with ingest.`, c: C.mossDeep },
+    { t: 'Pre-drafted, not blank', d: `With the Draft EIS loaded, the agent answers ${A.pctHigh}% at high confidence and ${A.pctHighPartial}% at least partially. That share of the record starts as an editable draft, not a blank page — and climbs further with retrieval tuning (target ${A.targetHighPartial}%+).`, c: C.mossDeep },
     { t: 'Humans on judgment', d: 'Staff time moves off transcription and toward the calls only a person should make — the contested, the novel, the politically weighted.', c: C.moss },
   ])
   s10.addShape('rect', { x: 0.6, y: 4.95, w: 12.13, h: 1.5, fill: { color: C.pine }, rectRadius: 0.1 })
   s10.addText('The reduction, stated honestly', { x: 0.95, y: 5.15, w: 11.4, h: 0.4, fontSize: 14, fontFace: 'Arial', color: C.moss, bold: true })
   s10.addText([
-    { text: `On this record, a demo agent already returns a high-confidence first draft for 1 in 5 of the most-asked questions (${A.pctHighByVol}% weighted by how often they’re asked) — and the misses are an ingest away, not a dead end. `, options: { color: C.white, bold: true } },
+    { text: `On this record, the agent returns a high-confidence first draft for ${A.pctHigh}% of the most-asked questions and at least a partial answer for ${A.pctHighPartial}% (${A.pctHighPartialByVol}% weighted by how often they’re asked) — and the misses are a tuning pass away, not a dead end. `, options: { color: C.white, bold: true } },
     { text: 'The labor that used to go into re-reading and re-answering the same questions becomes review-and-approve. That is where the hours come back.', options: { color: C.slateLight } },
   ], { x: 0.95, y: 5.55, w: 11.5, h: 0.85, fontSize: 13.5, fontFace: 'Arial', valign: 'top', lineSpacing: 20 })
   s10.addNotes(`FILL A.pctHigh. No fabricated hours/$ — the honest levers are: distinct questions are finite (real counts), the most-asked repeats ${CAMPAIGN_COPIES}x (real), and the assistant pre-answers the majority (measured). Frame savings as a shift to review-and-approve, not a headcount claim.`)
