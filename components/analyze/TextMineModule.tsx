@@ -20,6 +20,7 @@ import { THEME_PALETTE,
 import { expandEntityTerms } from '@/lib/entityVariants'
 import { computeThemeEntities, themeKey } from '@/lib/themeEntities'
 import { DIM_AXIS_LABEL, dimSubLabel, AXIS_COLOR, type Axis } from '@/lib/dimensionFields'
+import { cachedRequest } from '@/lib/clientRequestCache'
 import { isSubstantiveText } from '@/lib/datasetUtils'
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
@@ -1522,14 +1523,16 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     return function() { clearInterval(interval) }
   }, [])
 
-  // Load industry themes on mount
+  // Load industry themes on mount — cached across module remounts (the
+  // payload is a static library, identical on every tab bounce).
   useEffect(function() {
     setIndustryLoading(true)
-    fetch('/api/industry-themes')
-      .then(function(r) {
+    cachedRequest('industry-themes', function() {
+      return fetch('/api/industry-themes').then(function(r) {
         if (!r.ok) throw new Error('Failed to load industry themes')
         return r.json()
       })
+    })
       .then(function(d) { setIndustryThemes(d); setIndustryLoading(false) })
       .catch(function(e) {
         console.error('[TextMine] Industry themes load failed:', e)
@@ -1547,24 +1550,36 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     // theme-model edit would briefly show stale chips during the refetch.
     setCooccurrenceLoaded(false)
     try {
-      const res = await fetch('/api/datasets/' + datasetId + '/theme-counts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          themes: themeModel.themes.map(function(t) { return { id: t.id, keywords: t.keywords } }),
-          fields: fields,
-          cooccurrence: true,   // pairwise theme intersection counts
-          dimensions: dimensionsEnabled,   // per-theme Dimensions (taxonomy) breakdown — only when classified
-          // topical: false — extract_theme_topical_words SQL times out on
-          // large collections with the ±2 window; the no-window version
-          // surfaces too much boilerplate. Section dropped from the card.
-        }),
+      const body = JSON.stringify({
+        themes: themeModel.themes.map(function(t) { return { id: t.id, keywords: t.keywords } }),
+        fields: fields,
+        cooccurrence: true,   // pairwise theme intersection counts
+        dimensions: dimensionsEnabled,   // per-theme Dimensions (taxonomy) breakdown — only when classified
+        // topical: false — extract_theme_topical_words SQL times out on
+        // large collections with the ±2 window; the no-window version
+        // surfaces too much boilerplate. Section dropped from the card.
       })
-      if (!res.ok) return
-      const data = await res.json()
+      // Cached across module remounts (tab bounces) — the server recomputes
+      // per-theme SQL scans on every request, and the body captures every
+      // input so a theme/field change is a different key.
+      const data = await cachedRequest('theme-counts:' + datasetId + ':' + body, async function() {
+        const res = await fetch('/api/datasets/' + datasetId + '/theme-counts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: body,
+        })
+        if (!res.ok) throw new Error('theme-counts ' + res.status)
+        return res.json()
+      })
       if (!data.counts) return
       const countMap: Record<string, { count: number; percentage: number }> = {}
       for (const c of data.counts) countMap[c.id] = { count: c.count, percentage: c.percentage }
+      // Above the 50K cap the server counts over the deterministic sample and
+      // scales (sql/162) — surface the real coverage ("50,000 of 785,638
+      // responses sampled") instead of implying exact full-dataset counts.
+      var si = data.sampled
+        ? { sampled: data.sampleSize || 0, total: totalRows }
+        : { sampled: data.totalNonEmpty || totalRows, total: data.totalNonEmpty || totalRows }
       setThemes(function(prev) {
         if (!prev) return prev
         return {
@@ -1573,10 +1588,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
             var sc = countMap[t.id]
             return sc ? { ...t, count: sc.count, percentage: sc.percentage } : t
           }),
-          samplingInfo: { sampled: data.totalNonEmpty || totalRows, total: data.totalNonEmpty || totalRows },
+          samplingInfo: si,
         }
       })
-      setSamplingInfo({ sampled: data.totalNonEmpty || totalRows, total: data.totalNonEmpty || totalRows })
+      setSamplingInfo(si)
       if (data.topical) setServerTopical(data.topical)
       if (data.cooccurrence) setServerCoOccurrence(data.cooccurrence)
       if (data.dimensions) setServerThemeDimensions(data.dimensions)

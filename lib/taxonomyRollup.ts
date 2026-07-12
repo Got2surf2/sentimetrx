@@ -371,6 +371,15 @@ export interface StoredTaxonomyField {
   rollup: TaxonomyRollup
   updatedAt: string
   version: string
+  /** "rows with text in any selected field" denominator, counted once here at
+   *  rollup-write time. The Dimensions GET used to recompute it via the
+   *  dataset_rows_with_text_count RPC on EVERY call — an O(N) full scan that
+   *  defeated the stored-rollup fast path (and silently returned 0 past the
+   *  8s statement timeout on large datasets). Absent on pre-2026-07 entries →
+   *  the GET falls back to the live RPC. Refreshes whenever the rollup does
+   *  (classify completion / drift nudge), so it stays as fresh as the rollup
+   *  it reconciles. */
+  rowsWithText?: number
 }
 
 export interface StoredTaxonomy { fields: Record<string, StoredTaxonomyField> }
@@ -399,12 +408,20 @@ export async function updateStoredTaxonomyRollup(opts: {
   const { recent: _r, prior: _p, windowLabel: _w, ...rollup } =
     await computeTaxonomyRollup({ service, datasetId, orgId, field })
   const cur = await readStoredTaxonomy(service, datasetId)
+  // Count the "rows with text" denominator once here so the Dimensions GET
+  // never has to (see StoredTaxonomyField.rowsWithText). On failure store
+  // nothing — the GET falls back to its live count.
+  let rowsWithText: number | undefined
+  const { data: rwt, error: rwtErr } = await service
+    .rpc('dataset_rows_with_text_count', { p_dataset_id: datasetId, p_fields: selFields })
+  if (!rwtErr && rwt != null && Number.isFinite(Number(rwt))) rowsWithText = Number(rwt)
   const next: StoredTaxonomy = { fields: { ...(cur?.fields ?? {}) } }
   next.fields[field] = {
     selFields,
     rollup,
     updatedAt: new Date().toISOString(),
     version: TAXONOMY_VERSION,
+    ...(rowsWithText != null ? { rowsWithText } : {}),
   }
   await mergeDatasetAnalytics(service, datasetId, { taxonomy: next })
   return rollup

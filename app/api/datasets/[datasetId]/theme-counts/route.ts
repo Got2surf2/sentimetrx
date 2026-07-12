@@ -6,6 +6,8 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { countNonEmptyRows } from '@/lib/nonEmptyCount'
+import { memberRowCounts } from '@/lib/signalStats'
+import { sampledSignalCounts, scaleSampledCount, SIGNAL_SAMPLE_CAP, type SampledSignalCounts } from '@/lib/sampledSignalCounts'
 
 interface Props { params: Promise<{ datasetId: string }> }
 
@@ -95,25 +97,57 @@ export async function POST(req: Request, props: Props) {
     }
   }
 
-  // Check if any of the underlying flat tables have data
+  // Row totals from the stored datasets.row_count column (O(1)). Replaces the
+  // old exact head-count-per-member loop (an O(N) index scan each, on every
+  // TextMine/Charts visit) AND gates the sampled path below.
+  const rowCounts = await memberRowCounts(service, datasetIds)
   let totalFlat = 0
-  for (const did of datasetIds) {
-    const { count: flatCount } = await service
-      .from('dataset_rows_flat')
-      .select('id', { count: 'exact', head: true })
-      .eq('dataset_id', did)
-    totalFlat += flatCount || 0
+  for (const c of rowCounts.values()) totalFlat += c
+
+  // Stored 0 could be a stale row_count on an out-of-band load (it has
+  // happened) — confirm with real head counts before concluding "no data".
+  // Empty datasets are trivially cheap to count, so this guard costs nothing
+  // on the path it protects.
+  if (totalFlat === 0) {
+    for (const did of datasetIds) {
+      const { count: flatCount } = await service
+        .from('dataset_rows_flat')
+        .select('id', { count: 'exact', head: true })
+        .eq('dataset_id', did)
+      if (flatCount) rowCounts.set(did, flatCount)
+      totalFlat += flatCount || 0
+    }
   }
 
   if (totalFlat > 0) {
-    // SQL-based counting using the count_theme_matches function, summed
-    // across the resolved dataset IDs (1 entry for regular datasets, N
-    // for collections).
+    // SQL-based counting, summed across the resolved dataset IDs (1 entry
+    // for regular datasets, N for collections).
+    //
+    // Members ABOVE the 50K sampling cap: ONE single-pass sampled RPC
+    // (sql/162, deterministic idx_drf_sample order — the same sample the bulk
+    // rows route serves) yields the non-empty counts AND every theme's count,
+    // scaled to the member's total. The exact per-theme full scans blow the
+    // 8s DB statement timeout there (785K rows ≈ 1.4GB of jsonb per scan,
+    // prod 2026-07-11). At or under the cap: exact counts, unchanged. If the
+    // sampled RPC fails/isn't migrated yet, fall through to the exact path.
+    const sampledByMember = new Map<string, SampledSignalCounts>()
+    await Promise.all(datasetIds.map(async did => {
+      if ((rowCounts.get(did) || 0) <= SIGNAL_SAMPLE_CAP) return
+      try {
+        sampledByMember.set(did, await sampledSignalCounts(service, did, fields, themes))
+      } catch { /* exact path below — pre-sql/162 behavior */ }
+    }))
+
     // Get total non-empty rows (denominator), summed across members
     let totalNonEmpty = 0
-    for (const f of fields) {
+    for (const [fi, f] of fields.entries()) {
       let fieldTotal = 0
       for (const did of datasetIds) {
+        const s = sampledByMember.get(did)
+        if (s) {
+          fieldTotal += scaleSampledCount(s.recordsPerField[fi] || 0, rowCounts.get(did) || 0, s.scanned)
+          continue
+        }
         // Comma-safe count (sql/161) — the raw PostgREST filter used here
         // silently returned 0 for question-sentence column names, zeroing
         // the percentage denominator. Degrade to 0 on failure (old behavior).
@@ -122,12 +156,17 @@ export async function POST(req: Request, props: Props) {
       totalNonEmpty = Math.max(totalNonEmpty, fieldTotal)
     }
 
-    const counts = await runPool(themes.map(t => async () => {
+    const counts = await runPool(themes.map((t, ti) => async () => {
       const kws = (t.keywords || []).filter(Boolean)
       if (!kws.length) return { id: t.id, count: 0, percentage: 0 }
 
       let c = 0
       for (const did of datasetIds) {
+        const s = sampledByMember.get(did)
+        if (s) {
+          c += scaleSampledCount(s.perTheme[ti] || 0, rowCounts.get(did) || 0, s.scanned)
+          continue
+        }
         const { data: matchCount } = await service.rpc('count_theme_matches', {
           p_dataset_id: did,
           p_field_keys: fields,
@@ -236,7 +275,16 @@ export async function POST(req: Request, props: Props) {
       themeDimensions = Object.fromEntries(dimensionEntries)
     }
 
-    return NextResponse.json({ counts, totalNonEmpty, cooccurrence: cooccurrenceMatrix, topical: topicalWords, dimensions: themeDimensions })
+    // `sampled` — counts were computed over the deterministic 50K sample and
+    // scaled (any member above the cap); the client labels them approximate.
+    // `sampleSize` — rows actually scanned (sampled members' scan + exact
+    // members' full rows), the honest "N of M responses sampled" numerator.
+    let sampleSize = 0
+    for (const did of datasetIds) {
+      const s = sampledByMember.get(did)
+      sampleSize += s ? s.scanned : (rowCounts.get(did) || 0)
+    }
+    return NextResponse.json({ counts, totalNonEmpty, sampled: sampledByMember.size > 0, sampleSize, cooccurrence: cooccurrenceMatrix, topical: topicalWords, dimensions: themeDimensions })
   }
 
   // No flat rows for this dataset/collection → nothing to count. (The legacy

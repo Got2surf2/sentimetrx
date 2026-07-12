@@ -212,11 +212,16 @@ gating).
     all exclude it. New enumerators of row-data keys must check
     `isReservedRowKey` (`lib/taxonomyEmbed.ts`).
   - **Stored rollups**: `dataset_state.analytics.taxonomy.fields[<fieldKey>]` =
-    `{selFields, rollup, updatedAt, version}` — written at classify completion
-    (`updateStoredTaxonomyRollup`, merged via the sql/145 atomic-merge RPC) so
-    dashboards read aggregates instead of scanning blobs. The Dimensions GET uses
-    it as the fast path; `taxonomy_primary_field` resolves the Charts field from
-    it (most classified rows wins).
+    `{selFields, rollup, updatedAt, version, rowsWithText}` — written at classify
+    completion (`updateStoredTaxonomyRollup`, merged via the sql/145 atomic-merge
+    RPC) so dashboards read aggregates instead of scanning blobs. The Dimensions
+    GET uses it as the fast path; `taxonomy_primary_field` resolves the Charts
+    field from it (most classified rows wins). `rowsWithText` (2026-07-11,
+    first-open audit) is counted once here — the GET used to re-run the
+    `dataset_rows_with_text_count` RPC on every call, an O(N) full scan that
+    defeated the fast path (and silently returned 0 past the 8s statement
+    timeout on large datasets); entries missing it (pre-store) fall back to the
+    live RPC.
   - **RPCs** (same names/signatures as sql/115/116 — the /aggregate route and
     ChartsModule changed zero code): the `tax_*` aggregates, the axis crosstab
     (sql/133), theme×dimension chips (sql/111), the Comments dimension filter
@@ -335,8 +340,9 @@ gating).
   re-derive live) — but this is **automatic**: selecting a new combo auto-runs the classify
   (brief "Classifying…" spinner) rather than waiting on a button press. The old
   redundant "Field to classify" dropdown is retired.
-  **Reconciled denominator**: the GET returns `rowsWithText` (`dataset_rows_with_text_count`
-  RPC = rows with text in this field) and the header reads "**N rows with text · X% tagged**"
+  **Reconciled denominator**: the GET returns `rowsWithText` (rows with text in this field —
+  served from the stored rollup entry since 2026-07-11, live `dataset_rows_with_text_count`
+  RPC only for pre-store entries) and the header reads "**N rows with text · X% tagged**"
   (X = `withSignal/rowsWithText`) — so it lines up with the metric strip's "records" instead
   of the old misleading "N reviews classified · 50% with a signal" (which counted blank rows).
   `detectTextFields` still runs server-side but the UI no longer renders a picker.

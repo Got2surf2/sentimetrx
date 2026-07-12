@@ -14,6 +14,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { mergeDatasetAnalytics, deleteDatasetAnalyticsKey } from '@/lib/datasetAnalytics'
 import { logError } from '@/lib/log'
 import { countNonEmptyRows } from '@/lib/nonEmptyCount'
+import { sampledSignalCounts, scaleSampledCount, SIGNAL_SAMPLE_CAP } from '@/lib/sampledSignalCounts'
 import { themeFieldEntries, themeModelKey, type ThemeModel as UtilThemeModel } from '@/lib/themeUtils'
 
 export interface SignalStats {
@@ -23,6 +24,10 @@ export interface SignalStats {
   themeFitPct: number
   themeFitBand: 'Tight' | 'Mixed' | 'Diffuse'
   themeCount: number
+  /** True when counts were computed over the deterministic 50K sample and
+   *  scaled to the dataset's total rows (datasets above the sampling cap —
+   *  exact per-theme scans exceed the DB statement timeout there). */
+  sampled?: boolean
 }
 
 interface Theme { id?: string; keywords?: string[] }
@@ -109,18 +114,45 @@ async function resolveDatasetIds(
  * (Edits that fill a previously-empty field without changing the row
  * count are not detected — a rare case; re-mining the themes forces a
  * recompute regardless.)
+ *
+ * Reads the STORED datasets.row_count column — O(1) — instead of an exact
+ * head-count over dataset_rows_flat, which cost an O(N) index scan on every
+ * signal-stats call (including cache HITS) just to validate a ~50ms cache
+ * read. The stored column is what the bulk rows route already trusts for its
+ * sampling gate, and every product write path (upload, sync, trim) maintains
+ * it. Members with a null row_count (legacy) fall back to one exact count.
+ * Caches written under the old exact-count key mismatch once → recompute →
+ * re-key, the desired self-heal.
  */
-async function totalRowCount(
+export async function memberRowCounts(
   service: SupabaseClient,
   datasetIds: string[],
-): Promise<number> {
-  if (!datasetIds.length) return 0
-  const { count, error: countErr } = await service
-    .from('dataset_rows_flat')
-    .select('id', { count: 'exact', head: true })
-    .in('dataset_id', datasetIds)
-  if (countErr) void logError('signalStats.totalRowCount', countErr, { datasetIds })
-  return count || 0
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>()
+  if (!datasetIds.length) return counts
+  const { data, error } = await service
+    .from('datasets')
+    .select('id, row_count')
+    .in('id', datasetIds)
+  if (error) void logError('signalStats.memberRowCounts', error, { datasetIds })
+  const byId = new Map(((data || []) as { id: string; row_count: number | null }[]).map(r => [r.id, r.row_count]))
+  await Promise.all(datasetIds.map(async did => {
+    const stored = byId.get(did)
+    if (typeof stored === 'number') { counts.set(did, stored); return }
+    const { count, error: countErr } = await service
+      .from('dataset_rows_flat')
+      .select('id', { count: 'exact', head: true })
+      .eq('dataset_id', did)
+    if (countErr) void logError('signalStats.memberRowCounts', countErr, { datasetIds: [did] })
+    counts.set(did, count || 0)
+  }))
+  return counts
+}
+
+function sumCounts(counts: Map<string, number>): number {
+  let total = 0
+  for (const v of counts.values()) total += v
+  return total
 }
 
 /**
@@ -161,65 +193,89 @@ export async function computeSignalStatsRaw(
     return emptyStats(themes.length)
   }
 
-  // Run every independent DB call in parallel. For a 14-theme dataset
-  // on a 2-member collection the old serial loop was ~30 RPCs ×
-  // ~100ms each = ~3s per dataset; parallel it's bounded by the
-  // slowest single RPC (~300-500ms). Three groups of work fire at once:
-  //   - records  : per-field non-empty counts × member
-  //   - signals  : per-theme count_theme_matches × member
-  //   - inThemes : union-keyword count_theme_matches × member
+  // Per member, three groups of counts:
+  //   - records  : per-field non-empty counts
+  //   - signals  : per-theme match counts
+  //   - inThemes : rows matching ANY theme (union)
+  //
+  // Members at or under the sampling cap count EXACTLY — every independent
+  // RPC fired in parallel (for a 14-theme dataset the old serial loop was
+  // ~30 RPCs × ~100ms = ~3s; parallel it's bounded by the slowest RPC).
+  //
+  // Members ABOVE the cap use the sampled single-pass RPC (sql/162) over the
+  // deterministic idx_drf_sample order — the same 50K sample the bulk rows
+  // route serves — scaled to the member's total rows and flagged `sampled`.
+  // The exact path there is 1 + themes + 1 FULL SCANS, each of which blows
+  // the 8s DB statement timeout (~1.4GB of jsonb per scan at 785K rows,
+  // prod 2026-07-11). If the sampled RPC isn't in the target database yet
+  // (PGRST202 et al.) we fall back to the exact path — pre-sql/162 behavior.
+  const rowCounts = await memberRowCounts(service, datasetIds)
 
-  const allKeywords = Array.from(
-    new Set(themes.flatMap(t => (t.keywords || []).filter(Boolean))),
-  )
+  const perMember = await Promise.all(datasetIds.map(async did => {
+    const memberTotal = rowCounts.get(did) || 0
+    if (memberTotal > SIGNAL_SAMPLE_CAP) {
+      try {
+        const s = await sampledSignalCounts(service, did, fields, themes)
+        return {
+          recordsPerField: s.recordsPerField.map(c => scaleSampledCount(c, memberTotal, s.scanned)),
+          perTheme: s.perTheme.map(c => scaleSampledCount(c, memberTotal, s.scanned)),
+          union: scaleSampledCount(s.union, memberTotal, s.scanned),
+          sampled: true,
+        }
+      } catch (err) {
+        void logError('signalStats.sampledSignalCounts', err, { datasetId: did })
+        // fall through to the exact path
+      }
+    }
 
-  // records — promise per (field, member); reduce per field, max across fields.
-  // countNonEmptyRows is comma-safe (sql/161) — the raw PostgREST filter this
-  // used to build silently matched nothing for question-sentence column names.
-  // (Its legacy fallback path still swallows transient errors into 0 — the
-  // Rubio's/BareBurger cache-poisoning class — but the fallback only runs
-  // until sql/161 reaches the database; the RPC path errors fall through to
-  // it rather than throwing.)
-  const recordsPerField = await Promise.all(
-    fields.map(async f => {
-      const counts = await Promise.all(
-        datasetIds.map(async did => countNonEmptyRows(service, did, f)),
-      )
-      return counts.reduce((s, c) => s + c, 0)
-    }),
-  )
-  const records = recordsPerField.reduce((m, v) => Math.max(m, v), 0)
-
-  // signals — one promise per (theme, member), summed
-  const signalsCalls = themes.flatMap(t =>
-    datasetIds.map(did =>
+    // records — one promise per field. countNonEmptyRows is comma-safe
+    // (sql/161) — the raw PostgREST filter this used to build silently
+    // matched nothing for question-sentence column names. (Its legacy
+    // fallback path still swallows transient errors into 0 — the Rubio's/
+    // BareBurger cache-poisoning class — but the fallback only runs until
+    // sql/161 reaches the database.)
+    const allKeywords = Array.from(
+      new Set(themes.flatMap(t => (t.keywords || []).filter(Boolean))),
+    )
+    const [recordsPerField, signalsResults, inThemesResult] = await Promise.all([
+      Promise.all(fields.map(f => countNonEmptyRows(service, did, f))),
+      Promise.all(themes.map(t =>
+        service.rpc('count_theme_matches', {
+          p_dataset_id: did,
+          p_field_keys: fields,
+          p_keywords: (t.keywords || []).filter(Boolean),
+        }),
+      )),
       service.rpc('count_theme_matches', {
         p_dataset_id: did,
         p_field_keys: fields,
-        p_keywords: (t.keywords || []).filter(Boolean),
+        p_keywords: allKeywords,
       }),
-    ),
+    ])
+    return {
+      recordsPerField,
+      perTheme: signalsResults.map(r => Number(r.data) || 0),
+      union: Number(inThemesResult.data) || 0,
+      sampled: false,
+    }
+  }))
+
+  // Combine across members: per-field sums → max across fields (records);
+  // theme counts and unions sum straight across.
+  const recordsPerField = fields.map((_f, i) =>
+    perMember.reduce((s, m) => s + (m.recordsPerField[i] || 0), 0),
   )
-  // inThemes — one promise per member
-  const inThemesCalls = datasetIds.map(did =>
-    service.rpc('count_theme_matches', {
-      p_dataset_id: did,
-      p_field_keys: fields,
-      p_keywords: allKeywords,
-    }),
-  )
-  const [signalsResults, inThemesResults] = await Promise.all([
-    Promise.all(signalsCalls),
-    Promise.all(inThemesCalls),
-  ])
-  const signals = signalsResults.reduce((s, r) => s + (Number(r.data) || 0), 0)
-  const inThemes = inThemesResults.reduce((s, r) => s + (Number(r.data) || 0), 0)
+  const records = recordsPerField.reduce((m, v) => Math.max(m, v), 0)
+  const signals = perMember.reduce((s, m) => s + m.perTheme.reduce((a, b) => a + b, 0), 0)
+  const inThemes = perMember.reduce((s, m) => s + m.union, 0)
+  const sampled = perMember.some(m => m.sampled)
 
   const themeFitPct = records > 0 ? Math.round((inThemes / records) * 100) : 0
   return {
     records, signals, inThemes,
     themeFitPct, themeFitBand: band(themeFitPct),
     themeCount: themes.length,
+    ...(sampled ? { sampled: true } : {}),
   }
 }
 
@@ -256,9 +312,10 @@ export async function computeSignalStats(
   // rows added/removed by a sync. Pair it with the current row count so a
   // sync invalidates the cache. (Caches written before row_count existed
   // have it undefined → never matches → recompute, which is the desired
-  // self-heal for already-stale entries.)
+  // self-heal for already-stale entries — including entries keyed under the
+  // old exact-head-count semantics, which recompute once and re-key.)
   const datasetIds = await resolveDatasetIds(service, datasetId)
-  const currentRowCount = await totalRowCount(service, datasetIds)
+  const currentRowCount = sumCounts(await memberRowCounts(service, datasetIds))
 
   // A cache with signals/inThemes > 0 but records == 0 is internally
   // inconsistent — a row can't match a theme without its text field being
@@ -299,9 +356,11 @@ export async function computeSignalStats(
  * Signal stats for ONE stored per-field theme set, selected by its
  * themeFieldKey (2026-07-11 — the metric strip follows the active Text
  * pill). The ACTIVE set delegates to the cached path above; any other set
- * computes fresh and uncached (v1 — the single cache slot is keyed to the
- * active model; per-set caching is a scoped follow-up, the strip shows its
- * skeleton for the 1–4s compute meanwhile). Unknown key = active path.
+ * gets its own cache slot in dataset_state.analytics.signal_stats_by_field,
+ * keyed (like the active slot) by that set's model hash + row count — so
+ * switching Text pills costs one 1-4s compute the FIRST time per set, then
+ * ~50ms until that set's themes change or rows sync in. Unknown key =
+ * active path.
  */
 export async function computeSignalStatsForSet(
   service: SupabaseClient,
@@ -310,16 +369,55 @@ export async function computeSignalStatsForSet(
 ): Promise<SignalStats> {
   const { data: stateRow, error: stateRowErr } = await service
     .from('dataset_state')
-    .select('theme_model')
+    .select('theme_model, analytics')
     .eq('dataset_id', datasetId)
     .single()
   if (stateRowErr) void logError('signalStats.computeSignalStatsForSet', stateRowErr, { datasetId })
-  const tm = (stateRow as { theme_model: UtilThemeModel | null } | null)?.theme_model || null
+  const row = stateRow as { theme_model: UtilThemeModel | null; analytics: Record<string, unknown> | null } | null
+  const tm = row?.theme_model || null
   const entries = themeFieldEntries(tm)
   if (!entries[fieldKey] || themeModelKey(tm) === fieldKey) {
     return computeSignalStats(service, datasetId)
   }
-  return computeSignalStatsRaw(service, datasetId, entries[fieldKey] as unknown as ThemeModel)
+  const entryModel = entries[fieldKey] as unknown as ThemeModel
+
+  const currentHash = themeModelHash(entryModel)
+  const datasetIds = await resolveDatasetIds(service, datasetId)
+  const currentRowCount = sumCounts(await memberRowCounts(service, datasetIds))
+  const cachedMap = (row?.analytics as { signal_stats_by_field?: Record<string, CachedSignalStats> } | null)
+    ?.signal_stats_by_field || {}
+  const cached = cachedMap[fieldKey]
+  const poisoned = !!cached && cached.records === 0 && (cached.signals > 0 || cached.inThemes > 0)
+  if (
+    cached &&
+    !poisoned &&
+    cached.theme_model_hash === currentHash &&
+    currentHash !== '' &&
+    cached.row_count === currentRowCount
+  ) {
+    const { theme_model_hash: _h, row_count: _r, computed_at: _c, ...stats } = cached
+    return stats
+  }
+
+  const stats = await computeSignalStatsRaw(service, datasetId, entryModel)
+  // Rewrite the whole by-field map under its one analytics key, dropping
+  // slots for fields no longer in the theme model (renamed/removed sets).
+  // Concurrent writers of OTHER analytics keys are safe (mergeDatasetAnalytics
+  // is per-key); two simultaneous by-field writers can lose one slot, which
+  // just recomputes on the next read.
+  const nextMap: Record<string, CachedSignalStats> = {}
+  for (const k of Object.keys(cachedMap)) {
+    if (k !== fieldKey && entries[k]) nextMap[k] = cachedMap[k]
+  }
+  nextMap[fieldKey] = {
+    ...stats,
+    theme_model_hash: currentHash,
+    row_count: currentRowCount,
+    computed_at: new Date().toISOString(),
+  }
+  await mergeDatasetAnalytics(service, datasetId, { signal_stats_by_field: nextMap })
+
+  return stats
 }
 
 /**
@@ -332,7 +430,8 @@ export async function invalidateSignalStats(
   service: SupabaseClient,
   datasetId: string,
 ): Promise<void> {
-  // Atomic single-key delete — removing only signal_stats can't clobber a
-  // concurrent writer of another analytics key. No-op if the key is absent.
+  // Atomic single-key deletes — removing only the signal-stats keys can't
+  // clobber a concurrent writer of another analytics key. No-op if absent.
   await deleteDatasetAnalyticsKey(service, datasetId, 'signal_stats')
+  await deleteDatasetAnalyticsKey(service, datasetId, 'signal_stats_by_field')
 }

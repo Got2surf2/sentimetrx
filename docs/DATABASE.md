@@ -167,7 +167,13 @@ townhall response counter, `dataset_state` analytics merge, session counts),
 `updated_at` triggers, and RLS helper predicates. All are in the snapshot.
 sql/158 (2026-07-06) widened the five taxonomy read RPCs' axis allow-lists
 to accept the `emotion` axis and re-created `get_rows_by_filters` with a
-`p_sub_emotion` facet param (no table changes).
+`p_sub_emotion` facet param (no table changes). sql/160–162 (2026-07-10/11)
+added the sampling stack for datasets above the 50K cap: the `idx_drf_sample`
+expression index + `sample_dataset_rows` (O(sample) keyset-paged bulk rows),
+`count_nonempty_rows` (comma-safe non-empty count, field as bind param), and
+`sampled_signal_counts` (single-pass sampled records/per-theme/union counts
+over the same sample — replaces 1+themes+1 full scans per signal-stats
+compute above the cap; service_role-only, like the sampler).
 
 ---
 

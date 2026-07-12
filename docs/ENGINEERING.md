@@ -46,7 +46,7 @@ Last reviewed: 2026-05-15.
   rules as before at `warn` (`no-floating-promises`, `no-misused-
   promises`, `no-explicit-any`, `consistent-type-imports`). `next lint`
   is gone; `npm run lint` = `eslint .`. **CI runs `npm run lint:ci`
-  (`eslint . --max-warnings 358` as of 2026-07-07)** — a **warn-only
+  (`eslint . --max-warnings 352` as of 2026-07-11)** — a **warn-only
   ratchet**: 0 errors, and the ceiling fails CI only if new code pushes
   the count UP. Burn the number down (edit the `lint:ci` ceiling in
   `package.json` as warnings are fixed), same as the coverage floor; once

@@ -130,17 +130,24 @@ export async function GET(req: Request, props: Params) {
   // Stored-rollup fast path (written at classify completion) — dashboards
   // never scan row blobs. Fallback: compute from the embedded verdicts (e.g.
   // a dataset classified before the rollup store existed).
-  const [stored, rwt] = await Promise.all([
-    readStoredTaxonomy(service, datasetId),
-    service.rpc('dataset_rows_with_text_count', { p_dataset_id: datasetId, p_fields: selFields }),
-  ])
-  let rollup: TaxonomyRollup | undefined = stored?.fields?.[fieldKey]?.rollup
+  const stored = await readStoredTaxonomy(service, datasetId)
+  const storedField = stored?.fields?.[fieldKey]
+  let rollup: TaxonomyRollup | undefined = storedField?.rollup
   if (!rollup) {
     rollup = await computeTaxonomyRollup({ service, datasetId, orgId, field: fieldKey })
   }
   // rowsWithText = the reconciling denominator (rows with text in ANY selected
   // field) — header reads "N rows with text · X% tagged", aligned with the strip.
-  return NextResponse.json({ ...rollup, ...fields, totalRows, rowsWithText: Number(rwt.data ?? 0), field: fieldKey })
+  // Stored alongside the rollup at classify time; the live RPC runs only for
+  // pre-store entries (it's an O(N) full scan — recomputing it on every GET
+  // defeated the fast path and returned 0 past the statement timeout on large
+  // datasets).
+  let rowsWithText = storedField?.rowsWithText
+  if (rowsWithText == null) {
+    const rwt = await service.rpc('dataset_rows_with_text_count', { p_dataset_id: datasetId, p_fields: selFields })
+    rowsWithText = Number(rwt.data ?? 0)
+  }
+  return NextResponse.json({ ...rollup, ...fields, totalRows, rowsWithText, field: fieldKey })
 }
 
 export async function POST(req: Request, props: Params) {

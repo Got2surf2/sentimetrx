@@ -43,6 +43,8 @@ function mockService(pages: Array<Array<{ id: number; data: Record<string, unkno
         }
       }
       if (name === 'numeric_field_stats') return { data: [], error: null }
+      // rowsWithText denominator counted once at rollup-write time
+      if (name === 'dataset_rows_with_text_count') return { data: 5, error: null }
       if (name === 'merge_dataset_analytics') { merged.push(args.p_patch!); return { data: null, error: null } }
       throw new Error(`unexpected rpc ${name}`)
     },
@@ -86,6 +88,7 @@ describe('classifyPendingRows (auto-classify safety net, embed path)', () => {
     expect(merged).toHaveLength(1)
     const stored = merged[0].taxonomy.fields['review_text']
     expect(stored.selFields).toEqual(['review_text'])
+    expect(stored.rowsWithText).toBe(5) // denominator stored with the rollup (no per-GET rescan)
     expect(stored.rollup.classifiedRows).toBe(2)
     expect(stored.rollup.subs.some(s => s.axis === 'product' && s.sub === 'steak')).toBe(true)
   })

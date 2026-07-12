@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { smartOrder, isOrdinalScale, scaleDirectionLabel } from '@/lib/scaleUtils'
 import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
+import { cachedRequest } from '@/lib/clientRequestCache'
 import { axisOfDimField, isDimField, dimVirtualFields, DIM_AXIS_LABEL_LONG } from '@/lib/dimensionFields'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import type { TimeBucket} from '@/lib/timeBucket';
@@ -2004,21 +2005,28 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   useEffect(function() {
     if (!hasThemes || !themeSourceField) { setLiveThemeCounts(null); return }
     var cancelled = false
-    var payload = {
-      themes: themeModel.themes.map(function(t: any) { return { id: t.id || t.name, keywords: t.keywords || [] } }),
+    var body = JSON.stringify({
+      themes: themeModel.themes.map(function(t: { id?: string; name?: string; keywords?: string[] }) { return { id: t.id || t.name, keywords: t.keywords || [] } }),
       fields: [themeSourceField],
-    }
-    fetch('/api/datasets/' + datasetId + '/theme-counts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
     })
-      .then(function(r) { return r.ok ? r.json() : null })
-      .then(function(d) {
+    // Cached across module remounts (tab bounces) — the server recomputes
+    // per-theme SQL scans on every request; the body captures every input.
+    cachedRequest('theme-counts:' + datasetId + ':' + body, function() {
+      return fetch('/api/datasets/' + datasetId + '/theme-counts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body,
+      }).then(function(r) {
+        if (!r.ok) throw new Error('theme-counts ' + r.status)
+        return r.json()
+      })
+    })
+      .then(function(d: { counts?: { id: string; count: number }[] } | null) {
         if (cancelled || !d || !Array.isArray(d.counts)) return
+        var counts = d.counts
         var map: Record<string, number> = {}
-        themeModel.themes.forEach(function(t: any) {
-          var hit = d.counts.find(function(c: any) { return c.id === (t.id || t.name) })
+        themeModel.themes.forEach(function(t: { id?: string; name: string }) {
+          var hit = counts.find(function(c) { return c.id === (t.id || t.name) })
           map[t.name] = hit ? hit.count : 0
         })
         setLiveThemeCounts(map)

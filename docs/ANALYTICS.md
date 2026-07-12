@@ -158,8 +158,11 @@ are saved in-session** ('dataset-themes-saved' fires on every theme-model persis
 used to mine in the first visit and the strip stayed hidden until reload), and (2) **follows the
 active Text pill**: TextMine dispatches 'dataset-active-field-changed' (themeFieldKey) and the
 strip fetches `/signal-stats?field=<key>` — `computeSignalStatsForSet` serves that stored set's
-stats (active set cached; other sets compute fresh/uncached behind the skeleton — per-set caching
-is a scoped follow-up). Non-empty "records" counts are **comma-safe** via `count_nonempty_rows`
+stats. **Per-set caching (2026-07-11, first-open audit):** every non-active set now has its own
+cache slot in `dataset_state.analytics.signal_stats_by_field`, keyed like the active slot
+(that set's model hash + row count) — a Text-pill switch pays the 1–4s compute once per set,
+then ~50ms; slots for removed/renamed sets are pruned on write and `invalidateSignalStats`
+drops the whole map alongside `signal_stats`. Non-empty "records" counts are **comma-safe** via `count_nonempty_rows`
 (sql/161, field as bind parameter) shared by signalStats / theme-counts / filter-options blanks /
 analyticsCompute through `lib/nonEmptyCount.countNonEmptyRows` — the raw `data->field` PostgREST
 filter silently matched nothing for question-sentence column names (comma = filter separator).
@@ -170,6 +173,16 @@ aggregate — per-row scoring/banding/filtering deliberately NOT built, owner 20
 records/signals/theme-fit line and its signal-stats-batch fetch were removed as a confusion
 source (the numbers described one question's set without saying which); analysis metrics live
 in-dataset where the question context exists.
+
+**Tab-navigation fetch behavior (2026-07-11, first-open audit).** The /analyze tabs are
+separate route segments under one layout: the shared layer (RowsProvider bulk rows, metric
+strip, views, session filters) mounts ONCE and survives tab switches; each tab's *module*
+remounts and re-fires its own fetches. `lib/clientRequestCache.ts` (`cachedRequest`) now
+dedupes the recomputed-identically-per-remount ones — `theme-counts` (TextMine + Charts,
+keyed by dataset + full request body so any theme/field change is a different key) and the
+static `industry-themes` — cleared on the theme-save events + a 5-min TTL. The entity
+catalog is deliberately NOT cached (Schema-tab entity management has no change event back
+to TextMine). `/aggregate` gained `maxDuration = 60` to match its peer dataset routes.
 
 ### API: `POST /api/datasets/[datasetId]/merge-themes` (collection theme-merge)
 On a **collection** dataset, TextMine's "merge" mode ("import component topics") fetches each member's existing `theme_model` (members with ≥1 AI-mined theme; needs ≥2 such members) and calls this route to AI-merge them into one unified set (shared vs. unique themes, tagged with `memberLabels`). **Same key policy as mine-themes** — falls back to the platform `ANTHROPIC_API_KEY` when no personal `apiKey` is supplied (the **2026-06-28 fix** removed a stale `NO_API_KEY` rejection that blocked the merge for orgs without a personal key, even though mining worked); `merge_themes` usage is logged per-org. **Members without mined themes are silently excluded** — mine themes on each member first to include it.
@@ -205,10 +218,27 @@ under the all-reviews principle — the theme/dimension deltas now compare again
 see `recountThemes` below.) Read via the RLS-enforced user client (org-safe, no row scan); shown only when present. `records` is the
 **max** non-empty count across the saved theme model's fields (summed across
 collection members); `signals` / `inThemes` come from `count_theme_matches`.
-Results are cached in `dataset_state.analytics.signal_stats`, keyed on **both**
+**Sampled above the cap (2026-07-11, first-open audit):** the exact counters are
+FULL SCANS per call (1 + themes + 1 of them) — past ~50K rows each scan reads
+GBs of jsonb and blows the DB's 8s statement timeout (the 785K prod dataset
+500'd the strip even post-VACUUM; it's volume, not bloat). Members above
+`SIGNAL_SAMPLE_CAP` (50K) now compute all three count groups in **one
+keyset-paged pass over the deterministic `idx_drf_sample` sample** —
+`sampled_signal_counts` (sql/162, same sample the bulk rows route serves, same
+regex semantics as `count_theme_matches`; pager in `lib/sampledSignalCounts.ts`)
+— scaled to the member's total rows and flagged `sampled: true` (strip renders
+"~" + a tooltip note; verified ±1.3% of exact on a 128K TEST dataset). Members
+at/under the cap stay exact; if the RPC isn't migrated yet the exact path is the
+fallback. `theme-counts` (TextMine/Charts) uses the same sampled pass above the
+cap (response gains `sampled` + `sampleSize`, surfaced as "N of M responses
+sampled"). Results are cached in `dataset_state.analytics.signal_stats`, keyed on **both**
 the theme-model hash **and** the current row count: editing/re-mining the themes
 flips the hash, and syncing rows in/out changes the count — either forces a
-recompute on the next read. **Atomic analytics writes (2026-07-02):**
+recompute on the next read. **The freshness row count is the stored
+`datasets.row_count`** (summed over collection members; 2026-07-11) — the old
+exact head-count was an O(N) scan on every call *including cache hits* just to
+validate a ~50ms cache read; stored-column semantics match the bulk rows
+route's sampling gate, and null (legacy) falls back to one exact count. **Atomic analytics writes (2026-07-02):**
 `dataset_state.analytics` is a shared JSONB blob (independent keys `signal_stats`,
 `totalRows`, `fieldSummaries`…). All writers now go through
 `lib/datasetAnalytics.ts` (`mergeDatasetAnalytics` / `deleteDatasetAnalyticsKey`

@@ -40,6 +40,11 @@ async function authCheck(supabase: Awaited<ReturnType<typeof createClient>>) {
   return { user: ctx.userId ? { id: ctx.userId } : null, orgId: ctx.orgId, isAdmin: ctx.isAdmin }
 }
 
+// Aggregation RPCs are O(N) scans; on large datasets a burst of chart specs
+// can outlive the default function budget even though each statement stays
+// under the DB's 8s timeout. Same budget as the peer dataset routes.
+export const maxDuration = 60
+
 export async function POST(req: Request, props: Params) {
   const params = await props.params;
   var supabase = await createClient()

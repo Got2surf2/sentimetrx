@@ -72,7 +72,12 @@ vi.mock('@/lib/commentFilter', () => ({ getRowsByFilters: async () => ({ rows: [
 vi.mock('@/lib/taxonomyRollup', () => ({ computeTaxonomyRollup: async () => ({ axes: [], subs: [], alerts: [] }) }))
 vi.mock('@/lib/taxonomyClassify', () => ({ classifyDatasetKeyword: async () => ({ classified: 0, total: 0, nextOffset: 0, reachedEnd: true }), classifyPendingRows: async () => ({ classified: 0, hasMore: false }) }))
 vi.mock('@/lib/dimensionFields', () => ({ taxonomyFieldKey: (f: string[]) => (f.length ? f.join('|') : '') }))
-vi.mock('@/lib/signalStats', () => ({ computeSignalStats: async () => ({ n: 1 }) }))
+vi.mock('@/lib/signalStats', () => ({
+  computeSignalStats: async () => ({ n: 1 }),
+  // theme-counts reads stored row totals through this (tiny counts keep the
+  // route on its exact path, off the sql/162 sampled branch)
+  memberRowCounts: async (_svc: unknown, ids: string[]) => new Map(ids.map(id => [id, 1])),
+}))
 
 import * as aggregate from '@/app/api/datasets/[datasetId]/aggregate/route'
 import * as rows from '@/app/api/datasets/[datasetId]/rows/route'

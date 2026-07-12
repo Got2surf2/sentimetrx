@@ -23,6 +23,9 @@ interface SignalStats {
   themeFitPct: number
   themeFitBand: 'Tight' | 'Mixed' | 'Diffuse'
   themeCount: number
+  /** counts estimated from the deterministic 50K sample and scaled — set for
+   *  datasets above the sampling cap; rendered with "~" + a tooltip note */
+  sampled?: boolean
   dateMin?: string | null
   dateMax?: string | null
   avgRating?: number | null
@@ -122,24 +125,31 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
     ? { display: 'flex', alignItems: 'center', gap: 14, fontSize: 12, color: '#374151', flexWrap: 'wrap', minWidth: 0 }
     : { background: '#fafafa', borderBottom: '1px solid #e8e8ec', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, fontSize: 12, color: '#374151', flexWrap: 'wrap' }
 
+  // Above the sampling cap counts are estimated from the deterministic 50K
+  // sample and scaled to the full dataset — mark them "~" and say so on hover.
+  const approx = stats.sampled ? '~' : ''
+  const sampledNote = stats.sampled
+    ? ' Estimated from a deterministic 50,000-row sample (dataset exceeds the exact-count cap) and scaled to all rows.'
+    : ''
+
   return (
     <div style={outerStyle}>
-      <span>
-        <strong style={{ color: '#111827' }}>{stats.records.toLocaleString()}</strong>{' '}
+      <span title={stats.sampled ? sampledNote.trim() : undefined}>
+        <strong style={{ color: '#111827' }}>{approx}{stats.records.toLocaleString()}</strong>{' '}
         <span style={{ color: '#6b7280' }}>comments</span>
       </span>
       <span style={{ color: '#d1d5db' }}>·</span>
-      <span title="Sum of per-theme comment matches. A comment mentioning multiple themes contributes to multiple counts.">
-        <strong style={{ color: '#111827' }}>{stats.signals.toLocaleString()}</strong>{' '}
+      <span title={'Sum of per-theme comment matches. A comment mentioning multiple themes contributes to multiple counts.' + sampledNote}>
+        <strong style={{ color: '#111827' }}>{approx}{stats.signals.toLocaleString()}</strong>{' '}
         <span style={{ color: '#6b7280' }}>signals</span>
       </span>
       <span style={{ color: '#d1d5db' }}>·</span>
       <span
         style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
         title={
-          stats.themeFitPct + '% of comments (' + stats.inThemes.toLocaleString() +
-          ' of ' + stats.records.toLocaleString() + ') match at least one of the ' +
-          stats.themeCount + ' themes. ' +
+          stats.themeFitPct + '% of comments (' + approx + stats.inThemes.toLocaleString() +
+          ' of ' + approx + stats.records.toLocaleString() + ') match at least one of the ' +
+          stats.themeCount + ' themes.' + sampledNote + ' ' +
           (stats.themeFitBand === 'Tight'
             ? 'Tight: themes capture most of the signal — ready to action.'
             : stats.themeFitBand === 'Mixed'
