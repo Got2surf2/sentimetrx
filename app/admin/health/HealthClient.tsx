@@ -41,6 +41,13 @@ interface ServiceCredit {
   last_error_msg: string | null
 }
 
+// Mirrors lib/anthropicCost.ClaudeProbe (that lib is server-only — client
+// components re-declare the wire shape, same pattern as AnthropicSpend below).
+interface ClaudeProbe {
+  status: 'ok' | 'out_of_credits' | 'error' | 'unconfigured'
+  message: string | null
+}
+
 interface AnthropicSpend {
   configured: boolean
   mtdUsd: number | null
@@ -62,7 +69,17 @@ interface Props {
   sentry: SentryHealth
   serviceCredits: ServiceCredit[]
   anthropicSpend: AnthropicSpend
+  claudeProbe: ClaudeProbe
   alertRecipientSet: boolean
+}
+
+// Where to re-up each vendor — the "click to fix it" path when a credit
+// failure fires (root console URLs only; deep billing paths change).
+const VENDOR_CONSOLE: Record<string, string> = {
+  anthropic: 'https://console.anthropic.com',
+  openai: 'https://platform.openai.com',
+  dataforseo: 'https://app.dataforseo.com',
+  google_places: 'https://console.cloud.google.com',
 }
 
 function relTime(iso: string | null): string {
@@ -83,7 +100,7 @@ function StatusDot({ ok, neutral }: { ok: boolean; neutral?: boolean }) {
 export default function HealthClient({
   logoUrl, orgName, fullName, userEmail,
   dbOk, dbLatency, studyHealth, totalResponses24h, totalComplete24h, sentry, serviceCredits,
-  anthropicSpend, alertRecipientSet,
+  anthropicSpend, claudeProbe, alertRecipientSet,
 }: Props) {
   const platform24hRate = totalResponses24h > 0
     ? Math.round((totalComplete24h / totalResponses24h) * 100)
@@ -124,11 +141,20 @@ export default function HealthClient({
             </p>
             <ul className="mt-2 flex flex-col gap-1">
               {creditFailures.map(s => (
-                <li key={s.service} className="text-sm text-red-800">
-                  <span className="font-bold">{s.display_name}</span> reported a credit/quota error
-                  {s.last_error_at ? ` ${relTime(s.last_error_at)}` : ''}
-                  {s.last_error_code ? ` (${s.last_error_code})` : ''}
-                  {s.last_error_msg ? ` — ${s.last_error_msg}` : ''}
+                <li key={s.service} className="text-sm text-red-800 flex items-center gap-3 flex-wrap">
+                  <span>
+                    <span className="font-bold">{s.display_name}</span> reported a credit/quota error
+                    {s.last_error_at ? ` ${relTime(s.last_error_at)}` : ''}
+                    {s.last_error_code ? ` (${s.last_error_code})` : ''}
+                    {s.last_error_msg ? ` — ${s.last_error_msg}` : ''}
+                  </span>
+                  {VENDOR_CONSOLE[s.service] && (
+                    <a href={VENDOR_CONSOLE[s.service]} target="_blank" rel="noopener noreferrer"
+                      className="inline-block px-3 py-1 rounded-full text-xs font-bold text-white flex-shrink-0"
+                      style={{ background: HERMES }}>
+                      Add funds ↗
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>
@@ -174,10 +200,32 @@ export default function HealthClient({
         <div className="bg-white border border-gray-200 rounded-2xl p-5">
           <div className="flex items-baseline justify-between gap-4 flex-wrap">
             <div>
-              <p className="text-sm font-bold text-gray-800">Claude API spend (this month)</p>
+              <p className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                Claude API spend (this month)
+                {claudeProbe.status === 'ok' && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700">
+                    <span className="inline-block w-2 h-2 rounded-full bg-green-500" /> key live
+                  </span>
+                )}
+                {claudeProbe.status === 'error' && (
+                  <span className="text-xs font-semibold text-amber-700" title={claudeProbe.message || ''}>⚠ probe failed</span>
+                )}
+              </p>
               <p className="text-xs text-gray-500">
                 Anthropic has no remaining-balance API — this is month-to-date <span className="font-semibold">spend</span>, not credits left.
+                {' '}A live 1-token probe checks the key each load.{' '}
+                <a href={VENDOR_CONSOLE.anthropic} target="_blank" rel="noopener noreferrer" className="underline text-gray-600">Console ↗</a>
               </p>
+              {claudeProbe.status === 'out_of_credits' && (
+                <div className="mt-2 flex items-center gap-3 flex-wrap">
+                  <span className="text-sm font-black text-red-700">🔴 Credits exhausted — AI calls are failing now</span>
+                  <a href={VENDOR_CONSOLE.anthropic} target="_blank" rel="noopener noreferrer"
+                    className="inline-block px-4 py-1.5 rounded-full text-sm font-bold text-white"
+                    style={{ background: HERMES }}>
+                    Add funds in Console ↗
+                  </a>
+                </div>
+              )}
             </div>
             {anthropicSpend.configured && anthropicSpend.mtdUsd != null ? (
               <div className="text-right">

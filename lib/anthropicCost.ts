@@ -70,3 +70,48 @@ export async function getAnthropicSpend(): Promise<AnthropicSpend> {
     }
   }
 }
+
+// ── Live credit probe ────────────────────────────────────────────────────────
+// Anthropic exposes spend but not balance, so "have we run out?" can only be
+// answered by ASKING: one 1-output-token Haiku call (~$0.00001). A credit-
+// exhausted account returns a typed `billing_error` (403) or an
+// invalid_request_error mentioning "credit balance" — either way the probe
+// reports out_of_credits and the health page shows the re-up pill (owner ask,
+// 2026-07-12). Complements the reactive path (recordCreditError from real
+// traffic): the probe catches exhaustion even when no traffic is flowing.
+// Uses the regular ANTHROPIC_API_KEY (not the admin key) — the probe must
+// exercise the same key the app's AI calls use.
+
+export interface ClaudeProbe {
+  status: 'ok' | 'out_of_credits' | 'error' | 'unconfigured'
+  message: string | null
+}
+
+export async function probeClaudeCredits(): Promise<ClaudeProbe> {
+  const key = process.env.ANTHROPIC_API_KEY
+  if (!key) return { status: 'unconfigured', message: null }
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 6000)
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 1, messages: [{ role: 'user', content: 'ping' }] }),
+      signal: ctrl.signal,
+    })
+    clearTimeout(timer)
+    if (res.ok) return { status: 'ok', message: null }
+    const body = await res.json().catch(() => null) as { error?: { type?: string; message?: string } } | null
+    const errType = body?.error?.type || ''
+    const errMsg = body?.error?.message || ('HTTP ' + res.status)
+    if (errType === 'billing_error' || /credit balance/i.test(errMsg)) {
+      return { status: 'out_of_credits', message: errMsg }
+    }
+    if (res.status === 401) return { status: 'error', message: 'API key invalid (401)' }
+    // 429/529 = rate limited/overloaded, not a credit problem — key is alive.
+    if (res.status === 429 || res.status === 529) return { status: 'ok', message: null }
+    return { status: 'error', message: errType ? errType + ': ' + errMsg : errMsg }
+  } catch {
+    return { status: 'error', message: 'probe timed out or network error' }
+  }
+}

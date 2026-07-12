@@ -2,7 +2,8 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg } from '@/lib/resolveOrg'
 import { probeBalances, getServiceHealthRows } from '@/lib/serviceHealth'
-import { getAnthropicSpend } from '@/lib/anthropicCost'
+import { getAnthropicSpend, probeClaudeCredits } from '@/lib/anthropicCost'
+import { recordCreditError } from '@/lib/serviceHealth'
 import HealthClient from './HealthClient'
 
 export const dynamic = 'force-dynamic'
@@ -146,7 +147,12 @@ export default async function HealthPage() {
   // ── Claude API month-to-date spend (Anthropic Cost API) ─────────────
   // Spend, not remaining balance — Anthropic exposes no balance API. Needs
   // an Admin key (ANTHROPIC_ADMIN_KEY); degrades to "not configured" without.
-  const anthropicSpend = await getAnthropicSpend()
+  const [anthropicSpend, claudeProbe] = await Promise.all([getAnthropicSpend(), probeClaudeCredits()])
+  // Probe-detected exhaustion feeds the same reactive store real traffic uses,
+  // so the loud degradation banner fires even on a quiet day.
+  if (claudeProbe.status === 'out_of_credits') {
+    void recordCreditError('anthropic', { code: 403, message: claudeProbe.message || 'credit balance exhausted (health probe)' })
+  }
 
   // Whether the service-balance cron's credit alerts have anywhere to go.
   const alertRecipientSet = !!(process.env.CREDITS_ALERT_TO || process.env.SENTRY_ALERT_TO)
@@ -164,6 +170,7 @@ export default async function HealthPage() {
       totalComplete24h={totalComplete24h || 0}
       serviceCredits={serviceCredits}
       anthropicSpend={anthropicSpend}
+      claudeProbe={claudeProbe}
       alertRecipientSet={alertRecipientSet}
       sentry={{
         dsnSet: sentryDsnSet,
