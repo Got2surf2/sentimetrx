@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import UploadClient from './UploadClient'
 import type { ModuleFeatures } from '@/lib/types'
 
@@ -39,7 +40,8 @@ export default async function NewDatasetPage() {
         features={orgData?.features || {}}
         currentPage="analyze"
       />
-      <main className="pt-20 px-4 pb-12 max-w-4xl mx-auto">
+      <SubHeader crumbs={[{ label: 'Analyze', href: '/analyze' }, { label: 'New Dataset' }]} />
+      <main className="pt-28 px-4 pb-12 max-w-4xl mx-auto">
         <UploadClient />
       </main>
     </div>

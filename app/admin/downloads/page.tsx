@@ -2,6 +2,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import DownloadMonitor from '@/components/downloads/DownloadMonitor'
 import type { RedditSource, ReviewSource, DatasetRow, Recording } from '@/components/downloads/DownloadMonitor'
 
@@ -96,7 +97,8 @@ export default async function DownloadsPage() {
         features={features}
         currentPage="admin"
       />
-      <div style={{ paddingTop: 56 }} className="flex-1">
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'Download Monitor' }]} />
+      <div style={{ paddingTop: 112 }} className="flex-1">
         <DownloadMonitor
           redditSources={(redditSources || []).map((s: RowWithOrg) => ({ ...s, orgName: (Array.isArray(s.organizations) ? s.organizations[0] : s.organizations)?.name || '' })) as unknown as RedditSource[]}
           reviewSources={(reviewSources || []).map((s: RowWithOrg) => ({ ...s, orgName: (Array.isArray(s.organizations) ? s.organizations[0] : s.organizations)?.name || '' })) as unknown as ReviewSource[]}

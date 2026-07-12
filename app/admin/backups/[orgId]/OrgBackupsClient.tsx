@@ -101,7 +101,7 @@ export default function OrgBackupsClient({ orgId, targetOrgName, targetOrgSlug, 
 
       <div className='max-w-5xl mx-auto px-4 py-8'>
         <div className='text-xs text-gray-500 mb-1'>
-          <Link href='/admin' className='hover:underline'>Admin</Link> /{' '}
+          <Link href='/admin/hub' className='hover:underline'>Settings &amp; Admin</Link> /{' '}
           <Link href='/admin/backups' className='hover:underline'>Backups</Link> /{' '}
           <span className='text-gray-700'>{targetOrgName}</span>
         </div>

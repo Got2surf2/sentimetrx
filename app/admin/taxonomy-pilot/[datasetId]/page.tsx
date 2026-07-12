@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import TaxonomyPilotClient from './TaxonomyPilotClient'
 import type { ModuleFeatures } from '@/lib/types'
 
@@ -41,7 +42,8 @@ export default async function TaxonomyPilotPage(props: Params) {
         features={features}
         currentPage="admin"
       />
-      <div style={{ paddingTop: 56 }} className="flex-1">
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'Taxonomy Pilot' }, { label: 'Dataset' }]} />
+      <div style={{ paddingTop: 112 }} className="flex-1">
         <TaxonomyPilotClient datasetId={params.datasetId} />
       </div>
     </div>

@@ -423,7 +423,7 @@ export default function QuestionsClient({ userEmail, logoUrl = '', orgName = '',
   return (
     <div className="min-h-screen bg-gray-50">
       <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={true} userEmail={userEmail} fullName={fullName} currentPage="questions" />
-      <SubHeader crumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Question Library' }]} />
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'Question Library' }]} />
 
       <main className="max-w-5xl mx-auto px-6 pt-28 pb-10">
         <div className="mb-6">

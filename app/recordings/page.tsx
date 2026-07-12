@@ -14,6 +14,7 @@ import Link from 'next/link'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import RecordingsListClient from './RecordingsListClient'
 
 export const dynamic = 'force-dynamic'
@@ -213,7 +214,8 @@ export default async function RecordingsListPage() {
         campaignsEnabled={!!ctx.features.campaigns}
         currentPage="recordings"
       />
-      <main className="pt-20 px-4 pb-12 max-w-6xl mx-auto">
+      <SubHeader crumbs={[{ label: 'Town Hall' }]} />
+      <main className="pt-28 px-4 pb-12 max-w-6xl mx-auto">
         <header className="flex items-baseline justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Town Hall</h1>

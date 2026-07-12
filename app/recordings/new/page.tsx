@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import RecordingWizardClient from './RecordingWizardClient'
 
 export const dynamic = 'force-dynamic'
@@ -48,7 +49,8 @@ export default async function NewRecordingPage() {
         campaignsEnabled={!!ctx.features.campaigns}
         currentPage="recordings"
       />
-      <main className="pt-20 px-4 pb-12 max-w-5xl mx-auto">
+      <SubHeader crumbs={[{ label: 'Town Hall', href: '/recordings' }, { label: 'New' }]} />
+      <main className="pt-28 px-4 pb-12 max-w-5xl mx-auto">
         <RecordingWizardClient agents={agents} members={members} />
       </main>
     </div>

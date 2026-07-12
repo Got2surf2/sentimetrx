@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import type { ModuleFeatures } from '@/lib/types'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import SpecDriftTrend from '@/components/admin/SpecDriftTrend'
 import { loadAllDriftReports } from '@/lib/specDriftReports'
 
@@ -36,7 +37,8 @@ export default async function ControlReportsSpecDriftPage() {
         features={features}
         currentPage="admin"
       />
-      <div style={{ paddingTop: 56 }} className="flex-1">
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'Control Reports', href: '/admin/control-reports' }, { label: 'Spec Drift' }]} />
+      <div style={{ paddingTop: 112 }} className="flex-1">
         <SpecDriftTrend reports={reports} />
       </div>
     </div>

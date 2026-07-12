@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import type { ModuleFeatures } from '@/lib/types'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import EstimatorClient from './EstimatorClient'
 
 export const dynamic = 'force-dynamic'
@@ -35,7 +36,8 @@ export default async function EstimatorPage() {
         features={features}
         currentPage="estimator"
       />
-      <div style={{ paddingTop: 56 }} className="flex-1">
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'Cost Estimator' }]} />
+      <div style={{ paddingTop: 112 }} className="flex-1">
         <EstimatorClient />
       </div>
     </div>

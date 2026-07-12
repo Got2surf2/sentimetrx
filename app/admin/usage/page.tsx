@@ -7,6 +7,7 @@ import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import type { ModuleFeatures } from '@/lib/types'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import UsageClient from './UsageClient'
 
 export const dynamic = 'force-dynamic'
@@ -37,7 +38,8 @@ export default async function UsagePage() {
         features={features}
         currentPage="usage"
       />
-      <div style={{ paddingTop: 56 }} className="flex-1">
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'AI Usage' }]} />
+      <div style={{ paddingTop: 112 }} className="flex-1">
         <UsageClient />
       </div>
     </div>

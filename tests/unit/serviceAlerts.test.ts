@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ServiceHealthRow } from '@/lib/serviceHealth'
 
-const sendSpy = vi.fn(async () => ({ ok: true }))
+const sendSpy = vi.fn(async (_msg: { to: string; from: string; subject: string; html: string; text: string }) => ({ ok: true }))
 vi.mock('@/lib/email/provider', () => ({ getEmailProvider: () => ({ send: sendSpy }) }))
 
 const db = { claimed: [] as unknown[], updates: 0 }
@@ -60,8 +60,7 @@ describe('maybeAlertCreditError — real-time claim-then-send', () => {
     const sent = await maybeAlertCreditError('anthropic')
     expect(sent).toBe(true)
     expect(sendSpy).toHaveBeenCalledTimes(2) // one per recipient
-    const first = sendSpy.mock.calls[0][0] as { subject: string; to: string }
-    expect(first.subject).toContain('Service credits')
+    expect(sendSpy.mock.calls[0][0].subject).toContain('Service credits')
   })
 
   it('skips silently when another concurrent caller already claimed the window', async () => {

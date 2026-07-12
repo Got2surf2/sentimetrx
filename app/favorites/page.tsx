@@ -7,6 +7,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import FavoritesClient, { type EnrichedFav as ClientFav } from './FavoritesClient'
 
 export const dynamic = 'force-dynamic'
@@ -111,7 +112,8 @@ export default async function FavoritesPage() {
         features={orgData?.features || {}}
         currentPage="favorites"
       />
-      <div style={{ paddingTop: 56 }}>
+      <SubHeader crumbs={[{ label: 'Favorites' }]} />
+      <div style={{ paddingTop: 112 }}>
         <FavoritesClient favorites={enriched as unknown as ClientFav[]} />
       </div>
     </div>

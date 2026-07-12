@@ -2,6 +2,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import DownloadMonitor from '@/components/downloads/DownloadMonitor'
 
 // User-facing single-org Download Monitor. Same UI as /admin/downloads
@@ -85,7 +86,8 @@ export default async function UserDownloadsPage() {
         features={features}
         currentPage="downloads"
       />
-      <div style={{ paddingTop: 56 }} className="flex-1">
+      <SubHeader crumbs={[{ label: 'Downloads' }]} />
+      <div style={{ paddingTop: 112 }} className="flex-1">
         <DownloadMonitor
           redditSources={redditRes.data || []}
           reviewSources={reviewRes.data || []}

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import ContentGuardClient from './ContentGuardClient'
 import type { ModuleFeatures } from '@/lib/types'
 
@@ -33,7 +34,8 @@ export default async function ContentGuardPage() {
         features={features}
         currentPage="content-guard"
       />
-      <div style={{ paddingTop: 56 }} className="flex-1">
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'Content Guard' }]} />
+      <div style={{ paddingTop: 112 }} className="flex-1">
         <ContentGuardClient />
       </div>
     </div>

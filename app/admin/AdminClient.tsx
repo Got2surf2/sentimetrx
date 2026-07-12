@@ -200,7 +200,7 @@ export default function AdminClient({ orgs: initial, adminEmail, logoUrl='', org
   return (
     <div className="min-h-screen bg-gray-50">
       <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={true} userEmail={adminEmail} fullName={fullName} currentPage='admin' />
-      <SubHeader crumbs={[{ label: 'Admin' }]} />
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'Admin Panel' }]} />
 
       <main className="max-w-5xl mx-auto px-6 pt-28 pb-10">
 

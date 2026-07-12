@@ -512,7 +512,7 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
           features={features}
         />
       </div>
-      <SubHeader crumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Testing Tools' }]} />
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'Testing Tools' }]} />
 
       <main className="max-w-3xl mx-auto px-6 py-8 pt-28 w-full">
         <h1 className="text-xl font-bold text-gray-800">Testing Tools</h1>

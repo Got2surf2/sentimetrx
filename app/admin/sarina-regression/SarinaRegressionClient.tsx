@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import { SARINA_TESTS, type SarinaTest, type Category } from './tests'
 import type { ModuleFeatures } from '@/lib/types'
 
@@ -206,8 +207,9 @@ export default function SarinaRegressionClient({ botId, logoUrl, orgName, userEm
   return (
     <div className='min-h-screen bg-gray-50'>
       <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={true} userEmail={userEmail} fullName={fullName} currentPage='admin' features={features} />
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'Sarina Regression' }]} />
 
-      <div className='max-w-6xl mx-auto px-4 py-8'>
+      <div className='max-w-6xl mx-auto px-4 pt-28 pb-8'>
         <div className='mb-6'>
           <div className='flex items-center justify-between flex-wrap gap-2'>
             <div>

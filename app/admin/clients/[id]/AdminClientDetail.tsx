@@ -410,7 +410,7 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
   return (
     <div className="min-h-screen bg-gray-50">
       <TopNav isAdmin={true} userEmail={userEmail} currentPage='admin' />
-      <SubHeader crumbs={[{label: 'Admin', href: '/admin'}, {label: org.name}]} />
+      <SubHeader crumbs={[{label: 'Settings & Admin', href: '/admin/hub'}, {label: 'Admin Panel', href: '/admin'}, {label: org.name}]} />
 
 <main className="max-w-4xl mx-auto px-6 pt-28 pb-10 flex flex-col gap-8">
         {error && (

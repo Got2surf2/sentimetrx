@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import GovernanceTrend from '@/components/admin/GovernanceTrend'
 import { loadAllReports } from '@/lib/governanceReports'
 import type { ModuleFeatures } from '@/lib/types'
@@ -36,7 +37,8 @@ export default async function ControlReportsGovernancePage() {
         features={features}
         currentPage="admin"
       />
-      <div style={{ paddingTop: 56 }} className="flex-1">
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'Control Reports', href: '/admin/control-reports' }, { label: 'Governance' }]} />
+      <div style={{ paddingTop: 112 }} className="flex-1">
         <GovernanceTrend reports={reports} />
       </div>
     </div>

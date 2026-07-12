@@ -45,7 +45,7 @@ export default function BackupsClient({ orgs, logoUrl, orgName, userEmail, fullN
 
       <div className='max-w-5xl mx-auto px-4 py-8'>
         <div className='mb-6'>
-          <div className='text-xs text-gray-500 mb-1'><Link href='/admin' className='hover:underline'>Admin</Link> / Backups</div>
+          <div className='text-xs text-gray-500 mb-1'><Link href='/admin/hub' className='hover:underline'>Settings &amp; Admin</Link> / Backups</div>
           <h1 className='text-2xl font-semibold text-gray-900'>Per-tenant backups</h1>
           <p className='text-sm text-gray-600 mt-1'>
             Nightly at 04:00 UTC, every org's tenant-scoped data is snapshotted to S3.

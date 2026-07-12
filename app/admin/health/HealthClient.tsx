@@ -128,7 +128,7 @@ export default function HealthClient({
   return (
     <div className="min-h-screen bg-gray-50">
       <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={true} userEmail={userEmail} fullName={fullName} currentPage="admin" />
-      <SubHeader crumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Health' }]} />
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'System Health' }]} />
 
       <div className="max-w-5xl mx-auto px-6 py-8 flex flex-col gap-6">
         <h1 className="text-2xl font-black text-gray-800">Platform Health</h1>

@@ -9,6 +9,7 @@ import { redirect, notFound } from 'next/navigation'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import RecordingSetupForm, { type RecordingSetupInitial } from '@/components/recordings/RecordingSetupForm'
 import { isAnalysisConfigDrifted } from '@/lib/recordings/configVersion'
 import type { RecordingRow, QaSetupInputs } from '@/lib/recordings/types'
@@ -98,7 +99,8 @@ export default async function RecordingSetupPage(props: { params: Promise<{ id: 
         campaignsEnabled={!!ctx.features.campaigns}
         currentPage="recordings"
       />
-      <main className="pt-20 px-4 pb-12 max-w-5xl mx-auto">
+      <SubHeader crumbs={[{ label: 'Town Hall', href: '/recordings' }, ...(recording.name ? [{ label: recording.name }] : []), { label: 'Setup' }]} />
+      <main className="pt-28 px-4 pb-12 max-w-5xl mx-auto">
         <RecordingSetupForm
           mode="edit"
           recordingId={recording.id}

@@ -4,7 +4,10 @@
 
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { resolveOrg } from '@/lib/resolveOrg'
+import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
+import type { ModuleFeatures } from '@/lib/types'
+import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import PosPreviewClient from './PosPreviewClient'
 
 export const dynamic = 'force-dynamic'
@@ -16,11 +19,12 @@ export default async function PosPreviewPage() {
 
   const { data: userData } = await supabase
     .from('users')
-    .select('org_id, organizations(is_admin_org)')
+    .select('full_name, org_id, features, organizations(is_admin_org, logo_url, name, features)')
     .eq('id', user.id)
     .single()
   const orgData = resolveOrg(userData?.organizations)
   if (!orgData?.is_admin_org) redirect('/dashboard')
+  const features = effectiveFeatures(orgData?.features, userData?.features as ModuleFeatures | null | undefined)
 
   // Pull every dataset across orgs for the dropdown.
   const service = createServiceRoleClient()
@@ -30,7 +34,23 @@ export default async function PosPreviewPage() {
     .order('created_at', { ascending: false })
     .limit(200)
 
-  return <PosPreviewClient datasets={(datasets || []) as DatasetRow[]} />
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <TopNav
+        logoUrl={orgData?.logo_url || ''}
+        orgName={orgData?.name}
+        isAdmin
+        userEmail={user.email}
+        fullName={userData?.full_name}
+        features={features}
+        currentPage="admin"
+      />
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'Entity POS Preview' }]} />
+      <div style={{ paddingTop: 112 }} className="flex-1">
+        <PosPreviewClient datasets={(datasets || []) as DatasetRow[]} />
+      </div>
+    </div>
+  )
 }
 
 type DatasetRow = {

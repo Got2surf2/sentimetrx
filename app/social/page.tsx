@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import type { ModuleFeatures } from '@/lib/types'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import SocialClient from './SocialClient'
 
 export const dynamic = 'force-dynamic'
@@ -36,7 +37,8 @@ export default async function SocialPage() {
         features={features}
         currentPage="social"
       />
-      <div style={{ paddingTop: 56 }} className="flex-1">
+      <SubHeader crumbs={[{ label: 'Social' }]} />
+      <div style={{ paddingTop: 112 }} className="flex-1">
         <SocialClient orgId={userData?.org_id || ''} />
       </div>
     </div>

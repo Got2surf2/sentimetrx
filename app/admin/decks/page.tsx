@@ -4,6 +4,7 @@ import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import type { ModuleFeatures } from '@/lib/types'
 import { deckLastModified } from '@/lib/deckLastModified'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import DecksClient from './DecksClient'
 
 export const dynamic = 'force-dynamic'
@@ -85,7 +86,8 @@ export default async function DecksPage() {
         features={features}
         currentPage="decks"
       />
-      <div style={{ paddingTop: 56 }} className="flex-1">
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'Presentations' }]} />
+      <div style={{ paddingTop: 112 }} className="flex-1">
         <DecksClient
           lastDownloaded={lastDownloaded}
           lastUpdated={lastUpdated}

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import SentryDigest from '@/components/admin/SentryDigest'
 import type { ModuleFeatures } from '@/lib/types'
 
@@ -33,7 +34,8 @@ export default async function SentryDigestPage() {
         features={features}
         currentPage="admin"
       />
-      <div style={{ paddingTop: 56 }} className="flex-1">
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'Sentry Digest' }]} />
+      <div style={{ paddingTop: 112 }} className="flex-1">
         <SentryDigest />
       </div>
     </div>

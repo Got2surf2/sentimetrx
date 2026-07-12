@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg } from '@/lib/resolveOrg'
 import Link from 'next/link'
+import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,7 +23,7 @@ export default async function StudyCampaignsPage(props: { params: Promise<{ id: 
 
   const { data: userData } = await supabase
     .from('users')
-    .select('org_id, organizations(features, is_admin_org)')
+    .select('full_name, org_id, organizations(id, name, is_admin_org, logo_url, features)')
     .eq('id', user.id)
     .single()
 
@@ -44,7 +46,19 @@ export default async function StudyCampaignsPage(props: { params: Promise<{ id: 
   const HERMES = '#E8632A'
 
   return (
-    <main className="max-w-4xl mx-auto px-6 py-8 pt-4">
+    <div className="min-h-screen bg-gray-50">
+      <TopNav
+        logoUrl={orgData?.logo_url || ''}
+        orgName={orgData?.name}
+        isAdmin={!!orgData?.is_admin_org}
+        userEmail={user.email}
+        fullName={userData?.full_name}
+        features={orgData?.features || {}}
+        campaignsEnabled={!!orgData?.features?.campaigns}
+        currentPage="campaigns"
+      />
+      <SubHeader crumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: study.name, href: '/studies/' + params.id + '/edit' }, { label: 'Campaigns' }]} />
+      <main className="max-w-4xl mx-auto px-6 py-8 pt-28">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-lg font-bold text-gray-800">Campaigns for {study.name}</h1>
@@ -91,6 +105,7 @@ export default async function StudyCampaignsPage(props: { params: Promise<{ id: 
           ))}
         </div>
       )}
-    </main>
+      </main>
+    </div>
   )
 }

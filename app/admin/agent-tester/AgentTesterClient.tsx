@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import type { ModuleFeatures } from '@/lib/types'
 import type { ContentCheckResult } from '@/lib/contentGuard'
 
@@ -182,7 +183,8 @@ export default function AgentTesterClient({ logoUrl, orgName, userEmail, fullNam
   return (
     <>
       <TopNav logoUrl={logoUrl} orgName={orgName} userEmail={userEmail} fullName={fullName} features={features} isAdmin currentPage="agent-tester" />
-      <main className="pt-14">
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'Agent Tester' }]} />
+      <main className="pt-28">
         <div className="max-w-4xl mx-auto px-5 py-8">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">Agent Tester</h1>
           <p className="text-sm text-gray-500 mb-6">Type a message → see every guardrail, moderation rule, sentiment score, and intent match that fires for the selected agent's configuration.</p>

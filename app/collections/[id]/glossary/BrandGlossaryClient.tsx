@@ -12,6 +12,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { hasAuthoritativeSource, type Provenance } from '@/lib/correction/provenance'
 import type { ModuleFeatures } from '@/lib/types'
@@ -171,8 +172,9 @@ export default function BrandGlossaryClient({
   return (
     <div className='min-h-screen bg-gray-50'>
       <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={isAdmin} userEmail={userEmail} fullName={fullName} currentPage='bots' features={features} />
+      <SubHeader crumbs={[{ label: 'Agents', href: '/bots' }, { label: brandName }, { label: 'Brand Glossary' }]} />
 
-      <div className='max-w-5xl mx-auto px-4 py-8'>
+      <div className='max-w-5xl mx-auto px-4 pt-28 pb-8'>
         <div className='mb-2 text-xs text-gray-500'>Brand glossary</div>
         <div className='flex items-end justify-between mb-2 flex-wrap gap-3'>
           <div>

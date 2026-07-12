@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { resolveOrg, effectiveFeatures } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import { loadAllReports } from '@/lib/governanceReports'
 import { loadAllDriftReports } from '@/lib/specDriftReports'
 import type { ModuleFeatures } from '@/lib/types'
@@ -48,7 +49,8 @@ export default async function ControlReportsIndexPage() {
         features={features}
         currentPage="admin"
       />
-      <div style={{ paddingTop: 56 }} className="flex-1">
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'Control Reports' }]} />
+      <div style={{ paddingTop: 112 }} className="flex-1">
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px' }}>
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-800">Control Reports</h1>

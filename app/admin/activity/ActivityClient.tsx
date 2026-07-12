@@ -13,6 +13,7 @@
 
 import { useState, useMemo } from 'react'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 
 interface SummaryRow {
   user_id: string
@@ -127,7 +128,8 @@ export default function ActivityClient({ summary, recent, userMap, adminEmail, l
   return (
     <div style={{ minHeight: '100vh', background: '#f9fafb' }}>
       <TopNav logoUrl={logoUrl} orgName={orgName} isAdmin={true} userEmail={adminEmail} fullName={fullName} currentPage='admin' />
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '24px 20px' }}>
+      <SubHeader crumbs={[{ label: 'Settings & Admin', href: '/admin/hub' }, { label: 'Activity' }]} />
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '112px 20px 24px' }}>
         <div style={{ marginBottom: 20 }}>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: '#111827', margin: 0 }}>User Activity</h1>
           <p style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 0' }}>

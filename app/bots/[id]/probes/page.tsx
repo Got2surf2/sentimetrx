@@ -6,11 +6,13 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { resolveOrg } from '@/lib/resolveOrg'
 import TopNav from '@/components/nav/TopNav'
+import SubHeader from '@/components/nav/SubHeader'
 import ProbesClient from './ProbesClient'
 
 export const dynamic = 'force-dynamic'
 
-export default async function ProbesPage() {
+export default async function ProbesPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -23,6 +25,10 @@ export default async function ProbesPage() {
 
   const orgData = resolveOrg(userData?.organizations) as { name?: string; is_admin_org?: boolean; logo_url?: string; features?: Record<string, unknown> } | null
 
+  // Agent name for the breadcrumb (RLS-scoped read; crumb is omitted if unavailable).
+  const { data: agentRow } = await supabase.from('agents').select('name').eq('id', params.id).single()
+  const agentName = (agentRow as { name?: string | null } | null)?.name || ''
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <TopNav
@@ -34,7 +40,8 @@ export default async function ProbesPage() {
         features={orgData?.features || {}}
         currentPage="bots"
       />
-      <div style={{ paddingTop: 56 }} className="flex-1">
+      <SubHeader crumbs={[{ label: 'Agents', href: '/bots' }, ...(agentName ? [{ label: agentName }] : []), { label: 'Probes' }]} />
+      <div style={{ paddingTop: 112 }} className="flex-1">
         <ProbesClient />
       </div>
     </div>

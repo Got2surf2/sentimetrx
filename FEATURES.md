@@ -399,6 +399,9 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 
 ## 9. Organization & Admin
 
+### Navigation (2026-07-12)
+- **Breadcrumbs on every internal page** (`components/nav/SubHeader.tsx`): every drill-down page carries a clickable trail one level at a time — admin tool pages root at **Settings & Admin** (`/admin/hub`, the tile hub), product pages at their section (Agents, Town Hall, Analyze, Dashboard). Public widgets (`/s/`, `/b/`, `/pi/`, `/th/`, `/review/`, `/shared/`) deliberately carry no admin chrome.
+
 ### Organization Management
 - Organization name, slug, logo
 - Plan management: trial → active → suspended
