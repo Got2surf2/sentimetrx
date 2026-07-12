@@ -189,6 +189,14 @@ records/signals/theme-fit line and its signal-stats-batch fetch were removed as 
 source (the numbers described one question's set without saying which); analysis metrics live
 in-dataset where the question context exists.
 
+**Degraded-analytics render safety (2026-07-12).** ChartsModule renders its degraded
+states — never throws — when the dataset's analytics blob lacks `fieldSummaries`/
+`totalRows` (script-seeded copies; any dataset whose compute failed): all
+`analytics.fieldSummaries[...]` derefs are optional-chained and `renderChart`
+defaults the summary map (regression: `tests/unit/chartsMissingAnalytics.test.tsx`;
+found on the 785K prod scale test, where the unguarded remapped-fields summary
+build crashed the tab to the error boundary).
+
 **Tab-navigation fetch behavior (2026-07-11, first-open audit).** The /analyze tabs are
 separate route segments under one layout: the shared layer (RowsProvider bulk rows, metric
 strip, views, session filters) mounts ONCE and survives tab switches; each tab's *module*

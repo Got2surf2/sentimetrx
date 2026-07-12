@@ -17,6 +17,7 @@ import { classifyDatasetKeyword, classifyPendingRows } from '@/lib/taxonomyClass
 import { orgTaxonomyEnabled } from '@/lib/resolveOrg'
 import { taxonomyFieldKey } from '@/lib/dimensionFields'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { logError } from '@/lib/log'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -134,7 +135,21 @@ export async function GET(req: Request, props: Params) {
   const storedField = stored?.fields?.[fieldKey]
   let rollup: TaxonomyRollup | undefined = storedField?.rollup
   if (!rollup) {
-    rollup = await computeTaxonomyRollup({ service, datasetId, orgId, field: fieldKey })
+    // The fallback compute scans data._tx blocks. On a LARGE dataset that was
+    // never classified, the first keyset page finds no matching blocks and
+    // scans the whole partition — past the DB statement timeout (785K prod,
+    // 2026-07-12: the Dimensions tab 500'd instead of showing its "classify"
+    // empty state). Degrade to the empty rollup; classification writes the
+    // stored rollup, after which this path never runs.
+    try {
+      rollup = await computeTaxonomyRollup({ service, datasetId, orgId, field: fieldKey })
+    } catch (err) {
+      void logError('taxonomy.rollupFallback', err, { datasetId })
+      return NextResponse.json({
+        classifiedRows: 0, withSignal: 0, overallAvgRating: null, axes: [], subs: [], alerts: [], alertRows: 0,
+        ...fields, totalRows, rowsWithText: 0, field: fieldKey,
+      })
+    }
   }
   // rowsWithText = the reconciling denominator (rows with text in ANY selected
   // field) — header reads "N rows with text · X% tagged", aligned with the strip.

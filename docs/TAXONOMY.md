@@ -343,6 +343,12 @@ gating).
   re-derive live) — but this is **automatic**: selecting a new combo auto-runs the classify
   (brief "Classifying…" spinner) rather than waiting on a button press. The old
   redundant "Field to classify" dropdown is retired.
+  **Never-classified large datasets (2026-07-12)**: with no stored rollup the GET's
+  fallback compute scans `data._tx` blocks — when NONE exist the first keyset page
+  scans the whole partition past the DB statement timeout; the GET now catches that
+  and returns the empty "classify" state instead of a 500 (found on the 785K prod
+  scale test; classification writes the stored rollup, after which the fallback
+  never runs).
   **Reconciled denominator**: the GET returns `rowsWithText` (rows with text in this field —
   served from the stored rollup entry since 2026-07-11, live `dataset_rows_with_text_count`
   RPC only for pre-store entries) and the header reads "**N rows with text · X% tagged**"

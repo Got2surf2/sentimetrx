@@ -353,7 +353,7 @@ function ChartSlot({ label, value, onChange, options, required, accepts }: {
 // resolveAlias and aliasedCounts imported from @/lib/aliasUtils
 
 function renderChart(chartType: string, config: Record<string, string>, analytics: Analytics, schema: SchemaField[], datasetId: string, opts?: { barMode?: string; barStack?: boolean; smartAxes?: boolean; colors?: string[]; orient?: string }): React.ReactNode {
-  var rawFs = analytics.fieldSummaries
+  var rawFs = analytics.fieldSummaries || {}  // seeded/compute-failed datasets can lack summaries entirely
   // Apply value aliases to all field summary counts so every chart gets aliased labels
   var fs: Record<string, FieldSummary> = {}
   Object.entries(rawFs).forEach(function(entry) {
@@ -1030,7 +1030,7 @@ function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, 
   var loaded = distDimAxis ? distAgg.loaded : distRowsLoaded
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
   var pal = colors || CHART_COLORS
-  var numSumD = analytics.fieldSummaries[numField]
+  var numSumD = analytics.fieldSummaries?.[numField]
   var intYD = isSmallIntRange(numSumD?.min, numSumD?.max)
   // Dimension split \u2192 precomputed box per sub (server can't ship raw per-row values).
   if (distDimAxis) {
@@ -1073,7 +1073,7 @@ function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, 
   }
   if (!keys.length) return <EmptyChart msg="No data for this split." />
   // Integer-range ticks on Y-axis when numeric field is a small int range (e.g. NPS 0-10, rating 1-5)
-  var numSum = analytics.fieldSummaries[numField]
+  var numSum = analytics.fieldSummaries?.[numField]
   var intY = isSmallIntRange(numSum?.min, numSum?.max)
   var totalND = Object.values(groups).reduce(function(a, arr) { return a + arr.length }, 0)
   var traces = keys.map(function(k, i) {
@@ -1595,8 +1595,8 @@ function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { a
   var x: number[] = [], y: number[] = []
   rows.forEach(function(r) { var xv = parseFloat(String(r[xField] || '')), yv = parseFloat(String(r[yField] || '')); if (!isNaN(xv) && !isNaN(yv)) { x.push(xv); y.push(yv) } })
   if (!x.length) return <EmptyChart msg="No numeric pairs found." />
-  var xSum = analytics.fieldSummaries[xField]
-  var ySum = analytics.fieldSummaries[yField]
+  var xSum = analytics.fieldSummaries?.[xField]
+  var ySum = analytics.fieldSummaries?.[yField]
   var intX = isSmallIntRange(xSum?.min, xSum?.max)
   var intY = isSmallIntRange(ySum?.min, ySum?.max)
   return <PlotlyChart traces={[{ x: x, y: y, mode: 'markers', type: 'scatter', marker: { color: T.accent, size: 6, opacity: 0.6 } }]} layout={{ title: flByName(xField, schema) + ' vs ' + flByName(yField, schema), xaxis: { title: flByName(xField, schema), ...(intX ? { dtick: 1, tick0: xSum?.min } : {}) }, yaxis: { title: flByName(yField, schema), ...(intY ? { dtick: 1, tick0: ySum?.min } : {}) }, showlegend: false }} />
@@ -2085,7 +2085,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     }
     // Build summaries for mapped numeric fields from categorical counts + remapping
     mappedFields.forEach(function(f) {
-      var catSummary = analytics.fieldSummaries[f.field]
+      var catSummary = analytics.fieldSummaries?.[f.field]
       if (!catSummary || !catSummary.counts || !f.remapping) return
       var vals: number[] = []
       Object.entries(catSummary.counts).forEach(function(entry) {
@@ -2468,7 +2468,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
                 }).map(function(f) {
                   var label = fl(f)
                   if (f.type === 'categorical') {
-                    var counts = analytics?.fieldSummaries[f.field]?.counts
+                    var counts = analytics?.fieldSummaries?.[f.field]?.counts
                     if (counts) {
                       var n = Object.keys(counts).length
                       if (n > 0) {
