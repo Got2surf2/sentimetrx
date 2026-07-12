@@ -383,3 +383,7 @@ WHY: Owner asked to add drought conditions to help assess wildfire risk and rais
 ## Setup checklist: already-mined questions start unchecked (Jul 11)
 
 WHY: Owner mined one question on prod Carrabba's, switched to the unmined one → the setup checklist appeared with BOTH questions checked and "Mine themes — 2 questions", which would have silently re-mined and REPLACED the existing set (plus an unneeded AI call). The checklist was built for true first-open and didn't know a set already existed. Now: questions with a stored set start UNCHECKED and carry a "✓ has themes" badge (tooltip: checking = explicit re-mine-and-replace); the default selection is exactly the unmined questions, so Continue mines only what's missing. Workaround on the currently-deployed build: manually un-check the mined question — the mine loop always respected the selection.
+
+## Ember: FEATURES.md inventory entry + ship-state note (Jul 11)
+
+WHY: Owner asked for a memory/devlog/spec sync before shipping. FEATURES.md gained the `config.liveContext` platform capability entry under Agents (it was documented in BOTS.md §6 + TESTING.md at commit time, but the feature inventory hadn't been touched). Ship state at time of writing: Ember v1–v3 verified on TEST only; prod /b/wildfire 404s BY DESIGN until (a) the 5 local commits are pushed (real code — chatCore/wildfireLiveContext + the NEPA deck slide ride together, one ~$8–10 build, NOT a $0 docs push) and (b) the seed script runs with --prod. Owner is aware of the cost; awaiting the explicit "push".
