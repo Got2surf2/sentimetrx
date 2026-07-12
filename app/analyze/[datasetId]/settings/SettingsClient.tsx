@@ -419,18 +419,29 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
                 if (!trimConfirm) { setTrimConfirm(true); return }
                 setTrimming(true); setTrimResult(null); setTrimConfirm(false)
                 try {
-                  var res = await fetch('/api/datasets/' + dataset.id + '/trim', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ date_field: trimField, before_date: trimDate }),
-                  })
-                  var data = await res.json()
-                  if (res.ok) {
-                    setTrimResult('Removed ' + data.deleted.toLocaleString() + ' rows. ' + data.remaining.toLocaleString() + ' rows remaining.')
-                    router.refresh()
-                  } else {
-                    setTrimResult('Error: ' + (data.error || 'Failed'))
+                  // Large trims run in server rounds — the route returns
+                  // hasMore when its time budget ran out mid-trim; keep
+                  // calling until the cutoff is fully applied.
+                  var totalDeleted = 0
+                  var remaining = 0
+                  for (;;) {
+                    var res = await fetch('/api/datasets/' + dataset.id + '/trim', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ date_field: trimField, before_date: trimDate }),
+                    })
+                    var data = await res.json()
+                    if (!res.ok) {
+                      setTrimResult('Error: ' + (data.error || 'Failed'))
+                      return
+                    }
+                    totalDeleted += data.deleted
+                    remaining = data.remaining
+                    if (!data.hasMore) break
+                    setTrimResult('Removing… ' + totalDeleted.toLocaleString() + ' rows removed so far.')
                   }
+                  setTrimResult('Removed ' + totalDeleted.toLocaleString() + ' rows. ' + remaining.toLocaleString() + ' rows remaining.')
+                  router.refresh()
                 } catch (err) {
                   setTrimResult('Error: ' + ((err instanceof Error ? err.message : '') || 'Failed'))
                 } finally { setTrimming(false) }

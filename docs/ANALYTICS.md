@@ -280,7 +280,19 @@ the members' stored row counts sum past the cap, each member now contributes a
 single-dataset path; floored shares never exceed the cap, non-empty members
 get ≥1 row). Verified live on TEST: 128,619+56,117 members → 34,811+15,188 =
 49,999 unique sampled rows in ~21s. At/under the cap the full-union reservoir
-path is unchanged. **Poisoned-cache self-heal (2026-06-25):** the cache key (hash + row_count) can't see a *malformed* cached value, so a cache with `records === 0` but `signals/inThemes > 0` (impossible — `records ≥ inThemes`) is treated as poisoned and force-recomputed. This shape came from `computeSignalStatsRaw` swallowing a transient statement-timeout on the exact-count `records` query (→ `null → 0`) while the theme-match RPCs in the same parallel batch succeeded; the records query now **throws** on error so a bad partial is never persisted (the batch endpoint catches → next load retries). **Error visibility (2026-07-10):** the other Supabase `if (error)` branches in `signalStats` fire-and-forget `logError` (they degrade gracefully — a card just renders without its stats line, not a 500). Each now passes `{datasetId}` so Sentry names the failing dataset, and `logError` prefixes the operation (`where`) into the title so an empty-message driver error reads `signalStats.resolveDatasetIds: {"message":""}` instead of a context-free `{"message":""}` that groups unrelated failures. The row-count key matters because a sync that adds
+path is unchanged. **Trim (2026-07-12):** the Schema-tab "remove rows before a
+date" flow (`POST /trim`) deletes in 1000-row select→delete ROUNDS until the
+cutoff is fully applied — PostgREST caps every select at 1000 rows (verified
+live), so the old single select silently trimmed at most 1000 matching rows
+per click while reporting success. A 45s budget returns `hasMore` and the
+client loops with progress. The post-trim analytics recompute now goes through
+`mergeDatasetAnalytics` (per-key, sql/145 doctrine) — the old full
+`.update({analytics})` wiped `signal_stats`/`signal_stats_by_field`/stored
+`taxonomy` rollups. Comma-containing date field names get an explicit 400 (the
+raw filter silently matches nothing, sql/161 class). Trims need no special
+cache/sample handling beyond this: deleted rows leave the deterministic sample
+automatically (expression index) and the row-count recount invalidates every
+stats cache on the next read. **Poisoned-cache self-heal (2026-06-25):** the cache key (hash + row_count) can't see a *malformed* cached value, so a cache with `records === 0` but `signals/inThemes > 0` (impossible — `records ≥ inThemes`) is treated as poisoned and force-recomputed. This shape came from `computeSignalStatsRaw` swallowing a transient statement-timeout on the exact-count `records` query (→ `null → 0`) while the theme-match RPCs in the same parallel batch succeeded; the records query now **throws** on error so a bad partial is never persisted (the batch endpoint catches → next load retries). **Error visibility (2026-07-10):** the other Supabase `if (error)` branches in `signalStats` fire-and-forget `logError` (they degrade gracefully — a card just renders without its stats line, not a 500). Each now passes `{datasetId}` so Sentry names the failing dataset, and `logError` prefixes the operation (`where`) into the title so an empty-message driver error reads `signalStats.resolveDatasetIds: {"message":""}` instead of a context-free `{"message":""}` that groups unrelated failures. The row-count key matters because a sync that adds
 rows leaves the theme model (and its hash) untouched, which previously left the
 strip frozen at a stale snapshot while the live Themes panel counted the new
 rows (Coalition Donor collection, 67 cached vs 80 live). Note this strip can
