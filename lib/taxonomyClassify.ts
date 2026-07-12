@@ -100,7 +100,10 @@ export async function classifyDatasetKeyword(opts: {
     // Keyset on id (not OFFSET): classify UPDATEs the very table it's paging
     // (the embed write moves tuples), so an OFFSET window can repeat/skip rows
     // mid-run — and each OFFSET page re-skips from row 0. id is immutable, so
-    // `id > cursor` pages are stable and O(page) each.
+    // `id > cursor` pages are stable — and O(page) each ONLY via
+    // idx_drf_id_keyset (dataset_id, id), sql/165: without it the planner
+    // walked the PK filtering dataset_id per row, which blew the 8s statement
+    // timeout past ~1M total rows (Sentry NEXTJS-H, 785K scale test).
     const { data, error } = await service
       .from('dataset_rows_flat')
       .select('id, data')

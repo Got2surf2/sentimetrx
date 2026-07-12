@@ -180,7 +180,10 @@ match numeric_field_stats / field_aliased_avg exactly). sql/164
 (2026-07-12) re-created the five taxonomy chart aggregates with an
 optional `p_field_key` (+ helper `taxonomy_field_or_primary`) so
 Charts/Stats dimension charts are per-question; defaults preserve the
-primary-classified-field behavior.
+primary-classified-field behavior. sql/165 (2026-07-12) added
+`idx_drf_id_keyset (dataset_id, id)` — backs the classify id-keyset,
+which otherwise walked the PK filtering dataset_id per row and timed
+out past ~1M total rows.
 
 ---
 
