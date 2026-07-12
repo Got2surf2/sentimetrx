@@ -270,7 +270,17 @@ truncated to PostgREST's 1000-row cap (→ themes mined from ~1K rows instead of
 ~43K, owner-caught); an interim `row_index` keyset over a hash predicate was
 O(total)-scan and climbed with dataset size (real 514K = 46s). The indexed
 design is flat (~16-22s at any size, verified stable after appending 20K rows).
-Deterministic per dataset (D6). `maxDuration` 60s. **Poisoned-cache self-heal (2026-06-25):** the cache key (hash + row_count) can't see a *malformed* cached value, so a cache with `records === 0` but `signals/inThemes > 0` (impossible — `records ≥ inThemes`) is treated as poisoned and force-recomputed. This shape came from `computeSignalStatsRaw` swallowing a transient statement-timeout on the exact-count `records` query (→ `null → 0`) while the theme-match RPCs in the same parallel batch succeeded; the records query now **throws** on error so a bad partial is never persisted (the batch endpoint catches → next load retries). **Error visibility (2026-07-10):** the other Supabase `if (error)` branches in `signalStats` fire-and-forget `logError` (they degrade gracefully — a card just renders without its stats line, not a 500). Each now passes `{datasetId}` so Sentry names the failing dataset, and `logError` prefixes the operation (`where`) into the title so an empty-message driver error reads `signalStats.resolveDatasetIds: {"message":""}` instead of a context-free `{"message":""}` that groups unrelated failures. The row-count key matters because a sync that adds
+Deterministic per dataset (D6). `maxDuration` 60s. **Collections (2026-07-12,
+first-open audit):** the collection union used to JS-page EVERY member fully
+(O(total across members) — a 184K-row brand collection was ~184 serial
+1000-row requests), the same disease sql/160 cured for single datasets. When
+the members' stored row counts sum past the cap, each member now contributes a
+**proportional share** of the same deterministic sample (`allocateSampleShares`
++ shared pager `pageSampledRows` in `lib/bulkRowSample.ts` — also used by the
+single-dataset path; floored shares never exceed the cap, non-empty members
+get ≥1 row). Verified live on TEST: 128,619+56,117 members → 34,811+15,188 =
+49,999 unique sampled rows in ~21s. At/under the cap the full-union reservoir
+path is unchanged. **Poisoned-cache self-heal (2026-06-25):** the cache key (hash + row_count) can't see a *malformed* cached value, so a cache with `records === 0` but `signals/inThemes > 0` (impossible — `records ≥ inThemes`) is treated as poisoned and force-recomputed. This shape came from `computeSignalStatsRaw` swallowing a transient statement-timeout on the exact-count `records` query (→ `null → 0`) while the theme-match RPCs in the same parallel batch succeeded; the records query now **throws** on error so a bad partial is never persisted (the batch endpoint catches → next load retries). **Error visibility (2026-07-10):** the other Supabase `if (error)` branches in `signalStats` fire-and-forget `logError` (they degrade gracefully — a card just renders without its stats line, not a 500). Each now passes `{datasetId}` so Sentry names the failing dataset, and `logError` prefixes the operation (`where`) into the title so an empty-message driver error reads `signalStats.resolveDatasetIds: {"message":""}` instead of a context-free `{"message":""}` that groups unrelated failures. The row-count key matters because a sync that adds
 rows leaves the theme model (and its hash) untouched, which previously left the
 strip frozen at a stale snapshot while the live Themes panel counted the new
 rows (Coalition Donor collection, 67 cached vs 80 live). Note this strip can

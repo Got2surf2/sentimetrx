@@ -20,7 +20,9 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { allocateSampleShares, pageSampledRows } from '@/lib/bulkRowSample'
 import { ROWS_PER_BATCH } from '@/lib/constants'
+import { memberRowCounts } from '@/lib/signalStats'
 import { stripReservedRowKeys } from '@/lib/taxonomyEmbed'
 import { serverError } from '@/lib/apiError'
 
@@ -155,26 +157,14 @@ export async function GET(req: Request, props: Params) {
     // timeout) and an interim O(total)-scan keyset (climbed with dataset size).
     if (totalRows > cap) {
       const rows: Record<string, unknown>[] = []
-      const SAMPLE_PAGE = 5000
-      // Keyset cursor over (hash, id); hashes are >= 0, so (-1, -1) starts at the
-      // smallest-hash row.
-      let afterHash = -1, afterId = -1
-      while (rows.length < cap) {
-        const pageLimit = Math.min(SAMPLE_PAGE, cap - rows.length)
-        const { data: pageData, error: sampleErr } = await service
-          .rpc('sample_dataset_rows', { p_dataset_id: params.datasetId, p_after_hash: afterHash, p_after_id: afterId, p_limit: pageLimit })
-        if (sampleErr) return serverError(sampleErr, 'datasets.rows.bulk', { orgId: auth.orgId })
-        const parsed = pageData as { rows?: Array<{ id: number; row_index: number; data: Record<string, unknown> }>; last_hash?: number; last_id?: number } | null
-        const pageRows = parsed?.rows || []
-        if (pageRows.length === 0) break
-        for (const sr of pageRows) {
+      try {
+        await pageSampledRows(service, params.datasetId, cap, function(sr) {
           const r = projectRow(sr.data, fieldSet)
           if (withRowIds) r._rowId = sr.id
           rows.push(r)
-        }
-        if (parsed?.last_hash == null || pageRows.length < pageLimit) break
-        afterHash = parsed.last_hash
-        afterId = parsed.last_id ?? -1
+        })
+      } catch (sampleErr) {
+        return serverError(sampleErr, 'datasets.rows.bulk', { orgId: auth.orgId })
       }
       const sampled = totalRows > rows.length
       return NextResponse.json({
@@ -258,11 +248,44 @@ async function handleCollectionRows(req: Request, datasetId: string, orgId: stri
   const url = new URL(req.url)
   const sampleMaxP = url.searchParams.get('sampleMax')
   const sampleMax  = sampleMaxP ? Math.max(1, parseInt(sampleMaxP)) : null
-
-  // Reservoir-sample the union so a collection over several large members can't
-  // buffer millions of rows at once. Bounded to the smaller of sampleMax and the
-  // hard cap; seeded by the collection's dataset_id for a stable sample.
   const cap = Math.min(sampleMax ?? BULK_ROWS_HARD_CAP, BULK_ROWS_HARD_CAP)
+
+  // Above the cap: each member contributes a PROPORTIONAL share of the same
+  // deterministic O(sample) sample the single-dataset path serves (sql/160,
+  // idx_drf_sample index range scan — only the sampled rows are heap-fetched).
+  // The old path JS-paged EVERY member fully (O(total across members) — a
+  // 184K-row brand collection was ~184 serial 1000-row requests), the exact
+  // disease sql/160 cured for single datasets. Stored row_counts drive the
+  // allocation (memberRowCounts falls back to an exact count on null).
+  const memberIds = (members as { dataset_id: string; label: string }[]).map(m => m.dataset_id)
+  const counts = await memberRowCounts(service, memberIds)
+  let totalAcross = 0
+  for (const c of counts.values()) totalAcross += c
+
+  if (totalAcross > cap) {
+    const shares = allocateSampleShares(counts, cap)
+    const rows: Record<string, unknown>[] = []
+    try {
+      for (const m of members as { dataset_id: string; label: string }[]) {
+        const share = shares.get(m.dataset_id)
+        if (!share) continue
+        await pageSampledRows(service, m.dataset_id, share, function(sr) {
+          rows.push({ ...stripReservedRowKeys(sr.data), _collection_label: m.label })
+        })
+      }
+    } catch (sampleErr) {
+      return serverError(sampleErr, 'datasets.rows.collection', { orgId })
+    }
+    return NextResponse.json({
+      rows, page: 1, pageSize: rows.length, totalRows: totalAcross, totalPages: 1,
+      sampled: true,
+      sampleSize: rows.length,
+      sampleRate: parseFloat((rows.length / Math.max(totalAcross, 1)).toFixed(4)),
+    })
+  }
+
+  // At or below the cap: full union, reservoir-bounded as before (protects
+  // against stale-low row_counts even here).
   const reservoir = makeReservoir(cap, mulberry32(seedFromString(datasetId)))
   const FLAT_PAGE = 1000
 
