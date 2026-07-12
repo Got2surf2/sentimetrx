@@ -76,8 +76,8 @@ function relTime(iso: string | null): string {
   return `${Math.round(h / 24)}d ago`
 }
 
-function StatusDot({ ok }: { ok: boolean }) {
-  return <span className={'inline-block w-3 h-3 rounded-full flex-shrink-0 ' + (ok ? 'bg-green-500' : 'bg-red-500')} />
+function StatusDot({ ok, neutral }: { ok: boolean; neutral?: boolean }) {
+  return <span className={'inline-block w-3 h-3 rounded-full flex-shrink-0 ' + (ok ? 'bg-green-500' : neutral ? 'bg-gray-300' : 'bg-red-500')} />
 }
 
 export default function HealthClient({
@@ -154,14 +154,17 @@ export default function HealthClient({
               <p className="text-xs text-gray-400">Page loaded OK</p>
             </div>
           </div>
+          {/* Zero survey submissions = quiet traffic, NOT an outage — a red dot
+              here once read as "we ran out of API credits" (owner, 2026-07-12).
+              Neutral gray for quiet; red is reserved for real failures. */}
           <div className="bg-white border border-gray-200 rounded-2xl p-5 flex items-center gap-4">
-            <StatusDot ok={totalResponses24h > 0 || studyHealth.length === 0} />
+            <StatusDot ok={totalResponses24h > 0 || studyHealth.length === 0} neutral />
             <div>
-              <p className="text-sm font-semibold text-gray-800">Response Pipeline</p>
+              <p className="text-sm font-semibold text-gray-800">Survey traffic</p>
               <p className="text-xs text-gray-400">
                 {totalResponses24h > 0
                   ? totalComplete24h + '/' + totalResponses24h + ' complete (24h)'
-                  : 'No responses in 24h'}
+                  : 'No survey responses in 24h — quiet, not an outage'}
               </p>
             </div>
           </div>
