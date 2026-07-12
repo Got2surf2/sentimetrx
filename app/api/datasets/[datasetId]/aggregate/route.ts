@@ -23,6 +23,8 @@ interface AggregateBody {
   axisIsRow?: boolean
   limit?: number
   rowIds?: unknown
+  /** per-question dimension aggregates (sql/164) — the Charts/Stats source-field picker */
+  fieldKey?: string
 }
 
 // Shapes of the rows returned by the aggregation SQL functions.
@@ -148,10 +150,25 @@ export async function POST(req: Request, props: Params) {
     ? body.rowIds.filter(function(x: unknown): x is number { return typeof x === 'number' && Number.isFinite(x) }).slice(0, 200000)
     : null
 
+  // Per-question dimension aggregates (sql/164): the client's fieldKey (the
+  // Charts/Stats source-field picker) rides into every tax_* RPC; the SQL
+  // falls back to the primary classified field when that question has no
+  // classification. Retry WITHOUT the param on PGRST202 — the pre-164
+  // signatures don't know it yet (deploy-order safety, same pattern as the
+  // sampled signal counts).
+  var taxFieldKey: string | null = typeof body.fieldKey === 'string' && body.fieldKey.trim() ? body.fieldKey.trim() : null
+  async function taxRpc(fn: string, args: Record<string, unknown>) {
+    if (taxFieldKey) {
+      var r = await service.rpc(fn, { ...args, p_field_key: taxFieldKey })
+      if (!r.error || r.error.code !== 'PGRST202') return r
+    }
+    return service.rpc(fn, args)
+  }
+
   if (op === 'tax_counts') {
     var { axis } = body
     if (!axis || !TAX_AXES.includes(axis)) return NextResponse.json({ error: 'invalid axis' }, { status: 400 })
-    var { data, error } = await service.rpc('taxonomy_sub_counts', { p_dataset_id: params.datasetId, p_axis: axis, p_row_ids: taxRowIds })
+    var { data, error } = await taxRpc('taxonomy_sub_counts', { p_dataset_id: params.datasetId, p_axis: axis, p_row_ids: taxRowIds })
     if (error) return serverError(error, 'datasets.aggregate.taxCounts', { orgId: auth.orgId })
     var counts: Record<string, number> = {}
     ;(data || []).forEach(function(r: FieldCountRow) { counts[r.value] = Number(r.count) })
@@ -162,7 +179,7 @@ export async function POST(req: Request, props: Params) {
     var { axis, valueField } = body
     if (!axis || !TAX_AXES.includes(axis)) return NextResponse.json({ error: 'invalid axis' }, { status: 400 })
     if (!valueField) return NextResponse.json({ error: 'valueField required' }, { status: 400 })
-    var { data, error } = await service.rpc('taxonomy_group_stats', { p_dataset_id: params.datasetId, p_axis: axis, p_value_field: valueField, p_row_ids: taxRowIds })
+    var { data, error } = await taxRpc('taxonomy_group_stats', { p_dataset_id: params.datasetId, p_axis: axis, p_value_field: valueField, p_row_ids: taxRowIds })
     if (error) return serverError(error, 'datasets.aggregate.taxGroupStats', { orgId: auth.orgId })
     var taxGroups: Record<string, { n: number; mean: number; median: number; min: number; max: number; stddev: number; q1: number | null; q3: number | null }> = {}
     ;(data || []).forEach(function(r: TaxGroupStatsRow) {
@@ -175,7 +192,7 @@ export async function POST(req: Request, props: Params) {
     var { axis, dateField, metricField, bucket } = body
     if (!axis || !TAX_AXES.includes(axis)) return NextResponse.json({ error: 'invalid axis' }, { status: 400 })
     if (!dateField) return NextResponse.json({ error: 'dateField required' }, { status: 400 })
-    var { data, error } = await service.rpc('taxonomy_date_series', { p_dataset_id: params.datasetId, p_axis: axis, p_date_field: dateField, p_metric_field: metricField || null, p_bucket: bucket || 'day', p_row_ids: taxRowIds })
+    var { data, error } = await taxRpc('taxonomy_date_series', { p_dataset_id: params.datasetId, p_axis: axis, p_date_field: dateField, p_metric_field: metricField || null, p_bucket: bucket || 'day', p_row_ids: taxRowIds })
     if (error) return serverError(error, 'datasets.aggregate.taxDateSeries', { orgId: auth.orgId })
     return NextResponse.json({
       series: (data || []).map(function(r: TaxDateSeriesRow) { return { sub: r.sub_val, date: r.bucket_date, count: Number(r.n), avg: r.avg_val != null ? Number(r.avg_val) : null } }),
@@ -188,7 +205,7 @@ export async function POST(req: Request, props: Params) {
     var { axis, field, axisIsRow, limit } = body
     if (!axis || !TAX_AXES.includes(axis)) return NextResponse.json({ error: 'invalid axis' }, { status: 400 })
     if (!field) return NextResponse.json({ error: 'field required' }, { status: 400 })
-    var { data, error } = await service.rpc('taxonomy_crosstab', { p_dataset_id: params.datasetId, p_axis: axis, p_field: field, p_limit: limit || 50, p_row_ids: taxRowIds })
+    var { data, error } = await taxRpc('taxonomy_crosstab', { p_dataset_id: params.datasetId, p_axis: axis, p_field: field, p_limit: limit || 50, p_row_ids: taxRowIds })
     if (error) return serverError(error, 'datasets.aggregate.taxCrosstab', { orgId: auth.orgId })
     var grid: Record<string, Record<string, number>> = {}
     var colSet = new Set<string>()
@@ -209,7 +226,7 @@ export async function POST(req: Request, props: Params) {
     // the axis-level overview and a single axis's sub-level drill seamlessly.
     var { field: axField, axisIsRow: axIsRow } = body
     if (!axField) return NextResponse.json({ error: 'field required' }, { status: 400 })
-    var axResp = await service.rpc('taxonomy_axis_crosstab', { p_dataset_id: params.datasetId, p_field: axField, p_row_ids: taxRowIds })
+    var axResp = await taxRpc('taxonomy_axis_crosstab', { p_dataset_id: params.datasetId, p_field: axField, p_row_ids: taxRowIds })
     if (axResp.error) return serverError(axResp.error, 'datasets.aggregate.taxAxisCrosstab', { orgId: auth.orgId })
     var axGrid: Record<string, Record<string, number>> = {}
     var axColSet = new Set<string>()

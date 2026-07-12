@@ -176,7 +176,11 @@ over the same sample — replaces 1+themes+1 full scans per signal-stats
 compute above the cap; service_role-only, like the sampler), and sql/163
 `sampled_numeric_field_stats` (sampled numeric aggregates over the same
 sample — the strip's avg rating above the cap; raw-cast and alias modes
-match numeric_field_stats / field_aliased_avg exactly).
+match numeric_field_stats / field_aliased_avg exactly). sql/164
+(2026-07-12) re-created the five taxonomy chart aggregates with an
+optional `p_field_key` (+ helper `taxonomy_field_or_primary`) so
+Charts/Stats dimension charts are per-question; defaults preserve the
+primary-classified-field behavior.
 
 ---
 

@@ -222,8 +222,11 @@ gating).
     defeated the fast path (and silently returned 0 past the 8s statement
     timeout on large datasets); entries missing it (pre-store) fall back to the
     live RPC.
-  - **RPCs** (same names/signatures as sql/115/116 — the /aggregate route and
-    ChartsModule changed zero code): the `tax_*` aggregates, the axis crosstab
+  - **RPCs** (same names as sql/115/116; sql/164 added an optional
+    `p_field_key` to the five chart aggregates — `taxonomy_field_or_primary`
+    resolves the requested question when it has a stored rollup, else the
+    primary classified field, so Charts/Stats dimension charts follow the
+    source-field picker per question): the `tax_*` aggregates, the axis crosstab
     (sql/133), theme×dimension chips (sql/111), the Comments dimension filter
     (`get_rows_by_filters`, sql/113), the pending-rows helper (sql/117), plus new
     `apply_taxonomy_verdicts` (batch writer), `taxonomy_rows_for_field` (paged

@@ -602,6 +602,7 @@ var _enrichCtx: {
   themeModel?: any; schema?: SchemaConfig
   enrichKey?: number           // incremented when source/filter changes → triggers re-enrichment
   themeSourceOverride?: string // overrides themeModel.fieldName
+  dimFieldKey?: string // per-question dimension aggregates (sql/164) — rides into every tax_* spec
   activeThemeNames?: Set<string> | null  // null = all active
   datasetSource?: string       // 'reddit' | 'substack' etc for signal_tier injection
   filteredRowIds?: number[] | null  // flat row ids of the filtered view → server dim aggregates honor filters (null = whole dataset)
@@ -643,9 +644,15 @@ function useAggregation(datasetId: string, spec: Record<string, unknown> | null)
   // place) so every tax_* chart spec is filter-aware without per-spec plumbing.
   // rowIds is part of the cache key so the chart re-fetches when filters change.
   var isTax = !!spec && typeof spec.op === 'string' && (spec.op as string).indexOf('tax_') === 0
-  var effSpec: Record<string, unknown> | null = (isTax && _enrichCtx.filteredRowIds)
-    ? Object.assign({}, spec, { rowIds: _enrichCtx.filteredRowIds })
-    : spec
+  var effSpec: Record<string, unknown> | null = spec
+  if (isTax && (_enrichCtx.filteredRowIds || _enrichCtx.dimFieldKey)) {
+    effSpec = Object.assign({}, spec,
+      _enrichCtx.filteredRowIds ? { rowIds: _enrichCtx.filteredRowIds } : null,
+      // per-question dimensions (sql/164): the source-field picker drives
+      // dimension charts too; the server falls back to the primary classified
+      // field when this question has no classification
+      _enrichCtx.dimFieldKey ? { fieldKey: _enrichCtx.dimFieldKey } : null)
+  }
   var cacheKey = datasetId + ':' + JSON.stringify(effSpec)
   useEffect(function() {
     if (!effSpec) return
@@ -1965,7 +1972,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     : themeModel
 
   // Set enrichment context for useRows — must be before any inner component renders
-  _enrichCtx = { themeModel: effectiveThemeModel, schema: schema, enrichKey: enrichKey, themeSourceOverride: themeSourceField || undefined, activeThemeNames: activeThemeNames, datasetSource: datasetSource, filteredRowIds: _filteredRowIds }
+  _enrichCtx = { themeModel: effectiveThemeModel, schema: schema, enrichKey: enrichKey, themeSourceOverride: themeSourceField || undefined, dimFieldKey: themeSourceField || undefined, activeThemeNames: activeThemeNames, datasetSource: datasetSource, filteredRowIds: _filteredRowIds }
   var currentColors = COLOR_PALETTES[activePalette]?.colors || CHART_COLORS
   var fields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' && f.hidden !== true })
   var hasData = analytics && analytics.totalRows > 0
@@ -1987,7 +1994,11 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   useEffect(function() {
     if (!hasDimensions) { setDimSubCounts(null); return }
     var cancelled = false
-    fetch('/api/datasets/' + datasetId + '/taxonomy')
+    // Per-question (sql/164 companion): the Dimensions GET is per fieldKey —
+    // without ?fields= it returns the "pick a field" empty shell, so this
+    // fetch was silently empty since the per-field taxonomy split. Follows
+    // the same source-field picker as the tax_* chart aggregates.
+    fetch('/api/datasets/' + datasetId + '/taxonomy' + (themeSourceField ? '?fields=' + encodeURIComponent(themeSourceField) : ''))
       .then(function(r) { return r.ok ? r.json() : null })
       .then(function(d) {
         if (cancelled || !d || !Array.isArray(d.subs)) return
@@ -2000,7 +2011,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
       })
       .catch(function() { /* dimension count bars degrade to empty until loaded */ })
     return function() { cancelled = true }
-  }, [datasetId, hasDimensions])
+  }, [datasetId, hasDimensions, themeSourceField])
 
   // Live theme counts via the existing server-side endpoint. The persisted
   // theme_model.themes[].count is unreliable — it's often 0 on datasets

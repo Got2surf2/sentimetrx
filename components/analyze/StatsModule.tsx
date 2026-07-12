@@ -496,7 +496,7 @@ function CorrelationsPanel({ numFields, data, aliases, datasetId }: { numFields:
   )
 }
 
-function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId }: { numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string>; datasetId: string }) {
+function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId, dimFieldKey }: { numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string>; datasetId: string; dimFieldKey?: string }) {
   var _gk = 'statsGroup_' + datasetId
   var [testType, setTestType] = useState('auto')
   var [numF, setNumF] = useState(numFields[0]?.field || '')
@@ -566,7 +566,7 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId }: { n
           var axis = chiDimA || chiDimB
           var other = chiDimA ? catF2 : catF
           if (!axis || !other || isDimField(other)) { if (!cancelled) setDimResult(null); return }  // both-dim unsupported
-          var d = await post({ op: 'tax_crosstab', axis: axis, field: other, axisIsRow: !!chiDimA, limit: 50 })
+          var d = await post({ op: 'tax_crosstab', axis: axis, field: other, axisIsRow: !!chiDimA, limit: 50, fieldKey: dimFieldKey })
           if (cancelled) return
           var grid: Record<string, Record<string, number>> = d.grid || {}
           var rkeys = Object.keys(grid)
@@ -576,7 +576,7 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId }: { n
           return
         }
         if (!numF || !groupDimAxis) { if (!cancelled) setDimResult(null); return }
-        var dg = await post({ op: 'tax_group_stats', axis: groupDimAxis, valueField: numF })
+        var dg = await post({ op: 'tax_group_stats', axis: groupDimAxis, valueField: numF, fieldKey: dimFieldKey })
         if (cancelled) return
         var groups = (dg.groups || {}) as Record<string, { n: number; mean: number; median: number; min: number; max: number; stddev: number; q1: number | null; q3: number | null }>
         var gKeys = Object.keys(groups).filter(function(k) { return groups[k].n >= 2 })
@@ -598,7 +598,7 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId }: { n
       } catch { if (!cancelled) setDimResult(null) }
     })()
     return function() { cancelled = true }
-  }, [dimInvolved, testType, catF, catF2, numF, groupDimAxis, chiDimA, chiDimB, datasetId])
+  }, [dimInvolved, testType, catF, catF2, numF, groupDimAxis, chiDimA, chiDimB, datasetId, dimFieldKey])
 
   var result: any = dimInvolved ? dimResult : syncResult
 
@@ -2168,7 +2168,7 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
             <>
               {activePanel === 'descriptives' && <DescriptivesPanel numFields={numFields} data={enrichedData} mcResults={mcResults} mcRunning={mcRunning} confidenceLevel={confidenceLevel} datasetId={datasetId} />}
               {activePanel === 'correlations' && <CorrelationsPanel numFields={numFields} data={enrichedData} aliases={aliases} datasetId={datasetId} />}
-              {activePanel === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={groupTestCatFields} data={enrichedData} aliases={aliases} datasetId={datasetId} />}
+              {activePanel === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={groupTestCatFields} data={enrichedData} aliases={aliases} datasetId={datasetId} dimFieldKey={themeSourceField || undefined} />}
               {activePanel === 'regression' && <RegressionPanel numFields={numFields} data={enrichedData} aliases={aliases} datasetId={datasetId} />}
               {activePanel === 'insights' && <AutoInsightsPanel numFields={numFields} catFields={catFields} data={enrichedData} aliases={aliases} />}
               {activePanel === 'outliers' && <OutlierAnalysisPanel numFields={numFields} catFields={catFields} data={enrichedData} datasetId={datasetId} />}
