@@ -9,6 +9,7 @@ import { countNonEmptyRows } from '@/lib/nonEmptyCount'
 import { memberRowCounts } from '@/lib/signalStats'
 import { kwPatternFragment } from '@/lib/themeUtils'
 import { sampledSignalCounts, scaleSampledCount, SIGNAL_SAMPLE_CAP, type SampledSignalCounts } from '@/lib/sampledSignalCounts'
+import { sampledThemeCooccurrence, sampledThemeTopical, sampledThemeDimensions } from '@/lib/sampledThemeExtras'
 
 interface Props { params: Promise<{ datasetId: string }> }
 
@@ -225,7 +226,13 @@ export async function POST(req: Request, props: Props) {
         .filter(t => (t.keywords || []).filter(Boolean).length > 0)
         .map(t => ({ id: t.id, keywords: (t.keywords || []).filter(Boolean).map(kwPatternFragment) }))
 
+      // Above the 50K cap the exact matrix full-scans and 57014s → sampled twin
+      // (sql/173) keyset-pages idx_drf_sample + scales; below the cap, exact.
       const memberMatrices = await runPool(datasetIds.map(did => async () => {
+        if ((rowCounts.get(did) || 0) > SIGNAL_SAMPLE_CAP) {
+          try { return await sampledThemeCooccurrence(service, did, fields, themesPayload, rowCounts.get(did) || 0) }
+          catch { /* fall through to exact (pre-sql/173) */ }
+        }
         const { data } = await service.rpc('compute_theme_cooccurrence_matrix', {
           p_dataset_id: did,
           p_field_keys: fields,
@@ -249,29 +256,45 @@ export async function POST(req: Request, props: Props) {
     // whole collection.
     let topicalWords: Record<string, [string, number][]> | undefined
     if (topical) {
-      const topicalEntries = await runPool(themes.map(t => async (): Promise<[string, [string, number][]]> => {
-        const kws = (t.keywords || []).filter(Boolean)
-        if (!kws.length) return [t.id, []]
-        // Merge per-member word counts
-        const merged: Record<string, number> = {}
-        for (const did of datasetIds) {
+      // Themes with keywords (RAW — extract_theme_topical_words + the sampled
+      // twin both build the pattern internally). Above the 50K cap the exact
+      // per-theme scans 57014, so a member uses ONE multi-theme sampled twin
+      // (sql/173) covering every theme; below the cap, the exact per-theme RPC.
+      const topicalThemes = themes
+        .map(t => ({ id: t.id, keywords: (t.keywords || []).filter(Boolean) }))
+        .filter(t => t.keywords.length > 0)
+      // Per member → { themeId: { word: count } }.
+      const memberMaps = await runPool(datasetIds.map(did => async (): Promise<Record<string, Record<string, number>>> => {
+        if ((rowCounts.get(did) || 0) > SIGNAL_SAMPLE_CAP) {
+          try { return await sampledThemeTopical(service, did, fields, topicalThemes, [], rowCounts.get(did) || 0) }
+          catch { /* fall through to exact */ }
+        }
+        const out: Record<string, Record<string, number>> = {}
+        for (const t of topicalThemes) {
           const { data } = await service.rpc('extract_theme_topical_words', {
             p_dataset_id: did,
             p_field_keys: fields,
-            p_keywords: kws,
+            p_keywords: t.keywords,
             p_extra_excludes: [],
             p_max_results: 15,  // a bit wider than 5 so the post-merge top-5 has room
           })
-          const pairs = (data as [string, number][] | null) || []
-          for (const [w, c] of pairs) {
-            merged[w] = (merged[w] || 0) + Number(c)
-          }
+          const wm: Record<string, number> = {}
+          for (const [w, c] of ((data as [string, number][] | null) || [])) wm[w] = (wm[w] || 0) + Number(c)
+          out[t.id] = wm
         }
-        return [t.id, Object.entries(merged)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 5)]
+        return out
       }), 5)
-      topicalWords = Object.fromEntries(topicalEntries)
+      // Merge per-theme word counts across members, then top-5.
+      const mergedByTheme: Record<string, Record<string, number>> = {}
+      for (const mm of memberMaps) {
+        for (const [tid, wm] of Object.entries(mm)) {
+          const acc = mergedByTheme[tid] || (mergedByTheme[tid] = {})
+          for (const [w, c] of Object.entries(wm)) acc[w] = (acc[w] || 0) + c
+        }
+      }
+      topicalWords = Object.fromEntries(themes.map(t => [t.id,
+        Object.entries(mergedByTheme[t.id] || {}).sort((a, b) => b[1] - a[1]).slice(0, 5) as [string, number][],
+      ]))
     }
 
     // Optional: per-theme Dimensions breakdown. For each theme, the top
@@ -282,28 +305,50 @@ export async function POST(req: Request, props: Props) {
     // empty arrays, which the client suppresses).
     let themeDimensions: Record<string, { axis: string; sub: string; count: number }[]> | undefined
     if (dimensions) {
-      const dimensionEntries = await runPool(themes.map(t => async (): Promise<[string, { axis: string; sub: string; count: number }[]]> => {
-        const kws = (t.keywords || []).filter(Boolean)
-        if (!kws.length) return [t.id, []]
-        const merged: Record<string, { axis: string; sub: string; count: number }> = {}
-        for (const did of datasetIds) {
+      // Themes with FRAGMENTED keywords (theme_dimension_counts + the sampled
+      // twin both expect the pre-fragmented pattern parts). Above the cap the
+      // exact per-theme scan 57014s → one multi-theme sampled twin per member.
+      const dimThemes = themes
+        .map(t => ({ id: t.id, keywords: (t.keywords || []).filter(Boolean).map(kwPatternFragment) }))
+        .filter(t => t.keywords.length > 0)
+      // Per member → { themeId: { "axis:sub": {axis,sub,count} } }.
+      const memberMaps = await runPool(datasetIds.map(did => async (): Promise<Record<string, Record<string, { axis: string; sub: string; count: number }>>> => {
+        if ((rowCounts.get(did) || 0) > SIGNAL_SAMPLE_CAP) {
+          try { return await sampledThemeDimensions(service, did, fields, dimThemes, rowCounts.get(did) || 0) }
+          catch { /* fall through to exact */ }
+        }
+        const out: Record<string, Record<string, { axis: string; sub: string; count: number }>> = {}
+        for (const t of dimThemes) {
           const { data } = await service.rpc('theme_dimension_counts', {
             p_dataset_id: did,
             p_field_keys: fields,
-            p_keywords: kws.map(kwPatternFragment),
+            p_keywords: t.keywords,
             p_limit: 12,   // a bit wider than the card shows so the post-merge top-N has room
           })
+          const dm: Record<string, { axis: string; sub: string; count: number }> = {}
           for (const r of ((data || []) as { axis: string; sub: string; count: number }[])) {
             const k = r.axis + ':' + r.sub
-            if (!merged[k]) merged[k] = { axis: r.axis, sub: r.sub, count: 0 }
-            merged[k].count += Number(r.count) || 0
+            if (!dm[k]) dm[k] = { axis: r.axis, sub: r.sub, count: 0 }
+            dm[k].count += Number(r.count) || 0
+          }
+          out[t.id] = dm
+        }
+        return out
+      }), 5)
+      // Merge per-theme (axis,sub) counts across members, then top-8.
+      const mergedByTheme: Record<string, Record<string, { axis: string; sub: string; count: number }>> = {}
+      for (const mm of memberMaps) {
+        for (const [tid, dm] of Object.entries(mm)) {
+          const acc = mergedByTheme[tid] || (mergedByTheme[tid] = {})
+          for (const [k, v] of Object.entries(dm)) {
+            if (!acc[k]) acc[k] = { axis: v.axis, sub: v.sub, count: 0 }
+            acc[k].count += v.count
           }
         }
-        return [t.id, Object.values(merged)
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 8)]
-      }), 5)
-      themeDimensions = Object.fromEntries(dimensionEntries)
+      }
+      themeDimensions = Object.fromEntries(themes.map(t => [t.id,
+        Object.values(mergedByTheme[t.id] || {}).sort((a, b) => b.count - a.count).slice(0, 8),
+      ]))
     }
 
     // `sampled` — counts were computed over the deterministic 50K sample and

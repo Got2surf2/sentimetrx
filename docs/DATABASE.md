@@ -273,6 +273,20 @@ tsv-prefilter + open-ended recheck as count_entity_terms) so counts never 57014;
 (slug-keyed jsonb → UPDATE). All service_role-only. Verified sampled-vs-exact
 within ±2% on Carrabba 56K (`scripts/_verify_entity_counts.mts`).
 
+sql/173 (2026-07-13, perf review §7 Brief E item 2) closes the three
+`/theme-counts` extras that full-scan per member and 57014 at ~1M
+(`compute_theme_cooccurrence_matrix` sql/055, `extract_theme_topical_words`
+sql/054, `theme_dimension_counts` sql/151). Added keyset-paged **multi-theme**
+twins over `idx_drf_sample` — `sampled_theme_cooccurrence_page`,
+`sampled_theme_topical_page`, `sampled_theme_dimension_page` — each returning
+one page's partial as jsonb for `lib/sampledThemeExtras.ts` to merge + scale by
+`total/scanned`; one page RPC covers all themes. Also extracted the topical
+stopword list to a shared `topical_stopwords()` IMMUTABLE function (was
+duplicated inline in sql/054 with a "keep in sync" comment). All
+service_role-only; page CTE byte-identical to sql/169/171. Verified
+sampled-vs-exact within ±3% on 128K Outback + no-57014 on the 1M PERF TEST
+(`scripts/_verify_theme_extras.mts`).
+
 ---
 
 *Update this file when a migration adds/removes/repurposes a table — the

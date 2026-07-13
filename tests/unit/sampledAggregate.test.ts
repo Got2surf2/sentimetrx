@@ -38,7 +38,9 @@ describe('sampledCountFieldValues', () => {
     expect(r.rows.find(x => x.value === 'B')!.count).toBe(12000)
     expect(r.rows.find(x => x.value === 'A')!.count).toBe(12000)
     expect(calls[1].p_after_hash).toBe(10) // cursor advanced
-    expect(calls[0].p_row_ids).toBeNull()
+    // p_row_ids is OMITTED (not sent as null) when unfiltered, so twins that
+    // don't declare the param (the theme-extras pagers, sql/173) still resolve.
+    expect(calls[0].p_row_ids).toBeUndefined()
   })
 
   it('forwards p_row_ids and stops on a short page', async () => {
