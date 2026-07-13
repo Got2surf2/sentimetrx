@@ -237,6 +237,28 @@ paths) unchanged and PGRST202-fallback safe. When filters are active the
 client row-id set is bounded (≤ the 50K sample), so the filtered path is exact
 — no sampling twin needed there.
 
+sql/171 (2026-07-13, perf review §7 Brief C **Part 3**) closes the last O(N)
+family on `/aggregate`: the five taxonomy_* chart aggregates (sql/164) unnest
+`data -> '_tx' -> 'f' -> <field> -> 'a'` over every row and 57014 at ~1M once a
+rollup resolves (`taxonomy_sub_counts` measured 8.1s at 1M). Added five
+keyset-paged `sampled_taxonomy_*` twins over `idx_drf_sample` —
+`sampled_taxonomy_sub_counts`, `sampled_taxonomy_group_stats`,
+`sampled_taxonomy_crosstab`, `sampled_taxonomy_date_series`,
+`sampled_taxonomy_axis_crosstab` — each returning one page as `{n_scanned,
+<partial aggregate>, last_hash, last_id}` for the caller
+(`lib/sampledTaxonomy.ts`) to page + scale counts by `total/scanned`
+(means/medians/quartiles/stddev reported unscaled). Each resolves its
+classified field via `taxonomy_field_or_primary(p_dataset_id, p_field_key)`
+(sql/164) — a CTE cross-joined into the unnest — so the per-question
+source-field picker keeps driving dimensions; a NULL resolution yields an empty
+unnest (matching the exact RPC's early RETURN). Also take `p_row_ids` (narrows
+numerators, not the denominator). Used above the 50K cap where the exact scans
+57014; pure `LANGUAGE sql` (axis validation stays in the route/exact RPC);
+service_role-only; keyset page CTE + value predicates byte-identical to the
+exact functions and the sql/169 counts twins. Verified sampled-vs-exact within
+±2% on the 128K Outback and no-57014 on the 1M PERF TEST
+(`scripts/_verify_taxonomy_sampled.mts`).
+
 ---
 
 *Update this file when a migration adds/removes/repurposes a table — the

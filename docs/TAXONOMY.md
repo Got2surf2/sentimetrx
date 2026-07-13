@@ -232,7 +232,12 @@ gating).
     `p_field_key` to the five chart aggregates — `taxonomy_field_or_primary`
     resolves the requested question when it has a stored rollup, else the
     primary classified field, so Charts/Stats dimension charts follow the
-    source-field picker per question): the `tax_*` aggregates, the axis crosstab
+    source-field picker per question; **sql/171** added keyset-paged
+    `sampled_taxonomy_*` twins for all five, used above the 50K row cap where the
+    exact `data._tx` unnest 57014s at ~1M — same 50K `idx_drf_sample`,
+    `total/scanned` count scaling, unscaled stats, `p_field_key`+`p_row_ids`
+    pass-through — via `lib/sampledTaxonomy.ts`, perf review §7 Brief C Part 3):
+    the `tax_*` aggregates, the axis crosstab
     (sql/133), theme×dimension chips (sql/111), the Comments dimension filter
     (`get_rows_by_filters`, sql/113), the pending-rows helper (sql/117), plus new
     `apply_taxonomy_verdicts` (batch writer), `taxonomy_rows_for_field` (paged
