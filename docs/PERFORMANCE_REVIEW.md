@@ -444,6 +444,43 @@ INSERT/UPDATE` trigger on `responses` doing an upsert delta; readers
 consumers) switch to the table; drop the MV + the `refresh` RPC call in
 `/api/respond` once readers are moved. Forward-looking — schedule last.
 
+### Brief F — filters-compliance sweep (added 2026-07-13 after the Ask Ana fix)
+
+Motivation: the Ask Ana fix uncovered TWO silent filter bugs in one consumer
+(cat exclude-mode inverted; daterange ignored) — sweep the class. The
+canonical semantics are `lib/filterUtils.applyFilters` (cat include/exclude +
+blanks-by-excludeBlanks; range = parseFloat leading-prefix incl. scientific
+notation, NaN passes unless includeBlanks===false; daterange = epoch-ms
+bounds, unparseable passes unless includeBlanks===false). The SQL mirror is
+`ana_row_matches_filters` (sql/167) with parity proven by
+`scripts/_verify_ana_filters.mts`.
+
+Sweep every surface that receives, forwards, or claims to reflect filters.
+Known consumer set (grep `SerializedFilters|applyFilters|filters` and follow
+the data flow — verify this list, don't trust it):
+client (FilterContext, TextMineModule, ChartsModule, StatsModule,
+ComparisonStrip, ViewsBar, FiltersModal, DatasetShell), server
+(ask-ana ✅ done, ad-hoc-report ✅ done, export/html, export/pptx,
+share/analytics), SQL (`get_rows_by_filters` — the comments/facets RPC has
+its OWN filter implementation), and the **filters-not-forwarded class**:
+does `/aggregate` (Charts/Stats server ops), signal-stats, theme-counts, or
+any deck path silently IGNORE active filters while the UI implies otherwise?
+
+For EACH consumer classify: (a) canonical — calls `applyFilters` or the
+sql/167 matcher; (b) bespoke copy — line-by-line diff against canonical,
+fix by replacing with the canonical path (never by patching the copy);
+(c) filters intentionally out of scope — confirm the UI says so (or reports
+full-dataset numbers with a label); (d) filters silently dropped — a bug:
+report it, and fix only when the fix is mechanical (wire the existing
+param through). Deliverable: a table appended to this section
+(consumer → class → verdict → action taken), plus fixes committed with
+per-fix unit tests. Escalate to a Fable session instead of guessing when:
+a consumer needs NEW SQL filter semantics (not a reuse of sql/167), or the
+right product behavior for a filters-ignoring surface is unclear — list
+those for the owner rather than redesigning. Verification bar per the
+global rules; for any SQL touch, extend `_verify_ana_filters.mts` parity
+cases rather than writing a new harness.
+
 ---
 
 *Re-run policy: re-verify §2 measurements after any change to the sampling

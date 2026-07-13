@@ -404,6 +404,13 @@ Watch list:
 - DB query latency: `EXPLAIN ANALYZE` on any new query touching
   > 1000 rows in dev; result pasted into the PR description.
 
+**Audit registry (2026-07-13).** Every audit/review/sweep is registered in
+`docs/AUDITS.md` — scope, where its findings live, and its re-run trigger.
+Check the registry before scoping a new audit (don't re-run what exists);
+register a new audit in the same commit as its findings doc. Point-in-time
+governance questions ("audit-ready?") still require a FRESH tool run — the
+registry prevents duplicate scoping, not stale answers.
+
 ---
 
 ## 6. Accessibility

@@ -40,7 +40,7 @@ This is independent of the Push policy above: working on `main` means *committin
 - `components/ui/LottieLoader.tsx` — the only loader. Don't write CSS spinners.
 - `sql/` — numbered migrations. Apply to prod with `npm run migrate sql/NNN_name.sql` (records the `schema_migrations` ledger AND refreshes the committed schema snapshot `docs/db/schema.sql` — commit the refreshed snapshot with the migration). The CLI is already linked.
 - `tests/` — `unit/`, `integration/`, `e2e/`, `loadtest/`. Strategy in `docs/TESTING.md`.
-- `docs/` — specs (per-module). Top-level: `SPEC.md`, `FEATURES.md`, `docs/ARCHITECTURE.md` (design decisions), `docs/DATABASE.md` + `docs/db/schema.sql` (data dictionary + generated schema snapshot).
+- `docs/` — specs (per-module). Top-level: `SPEC.md`, `FEATURES.md`, `docs/ARCHITECTURE.md` (design decisions), `docs/DATABASE.md` + `docs/db/schema.sql` (data dictionary + generated schema snapshot), `docs/AUDITS.md` (audit registry — **check it before scoping any audit/sweep; register new audits there in the same commit as their findings**).
 - `proxy.ts` — CSRF protection on cookie-authed mutating routes; webhooks/cron/embeds are explicitly bypassed. (Next 16 renamed the `middleware` convention to `proxy`; runtime is nodejs.)
 
 ## Product naming (user-facing only)
