@@ -173,6 +173,8 @@ pending → sent → opened → clicked → completed
 
 ## Campaign Management
 
+Nav chrome (2026-07-12, system-wide breadcrumbs): the per-study campaigns page (`/studies/[id]/campaigns`) previously rendered with NO chrome at all — it gained the full `TopNav` + `SubHeader` breadcrumb row (Campaigns › study). Cosmetics/navigation only, no behavior change.
+
 ### Dashboard (`/campaigns`)
 - List all campaigns with status badges
 - Donut chart: % completed / sent / pending

@@ -24,6 +24,8 @@ Each ingested comment is scored by the content guard (`auditContent()` + `scoreS
 
 Operators triage from `/app/social` — a single-page console with filtered feed, per-comment actions, bulk actions, alert rules, and DM templates. Comments can be exported as a TextMine dataset (`/api/social/export-dataset`) for the same analytics treatment as any other source.
 
+Nav chrome (2026-07-12, system-wide breadcrumbs): the console renders a `SubHeader` crumb row ("Social") under the fixed `TopNav`, with content padding clearing both fixed bars — cosmetics only, no behavior change.
+
 ---
 
 ## 2. Database Schema

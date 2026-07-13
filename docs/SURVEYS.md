@@ -181,6 +181,8 @@ A `responses` row is created on the first partial save and upserted by `session_
 
 ## Admin Tools
 
+Nav chrome (2026-07-12, system-wide breadcrumbs): every internal survey-side page renders `SubHeader` breadcrumbs under the fixed `TopNav` (survey pages crumb under **Dashboard**; the per-study campaigns page — mapped to this spec via `app/studies/[id]/campaigns` — had no chrome at all and gained full TopNav + SubHeader). Cosmetics/navigation only, no behavior change.
+
 ### `/admin/testing` (tabbed)
 Three tabs in a single page (`TestingClient.tsx`):
 - **AI Tester** — test clarifier / deflector behavior against a real study; pre-populated examples + debug-mode reasoning

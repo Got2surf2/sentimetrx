@@ -974,6 +974,8 @@ POST stamps `recordings.signoff = {approved_by, approved_by_member_id, approved_
 
 ## 5. UI Surface
 
+Nav chrome (2026-07-12, system-wide breadcrumbs): the listing (`/recordings`), project wizard (`/recordings/new`), and setup page (`/recordings/[id]/setup`) render `SubHeader` breadcrumbs under the fixed `TopNav`, crumbed under the **Town Hall** section label, with content padding clearing both fixed bars. Cosmetics/navigation only, no behavior change.
+
 ### 5.1 Dataset wizard — `/analyze/new`
 
 Existing wizard adds a "Recording" tile alongside CSV / Google Reviews / Reddit / etc. Selecting it routes to `/recordings/new`.
