@@ -2,7 +2,7 @@
 // components/analyze/ChartsModule.tsx
 // Charts module with labeled drop zones, click-to-assign from sidebar, chart state caching.
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { smartOrder, isOrdinalScale, scaleDirectionLabel } from '@/lib/scaleUtils'
 import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
 import { cachedRequest } from '@/lib/clientRequestCache'
@@ -1967,9 +1967,14 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   // set (theme_model.fields, per-field model) charts with THAT set. Fallback
   // for a never-mined field = the active set matched against it (pre-map
   // behavior). All theme consumers below read this, never the raw prop.
-  var effectiveThemeModel = themeSourceField
-    ? (themeSetForField(themeModel, [themeSourceField]) || themeModel)
-    : themeModel
+  // Memoized for stable identity — themeSetForField returns a fresh object
+  // every call, and this value flows into memo/effect dependency chains
+  // (the same class as the StatsModule infinite update loop, 2026-07-13).
+  var effectiveThemeModel = useMemo(function() {
+    return themeSourceField
+      ? (themeSetForField(themeModel, [themeSourceField]) || themeModel)
+      : themeModel
+  }, [themeModel, themeSourceField])
 
   // Set enrichment context for useRows — must be before any inner component renders
   _enrichCtx = { themeModel: effectiveThemeModel, schema: schema, enrichKey: enrichKey, themeSourceOverride: themeSourceField || undefined, dimFieldKey: themeSourceField || undefined, activeThemeNames: activeThemeNames, datasetSource: datasetSource, filteredRowIds: _filteredRowIds }

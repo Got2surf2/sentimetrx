@@ -1907,9 +1907,17 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
   // just re-target the ACTIVE set's keywords — a question with its OWN stored
   // set (theme_model.fields) computes with THAT set. Fallback for a
   // never-mined field = the active set matched against it (pre-map behavior).
-  var effectiveThemeModel = themeSourceField
-    ? (themeSetForField(themeModel, [themeSourceField]) || themeModel)
-    : themeModel
+  // MUST be memoized: themeSetForField returns a FRESH object every call
+  // (stripFieldEntries spreads), and this value feeds the enrichedData memo,
+  // whose identity feeds the bootstrap-CI effect. Unmemoized, every render
+  // invalidated the chain → setMcResults → render → … an infinite update
+  // loop that pegged the Statistics tab's main thread ("Maximum update depth
+  // exceeded"; caught by the e2e smoke suite's first run, 2026-07-13).
+  var effectiveThemeModel = useMemo(function() {
+    return themeSourceField
+      ? (themeSetForField(themeModel, [themeSourceField]) || themeModel)
+      : themeModel
+  }, [themeModel, themeSourceField])
   var hasThemes = !!(effectiveThemeModel && effectiveThemeModel.themes && effectiveThemeModel.themes.length > 0)
 
   var filteredData = useMemo(function() {

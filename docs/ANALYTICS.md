@@ -154,7 +154,11 @@ level exports as before). Regression: `tests/integration/export-perfield-themes.
 **Charts/Stats + Ana are per-question aware (2026-07-12 — closes the two scoped leftovers).**
 `themeSetForField()` (`lib/themeUtils`) is the shared resolver — "which themes go with this
 question?" answers identically in ChartsModule, StatsModule, AskAnaPanel, and the ask-ana
-route. Charts/Stats: the existing **theme source-field dropdown** no longer just re-targets
+route. ⚠️ It returns a **fresh object every call** (stripFieldEntries spreads, even for the
+top-level match), so render-path consumers MUST memoize the resolution — Charts/Stats wrap it
+in `useMemo([themeModel, themeSourceField])` (2026-07-13: the unmemoized call invalidated
+Stats' memo/effect chain every render → an infinite update loop that pegged the Statistics
+tab; caught by the e2e smoke suite's first run). One-shot handlers (Ask Ana) are fine. Charts/Stats: the existing **theme source-field dropdown** no longer just re-targets
 the active set's keywords — a question with its OWN stored set charts/derives `__themes__`
 with THAT set (counts, KPI, pills, table, theme-counts payload all follow; the theme-pill
 selection resets on switch since the old set's names would filter the new set to nothing).

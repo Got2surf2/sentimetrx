@@ -121,7 +121,11 @@ tests/
 │   ├── admin-routes-gate.test.ts # Phase 1 — platform-admin gate on EVERY internal admin/* route (23 route+verb combos across agent-tester, bulk-invite, clients[/id], invite-preview, org-snapshots[/restore], orgs/[id][/ai-key,/features], reo-gold-set, users/[id][/features]); asserts a non-admin caller (authed or not) never gets 2xx — requireAdmin → 404, inline is_admin_org/owner → 401/403
 │   └── public-routes-noleak.test.ts # Phase 1 — the intentionally-public surface (webhooks, participant widgets, embeds, demo kiosk). Asserts the per-route safety mechanism, NOT an org gate: resend/social webhooks reject forged/unsigned requests (Svix/Meta HMAC), townhall/responses validates the participant against the session (404, no blind cross-session write), translate-responses translates only caller-supplied body text (size cap / english short-circuit). Full public-surface catalogue in docs/SECURITY.md § 3
 ├── e2e/
-│   └── deck-download.spec.ts # Playwright, env-gated
+│   ├── smoke.spec.ts         # Playwright CI smoke — self-contained (throwaway login + seeded dataset), runs on every push vs a production build; shell/list/tab-dance/schema/filters
+│   ├── helpers/e2eSeed.ts    # env gate (prod-ref refusal), org/user find-or-create, dataset seed/cleanup, storageState cookie mint
+│   ├── global-setup.ts       # seeds + writes storageState; writes skip marker without TEST creds
+│   ├── global-teardown.ts    # deletes the seeded dataset
+│   └── deck-download.spec.ts # Playwright, env-gated (legacy: needs E2E_ADMIN_* creds)
 └── loadtest/
     ├── townhall.k6.js        # k6 — concurrent Town Hall participant API load
     ├── townhall.spec.ts      # Playwright — concurrent Town Hall browser load
@@ -362,7 +366,23 @@ Sets `DATASET_EGRESS_TEST=1`. Test data prefixed `_datasetroute_<runId>_`.
 
 ### Playwright e2e (`tests/e2e/*.spec.ts`)
 
-Requires an admin login on a running instance:
+**`smoke.spec.ts` — the CI smoke suite (2026-07-13), runs on every push.** Fully
+self-contained: `global-setup.ts` mints a throwaway login (`e2e-smoke@sentimetrx.test`
+in `e2e-smoke-org` on the TEST project, fresh random password per run — no human
+credentials) and seeds a 60-row dataset with schema + themes; `global-teardown.ts`
+removes the dataset (org + user persist). Auth is a constructed `sb-*-auth-token`
+storageState cookie — one sign-in per run, so repeated logins never trip auth rate
+limits. Seeding hard-refuses the prod project ref. CI (`e2e` job) runs it against a
+**production build** (`npm run build` + `next start`); locally it reuses a running
+dev server. Covers: authed shell (TopNav + breadcrumbs), /analyze listing, the
+dataset tab dance **including return visits** (the 2026-07-13 "Schema comes up once
+then never again" wedge — invisible to server-side tests), the Schema editor +
+"Refresh from data", and the Filters modal. Its first run caught a real infinite
+update loop on the Statistics tab (unmemoized `themeSetForField` identity churn).
+Without TEST creds every test self-skips; the CI job fails loud instead (same
+contract as the isolation job). The deploy job gates on it.
+
+The legacy specs below require an admin login on a running instance:
 
 ```bash
 E2E_ADMIN_EMAIL=...

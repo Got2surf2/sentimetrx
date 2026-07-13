@@ -638,8 +638,10 @@ restart locally and a deploy to reach prod.
 ## 12. Release process
 
 Today: push to `main` → CI (typecheck, lint ratchet, unit +
-integration, RLS/egress isolation) → on all-green, the CI `deploy`
-job fires a Vercel deploy hook → production build + deploy
+integration, RLS/egress isolation, **e2e browser smoke vs a
+production build** — self-seeded throwaway login on the TEST
+project, 2026-07-13; see TESTING.md) → on all-green, the CI
+`deploy` job fires a Vercel deploy hook → production build + deploy
 (**deploy-behind-CI**, 2026-07-04).
 
 Constraints:

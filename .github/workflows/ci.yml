@@ -101,6 +101,48 @@ jobs:
       - name: Dataset route egress
         run: npm run test:dataset-egress
 
+
+  e2e:
+    name: e2e smoke (real browser vs production build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_TEST_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_TEST_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
+      E2E_BASE_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Same fail-loud contract as the isolation job: the smoke suite
+      # self-skips without real creds, and a green-but-skipped check would
+      # mean "the browser flow was never exercised".
+      - name: Preflight — require real Supabase creds (else the suite silently skips)
+        run: |
+          if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::error::e2e smoke needs SUPABASE_TEST_* repo secrets — without them the suite self-skips and this check would pass without testing anything."
+            exit 1
+          fi
+
+      - name: Install Playwright chromium
+        run: npx playwright install --with-deps chromium
+
+      # Production build — dev-mode compile-on-visit is too slow/flaky for CI.
+      # playwright.config.ts serves it via `npm run start` when CI is set.
+      - name: Build
+        run: npm run build
+
+      - name: e2e smoke suite
+        run: npx playwright test tests/e2e/smoke.spec.ts
+
   deploy:
     name: production deploy (after green)
     # Deploy-behind-CI (2026-07-04): pushes to main no longer auto-deploy —
@@ -112,7 +154,7 @@ jobs:
     # push ending in a docs commit would have silently skipped deploying
     # its code). Manual fallback if the hook path is ever broken:
     # `vercel deploy --prod` from an authorized laptop.
-    needs: [test, isolation]
+    needs: [test, isolation, e2e]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
