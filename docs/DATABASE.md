@@ -287,6 +287,20 @@ service_role-only; page CTE byte-identical to sql/169/171. Verified
 sampled-vs-exact within ±3% on 128K Outback + no-57014 on the 1M PERF TEST
 (`scripts/_verify_theme_extras.mts`).
 
+sql/174 (2026-07-13, perf review §7 Brief E item 4) retires the
+`study_response_stats` **materialized view** (its `refresh_study_response_stats()`
+full-scanned `responses` platform-wide, fired debounced-30s on every submit — a
+QR-burst I/O sink at scale). Replaced by **`study_response_stats_live`**, a
+per-study counter table maintained **incrementally by an AFTER
+INSERT/UPDATE/DELETE trigger on `responses`** (`trg_study_response_stats` →
+`srs_apply_delta`, O(1) per row; averages kept as sum+count pairs). RLS enabled +
+org-scoped SELECT policy (via `studies` join). The MV is dropped;
+`refresh_study_response_stats()` becomes a no-op stub (deploy-window safety);
+`get_study_response_stats_for_user` repointed to the table (avg = sum/nullif(n,0));
+`study_stats_for_ids` (direct grouped read) unchanged. Backfilled from
+`responses` at migration time. Verified counter==GROUP-BY through
+INSERT/UPDATE/DELETE (`scripts/_verify_study_stats_counter.mts`).
+
 ---
 
 *Update this file when a migration adds/removes/repurposes a table — the

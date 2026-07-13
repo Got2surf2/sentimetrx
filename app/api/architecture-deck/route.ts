@@ -354,7 +354,7 @@ function slideDataLayer(pptx: PptxGenJS, pg: number) {
   addFooter(s, pg)
 
   const domains = [
-    { name: 'Surveys',       count: '6 tables', tables: 'studies · responses · study_response_stats · study_designs · drafts · share_tokens', color: DN.sarinaBlue },
+    { name: 'Surveys',       count: '6 tables', tables: 'studies · responses · study_response_stats_live · study_designs · drafts · share_tokens', color: DN.sarinaBlue },
     { name: 'Datasets',      count: '4 tables', tables: 'datasets · dataset_rows_flat · dataset_state · archived_dataset_rows*', color: DN.teal },
     { name: 'Agents / RAG',  count: '7 tables', tables: 'bots · bot_knowledge_chunks · bot_conversation_turns* · bot_conversation_reviews · bot_session_personas · conversations · conversation_turns', color: DN.hermesOrange },
     { name: 'PulseIQ',       count: '7 tables', tables: 'townhall_sessions* · townhall_themes* · townhall_turns* · townhall_participant_responses · pulseiq_sessions · pulseiq_session_conversations · pulseiq_topics', color: DN.gold },

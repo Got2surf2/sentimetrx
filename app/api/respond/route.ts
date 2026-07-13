@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { createHash } from 'crypto'
 import { checkRateLimit } from '@/lib/rateLimit'
-import { waitUntil } from '@vercel/functions'
 import type { SubmitResponseBody, Sentiment } from '@/lib/types'
 import { auditContent, auditConversationLog, type ContentFlag } from '@/lib/contentGuard'
 
@@ -274,15 +273,9 @@ export async function POST(req: NextRequest) {
     } catch {}
   }
 
-  // Refresh materialized view without blocking the respondent. The refresh
-  // scans every response platform-wide and concurrent refreshes serialize on
-  // a lock, so debounce globally to one refresh per 30s — when skipped, the
-  // next submit after the window picks up the freshness.
-  const { limited: mvLimited } = await checkRateLimit('mv:study_response_stats', 1, 30000)
-  if (!mvLimited) {
-    const refresh = Promise.resolve(supabase.rpc('refresh_study_response_stats')).catch(() => {})
-    try { waitUntil(refresh) } catch { void refresh }
-  }
+  // study_response_stats is maintained LIVE by the responses trigger (sql/174)
+  // — no per-submit materialized-view refresh (which scanned every response
+  // platform-wide; the QR-burst I/O sink the perf review flagged).
 
   return NextResponse.json({ success: true, response_id: response.id }, { status: 201 })
 }

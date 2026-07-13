@@ -12,8 +12,6 @@ import { resolveBrandGlossary } from '@/lib/correction/glossary'
 import { logError } from '@/lib/log'
 import { buildReplacements, normalizeText } from '@/lib/correction/normalize'
 import { serverError } from '@/lib/apiError'
-import { checkRateLimit } from '@/lib/rateLimit'
-import { waitUntil } from '@vercel/functions'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -355,20 +353,9 @@ export async function DELETE(req: NextRequest, props: Params) {
 
   if (error) return serverError(error, 'studies.responses.delete', { orgId: study.org_id })
 
-  // A failure here leaves study response stats stale with no signal — the exact
-  // "my report is wrong" scenario. Best-effort but no longer silent. The refresh
-  // scans every response platform-wide and concurrent refreshes serialize on a
-  // lock, so it runs off the response path and is debounced globally to one per
-  // 30s (shared key with /api/respond); when skipped, the next submit or delete
-  // after the window picks up the freshness.
-  const { limited: mvLimited } = await checkRateLimit('mv:study_response_stats', 1, 30000)
-  if (!mvLimited) {
-    const refresh = Promise.resolve(serviceSupabase.rpc('refresh_study_response_stats')).then(
-      ({ error: statErr }) => { if (statErr) void logError('studies.responses.refresh_stats', statErr, { orgId: study?.org_id }) },
-      (e) => { void logError('studies.responses.refresh_stats', e, { orgId: study?.org_id }) },
-    )
-    try { waitUntil(refresh) } catch { void refresh }
-  }
+  // study_response_stats is maintained LIVE by the responses trigger (sql/174),
+  // including this DELETE — no materialized-view refresh needed (it scanned
+  // every response platform-wide).
 
   return NextResponse.json({ deleted: count ?? ids.length })
 }

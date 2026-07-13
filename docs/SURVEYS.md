@@ -174,6 +174,20 @@ Enabled per-survey from the **Publish** page (`/studies/[id]/deploy`) → **Kios
 
 A `responses` row is created on the first partial save and upserted by `session_id` on every step. `app/api/respond/route.ts` stamps `completed_at` on **every** save (partial or final), so it's really a *last-activity* time — every row has a real date, including abandoned surveys. **`status` (`incomplete` / `complete`) is the authoritative complete-vs-incomplete signal — never the presence of `completed_at`.** (Before mid-2026, partial saves wrote `completed_at = NULL`; migration `068_backfill_response_timestamps.sql` recovered those historical dates from `payload.timestamp`.)
 
+### Response stats (dashboard tiles)
+Per-study aggregates (total / complete / promoters·passives·detractors / avg
+experience / avg NPS / last response) live in the **`study_response_stats_live`
+counter table**, maintained **incrementally by an AFTER INSERT/UPDATE/DELETE
+trigger on `responses`** (sql/174, perf review §7 Brief E item 4). This replaced
+the `study_response_stats` **materialized view**, whose
+`refresh_study_response_stats()` did a full platform-wide GROUP BY scan and was
+fired (debounced 30s) from `/api/respond` + `/api/studies/[id]/responses` on
+every submit/delete — a QR-burst I/O sink at scale. The counter table is O(1)
+per response (averages kept as sum+count pairs); `/api/respond` no longer
+refreshes anything. The dashboard reads it via `get_study_response_stats_for_user`
+(SECURITY DEFINER, org-filtered); `study_stats_for_ids` (a direct grouped read
+over `responses`, bounded to the requested ids) remains the fallback.
+
 ### Key Indexes
 - `idx_responses_study` — By study_id
 - `idx_responses_sentiment` — By study_id + sentiment
