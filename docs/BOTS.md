@@ -297,7 +297,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 **RLS is enabled** on all bot tables, but the public chat endpoint uses the **service role** to bypass RLS (because end-users are not authenticated). Authorization is enforced at the application layer:
 
-- **Admin endpoints** (`/api/bots/*`, `/api/bots/[id]/*` except `chat`) verify the caller is in the bot's org via `users.org_id = bots.org_id`.
+- **Admin endpoints** (`/api/bots/*`, `/api/bots/[id]/*` except `chat`) verify the caller is in the bot's org via `users.org_id = bots.org_id`. On `PATCH /api/bots/[id]`, the audit-log snapshot reads (before/after the update) additionally pair `id` with `org_id` at the query for non-admins (2026-07-13, W29 audit finding): a cross-org or nonexistent id returns no row and 404s — previously a nonexistent id fell through to a 0-row update that reported success. The org-transfer branch's bare-id read is the invariant's documented admin bypass (admin-only; it exists to discover the agent's current org).
 - **Admin pages** (`/bots/[id]/{history,entities,questions}`) load the agent with the service role; the lookup pairs `id` with `org_id` for non-admins (admin-org users may load any org's agent), so a guessed UUID can't surface another org's agent. A trailing `org_id` re-check before render is kept as defense-in-depth.
 - **Public chat** (`/api/bots/[id]/chat`) verifies the bot exists and `status = 'active'`. Then service role reads/writes everything else. Rate limited per IP.
 - **Cron review** uses `Authorization: Bearer ${CRON_SECRET}`.

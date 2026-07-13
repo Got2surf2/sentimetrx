@@ -11,13 +11,15 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
-> **Note on the `xlsx` dependency:** it is sourced from the SheetJS CDN
-> (`cdn.sheetjs.com`), not the npm registry — the registry package is
-> frozen at an older version. If `npm install` fails with a 403/network
-> error on that tarball, it's a CDN-side issue: retry, or download the
-> tarball once and `npm install` from a local file. Long-term
-> replacement (e.g. `exceljs`) is tracked in the weekly governance
-> audit findings.
+> **Note on the `xlsx` dependency:** it installs from a tarball vendored
+> in this repo (`vendor/xlsx-0.20.3.tgz`, the official SheetJS build —
+> integrity-verified against the original CDN artifact). The npm-registry
+> `xlsx` package is frozen at 0.18.5 with unfixed CVEs, and installing
+> from `cdn.sheetjs.com` at install time 403'd in clean checkouts, so the
+> tarball is committed: `npm install` needs no network access for it and
+> the bytes can't change underneath us. To upgrade: download the new
+> tarball from the SheetJS CDN, verify its published integrity hash, drop
+> it in `vendor/`, and update the `file:` reference in `package.json`.
 
 ## Tests
 

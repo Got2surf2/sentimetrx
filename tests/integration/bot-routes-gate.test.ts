@@ -109,6 +109,13 @@ describe('bots/[id] — GET/PATCH/DELETE (getAuthUser + users)', () => {
     expect((await botMain.PATCH(reqPost(), props)).status).toBe(404)
   })
 
+  it('404 nonexistent-id PATCH for a non-admin (org-paired snapshot read returns no row; previously a 0-row update reported success)', async () => {
+    ctx.authUser = { id: 'u1' }
+    ctx.results['users'] = { data: sameOrgUser, error: null }
+    ctx.results['agents'] = { data: null, error: { message: 'No rows' } }
+    expect((await botMain.PATCH(reqPost(), props)).status).toBe(404)
+  })
+
   it('404 cross-org DELETE for a non-admin', async () => {
     ctx.authUser = { id: 'u1' }
     ctx.results['users'] = { data: sameOrgUser, error: null }

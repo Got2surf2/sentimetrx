@@ -86,6 +86,9 @@ export async function PATCH(req: NextRequest, props: Params) {
     // Using the caller's org made an admin moving a cross-org agent back into
     // the admin's own org fail with a false "already in that org" (target ==
     // caller org), even when the agent lived in a different org.
+    // Deliberately UNPAIRED bare-id read (the multi-tenancy invariant's admin
+    // bypass): this branch is admin-only (403 above) and exists to discover
+    // which org the agent currently lives in — pairing would defeat transfer.
     const { data: cur } = await service.from('agents').select('org_id, name').eq('id', params.id).single()
     transferFromOrgId = (cur as AgentRow | null)?.org_id ?? null
     const check = await checkTransferTarget(service, transferFromOrgId, body.org_id)
@@ -115,12 +118,19 @@ export async function PATCH(req: NextRequest, props: Params) {
   const service = createServiceRoleClient()
 
   // Snapshot the bot row before the update so the change log can diff.
-  const { data: beforeRow } = await service.from('agents').select('*').eq('id', params.id).single()
+  // org-paired at the query for non-admins (multi-tenancy invariant): a
+  // cross-org id returns no row at all instead of fetching another tenant's
+  // row and discarding it after a check.
+  let beforeQuery = service.from('agents').select('*').eq('id', params.id)
+  if (!auth.isAdmin) beforeQuery = beforeQuery.eq('org_id', auth.orgId)
+  const { data: beforeRow } = await beforeQuery.single()
 
-  // Defense-in-depth: a non-admin may only touch their own org's agent. The
-  // update below is already org-paired, but guarding here (same as GET) also
-  // stops a cross-org id from writing a spurious audit-log entry / success:true.
-  if (!auth.isAdmin && beforeRow && (beforeRow as AgentRow).org_id !== auth.orgId) {
+  // Defense-in-depth: with the paired read a non-admin hitting a cross-org
+  // OR nonexistent id gets no row — 404 both (previously a nonexistent id
+  // fell through to a 0-row update that reported success). The explicit
+  // org-mismatch check stays as a second layer in case a refactor ever
+  // drops the query pairing.
+  if (!auth.isAdmin && (!beforeRow || (beforeRow as AgentRow).org_id !== auth.orgId)) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   }
 
@@ -159,7 +169,10 @@ export async function PATCH(req: NextRequest, props: Params) {
 
   // Audit log: write a 'status_change' or 'update' depending on what changed.
   if (beforeRow) {
-    const { data: afterRow } = await service.from('agents').select('*').eq('id', params.id).single()
+    // org-paired for non-admins, same as the beforeRow read above.
+    let afterQuery = service.from('agents').select('*').eq('id', params.id)
+    if (!auth.isAdmin) afterQuery = afterQuery.eq('org_id', auth.orgId)
+    const { data: afterRow } = await afterQuery.single()
     const before = snapshotForDiff(beforeRow as AgentRow)
     const after = snapshotForDiff(afterRow as AgentRow | null)
     const diff = diffSnapshots(before, after)
