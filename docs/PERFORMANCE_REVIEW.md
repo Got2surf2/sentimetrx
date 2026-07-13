@@ -298,6 +298,144 @@ delta during an active usage day; healthy is ≥99%.
 
 ---
 
+## 7. Implementation briefs (for the non-Fable sessions)
+
+Owner decision 2026-07-13: items #2 (Ask Ana) and #7 (org-snapshot cursor)
+in the fix queue run on Fable; **everything below runs on Opus**. These
+briefs are written so an Opus session can execute without re-deriving the
+review. Rules that apply to EVERY brief:
+
+- **Verification bar:** before committing, compare the new sampled/stored
+  path against the exact path on a mid-size TEST dataset (Carrabba's 56K
+  `e0b67281-…` or Outback 128K `a1b2c3d4-…-000200`) — results within
+  sampling tolerance (±2% on proportions) — AND run the path against the 1M
+  `[PERF TEST]` dataset (`d1000000-…-001000`) to confirm no 57014. The
+  harness pattern is `scripts/_perf_measure_1m.ts` (untracked, KEEP).
+- **Deploy-order safety:** new/changed RPC signatures must not break the
+  deployed app. Pattern (used by sql/164/166): route tries the new RPC args,
+  catches `PGRST202`, falls back to legacy behavior. Apply new SQL to TEST
+  (`psql "$TEST_DB_URL" -f sql/NNN_x.sql`); prod migrate (`npm run migrate
+  sql/NNN_x.sql`) happens at push time — record it in the queue memory's
+  push recipe. NEVER apply to prod without the owner's push/migrate word.
+- **Sampling doctrine (D6):** exact at/below 50K rows; deterministic sample
+  (`idx_drf_sample` order) above. Every sampled number shown to a user gets
+  the "~" treatment like the metric strip. One denominator per surface.
+- Same-commit spec/devlog updates; lint ratchet (never a new `any`); local
+  commits only — no push without the owner's explicit word.
+
+### Brief A — pg_repack bloat reclaim (any tier; OWNER-GATED prod op)
+
+Goal: return the ~2 GB dead extent in `dataset_rows_flat` (heap 2,257 MB for
+~274K live rows) to the OS. Steps: (1) quiet window (owner confirms; avoid
+cron windows — nightly backup 04:00Z); (2) `CREATE EXTENSION pg_repack;` via
+`supabase db query --linked`; (3) run the pg_repack CLI (client version must
+match server extension 1.5.2) with the direct (non-pooler) connection string
+against `-t dataset_rows_flat`, `--no-superuser-check`; (4) verify:
+`pg_total_relation_size` before/after (expect ~3,029 MB → ~1.1 GB), row count
+unchanged, `\di+` index sizes shrunk; (5) log the result in the queue memory
++ devlog. If the CLI route fails on Supabase's permission model, fallback is
+`VACUUM FULL dataset_rows_flat` in an owner-approved downtime window
+(~minutes of table lock at current size). No code, no push.
+
+### Brief B — `filter-options` + Filters value lists (fix queue #3)
+
+Two halves, one commit:
+
+1. **Server** (`app/api/datasets/[datasetId]/filter-options/route.ts`):
+   today it loops fields serially calling `count_nonempty_rows`,
+   `count_field_values`, `numeric_field_stats`, and two PostgREST
+   `.order('data->>field')` date probes — every one 57014s at 1M (§2).
+   Replace with ONE new RPC `sampled_filter_options(p_dataset_id, p_fields
+   jsonb, p_after_hash, p_after_id, p_limit)` that keyset-pages the
+   deterministic sample once (sql/162's exact shape — copy its `AS
+   MATERIALIZED` gotcha) and per page accumulates, per field: non-empty
+   count, distinct values w/ counts (cap 500/field), numeric min/max, date
+   (text) min/max. Below the 50K cap the loop naturally scans all rows =
+   exact; above, label blanks/counts "~" in the response and let the modal
+   show the sampled marker. Keep the legacy per-field path as the PGRST202
+   fallback.
+2. **Client value lists** (`components/analyze/FiltersModal.tsx:209`): value
+   lists fall back to `new Set(rows.map(...))` over the loaded 50K sample —
+   this is the owner-reported "missing location values" bug (rare values
+   absent from the sample). Fix: for `categorical` fields, prefer the
+   server route's `values` (now sampled-but-500-deep, or exact ≤50K) over
+   sample-derived; if a field's distinct count hits the 500 cap, surface
+   "some rare values may be missing — search to add" instead of silently
+   truncating. Do NOT try to return unbounded exact distincts at 1M — a
+   full GROUP BY is the thing we're removing.
+
+Verify: modal opens on the 1M dataset without error; on 56K, new values
+match the old route exactly; the specific repro = a high-cardinality
+location field where a rare value was previously missing. Specs:
+ANALYTICS.md (Filters section) + DATABASE.md (new RPC).
+
+### Brief C — `/aggregate` sampled variants (fix queue #4)
+
+`app/api/datasets/[datasetId]/aggregate/route.ts` — every op RPC is a full
+scan (its own header says so): `crosstab_counts`, `group_numeric_stats`,
+`date_series_stats`, `count_field_values`, `numeric_field_stats`, and the
+`taxonomy_*` family. All 57014 at 1M (crosstab + group_numeric measured).
+
+- For each RPC add a `sampled_*` twin: same output shape + `n_scanned` +
+  keyset cursor over `idx_drf_sample` (template: sql/162/163/166 — page
+  loop lives in a lib helper mirroring `lib/sampledSignalCounts.ts`).
+- Route logic: dataset (or collection member) `row_count` ≤ 50K → exact RPC
+  unchanged; above → sampled twin, scale counts by `total/scanned`, pass
+  `sampled: true` through the aggregation response.
+- **UI labeling:** `useAggregation` / ChartsModule / StatsModule surface the
+  "~" marker exactly like the metric strip (one shared affordance, not six
+  bespoke ones). Statistical caveats: means/proportions scale cleanly;
+  medians/stddev report the sample statistic unscaled (they estimate the
+  population value directly) — do NOT multiply them.
+- taxonomy_* RPCs scan `data->'_tx'`: same keyset treatment, but respect
+  `taxonomy_field_or_primary` resolution (sql/164) — don't regress the
+  per-question dimension work.
+- Do the RPCs in two commits if needed (counts family, then taxonomy
+  family) — each verified sampled-vs-exact on 56K/128K per the global bar,
+  plus no-57014 on the 1M dataset. Specs: ANALYTICS.md §charts/stats,
+  DATABASE.md, TAXONOMY.md if taxonomy_* signatures change.
+
+### Brief D — QR-burst hardening (fix queue #5)
+
+1. `app/api/respond/route.ts:26`: key `'respond:' + ip` (120/min) →
+   two-tier: `'respond:' + ip + ':' + (session_id || 'anon')` at 20/min
+   PLUS backstop `'respond-ip:' + ip` at 600/min (abuse ceiling). Note
+   session_id arrives in the body — parse before the rate check; reject
+   bodies > ~100 KB first.
+2. `app/api/clarify/route.ts:33`: same split — per-session 6/min +
+   per-IP backstop 120/min (a room of 20 on venue WiFi currently exhausts
+   10/min instantly and follow-ups silently die).
+3. `app/s/[guid]/page.tsx`: wrap `findStudy` in `React.cache()` so page +
+   `generateMetadata` share one lookup per request.
+4. Tests: unit tests for the new keying (two sessions same IP not
+   cross-throttled; per-IP backstop still fires); existing respond tests
+   keep passing. Load-check with `tests/loadtest/survey-submit.k6.js`
+   against local dev if convenient, else rely on unit tests — the path is
+   otherwise unchanged. Specs: SURVEYS.md (rate-limit section), CAPACITY.md
+   §3 interpretation note.
+
+### Brief E — long-tail O(N) retirements (fix queue #6)
+
+Order within this brief: (1) **entities GET**
+(`app/api/datasets/[datasetId]/entities/route.ts` → `count_entity_terms`
+live FTS over all rows for ~300 terms): store per-entity counts on the
+catalog row at discovery/classify/refresh time (they already rebuild
+then), serve stored counts, background-refresh on sync like signal-stats'
+row_count keying. (2) **theme-counts extras**
+(`cooccurrence`/`topical`/`dimensions` RPC full scans): sampled twins per
+Brief C's template. (3) **project-report Node union**
+(`lib/projectReportLoad.ts` `readMemberRows`, OFFSET pages ×80K/member):
+swap to `allocateSampleShares` + `pageSampledRows` from
+`lib/bulkRowSample.ts` (the bulk-rows collection path already does this —
+mirror it). (4) **`study_response_stats` MV** (`sql/phase4_flat_rows.sql`):
+new migration creating `study_response_stats_live` table + `AFTER
+INSERT/UPDATE` trigger on `responses` doing an upsert delta; readers
+(grep `study_response_stats` — `/api/respond` refresh call + stats
+consumers) switch to the table; drop the MV + the `refresh` RPC call in
+`/api/respond` once readers are moved. Forward-looking — schedule last.
+
+---
+
 *Re-run policy: re-verify §2 measurements after any change to the sampling
 RPCs or `idx_drf_sample`; re-take the §1 snapshot after a compute resize,
 a bloat reclaim, or any dataset crossing 500K real rows. Harness:
