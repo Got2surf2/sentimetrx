@@ -120,7 +120,13 @@ rollup **zero-suppresses every axis that never fired** (was emotion-only
 suppression), so an emotion-only dataset shows a single Emotion dimension
 card, never seven empty restaurant cards. `classifyDatasetKeyword` /
 `classifyPendingRows` take `mode: 'full' | 'emotion'`; the reviewSync
-auto-classify stays `full` (it only runs on google-reviews syncs). Known
+auto-classify stays `full` (it only runs on google-reviews syncs). **Client loop lifecycle (2026-07-12):** the TextMine auto-classify loops
+(`autoEnableDimensions`/`autoTagEmotion`, ≤300 chunks) CANCEL on unmount via a
+`classifyAlive` ref — an uncancelled loop kept running after tab switches and
+its `router.refresh()` from the dead component stomped in-flight navigations
+(the "Statistics → Schema hangs" bug). Classification is idempotent/resumable,
+so breaking mid-run is safe; pending rows are picked up on the next visit or
+drift nudge. Known
 corner: the mine-themes `foodService` auto-detect on an UPLOAD in a
 non-restaurant org sets `taxonomy_enabled` but the classify still runs
 emotion-only (the flag no longer implies full) — a restaurant client org
