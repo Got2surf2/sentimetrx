@@ -12,6 +12,8 @@
 // Design = datanautix.com tokens: Fraunces serif + DM Sans, warm paper/cream
 // canvas, Ana orange + Sarina teal, editorial lists + hairline rules.
 
+import { DECK_FONT_FACE_CSS } from './embeddedFonts'
+
 const T = {
   paper: '#FFFDF9', cream: '#FAF6F0', ink: '#1A1714', inkSoft: '#2E2A25',
   ana: '#E85A1A', anaLight: '#F57042', anaDark: '#B84010', anaPale: '#FEF0E8',
@@ -292,9 +294,9 @@ export function buildPitchDeckV3Html(): string {
 
   return `<!doctype html><html><head><meta charset="utf-8">
   <title>Sentimetrx — Menlo × Anthropic Anthology Fund</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <!-- Fonts embedded (lib/decks/embeddedFonts) — no network at render time;
+       Google Fonts being unreachable used to silently degrade every deck. -->
+  <style>${DECK_FONT_FACE_CSS}</style>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     @page { size: 1280px 720px; margin: 0; }
