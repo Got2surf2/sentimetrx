@@ -62,7 +62,7 @@ async function runOne(baseUrl: string, botId: string, test: SarinaTest): Promise
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages, session_id: sessionId, debug: true }),
       })
-      const data: any = await res.json().catch(() => ({}))
+      const data: { error?: string; reply?: string } = await res.json().catch(() => ({}))
       if (!res.ok) {
         return {
           id: test.id, description: test.description, category: test.category,
@@ -86,13 +86,13 @@ async function runOne(baseUrl: string, botId: string, test: SarinaTest): Promise
       mustNotIncludeResults: graded.mustNotIncludeResults,
       elapsedMs: Date.now() - started,
     }
-  } catch (e: any) {
+  } catch (e: unknown) {
     return {
       id: test.id, description: test.description, category: test.category,
       status: 'error', reply: '', transcript,
       mustIncludeResults: [], mustNotIncludeResults: [],
       elapsedMs: Date.now() - started,
-      error: e?.message || String(e),
+      error: (e instanceof Error ? e.message : '') || String(e),
     }
   }
 }

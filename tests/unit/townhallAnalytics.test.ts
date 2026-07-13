@@ -34,7 +34,7 @@ describe('computeSessionAnalytics', () => {
   const { enrichedThemes, analytics } = computeSessionAnalytics({ turns: TURNS, themes: THEMES })
 
   it('seed theme counts AI-tagged turns and supplements with untagged keyword hits', () => {
-    const parking = enrichedThemes.find(t => t.id === 'th-parking')
+    const parking = enrichedThemes.find(t => t.id === 'th-parking')!
     // 1 tagged turn; the untagged "garage lighting" text matches a keyword
     // and lands in quotes (supplement) without inflating response_count.
     expect(parking.response_count).toBe(1)
@@ -46,7 +46,7 @@ describe('computeSessionAnalytics', () => {
   })
 
   it('organic theme counts keyword matches plus untagged AI-tagged turns', () => {
-    const organic = enrichedThemes.find(t => t.id === 'th-organic')
+    const organic = enrichedThemes.find(t => t.id === 'th-organic')!
     // "Sidewalk near the school" (keyword) + "More crosswalk signals"
     // (keyword, also tagged) — counted once each.
     expect(organic.match_count).toBe(2)

@@ -176,7 +176,7 @@ export function welchTTestFromStats(a: { mean: number; sd: number; n: number }, 
 
 // One-way ANOVA from per-group summary stats. SSB from group means vs the
 // n-weighted grand mean; SSW from (n-1)·var per group. Same shape as oneWayANOVA.
-export function anovaFromStats(groups: Record<string, { mean: number; sd: number; n: number }>): any {
+export function anovaFromStats(groups: Record<string, { mean: number; sd: number; n: number }>): ANOVAResult | null {
   var keys = Object.keys(groups); if (keys.length < 2) return null
   var N = 0, weighted = 0
   keys.forEach(function(k) { N += groups[k].n; weighted += groups[k].n * groups[k].mean })
@@ -199,7 +199,7 @@ export function anovaFromStats(groups: Record<string, { mean: number; sd: number
 
 // Chi-square from a precomputed contingency table (for dimension × categorical
 // crosstabs computed server-side). Same shape as chiSquareStat.
-export function chiSquareFromTable(tbl: Record<string, Record<string, number>>, rows: string[], cols: string[]): any {
+export function chiSquareFromTable(tbl: Record<string, Record<string, number>>, rows: string[], cols: string[]): ChiSquareResult | null {
   if (rows.length < 2 || cols.length < 2) return null
   var rS: Record<string, number> = {}; rows.forEach(function(r) { rS[r] = cols.reduce(function(s, c) { return s + (tbl[r]?.[c] || 0) }, 0) })
   var cS: Record<string, number> = {}; cols.forEach(function(c) { cS[c] = rows.reduce(function(s, r) { return s + (tbl[r]?.[c] || 0) }, 0) })
@@ -227,7 +227,7 @@ export function mannWhitneyU(a: number[], b: number[]): { U: number; z: number; 
   return { U: U, z: z, p: 2 * (1 - normCDF(Math.abs(z))), na: na, nb: nb }
 }
 
-export function oneWayANOVA(groups: Record<string, number[]>): any {
+export function oneWayANOVA(groups: Record<string, number[]>): ANOVAResult | null {
   var keys = Object.keys(groups); if (keys.length < 2) return null
   var allV = keys.reduce(function(a, k) { return a.concat(groups[k]) }, [] as number[])
   var N = allV.length, gm = mean(allV), kk = keys.length
@@ -246,7 +246,7 @@ export function oneWayANOVA(groups: Record<string, number[]>): any {
   return { F: F, dfB: dfB, dfW: dfW, p: p, eta2: eta2, SSB: SSB, SSW: SSW, MSB: MSB, MSW: MSW, groupStats: gs, pairwise: pairwise, k: kk, N: N }
 }
 
-export function chiSquareStat(rf: string, cf: string, data: Record<string, unknown>[]): any {
+export function chiSquareStat(rf: string, cf: string, data: Record<string, unknown>[]): ChiSquareResult | null {
   var rows = Array.from(new Set(data.map(function(r) { return String(r[rf] || '') }))).filter(Boolean)
   var cols = Array.from(new Set(data.map(function(r) { return String(r[cf] || '') }))).filter(Boolean)
   if (rows.length < 2 || cols.length < 2) return null
@@ -274,7 +274,7 @@ function invertMatrix(M: number[][]): number[][] | null {
   return I
 }
 
-export function olsRegression(y: number[], X: number[][], names: string[]): any {
+export function olsRegression(y: number[], X: number[][], names: string[]): RegressionResult | null {
   if (y.length !== X.length || X.length === 0) return null
   var n = y.length, Xd = X.map(function(r) { return [1].concat(r) }), q = Xd[0].length
   var XtX = Array.from({ length: q }, function(_, i) { return Array.from({ length: q }, function(_, j) { return Xd.reduce(function(s, r) { return s + r[i] * r[j] }, 0) }) })
@@ -288,7 +288,7 @@ export function olsRegression(y: number[], X: number[][], names: string[]): any 
   var FF = ((SST - SSE) / (q - 1)) / MSE, Fp = fDistP(FF, q - 1, n - q)
   var se = inv.map(function(row, i) { return Math.sqrt(Math.abs(row[i] * MSE)) })
   var tStats = beta.map(function(b, i) { return b / se[i] }), pVals = tStats.map(function(t) { return tDist2p(Math.abs(t), n - q) })
-  var coefs = ['Intercept'].concat(names).map(function(nm, i) { return { name: nm, beta: beta[i], se: se[i], t: tStats[i], p: pVals[i], ci: [beta[i] - 1.96 * se[i], beta[i] + 1.96 * se[i]] } })
+  var coefs = ['Intercept'].concat(names).map(function(nm, i): RegressionResult['coefs'][number] { return { name: nm, beta: beta[i], se: se[i], t: tStats[i], p: pVals[i], ci: [beta[i] - 1.96 * se[i], beta[i] + 1.96 * se[i]] } })
   return { coefs: coefs, R2: R2, R2adj: R2adj, F: FF, Fp: Fp, n: n, p: q - 1, SSE: SSE, SST: SST, MSE: MSE, yhat: yhat, resid: resid, names: names }
 }
 

@@ -385,6 +385,7 @@ export async function getTownHallAsLegacy(
   // Return type stays `any` (rather than the structured TownHallLegacyPayload
   // below) because a stale verification script reads analytics fields that
   // moved under `.analytics` — narrowing here would break its typecheck.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- scripts/verify-phase5c6.ts reads pre-move top-level analytics fields; any honest payload type fails its typecheck
 ): Promise<any | null> {
   // First try id, then slug. Slug is the more common public lookup.
   let hall: PulseiqSessionRow | null = null

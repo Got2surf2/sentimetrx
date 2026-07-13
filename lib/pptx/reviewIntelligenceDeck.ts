@@ -25,7 +25,7 @@ const C = {
 const W = 13.33, H = 7.5, PAD = 0.5
 
 export function buildReviewIntelligenceDeck(pptx: PptxGenJS, mode: DeckMode = 'full', clientName = 'Ruth’s Chris') {
-  const shape = (pptx as any).ShapeType
+  const shape = pptx.ShapeType
   let pageNo = 0
   const isCap = mode === 'capability'
   const possessive = isCap ? 'your' : `${clientName}’s`

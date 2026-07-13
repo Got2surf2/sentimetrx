@@ -58,9 +58,37 @@ interface AnalyticsTheme {
   outlier?: Outlier | null
 }
 
+// Discriminated union of /api/share GET payloads (fields the page reads)
+type SharePayload =
+  | {
+      type: 'study'; expires_at: string; study: StudyMeta; responses: StudyResponse[]
+      ratingScale?: RatingScaleOption[]; ratingLabel?: string | null; npsEnabled?: boolean; experienceEnabled?: boolean
+      ratingPrompt?: string | null; npsPrompt?: string | null; themes?: StudyTheme[]
+    }
+  | { type: 'campaign'; expires_at: string; campaign: CampaignMeta; stats: CampaignStats }
+  | { type: 'townhall'; expires_at: string; session: THSession; themes: THTheme[]; stats: THStats }
+  | { type: 'analytics'; expires_at: string }
+
+// /api/share/analytics GET payload (fields the page reads)
+interface AnalyticsPayload {
+  label: string
+  filtered: { n: number }
+  benchmark: { n: number }
+  inView?: { n: number }
+  commentCount?: number | null
+  themeFieldLabels?: string[]
+  filterSummary?: Record<string, string>
+  primarySummary: { field: string; values: string[]; comparisonValues: string[] } | null
+  numeric?: Record<string, NumericMetric>
+  completion?: { started: number; completed: number; stages?: CompletionStage[] } | null
+  themes?: AnalyticsTheme[]
+  includeThemes?: boolean
+  dateRange?: { min: string; max: string } | null
+}
+
 export default function SharedDashboard(props: { params: Promise<{ token: string }> }) {
   const params = use(props.params);
-  const [data, setData] = useState<any>(null)
+  const [data, setData] = useState<SharePayload | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -95,6 +123,7 @@ export default function SharedDashboard(props: { params: Promise<{ token: string
     </div>
   )
 
+  if (!data) return null
   if (data.type === 'study') return <SharedStudyDashboard study={data.study} responses={data.responses} expiresAt={data.expires_at}
     ratingScale={data.ratingScale} ratingLabel={data.ratingLabel} npsEnabled={data.npsEnabled} experienceEnabled={data.experienceEnabled}
     ratingPrompt={data.ratingPrompt} npsPrompt={data.npsPrompt} themes={data.themes || []}
@@ -730,7 +759,7 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
   token: string; expiresAt: string
   lastRefreshed: Date | null; refreshing: boolean; onRefresh: () => void
 }) {
-  const [data, setData] = useState<any>(null)
+  const [data, setData] = useState<AnalyticsPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -763,6 +792,7 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
     </div>
   )
 
+  if (!data) return null
   const numericEntries = Object.entries(data.numeric || {}) as [string, NumericMetric][]
   const themes = data.themes || []
   const filterSummary = data.filterSummary || {}
@@ -864,7 +894,7 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
                 { label: 'Started', count: data.completion.started },
                 { label: 'Completed', count: data.completion.completed },
               ]).map(function(stage: CompletionStage, i: number, arr: CompletionStage[]) {
-                var pct = data.completion.started > 0 ? Math.round(stage.count / data.completion.started * 100) : 0
+                var pct = data.completion!.started > 0 ? Math.round(stage.count / data.completion!.started * 100) : 0
                 var color = pct >= 80 ? '#059669' : pct >= 50 ? '#d97706' : '#dc2626'
                 var prevCount = i > 0 ? arr[i - 1].count : stage.count
                 var dropoff = i > 0 && prevCount > stage.count ? Math.round((prevCount - stage.count) / prevCount * 100) : 0

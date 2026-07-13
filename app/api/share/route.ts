@@ -357,8 +357,8 @@ export async function GET(req: NextRequest) {
         .select('theme_model')
         .eq('dataset_id', dsRow.id)
         .single()
-      const tm = stateRow?.theme_model as any
-      if (tm?.themes?.length > 0) {
+      const tm = stateRow?.theme_model as { themes?: ThemeModelTheme[] } | null | undefined
+      if (tm?.themes && tm.themes.length > 0) {
         const totalCount = (responses || []).length
         themesSummary = tm.themes.map((t: ThemeModelTheme) => ({
           name: t.name,

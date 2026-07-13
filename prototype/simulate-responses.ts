@@ -348,8 +348,8 @@ async function submitResponse(payload: Record<string, unknown>, duration_sec: nu
     const data = await res.json()
 
     if (res.ok) {
-      const expScore = (payload.experienceRating as any)?.score || '?'
-      const npsScore = (payload.npsRecommend as any)?.score || '?'
+      const expScore = (payload.experienceRating as { score: number } | undefined)?.score || '?'
+      const npsScore = (payload.npsRecommend as { score: number } | undefined)?.score || '?'
       console.log(`  ✓ Response ${index + 1}/${COUNT} — exp:${expScore} nps:${npsScore} duration:${duration_sec}s — id: ${data.response_id}`)
       return true
     } else {

@@ -71,7 +71,7 @@ export function computeSessionAnalytics(opts: {
   themes: LegacyThemeRow[] // legacy-shaped theme rows
   safetyConfig?: Partial<ContentSafetyConfig>
   bucketParam?: string | null
-}): { enrichedThemes: any[]; analytics: SessionAnalytics } {
+}): { enrichedThemes: EnrichedTheme[]; analytics: SessionAnalytics } {
   const { turns, themes } = opts
   // Legacy behavior: a bare {} (no content_safety configured) means bleeping
   // is off — bleepText gates on .enabled.

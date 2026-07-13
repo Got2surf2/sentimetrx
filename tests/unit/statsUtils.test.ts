@@ -92,7 +92,7 @@ describe('statsUtils — group comparison', () => {
   })
 
   it('oneWayANOVA: three separated groups → significant', () => {
-    const r = oneWayANOVA({ a: [1, 2, 3], b: [4, 5, 6], c: [7, 8, 9] })
+    const r = oneWayANOVA({ a: [1, 2, 3], b: [4, 5, 6], c: [7, 8, 9] })!
     expect(r.k).toBe(3)
     expect(r.N).toBe(9)
     expect(r.p).toBeLessThan(0.05)
@@ -135,7 +135,7 @@ describe('statsUtils — distributions & chi-square', () => {
       { region: 'N', churn: 'yes' }, { region: 'N', churn: 'yes' },
       { region: 'S', churn: 'no' }, { region: 'S', churn: 'no' },
     ]
-    const r = chiSquareStat('region', 'churn', data)
+    const r = chiSquareStat('region', 'churn', data)!
     expect(r).not.toBeNull()
     expect(r.rows.sort()).toEqual(['N', 'S'])
     expect(r.N).toBe(4)
@@ -151,7 +151,7 @@ describe('statsUtils — distributions & chi-square', () => {
     const r = chiSquareFromTable(
       { x: { p: 10, q: 0 }, y: { p: 0, q: 10 } },
       ['x', 'y'], ['p', 'q'],
-    )
+    )!
     expect(r.df).toBe(1)
     expect(r.N).toBe(20)
     expect(r.p).toBeLessThan(0.001)
@@ -160,7 +160,7 @@ describe('statsUtils — distributions & chi-square', () => {
 
 describe('statsUtils — regression', () => {
   it('olsRegression recovers a perfect linear model y = 2x + 1', () => {
-    const r = olsRegression([3, 5, 7, 9, 11], [[1], [2], [3], [4], [5]], ['x'])
+    const r = olsRegression([3, 5, 7, 9, 11], [[1], [2], [3], [4], [5]], ['x'])!
     expect(r.R2).toBeCloseTo(1, 8)
     expect(r.coefs[0].name).toBe('Intercept')
     expect(r.coefs[0].beta).toBeCloseTo(1, 6)

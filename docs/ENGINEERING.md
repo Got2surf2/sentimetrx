@@ -46,25 +46,28 @@ Last reviewed: 2026-05-15.
   rules as before at `warn` (`no-floating-promises`, `no-misused-
   promises`, `no-explicit-any`, `consistent-type-imports`). `next lint`
   is gone; `npm run lint` = `eslint .`. **CI runs `npm run lint:ci`
-  (`eslint . --max-warnings 346` as of 2026-07-12)** — a **warn-only
+  (`eslint . --max-warnings 269` as of 2026-07-13)** — a **warn-only
   ratchet**: 0 errors, and the ceiling fails CI only if new code pushes
   the count UP. Burn the number down (edit the `lint:ci` ceiling in
   `package.json` as warnings are fixed), same as the coverage floor; once
   a rule's warnings hit 0, promote it to `error`.
-  **`no-explicit-any` burn-down — DONE to the safe floor (2026-07-07).**
-  A 16-wave multi-agent sweep took total warnings **3,060 → 358** and
-  `no-explicit-any` specifically **2,787 → 83** (−97%), all annotation-only
-  (no runtime change), each wave `tsc`-clean + 1,238 tests green, ceiling
-  lowered every wave. Method (reusable — `scripts/_wf-eslint-burndown.js`,
-  untracked): one agent per file in an isolated git worktree types the
-  file with real interfaces/imports, verifies `tsc` in isolation, returns
-  the file; a consolidation pass applies them, runs global `tsc` + tests,
+  **`no-explicit-any` burn-down — COMPLETE, rule promoted to `error`
+  (2026-07-13).** A 16-wave multi-agent sweep (2026-07-07) took total
+  warnings **3,060 → 358** and `no-explicit-any` specifically
+  **2,787 → 83** (−97%); a final wave (2026-07-13) resolved the residual
+  77 (recounted) with real derived types — discriminated unions,
+  chatCore `agent`/`body`, plotly shim — leaving exactly **one** scoped
+  justified `eslint-disable` (`lib/townHallAdapter.ts` legacy payload
+  return read by a stale verify script). All annotation-only (no runtime
+  change), each wave `tsc`-clean + tests green, ceiling lowered every
+  wave. Method (reusable — `scripts/_wf-eslint-burndown.js`, untracked):
+  one agent per file in an isolated git worktree types the file with
+  real interfaces/imports, verifies `tsc` in isolation, returns the
+  file; a consolidation pass applies them, runs global `tsc` + tests,
   and reconciles the cross-file conflicts the isolated agents can't see
-  (prop-type cascades, index-signature mismatches). The **83 residual
-  `any`s are deliberate** — discriminated-union results accessed before
-  narrowing, dynamic payloads (chatCore `agent`/`body`), and untracked
-  scripts — left rather than risk behavior. The other ~275 remaining
-  warnings are `react-hooks/*` (a separate, behavior-sensitive effort).
+  (prop-type cascades, index-signature mismatches). The remaining ~269
+  warnings are `react-hooks/*` (a separate, behavior-sensitive effort)
+  plus a handful of `no-img-element`/misc.
   Note: `eslint-plugin-react-hooks@6` (bundled with next 16) ships new
   ERROR-level rules (`set-state-in-effect`, `purity`, …) — demoted to
   `warn` in the flat config so they ride the ratchet rather than hard-
@@ -74,15 +77,15 @@ Last reviewed: 2026-05-15.
   scratch scripts, untracked convention) and `scripts/oneoff/**` (the
   committed one-off provenance archive — see its README; not operating
   code, so it doesn't gate the promoted-to-error rules).
-  **Touch-it-fix-it rule for `no-explicit-any` (2026-07-02; bulk
-  burn-down done 2026-07-07, ~83 residual):** when a commit substantively
-  edits a file, replace the `any`s in the parts you touched (whole file
-  if small) in the same commit, then lower the `lint:ci` ceiling if the
-  total dropped. **No new `any` in new code — use `unknown` + a narrowing
+  **`no-explicit-any` is now an `error` (2026-07-13)** — a new `any`
+  fails CI outright, no ratchet slack. **Use `unknown` + a narrowing
   guard, a real interface/imported type, or `as unknown as T` only at a
-  genuine external boundary (untyped DB row, `res.json()`).** The ceiling
-  is the enforcement; this rule is the convention that keeps it from ever
-  drifting back up.
+  genuine external boundary (untyped DB row, `res.json()`).** A scoped
+  `eslint-disable-next-line … -- <reason>` is the escape hatch for a
+  genuinely untypeable spot, and the reason must be concrete.
+  Touch-it-fix-it (2026-07-02) still applies to the remaining warn-level
+  rules: clear the warnings in the parts you touch, then lower the
+  `lint:ci` ceiling if the total dropped.
 - **No dead code.** If a function is unreferenced for ≥1 week of
   active development, delete it. Reviewers can ask "where is this
   called?" and the answer must exist in the diff or repo.

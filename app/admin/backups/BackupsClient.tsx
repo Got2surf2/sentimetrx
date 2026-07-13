@@ -32,8 +32,8 @@ export default function BackupsClient({ orgs, logoUrl, orgName, userEmail, fullN
         const incomplete = data.fetch_errors ? ' ⚠ INCOMPLETE (' + Object.keys(data.fetch_errors).length + ' table fetch errors)' : ''
         setResults(prev => ({ ...prev, [orgId]: { ok: !incomplete, msg: 'Snapshot uploaded: ' + size + incomplete } }))
       }
-    } catch (e: any) {
-      setResults(prev => ({ ...prev, [orgId]: { ok: false, msg: e?.message || 'Network error' } }))
+    } catch (e: unknown) {
+      setResults(prev => ({ ...prev, [orgId]: { ok: false, msg: (e instanceof Error && e.message) || 'Network error' } }))
     } finally {
       setRunning(null)
     }

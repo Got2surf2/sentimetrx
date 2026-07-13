@@ -10,10 +10,42 @@ import { serializeFilters } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
 import { themeSetForField, type ThemeModel } from '@/lib/themeUtils'
 
+// Tool-use payload from Ana — one bag of optional fields across all tools
+// (create_theme / update_theme / merge_themes / delete_theme / generate_report / recommend_sampling).
+interface AnaActionInput {
+  // recommend_sampling
+  sample_size?: number
+  strategy?: 'proportional' | 'equal' | 'floor'
+  reasoning?: string
+  // create_theme
+  name?: string
+  description?: string
+  keywords?: string[]
+  sentiment?: string
+  // update_theme
+  theme_name?: string
+  new_name?: string
+  new_description?: string
+  new_sentiment?: string
+  add_keywords?: string[]
+  remove_keywords?: string[]
+  // merge_themes
+  theme_names?: string[]
+  merged_name?: string
+  merged_description?: string
+  merged_sentiment?: string
+  // delete_theme
+  reason?: string
+  // generate_report (the whole input is forwarded verbatim as the deck payload)
+  title?: string
+  subtitle?: string
+  slides?: { type: string; title: string }[]
+}
+
 interface AnaAction {
   tool: string
   toolId: string
-  input: Record<string, any>
+  input: AnaActionInput
   status: 'pending' | 'approved' | 'rejected'
 }
 
@@ -918,7 +950,7 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
               }}>{kw}</span>
             })}
             {(inp.keywords || []).length > 12 && (
-              <span style={{ fontSize: 10, color: '#9ca3af' }}>+{inp.keywords.length - 12} more</span>
+              <span style={{ fontSize: 10, color: '#9ca3af' }}>+{inp.keywords!.length - 12} more</span>
             )}
           </div>
         </div>

@@ -34,8 +34,24 @@ interface Narratives {
   reportTitle: string; executiveSummary: string[]; keyTakeaways: string[]
   fieldInsights: Record<string, FieldInsight>
 }
+// Analytics field-summary payload (dataset_state.analytics.fieldSummaries[*]).
+// Flat shape spanning the categorical/numeric/open-ended variants — this route
+// reads variant props without narrowing on `type`, and merges recomputed
+// partials back in when filters are active.
+interface FieldSummaryData {
+  type?: string
+  nonNull: number
+  counts?: Record<string, number>
+  avg?: number
+  median?: number
+  min?: number
+  max?: number
+  avgWordCount?: number
+  sample?: string[]
+  uniqueCount?: number
+}
 interface SelectedField {
-  field: string; label: string; type: string; summary: any
+  field: string; label: string; type: string; summary: FieldSummaryData | null
   remapping?: Record<string, number>; valueAliases?: Record<string, string>; section?: string; prompt?: string
   liveSample?: string[] // evenly-sampled verbatims from allRows — replaces stale analytics snapshot
 }
@@ -323,7 +339,7 @@ function buildCategoricalSlide(ctx: SlideCtx, f: SelectedField, ai: FieldInsight
 
 function buildNumericSlide(ctx: SlideCtx, f: SelectedField, ai: FieldInsight, allRows: Record<string,unknown>[], rowKeyMap: Record<string,string>): string {
   ctx.manifest.push({ title: f.label, icon: '🔢', section: f.section })
-  const s = f.summary || {}
+  const s: Partial<FieldSummaryData> = f.summary || {}
   const subtitle = f.prompt || 'Numeric · ' + (s.nonNull||0).toLocaleString() + ' responses'
 
   // Extract raw values from rows for histogram

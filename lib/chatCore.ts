@@ -51,8 +51,51 @@ export interface TownHallContext {
   contentSafety?: Record<string, unknown>
 }
 
+/** Agent row (`agents` table) as the chat routes load it — only the columns
+ *  this handler reads. The service-role Supabase client is untyped, so the
+ *  row arrives as `any` at the call sites and structurally satisfies this. */
+export interface ChatAgent {
+  id: string
+  org_id: string
+  name: string
+  config?: {
+    askName?: boolean | string
+    askNamePrompt?: string
+    content_safety?: Record<string, unknown>
+    dynamicChips?: boolean | string
+    language?: string
+    liveContext?: string
+    probeEnforcement?: {
+      required?: boolean
+      detectionRegex?: string
+      fallbackTurn?: number | string
+      fallbackInstruction?: string
+    }
+    statefulFocusTracking?: boolean
+  } | null
+  system_prompt?: string | null
+  knowledge_base?: string | null
+  personality?: string | null
+  guardrails?: (string | Guardrail)[] | null
+  opponents?: (string | Opponent)[] | null
+  contrast_mode?: string | null
+  subject?: string | null
+  negative_content_mode?: string | null
+  sensitive_topics?: string[] | null
+  focus_topics?: string[] | null
+  deflection_enabled?: boolean | null
+  deflection_message?: string | null
+  ask_profile?: boolean | null
+  profile_question?: string | null
+  intents?: AgentIntent[] | null
+  demographic_inference?: boolean | null
+  focuses?: AgentFocus[] | null
+  probe_focus_enabled?: boolean | null
+  research_probes?: unknown
+}
+
 export interface ChatCoreContext {
-  agent: any
+  agent: ChatAgent
   service: ReturnType<typeof createServiceRoleClient>
   ip: string
   townHallContext?: TownHallContext
@@ -64,8 +107,24 @@ export type ChatCoreResult = Record<string, unknown>
 // The service-role Supabase client is untyped (no Database generic), so
 // query rows arrive as `any`; these minimal interfaces annotate the
 // callback params / locals that read them without pulling in generated
-// types. `bot`/`body` stay `any` — they carry a large, dynamic surface.
+// types. `bot` is typed by ChatAgent above; `body` is raw request JSON
+// (`Record<string, unknown>`) read through one ChatTurnBody cast.
 interface ChatMessage { role: 'user' | 'assistant'; content: string }
+/** Known fields of the chat POST body. The body is parsed straight from
+ *  `req.json()` by the callers (already validated to carry a non-empty
+ *  `messages` array), so `handleChatTurn` takes `Record<string, unknown>`
+ *  and reads the known fields through one cast. A `type` (not `interface`)
+ *  so it gets an implicit index signature and the cast is legal. */
+type ChatTurnBody = {
+  messages: ChatMessage[]
+  session_id?: string
+  user_name?: string
+  language?: string
+  debug?: boolean
+  demo?: boolean
+  trigger?: string
+  site?: string
+}
 type AgentFocus = BotFocus & { probe_template?: string; keywords?: string[] }
 interface AgentIntent {
   label?: string
@@ -113,12 +172,12 @@ interface CohortConfig {
   content_safety?: Record<string, unknown>
 }
 
-export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<ChatCoreResult> {
+export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, unknown>): Promise<ChatCoreResult> {
   const bot = ctx.agent
   const service = ctx.service
   const ip = ctx.ip
 
-  const { messages, session_id, user_name, language: userLanguage, debug: debugMode, demo: demoMode, trigger, site: deploymentSite } = body
+  const { messages, session_id, user_name, language: userLanguage, debug: debugMode, demo: demoMode, trigger, site: deploymentSite } = body as ChatTurnBody
 
   // Usage context for persona/demographic extraction (passed per-call — no module global)
   const personaUsageCtx = { org_id: bot.org_id, resource_type: 'bot' as const, resource_id: bot.id, event_type: 'persona' }
@@ -368,9 +427,9 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
           else if (ctx.townHallContext) {
             // Awaited in town-hall mode: the warning turn counts toward the
             // participant budget the policy reads from the mirror.
-            await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: userLanguage || 'en', rows: guardRows as unknown as MirroredTurn[], townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null })
+            await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id as string, language: userLanguage || 'en', rows: guardRows as unknown as MirroredTurn[], townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null })
           } else {
-            void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: userLanguage || 'en', rows: guardRows as unknown as MirroredTurn[], townHallId: null, participantId: null }).then(function() {})
+            void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id as string, language: userLanguage || 'en', rows: guardRows as unknown as MirroredTurn[], townHallId: null, participantId: null }).then(function() {})
           }
         } catch { /* audit-trail storage is best-effort */ }
       }
@@ -1445,7 +1504,9 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: any): Promise<C
   let probeAskTurn = 0
   if (researchProbes.length > 0) {
     try {
-      const assignedProbe = assignProbe(researchProbes, session_id, new Date())
+      // researchProbes is only non-empty when session_id is truthy (see the
+      // ternary above), so the cast is safe.
+      const assignedProbe = assignProbe(researchProbes, session_id as string, new Date())
       if (assignedProbe) {
         const probeVersion = assignedProbe.version ?? 1
         const { data: probeTurns, error: probeTurnsErr } = await service

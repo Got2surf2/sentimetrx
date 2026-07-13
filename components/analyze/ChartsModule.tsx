@@ -2,11 +2,12 @@
 // components/analyze/ChartsModule.tsx
 // Charts module with labeled drop zones, click-to-assign from sidebar, chart state caching.
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { smartOrder, isOrdinalScale, scaleDirectionLabel } from '@/lib/scaleUtils'
 import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
 import { cachedRequest } from '@/lib/clientRequestCache'
 import { themeSetForField } from '@/lib/themeUtils'
+import type { Theme, ThemeModel } from '@/lib/themeUtils'
 import { axisOfDimField, isDimField, dimVirtualFields, DIM_AXIS_LABEL_LONG } from '@/lib/dimensionFields'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import type { TimeBucket} from '@/lib/timeBucket';
@@ -50,7 +51,10 @@ var COLOR_PALETTES: Record<string, { name: string; colors: string[] }> = {
 // SchemaField, SchemaConfig imported from @/lib/analyzeTypes
 interface FieldSummary { type: string; nonNull: number; counts?: Record<string, number>; topN?: string[]; histogram?: { min: number; max: number; count: number }[]; min?: number; max?: number; avg?: number; median?: number; stddev?: number; avgWordCount?: number; sample?: string[] }
 interface Analytics { totalRows: number; computedAt: string; fieldSummaries: Record<string, FieldSummary> }
-interface Props { datasetId: string; schema: SchemaConfig; analytics: Analytics | null; themeModel?: any; datasetSource?: string; taxonomyEnabled?: boolean; taxonomySuppressed?: boolean }
+interface Props { datasetId: string; schema: SchemaConfig; analytics: Analytics | null; themeModel?: ThemeModel | null; datasetSource?: string; taxonomyEnabled?: boolean; taxonomySuppressed?: boolean }
+
+// Legacy theme blobs may carry `label` (pre-rename) and `color` alongside/instead of `name`.
+type ThemeLike = Theme & { label?: string; color?: string }
 
 // Cap on how many categorical values any categorical-axis chart will
 // render. Beyond this, labels overlap, bars get too thin to read, and
@@ -246,7 +250,12 @@ function catXAxis(cats: string[]): Record<string, unknown> {
   }
 }
 
-function PlotlyChart({ traces, layout, style }: { traces: Record<string, unknown>[]; layout?: any; style?: React.CSSProperties }) {
+// Subset of the Plotly layout object PlotlyChart normalizes (title/axis title
+// strings → styled objects); everything else rides through the index signature.
+interface AxisLayout { title?: string | { text?: string; standoff?: number; [k: string]: unknown }; [k: string]: unknown }
+interface ChartLayout { title?: string | { text?: string; [k: string]: unknown }; xaxis?: AxisLayout; yaxis?: AxisLayout; [k: string]: unknown }
+
+function PlotlyChart({ traces, layout, style }: { traces: Record<string, unknown>[]; layout?: ChartLayout; style?: React.CSSProperties }) {
   var ref = useRef<HTMLDivElement>(null)
   useEffect(function() {
     if (!ref.current || !traces.length) return
@@ -599,7 +608,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
 
 // Module-level enrichment context — set by ChartsModule, read by useRows + enrichRows
 var _enrichCtx: {
-  themeModel?: any; schema?: SchemaConfig
+  themeModel?: ThemeModel | null; schema?: SchemaConfig
   enrichKey?: number           // incremented when source/filter changes → triggers re-enrichment
   themeSourceOverride?: string // overrides themeModel.fieldName
   dimFieldKey?: string // per-question dimension aggregates (sql/164) — rides into every tax_* spec
@@ -634,10 +643,24 @@ function useChartRows(datasetId: string, enrichKey: number = 0) {
 }
 
 // Aggregation hook — fetches pre-computed results from SQL, no raw rows needed
-var _aggCache: Record<string, unknown> = {}
+
+// Response shapes from /api/datasets/[datasetId]/aggregate — one payload per op:
+// crosstab/tax_crosstab → grid/rows/cols, group_stats/tax_group_stats → groups,
+// date_series/tax_date_series → series (sub only set by tax_date_series, and
+// only tax consumers read it), count_by/tax_count_by → counts.
+interface AggResult {
+  grid?: Record<string, Record<string, number>>
+  rows?: string[]
+  cols?: string[]
+  groups?: Record<string, { n: number; mean: number; median: number; min: number; max: number; stddev?: number; q1?: number | null; q3?: number | null }>
+  series?: { sub: string; date: string; count: number; avg: number | null }[]
+  counts?: Record<string, number>
+}
+
+var _aggCache: Record<string, AggResult> = {}
 
 function useAggregation(datasetId: string, spec: Record<string, unknown> | null) {
-  var [data, setData] = useState<any>(null)
+  var [data, setData] = useState<AggResult | null>(null)
   var [loaded, setLoaded] = useState(false)
   // For taxonomy (dimension) ops, attach the view's filtered row-id set so the
   // server aggregate honors active filters (null = whole dataset). Done here (one
@@ -689,11 +712,11 @@ function enrichRows(rows: Record<string, unknown>[]): Record<string, unknown>[] 
   var mappedFields = (schema?.fields || []).filter(function(f) { return f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0 })
   if (!hasThemes && !mappedFields.length) return rows
 
-  var allThemes: any[] = hasThemes ? themeModel.themes : []
+  var allThemes: ThemeLike[] = hasThemes ? themeModel!.themes : []
   var activeNames = _enrichCtx.activeThemeNames  // null = all themes shown
-  var themes = activeNames ? allThemes.filter(function(t: any) { return activeNames!.has(t.name || t.label) }) : allThemes
+  var themes = activeNames ? allThemes.filter(function(t) { return activeNames!.has((t.name || t.label)!) }) : allThemes
   var openField = hasThemes
-    ? (_enrichCtx.themeSourceOverride || themeModel.fieldName || (schema?.fields || []).find(function(f: any) { return f.type === 'open-ended' })?.field || '')
+    ? (_enrichCtx.themeSourceOverride || themeModel!.fieldName || (schema?.fields || []).find(function(f) { return f.type === 'open-ended' })?.field || '')
     : ''
 
   return rows.map(function(row) {
@@ -705,12 +728,12 @@ function enrichRows(rows: Record<string, unknown>[]): Record<string, unknown>[] 
         enriched['__themes__'] = ''
       } else {
         var bestTheme = '', bestCount = 0
-        themes.forEach(function(t: any) {
+        themes.forEach(function(t) {
           var hits = 0
           ;(t.keywords || []).forEach(function(kw: string) {
             if (text.includes(kw.toLowerCase())) hits++
           })
-          if (hits > bestCount) { bestCount = hits; bestTheme = t.name || t.label }
+          if (hits > bestCount) { bestCount = hits; bestTheme = (t.name || t.label)! }
         })
         enriched['__themes__'] = bestTheme  // '' when unclassified — excluded from groupings
       }
@@ -1192,7 +1215,7 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
   useEffect(function() {
     if (mode !== 'regression' || !loaded || !hasThemes || selectedOE.size === 0) { setRegressionResults([]); setCombinedResult(null); return }
     var { computeThemeImpact } = require('@/lib/themeImpact')
-    var themeInput = themeModel.themes.map(function(t: any) { return { id: t.id || '', name: t.name || '', keywords: t.keywords || [] } })
+    var themeInput = themeModel!.themes.map(function(t) { return { id: t.id || '', name: t.name || '', keywords: t.keywords || [] } })
     var scoreFieldObj = schema.find(function(f) { return f.field === scoreField })
     var oeArr = Array.from(selectedOE)
 
@@ -1252,23 +1275,23 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
       var esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\w*'; if (!seen[esc]) alts.push(esc)
       return new RegExp('(?<![a-z])(?:' + alts.join('|') + ')', 'i')
     }
-    var themeRegexes = themeModel.themes.map(function(t: any) { return (t.keywords || []).filter(Boolean).map(buildKwRe) })
+    var themeRegexes = themeModel!.themes.map(function(t) { return (t.keywords || []).filter(Boolean).map(buildKwRe) })
 
     for (var fi = 0; fi < oeArr.length; fi++) {
       var oeFld = oeArr[fi]
       var fldObj = schema.find(function(f) { return f.field === oeFld })
       var fldLabel = fldObj?.label || oeFld
       var themeScores: Record<string, number[]> = {}
-      themeModel.themes.forEach(function(t: any) { themeScores[t.name] = [] })
+      themeModel!.themes.forEach(function(t) { themeScores[t.name] = [] })
 
       rows.forEach(function(r: Record<string, unknown>) {
         var score = parseFloat(String(r[scoreField] || '').replace(/,/g, ''))
         if (isNaN(score)) return
         var text = String(r[oeFld] || '').toLowerCase().trim()
         if (!text) return
-        for (var ti = 0; ti < themeModel.themes.length; ti++) {
+        for (var ti = 0; ti < themeModel!.themes.length; ti++) {
           if (themeRegexes[ti].length > 0 && themeRegexes[ti].some(function(re: RegExp) { return re.test(text) })) {
-            themeScores[themeModel.themes[ti].name].push(score)
+            themeScores[themeModel!.themes[ti].name].push(score)
           }
         }
       })
@@ -1308,7 +1331,9 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
 
   if (!stats.length && perFieldDeltas.every(function(d) { return d.stats.length === 0 })) return <EmptyChart msg={'No groups with ' + minN + '+ responses. Lower the min filter.'} />
 
-  var chartData = stats
+  // One bar of the driver chart; `significant` only set by the regression path.
+  interface DriverStat { name: string; avg: number; median: number; n: number; delta: number; themeColor?: string | null; significant?: boolean }
+  var chartData: DriverStat[] = stats
   var xLabel = '\u0394 vs overall avg (' + overallAvg.toFixed(1) + ')'
   var xFormat = '+.2f'
   var rInfo = ''
@@ -1417,14 +1442,14 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
   }
 
   if (!isGrouped) {
-    if (sortBy === 'delta') chartData.sort(function(a: any, b: any) { return a.delta - b.delta })
-    else chartData.sort(function(a: any, b: any) { return a.n - b.n })
+    if (sortBy === 'delta') chartData.sort(function(a, b) { return a.delta - b.delta })
+    else chartData.sort(function(a, b) { return a.n - b.n })
 
-    maxAbs = chartData.reduce(function(m: number, s: any) { return Math.max(m, Math.abs(s.delta)) }, 0) || 1
+    maxAbs = chartData.reduce(function(m: number, s) { return Math.max(m, Math.abs(s.delta)) }, 0) || 1
 
-    var names = chartData.map(function(s: any) { return s.name })
-    var deltas = chartData.map(function(s: any) { return parseFloat(s.delta.toFixed(3)) })
-    var barClrs = chartData.map(function(s: any) {
+    var names = chartData.map(function(s) { return s.name })
+    var deltas = chartData.map(function(s) { return parseFloat(s.delta.toFixed(3)) })
+    var barClrs = chartData.map(function(s) {
       var sig = useRegression ? (s.significant !== false) : true
       var intensity = sig ? Math.min(1, 0.45 + (Math.abs(s.delta) / maxAbs) * 0.55) : 0.25
       return s.delta >= 0
@@ -1435,7 +1460,7 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
     traces = [{
       type: 'bar' as const, y: names, x: deltas, orientation: 'h' as const,
       marker: { color: barClrs, line: { width: 0 } },
-      text: chartData.map(function(s: any) {
+      text: chartData.map(function(s) {
         var label = (s.delta >= 0 ? '+' : '') + s.delta.toFixed(1)
         if (useRegression && s.significant === false) label += ' (ns)'
         else if (useRegression) label += ' *'
@@ -1447,7 +1472,7 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
     xPad = maxAbs * 0.35
   }
 
-  var layout: Record<string, unknown> = {
+  var layout: ChartLayout = {
     xaxis: { title: xLabel, range: [-(maxAbs + (xPad || maxAbs * 0.35)), maxAbs + (xPad || maxAbs * 0.35)], zeroline: true, zerolinewidth: 2, zerolinecolor: T.textMid, tickformat: xFormat },
     yaxis: { automargin: true },
     margin: { t: 20, r: 100, b: 60, l: 20 },
@@ -1543,10 +1568,10 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
 
       {/* Plain language + expert summaries */}
       {(function() {
-        var sorted = chartData.slice().sort(function(a: any, b: any) { return Math.abs(b.delta) - Math.abs(a.delta) })
-        var topPos = sorted.find(function(s: any) { return s.delta > 0 })
-        var topNeg = sorted.find(function(s: any) { return s.delta < 0 })
-        var sigCount = useRegression ? chartData.filter(function(s: any) { return s.significant }).length : 0
+        var sorted = chartData.slice().sort(function(a, b) { return Math.abs(b.delta) - Math.abs(a.delta) })
+        var topPos = sorted.find(function(s) { return s.delta > 0 })
+        var topNeg = sorted.find(function(s) { return s.delta < 0 })
+        var sigCount = useRegression ? chartData.filter(function(s) { return s.significant }).length : 0
 
         // Plain language
         var plain: string[] = []
@@ -1922,7 +1947,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   var [chartsRestored, setChartsRestored] = useState(false)
 
   useEffect(function() {
-    var savedTheme = readSession<any>(_themeKey)
+    var savedTheme = readSession<{ themeSourceField?: string; activeThemeNames?: string[] | null }>(_themeKey)
     if (savedTheme?.themeSourceField) setThemeSourceField(savedTheme.themeSourceField)
     if (Array.isArray(savedTheme?.activeThemeNames)) setActiveThemeNames(new Set(savedTheme.activeThemeNames))
 
@@ -1967,14 +1992,9 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   // set (theme_model.fields, per-field model) charts with THAT set. Fallback
   // for a never-mined field = the active set matched against it (pre-map
   // behavior). All theme consumers below read this, never the raw prop.
-  // Memoized for stable identity — themeSetForField returns a fresh object
-  // every call, and this value flows into memo/effect dependency chains
-  // (the same class as the StatsModule infinite update loop, 2026-07-13).
-  var effectiveThemeModel = useMemo(function() {
-    return themeSourceField
-      ? (themeSetForField(themeModel, [themeSourceField]) || themeModel)
-      : themeModel
-  }, [themeModel, themeSourceField])
+  var effectiveThemeModel = themeSourceField
+    ? (themeSetForField(themeModel, [themeSourceField]) || themeModel)
+    : themeModel
 
   // Set enrichment context for useRows — must be before any inner component renders
   _enrichCtx = { themeModel: effectiveThemeModel, schema: schema, enrichKey: enrichKey, themeSourceOverride: themeSourceField || undefined, dimFieldKey: themeSourceField || undefined, activeThemeNames: activeThemeNames, datasetSource: datasetSource, filteredRowIds: _filteredRowIds }
@@ -2026,13 +2046,13 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   // server (count_theme_matches SQL → fast for 20K+ row datasets).
   var [liveThemeCounts, setLiveThemeCounts] = useState<Record<string, number> | null>(null)
   var themesSig = hasThemes
-    ? effectiveThemeModel.themes.map(function(t: { id?: string; name?: string; keywords?: string[] }) { return (t.id || t.name) + ':' + (t.keywords || []).join('|') }).join(';;')
+    ? effectiveThemeModel!.themes.map(function(t: { id?: string; name?: string; keywords?: string[] }) { return (t.id || t.name) + ':' + (t.keywords || []).join('|') }).join(';;')
     : ''
   useEffect(function() {
     if (!hasThemes || !themeSourceField) { setLiveThemeCounts(null); return }
     var cancelled = false
     var body = JSON.stringify({
-      themes: effectiveThemeModel.themes.map(function(t: { id?: string; name?: string; keywords?: string[] }) { return { id: t.id || t.name, keywords: t.keywords || [] } }),
+      themes: effectiveThemeModel!.themes.map(function(t: { id?: string; name?: string; keywords?: string[] }) { return { id: t.id || t.name, keywords: t.keywords || [] } }),
       fields: [themeSourceField],
     })
     // Cached across module remounts (tab bounces) — the server recomputes
@@ -2051,7 +2071,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
         if (cancelled || !d || !Array.isArray(d.counts)) return
         var counts = d.counts
         var map: Record<string, number> = {}
-        effectiveThemeModel.themes.forEach(function(t: { id?: string; name: string }) {
+        effectiveThemeModel!.themes.forEach(function(t: { id?: string; name: string }) {
           var hit = counts.find(function(c) { return c.id === (t.id || t.name) })
           map[t.name] = hit ? hit.count : 0
         })
@@ -2079,7 +2099,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     var extraSummaries: Record<string, FieldSummary> = {}
     if (hasThemes) {
       var themeCounts: Record<string, number> = {}
-      effectiveThemeModel.themes
+      effectiveThemeModel!.themes
         .filter(function(t: { name?: string; label?: string }) { return !activeThemeNames || activeThemeNames.has(t.name || t.label || '') })
         .forEach(function(t: { name: string; label?: string; count?: number }) {
           // Prefer live server-counted value over the persisted (often stale) count.
@@ -2404,7 +2424,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
 
           {/* Theme filter — at bottom of sidebar */}
           {hasThemes && (function() {
-            var allThemesList: { name?: string; label?: string }[] = effectiveThemeModel.themes || []
+            var allThemesList: ThemeLike[] = effectiveThemeModel!.themes || []
             return (
               <div style={{ borderTop: '1px solid ' + T.border, padding: '8px 12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
@@ -2428,15 +2448,15 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
                   </div>
                 )}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                  {allThemesList.map(function(t: any) {
-                    var name = t.name || t.label
+                  {allThemesList.map(function(t) {
+                    var name = (t.name || t.label)!
                     var isActive = !activeThemeNames || activeThemeNames.has(name)
                     var color = t.color || T.accent
                     return (
                       <button key={name} onClick={function() {
                         var next: Set<string>
                         if (!activeThemeNames) {
-                          next = new Set(allThemesList.map(function(x: any) { return x.name || x.label }).filter(function(n: string) { return n !== name }))
+                          next = new Set(allThemesList.map(function(x) { return (x.name || x.label)! }).filter(function(n: string) { return n !== name }))
                         } else {
                           next = new Set(activeThemeNames)
                           if (next.has(name)) next.delete(name); else next.add(name)

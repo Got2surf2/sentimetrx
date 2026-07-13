@@ -74,7 +74,7 @@ function addFooter(slide: PptxGenJS.Slide, pageNum: number) {
   })
 }
 
-function bullet(text: string, opts: any = {}) {
+function bullet(text: string, opts: PptxGenJS.TextPropsOptions = {}) {
   return {
     text,
     options: {

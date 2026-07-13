@@ -133,7 +133,7 @@ async function main() {
   }
   if (idRemap.size > 0) {
     userRows = userRows.filter(u => !idRemap.has(u.id))
-    snapshot.tables.users = userRows as any
+    snapshot.tables.users = userRows
     const USER_REF = /^(created_by|initiated_by|.*user_id)$/
     for (const [tname, rows] of Object.entries(snapshot.tables)) {
       if (!Array.isArray(rows)) continue

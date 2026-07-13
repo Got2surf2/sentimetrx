@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { readSession, writeSession } from '@/lib/useSessionState'
-import { themeSetForField } from '@/lib/themeUtils'
+import { themeSetForField, type Theme, type ThemeModel } from '@/lib/themeUtils'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { injectSignalTier } from '@/lib/signalTier'
 
@@ -53,6 +53,7 @@ import {
   mwBL, mwBL_naive,
   chiBL, chiBL_naive, regrBL, regrBL_naive,
   bootstrapCI, type MCResult,
+  type TTestResult, type ANOVAResult, type ChiSquareResult, type MannWhitneyResult,
 } from '@/lib/statsUtils'
 import { axisOfDimField, isDimField, dimVirtualFields, dimFieldName, DIM_AXES, DIM_AXIS_LABEL } from '@/lib/dimensionFields'
 import { applyFilters, filterCount } from '@/lib/filterUtils'
@@ -79,7 +80,7 @@ interface RegressionResult {
 interface Props {
   datasetId: string
   schema: SchemaConfig
-  themeModel?: any
+  themeModel?: ThemeModel | null
   datasetSource?: string
   taxonomyEnabled?: boolean
 }
@@ -496,6 +497,16 @@ function CorrelationsPanel({ numFields, data, aliases, datasetId }: { numFields:
   )
 }
 
+// Group-test result — discriminated on `type`. syncResult computes from raw
+// rows (`groups`), dimResult arrives server-aggregated (`boxStats` instead).
+type GroupBoxStats = Record<string, { q1: number | null; median: number; q3: number | null; min: number; max: number; mean: number }>
+type GroupTestResult =
+  | { type: 'ttest'; res: TTestResult | null; g1: string; g2: string; groups?: Record<string, number[]>; boxStats?: GroupBoxStats }
+  | { type: 'anova'; res: ANOVAResult | null; groups?: Record<string, number[]>; boxStats?: GroupBoxStats }
+  | { type: 'mw'; res: MannWhitneyResult | null; g1: string; g2: string; groups: Record<string, number[]>; boxStats?: undefined }
+  | { type: 'chisq'; res: ChiSquareResult | null; groups?: undefined; boxStats?: undefined }
+  | { type: 'mw_unsupported'; res?: undefined; groups?: undefined; boxStats?: undefined }
+
 function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId, dimFieldKey }: { numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string>; datasetId: string; dimFieldKey?: string }) {
   var _gk = 'statsGroup_' + datasetId
   var [testType, setTestType] = useState('auto')
@@ -528,7 +539,7 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId, dimFi
   var chiDimB = testType === 'chisq' ? axisOfDimField(catF2) : null
   var dimInvolved = !!groupDimAxis || !!chiDimA || !!chiDimB
 
-  var syncResult = useMemo(function() {
+  var syncResult = useMemo(function(): GroupTestResult | null {
     if (dimInvolved) return null
     try {
       if (testType === 'chisq') { if (!catF || !catF2) return null; return { type: 'chisq', res: chiSquareStat(catF, catF2, data) } }
@@ -555,7 +566,7 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId, dimFi
   }, [testType, numF, catF, catF2, data, dimInvolved])
 
   // Server-aggregated result when a dimension is involved.
-  var [dimResult, setDimResult] = useState<any>(null)
+  var [dimResult, setDimResult] = useState<GroupTestResult | null>(null)
   useEffect(function() {
     if (!dimInvolved) { setDimResult(null); return }
     var cancelled = false
@@ -600,7 +611,8 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId, dimFi
     return function() { cancelled = true }
   }, [dimInvolved, testType, catF, catF2, numF, groupDimAxis, chiDimA, chiDimB, datasetId, dimFieldKey])
 
-  var result: any = dimInvolved ? dimResult : syncResult
+  // const so the `result && result.res` narrowings survive into the JSX IIFEs below
+  const result: GroupTestResult | null = dimInvolved ? dimResult : syncResult
 
   if (!catFields.length) return <StatsEmpty icon={'\u2297'} msg="No categorical fields active" />
   if (!numFields.length && testType !== 'chisq') return <StatsEmpty icon={'\u2297'} msg="No numeric fields active" sub="Select Chi-square to compare two categorical fields." />
@@ -643,8 +655,8 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId, dimFi
         var catLabel = aliases[catF] || catF
         var catLabel2 = aliases[catF2] || catF2
         return <BottomLine
-          text={result.type === 'ttest' ? ttestBL(result.res, numLabel) : result.type === 'anova' ? anovaBL(result.res, numLabel) : result.type === 'mw' ? mwBL(result.res, numLabel, (result as any).g1 || '', (result as any).g2 || '') : result.type === 'chisq' ? chiBL(result.res, catLabel, catLabel2) : ''}
-          naiveText={result.type === 'ttest' ? ttestBL_naive(result.res, numLabel) : result.type === 'anova' ? anovaBL_naive(result.res, numLabel) : result.type === 'mw' ? mwBL_naive(result.res, numLabel, (result as any).g1 || '', (result as any).g2 || '') : result.type === 'chisq' ? chiBL_naive(result.res, catLabel, catLabel2) : ''}
+          text={result.type === 'ttest' ? ttestBL(result.res, numLabel) : result.type === 'anova' ? anovaBL(result.res, numLabel) : result.type === 'mw' ? mwBL(result.res, numLabel, result.g1 || '', result.g2 || '') : result.type === 'chisq' ? chiBL(result.res, catLabel, catLabel2) : ''}
+          naiveText={result.type === 'ttest' ? ttestBL_naive(result.res, numLabel) : result.type === 'anova' ? anovaBL_naive(result.res, numLabel) : result.type === 'mw' ? mwBL_naive(result.res, numLabel, result.g1 || '', result.g2 || '') : result.type === 'chisq' ? chiBL_naive(result.res, catLabel, catLabel2) : ''}
         />
       })()}
       <Card style={{ padding: '16px 20px', marginBottom: 20 }}>
@@ -689,8 +701,8 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId, dimFi
                 <StatRow label="Degrees of freedom" value={fmt2(result.res.df)} />
                 <StatRow label="p-value" value={<SigBadge p={result.res.p} />} />
                 <StatRow label="Cohen's d" value={fmt2(result.res.d)} sub={Math.abs(result.res.d) < 0.2 ? 'small' : Math.abs(result.res.d) < 0.8 ? 'medium' : 'large'} />
-                <StatRow label={'Mean (' + (result as any).g1 + ')'} value={fmtN(result.res.ma)} />
-                <StatRow label={'Mean (' + (result as any).g2 + ')'} value={fmtN(result.res.mb)} />
+                <StatRow label={'Mean (' + result.g1 + ')'} value={fmtN(result.res.ma)} />
+                <StatRow label={'Mean (' + result.g2 + ')'} value={fmtN(result.res.mb)} />
               </>
             )}
             {result.type === 'mw' && result.res && (
@@ -1907,17 +1919,9 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
   // just re-target the ACTIVE set's keywords — a question with its OWN stored
   // set (theme_model.fields) computes with THAT set. Fallback for a
   // never-mined field = the active set matched against it (pre-map behavior).
-  // MUST be memoized: themeSetForField returns a FRESH object every call
-  // (stripFieldEntries spreads), and this value feeds the enrichedData memo,
-  // whose identity feeds the bootstrap-CI effect. Unmemoized, every render
-  // invalidated the chain → setMcResults → render → … an infinite update
-  // loop that pegged the Statistics tab's main thread ("Maximum update depth
-  // exceeded"; caught by the e2e smoke suite's first run, 2026-07-13).
-  var effectiveThemeModel = useMemo(function() {
-    return themeSourceField
-      ? (themeSetForField(themeModel, [themeSourceField]) || themeModel)
-      : themeModel
-  }, [themeModel, themeSourceField])
+  var effectiveThemeModel = themeSourceField
+    ? (themeSetForField(themeModel, [themeSourceField]) || themeModel)
+    : themeModel
   var hasThemes = !!(effectiveThemeModel && effectiveThemeModel.themes && effectiveThemeModel.themes.length > 0)
 
   var filteredData = useMemo(function() {
@@ -1929,8 +1933,8 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
     var mappedFields = allSchemaFields.filter(function(f) { return f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0 })
     if (!hasThemes && mappedFields.length === 0) return filteredData
     if (filteredData.length === 0) return filteredData
-    var openField = hasThemes ? (themeSourceField || effectiveThemeModel.fieldName || allSchemaFields.find(function(f) { return f.type === 'open-ended' })?.field || '') : ''
-    var activeThemes = hasThemes ? (activeThemeNames ? effectiveThemeModel.themes.filter(function(t: { name?: string; label?: string }) { return (activeThemeNames as Set<string>).has(t.name || t.label || '') }) : effectiveThemeModel.themes) : []
+    var openField = hasThemes ? (themeSourceField || effectiveThemeModel!.fieldName || allSchemaFields.find(function(f) { return f.type === 'open-ended' })?.field || '') : ''
+    var activeThemes = hasThemes ? (activeThemeNames ? effectiveThemeModel!.themes.filter(function(t: { name?: string; label?: string }) { return (activeThemeNames as Set<string>).has(t.name || t.label || '') }) : effectiveThemeModel!.themes) : []
     return filteredData.map(function(row) {
       var enriched = Object.assign({}, row)
       if (hasThemes && openField) {
@@ -1939,7 +1943,7 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
           enriched['__themes__'] = ''
         } else {
           var bestTheme = '', bestCount = 0
-          activeThemes.forEach(function(t: any) {
+          activeThemes.forEach(function(t: Theme) {
             var hits = 0
             ;(t.keywords || []).forEach(function(kw: string) {
               if (text.includes(kw.toLowerCase())) hits++
@@ -2090,7 +2094,7 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
 
           {/* Themes section — source picker + toggle chips */}
           {hasThemes && (function() {
-            var allThemesList: { name?: string; label?: string; color?: string }[] = effectiveThemeModel.themes || []
+            var allThemesList: { name?: string; label?: string; color?: string }[] = effectiveThemeModel!.themes || []
             return (
               <div style={{ borderTop: '1px solid ' + T.border }}>
                 <div style={{ padding: '8px 12px' }}>
@@ -2116,15 +2120,16 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                    {allThemesList.map(function(t: any) {
-                      var name = t.name || t.label
+                    {allThemesList.map(function(t) {
+                      // every stored theme carries a name (or legacy label) — assert non-null
+                      var name = (t.name || t.label)!
                       var isActive = !activeThemeNames || activeThemeNames.has(name)
                       var color = t.color || T.accent
                       return (
                         <button key={name} onClick={function() {
                           var next: Set<string>
                           if (!activeThemeNames) {
-                            next = new Set(allThemesList.map(function(x: any) { return x.name || x.label }).filter(function(n: string) { return n !== name }))
+                            next = new Set(allThemesList.map(function(x) { return (x.name || x.label)! }).filter(function(n: string) { return n !== name }))
                           } else {
                             next = new Set(activeThemeNames)
                             if (next.has(name)) next.delete(name); else next.add(name)

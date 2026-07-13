@@ -9,6 +9,7 @@ import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import AnalyzeClient from './AnalyzeClient'
 import type { ModuleFeatures } from '@/lib/types'
+import type { Dataset, DatasetWithState } from '@/lib/analyzeTypes'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,6 +34,24 @@ interface MemberDatasetRow {
   row_count:      number | null
   updated_at:     string | null
   last_synced_at: string | null
+}
+interface ThemeModelJson {
+  themes?:       unknown[] | null
+  themeSource?:  string | null
+  source?:       string | null
+  themeLibName?: string | null
+  libName?:      string | null
+}
+// Full row shape for the main datasets select — column types come from the
+// canonical Dataset interface; studies/dataset_state are to-one joins, so
+// Supabase returns objects here (arrays only on to-many).
+interface DatasetQueryRow extends Pick<Dataset,
+  'id' | 'org_id' | 'name' | 'description' | 'source' | 'study_id' | 'ana_library' |
+  'visibility' | 'status' | 'row_count' | 'last_synced_at' | 'created_at' | 'updated_at' | 'created_by'
+> {
+  brand_collection_id: string | null
+  studies:             { name: string | null } | null
+  dataset_state:       { theme_model: ThemeModelJson | null } | { theme_model: ThemeModelJson | null }[] | null
 }
 interface MemberCollectionRow {
   dataset_id:  string
@@ -183,7 +202,7 @@ export default async function AnalyzePage(props: { searchParams: Promise<{ org?:
     }
   }
 
-  const datasets = (rawDatasets || []).map(function(d: any) {
+  const datasets = ((rawDatasets || []) as unknown as DatasetQueryRow[]).map(function(d) {
     const studyName = d.studies?.name ?? null
     const creatorName = creatorMap[d.created_by] || null
     const stateArr = d.dataset_state
@@ -207,7 +226,9 @@ export default async function AnalyzePage(props: { searchParams: Promise<{ org?:
       collection_purpose: isColl ? (collectionPurposeByDsId[d.id] || null) : undefined,
       members_updated: isColl ? (collectionStaleByDsId[d.id] || false) : undefined,
     }
-  })
+    // client_id isn't in this select (AnalyzeClient never reads it), so the
+    // mapped rows structurally miss that one DatasetWithState field.
+  }) as unknown as DatasetWithState[]
 
   return (
     <div className="min-h-screen bg-gray-50">

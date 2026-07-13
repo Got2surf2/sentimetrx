@@ -3,13 +3,14 @@
 // Uses the same Datanautix branding as the analytics export
 
 import PptxGenJS from 'pptxgenjs'
+import type { StudyConfig, RatingOption, LikertFollowUp, SurveyQuestion, PsychoQuestion, DemoField } from '@/lib/types'
 
 interface StudyDesignInput {
   studyName:  string
   botName:    string
   botEmoji:   string
   surveyUrl:  string
-  config:     any
+  config:     Partial<StudyConfig> | null
 }
 
 // ── Datanautix brand palette (matches analytics export) ───────────────────────
@@ -212,7 +213,7 @@ function addContentSlides(pptx: PptxGenJS, title: string, items: Item[], studyNa
 }
 
 // Helper to get per-response adaptive prompts
-function getAdaptivePrompts(followUp: any, scale: any[]): string[] {
+function getAdaptivePrompts(followUp: LikertFollowUp | undefined, scale: RatingOption[]): string[] {
   if (!followUp?.enabled) return []
   if (followUp.mode === 'per-response' && followUp.perResponse) {
     const prompts: string[] = []
@@ -283,7 +284,7 @@ export function generateStudyDesignPptx(input: StudyDesignInput) {
     ratingItems.push({
       label: `${ratingNum}. ${expLabel.toUpperCase()}`,
       value: c.ratingPrompt || '(default prompt)',
-      note: 'Scale: ' + ratingScale.map((r: any) => `${r.emoji} ${r.label}`).join('  ·  '),
+      note: 'Scale: ' + ratingScale.map((r: RatingOption) => `${r.emoji} ${r.label}`).join('  ·  '),
       subItems: expAdaptive.length > 0 ? expAdaptive : undefined,
     })
     ratingNum++
@@ -328,7 +329,7 @@ export function generateStudyDesignPptx(input: StudyDesignInput) {
   if (oeItems.length > 0) addContentSlides(pptx, 'Open-Ended Questions', oeItems, name)
 
   // ── Custom Questions ────────────────────────────────────────────────────────
-  const questions = (c.questions || []).filter((q: any) => q.type !== 'hidden' && q.enabled !== false)
+  const questions = (c.questions || []).filter((q: SurveyQuestion) => q.type !== 'hidden' && q.enabled !== false)
   if (questions.length > 0) {
     const shown = c.customQCount && c.customQCount < questions.length ? c.customQCount : questions.length
     const poolText = c.customQCount && c.customQCount < questions.length
@@ -336,7 +337,7 @@ export function generateStudyDesignPptx(input: StudyDesignInput) {
       : `Respondent sees all ${questions.length} questions`
     makeSectionSlide(pptx, 'Custom Questions', poolText, name)
 
-    const qItems: Item[] = questions.map((q: any, i: number) => {
+    const qItems: Item[] = questions.map((q: SurveyQuestion, i: number) => {
       const label = q.exportLabel || `Question ${i + 1}`
       const notes: string[] = [q.type.toUpperCase()]
       if (q.required) notes.push('Required')
@@ -380,7 +381,7 @@ export function generateStudyDesignPptx(input: StudyDesignInput) {
     const psychoPoolText = `Respondent sees ${psychoShown} randomly selected questions from a pool of ${psychoBank.length} questions`
     makeSectionSlide(pptx, 'Psychographic Questions', psychoPoolText, name)
 
-    const psychoItems: Item[] = psychoBank.map((q: any, i: number) => ({
+    const psychoItems: Item[] = psychoBank.map((q: PsychoQuestion, i: number) => ({
       label: `${i + 1}. ${(q.exportLabel || `Psychographic ${i + 1}`).toUpperCase()}`,
       value: q.q,
       note: q.opts?.length ? 'Options: ' + q.opts.join('  ·  ') : undefined,
@@ -390,16 +391,16 @@ export function generateStudyDesignPptx(input: StudyDesignInput) {
   }
 
   // ── Demographics ────────────────────────────────────────────────────────────
-  const demoFields = (c.demoFields || []).filter((f: any) => f.enabled)
+  const demoFields = (c.demoFields || []).filter((f: DemoField) => f.enabled)
   if (demoFields.length > 0) {
-    addContentSlides(pptx, 'Demographics', demoFields.map((f: any, i: number) => ({
+    addContentSlides(pptx, 'Demographics', demoFields.map((f: DemoField, i: number) => ({
       label: `${i + 1}. ${(f.label || f.key).toUpperCase()}`,
-      value: f.type === 'select' && f.options ? 'Options: ' + f.options.map((o: any) => o[1] || o).join('  ·  ') : 'Free text input',
+      value: f.type === 'select' && f.options ? 'Options: ' + f.options.map((o: [string, string] | string) => o[1] || o).join('  ·  ') : 'Free text input',
     })), name)
   }
 
   // ── Section Transitions ─────────────────────────────────────────────────────
-  const transitions = c.sectionTransitions || {}
+  const transitions: NonNullable<StudyConfig['sectionTransitions']> = c.sectionTransitions || {}
   const transItems: Item[] = []
   if (transitions.customQuestions?.enabled) transItems.push({ label: 'BEFORE CUSTOM QUESTIONS', value: transitions.customQuestions.text || '(default)' })
   if (transitions.psychographics?.enabled !== false) transItems.push({ label: 'BEFORE PSYCHOGRAPHICS', value: transitions.psychographics?.text || 'Just a few quick questions to round things out — helps us understand the range of people sharing feedback.' })

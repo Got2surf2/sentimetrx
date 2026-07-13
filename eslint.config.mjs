@@ -32,7 +32,8 @@ export default [
       // Burned to 0 on 2026-07-02 → promoted to error (ratchet doctrine).
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/no-misused-promises': 'error',
-      '@typescript-eslint/no-explicit-any': 'warn',
+      // Burned 2,787 → 0 across 2026-07-07..13 → promoted to error (ratchet doctrine).
+      '@typescript-eslint/no-explicit-any': 'error',
       // Burned to 0 on 2026-07-02 → promoted to error (ratchet doctrine).
       '@typescript-eslint/consistent-type-imports': 'error',
       // eslint-plugin-react-hooks v6 (bundled with next 16) added these as

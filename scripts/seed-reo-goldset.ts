@@ -11,6 +11,7 @@
 // so a re-seed never clobbers your review work.
 
 import { createClient } from '@supabase/supabase-js'
+import type { ReoObservation } from '../lib/reoVocabulary'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { config } from 'dotenv'
@@ -35,7 +36,7 @@ async function main() {
 
   const rows = JSON.parse(
     readFileSync(resolve('scripts/reo-goldset-seed-data.json'), 'utf8')
-  ) as Array<{ ext_review_id: string; rating: number; review_text: string; proposed: any[] }>
+  ) as Array<{ ext_review_id: string; rating: number; review_text: string; proposed: ReoObservation[] }>
 
   let inserted = 0, skipped = 0
   for (const r of rows) {

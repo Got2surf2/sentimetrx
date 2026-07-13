@@ -135,11 +135,11 @@ async function generateNarratives(
         : (s.counts || {})
       const top5 = Object.entries(aliasedC)
         .sort((a, b) => b[1] - a[1]).slice(0, 5)
-        .map(([k, v]) => `"${k}" ${v} (${pct(v, s.nonNull)}%)`).join(', ')
+        .map(([k, v]) => `"${k}" ${v} (${pct(v, s.nonNull!)}%)`).join(', ')
       return `${f.label} (categorical, n=${s.nonNull}): top responses — ${top5} | unique values: ${s.uniqueCount}`
     } else if (s.type === 'numeric') {
-      const range = s.max - s.min
-      const posInRange = range > 0 ? ((s.avg - s.min) / range * 100).toFixed(0) : '50'
+      const range = (s.max as number) - (s.min as number)
+      const posInRange = range > 0 ? (((s.avg as number) - (s.min as number)) / range * 100).toFixed(0) : '50'
       return `${f.label} (numeric, n=${s.nonNull}): avg=${s.avg?.toFixed(2)}, median=${s.median?.toFixed(2)}, min=${s.min}, max=${s.max}, std=${s.std?.toFixed(2)} | avg sits at ${posInRange}% of possible range`
     } else if (s.type === 'open-ended') {
       // Prefer live evenly-sampled verbatims over the stale 10-item analytics snapshot
@@ -216,11 +216,34 @@ ${fields.map(f => {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+// Field summary as this deck consumes it. Starts life as an analytics
+// FieldSummary (lib/analyzeTypes — a discriminated union) but is deliberately
+// loosened here: recomputeSummaries() merges partial recomputes over whatever
+// snapshot exists, so every stat is optional and the discriminant is a plain
+// string. min/max are numbers on numeric summaries and ISO strings on date
+// summaries (dates are only ever string-interpolated in this file).
+interface DeckFieldSummary {
+  type?:         string
+  nonNull?:      number
+  counts?:       Record<string, number>
+  uniqueCount?:  number
+  min?:          number | string
+  max?:          number | string
+  avg?:          number
+  median?:       number
+  std?:          number
+  avgWordCount?: number
+  sample?:       string[]
+  isDiscrete?:   boolean
+  valueCounts?:  Record<string, number>
+  histogram?:    { min: number; max: number; count: number }[]
+}
+
 interface SelectedField {
   field:      string
   label:      string
   type:       string
-  summary:    any
+  summary:    DeckFieldSummary | null
   remapping?: Record<string, number>
   valueAliases?: Record<string, string>
   section?:   string   // 'psychographic' | 'demographic' | 'core' | undefined
@@ -814,8 +837,8 @@ export async function POST(req: Request, props: Params) {
     // ── Rating-based accent color for comment cards ──────────────────────────
     const ratingField = selectedFields.find(f => f.type === 'numeric' && f.summary?.min != null)
     const ratingKey = ratingField ? (rowKeyMap[normalize(ratingField.field)] || ratingField.field) : ''
-    const ratingMin = ratingField?.summary?.min ?? 0
-    const ratingMax = ratingField?.summary?.max ?? 5
+    const ratingMin = (ratingField?.summary?.min ?? 0) as number  // ratingField is numeric-typed, so min/max are numbers
+    const ratingMax = (ratingField?.summary?.max ?? 5) as number
     const quoteRatingMap = new Map<string, number>()
     if (ratingField && allRows.length > 0) {
       const oeKeys = selectedFields.filter(f => f.type === 'open-ended').map(f => rowKeyMap[normalize(f.field)] || f.field)
@@ -881,7 +904,7 @@ export async function POST(req: Request, props: Params) {
     const execKpis: { value: string; label: string; sub?: string; color?: string }[] = []
     const ratingNum = selectedFields.find(f => f.type === 'numeric' && (f.sqt === 'rating' || f.scoreField || f.field === 'rating')) || numericField
     if (ratingNum?.summary?.avg != null) {
-      const isStar = (ratingNum.summary.max ?? 5) <= 5
+      const isStar = ((ratingNum.summary.max ?? 5) as number) <= 5
       execKpis.push({ value: (isStar ? '★' : '') + ratingNum.summary.avg.toFixed(1), label: 'Overall ' + trunc(ratingNum.label || ratingNum.field, 16) })
     }
     if (canonicalThemes[0]) execKpis.push({ value: (canonicalThemes[0].percentage || 0) + '%', label: 'Top theme', sub: trunc(canonicalThemes[0].name || '', 22) })
@@ -1131,8 +1154,8 @@ export async function POST(req: Request, props: Params) {
     function numSpec(f: SelectedField): NumericStatsSlide {
       const ai = aiFor(f)
       const s = f.summary
-      const range = (s?.max ?? 0) - (s?.min ?? 0)
-      const posInRange = range > 0 ? ((s?.avg ?? 0) - (s?.min ?? 0)) / range : 0.5
+      const range = ((s?.max ?? 0) as number) - ((s?.min ?? 0) as number)  // numSpec is only called for numeric fields
+      const posInRange = range > 0 ? ((s?.avg ?? 0) - ((s?.min ?? 0) as number)) / range : 0.5
       const perfColor = posInRange >= 0.65 ? '059669' : posInRange <= 0.35 ? 'DC2626' : 'D97706'
       const stats = [
         { label: 'Average', value: s?.avg != null ? String(Math.round(s.avg * 10) / 10) : '—', color: perfColor },
@@ -1149,10 +1172,10 @@ export async function POST(req: Request, props: Params) {
         const rc = s.valueCounts as Record<string, number>
         const keys = Object.keys(rc).sort((a, b) => Number(a) - Number(b))
         histogram = keys.map(k => ({ label: k, count: rc[k] || 0 }))
-        if (s?.avg != null && range > 0) { meanFrac = (s.avg - s.min) / range; meanLabel = 'avg ' + (Math.round(s.avg * 10) / 10) }
+        if (s?.avg != null && range > 0) { meanFrac = (s.avg - (s.min as number)) / range; meanLabel = 'avg ' + (Math.round(s.avg * 10) / 10) }
       } else if (Array.isArray(s?.histogram) && s.histogram.length > 0) {
         histogram = s.histogram.map((b: { min: number; count: number }) => ({ label: String(Math.round(b.min)), count: b.count }))
-        if (s?.avg != null && range > 0) { meanFrac = (s.avg - s.min) / range; meanLabel = 'avg ' + Math.round(s.avg) }
+        if (s?.avg != null && range > 0) { meanFrac = (s.avg - (s.min as number)) / range; meanLabel = 'avg ' + Math.round(s.avg) }
       }
       const insight = hasRealAI(ai, f) ? aiInsight(ai, f) : (posInRange >= 0.65 ? 'Average sits in the upper range — strong performance.' : posInRange <= 0.35 ? 'Average sits in the lower range — opportunity for improvement.' : 'Average sits in the mid range.')
       const subtitle = (f.section === 'demographic' || f.section === 'psychographic') && f.prompt ? f.prompt : 'Numeric distribution · ' + (s?.nonNull || 0).toLocaleString() + ' responses'
