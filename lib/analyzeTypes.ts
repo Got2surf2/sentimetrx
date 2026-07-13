@@ -57,6 +57,13 @@ export interface SchemaFieldConfig {
   // computed live by /filter-options. The filter modal is fed synthetic rows
   // (one per distinct value) so it can't derive this itself — it reads this.
   blanks?:        number
+  // Set by /filter-options when the categorical `values` list hit the 500 cap
+  // (sql/168): rare values beyond the top 500 are absent — the modal surfaces
+  // a "search to add" note instead of silently truncating.
+  valuesCapped?:  boolean
+  // Set by /filter-options when the dataset is above the 50K sampling cap, so
+  // counts/blanks/values are estimated from the deterministic sample ("~").
+  sampled?:       boolean
 }
 
 export interface SchemaConfig {

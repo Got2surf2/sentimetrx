@@ -120,15 +120,21 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
           syntheticRows.push(row)
         }
 
-        // Also update schema fields with values from the endpoint
+        // Also update schema fields with values from the endpoint. PREFER the
+        // server's list over any detection-time `sf.values` — /filter-options
+        // returns up to 500 distinct values (exact ≤50K, deterministic-sample
+        // above), which is authoritative and fixes the "missing values" bug
+        // where a rare value absent from the loaded sample never appeared.
         schemaFields.forEach(function(sf) {
           const opt = fieldOpts[sf.field]
-          if (opt?.values && !sf.values) sf.values = opt.values
+          if (opt?.values) sf.values = opt.values
           if (opt?.min != null && sf.min == null) sf.min = opt.min
           if (opt?.max != null && sf.max == null) sf.max = opt.max
           if (opt?.dateMin != null) sf.dateMin = opt.dateMin
           if (opt?.dateMax != null) sf.dateMax = opt.dateMax
           if (opt?.blanks != null) sf.blanks = opt.blanks
+          sf.valuesCapped = !!opt?.valuesCapped
+          sf.sampled = !!opt?.sampled
         })
 
         setRows(syntheticRows)

@@ -197,7 +197,16 @@ parseFloat-style numerics incl. scientific notation, daterange on
 epoch-ms) + `ana_try_parse_ts`; service_role-only. Replaces
 `sample_row_pairs` (`ORDER BY random()`, O(N log N), 57014 at ~1M) in
 the loadAnaSample path — that function remains only as the deploy-order
-fallback (docs/PERFORMANCE_REVIEW.md §2).
+fallback (docs/PERFORMANCE_REVIEW.md §2). sql/168 (2026-07-13) added
+`sampled_filter_options` (single keyset pass over the same idx_drf_sample
+order returning, per field, non-empty count + categorical distinct values
+w/ counts + numeric min/max + date text min/max) — replaces the
+filter-options route's serial per-field full scans (`count_field_values`
+capped at 200 + `numeric_field_stats` + two `.order('data->>field')` date
+probes) that 57014'd at 1M, so the Filters modal opens at any scale; ≤50K
+scans every row = exact (500 distinct values, fixing the "missing values"
+bug), above the cap it samples and the caller labels blanks/values "~";
+service_role-only, per-field semantics match the functions it replaces.
 
 ---
 

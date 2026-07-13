@@ -51,6 +51,10 @@ function toReal(pending: PendingFilters): Filters {
 export default function FiltersModal({ schema, rows, filters, onApply, onClose, aliases = {} }: Props) {
   var [pending, setPending] = useState<PendingFilters>(function() { return toPending(filters) })
   var [dirty, setDirty] = useState(false)
+  // Per-field search term for categorical value lists — lets the user filter a
+  // long chip list and, when the list is capped at 500 (sql/168), type a rarer
+  // value that isn't shown to add it directly to the allowlist ("search to add").
+  var [catSearch, setCatSearch] = useState<Record<string, string>>({})
 
   var filterable = useMemo(function() {
     return schema.filter(function(f) { return f.type === 'categorical' || f.type === 'numeric' || f.type === 'date' })
@@ -255,6 +259,28 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                   updatePending(f.field, { type: 'cat', mode: 'include', values: [], excludeBlanks: excludeBlanks })
                 }
 
+                // Search box: filters the chip list, and — when the list is
+                // capped at 500 (f.valuesCapped) — lets the user type a rarer
+                // value that isn't shown and add it straight to the allowlist.
+                var searchTerm = catSearch[f.field] || ''
+                var searchLc = searchTerm.trim().toLowerCase()
+                var showSearch = allVals.length > 12 || !!f.valuesCapped
+                var shownVals = searchLc
+                  ? allVals.filter(function(v) { return resolveAlias(f.field, v, schema).toLowerCase().indexOf(searchLc) !== -1 || v.toLowerCase().indexOf(searchLc) !== -1 })
+                  : allVals
+                var canAddSearched = searchTerm.trim().length > 0
+                  && !allVals.some(function(v) { return v.toLowerCase() === searchLc })
+                // Add the typed value to the allowlist (include mode) — the case
+                // where a value missing from the capped list actually matters.
+                var addSearchedValue = function() {
+                  var t = searchTerm.trim()
+                  if (!t) return
+                  var base = pfCat && pfCat.mode === 'include' ? new Set(pfCat.values) : new Set<string>()
+                  base.add(t)
+                  updatePending(f.field, { type: 'cat', mode: 'include', values: Array.from(base), excludeBlanks: excludeBlanks })
+                  setCatSearch(function(prev) { var n = { ...prev }; delete n[f.field]; return n })
+                }
+
                 var modeLabel = pfCat
                   ? (mode === 'exclude'
                       ? 'Excluding ' + pfVals.size + ' value' + (pfVals.size === 1 ? '' : 's')
@@ -273,8 +299,16 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                     {modeLabel && (
                       <div style={{ fontSize: 10, fontWeight: 600, color: T.accent, marginBottom: 6 }}>{modeLabel}</div>
                     )}
+                    {showSearch && (
+                      <input
+                        value={searchTerm}
+                        onChange={function(e) { var val = e.target.value; setCatSearch(function(prev) { var n = { ...prev }; n[f.field] = val; return n }) }}
+                        onKeyDown={function(e) { if (e.key === 'Enter' && canAddSearched) { e.preventDefault(); addSearchedValue() } }}
+                        placeholder={f.valuesCapped ? 'Search or type to add…' : 'Search values…'}
+                        style={{ width: '100%', fontSize: '16px', padding: '4px 8px', marginBottom: 6, border: '1px solid ' + T.border, borderRadius: 6, background: T.bgCard, color: T.textMid, boxSizing: 'border-box' }} />
+                    )}
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, maxHeight: 130, overflowY: 'auto' }}>
-                      {allVals.map(function(v) {
+                      {shownVals.map(function(v) {
                         var sel = isHighlighted(v)
                         return (
                           <button key={v} onClick={function() { toggleVal(v) }}
@@ -283,7 +317,18 @@ export default function FiltersModal({ schema, rows, filters, onApply, onClose, 
                           </button>
                         )
                       })}
+                      {canAddSearched && (
+                        <button onClick={addSearchedValue}
+                          style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: 'transparent', border: '1px dashed ' + T.accent, color: T.accent, cursor: 'pointer', fontWeight: 600 }}>
+                          {'+ Add “' + searchTerm.trim() + '”'}
+                        </button>
+                      )}
                     </div>
+                    {f.valuesCapped && (
+                      <div style={{ fontSize: 10, color: T.textFaint, marginTop: 6 }}>
+                        Top 500 values shown{f.sampled ? ' (~ sampled)' : ''}. A rarer value may be missing — search to add it.
+                      </div>
+                    )}
                     {blankCount > 0 && (
                       <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid ' + T.border }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 11, color: excludeBlanks ? T.red : T.textMid }}>

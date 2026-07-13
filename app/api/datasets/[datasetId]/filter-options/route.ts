@@ -7,6 +7,8 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { countNonEmptyRows } from '@/lib/nonEmptyCount'
+import { sampledFilterOptions, FILTER_SAMPLE_CAP } from '@/lib/sampledFilterOptions'
+import { scaleSampledCount } from '@/lib/sampledSignalCounts'
 
 interface Props { params: Promise<{ datasetId: string }> }
 
@@ -56,10 +58,55 @@ export async function GET(_req: Request, props: Props) {
 
   const hasFlat = (flatCount || 0) > 0
 
-  const options: Record<string, { type: string; label: string; values?: string[]; min?: number; max?: number; dateMin?: string; dateMax?: string; blanks?: number }> = {}
+  const options: Record<string, { type: string; label: string; values?: string[]; min?: number; max?: number; dateMin?: string; dateMax?: string; blanks?: number; valuesCapped?: boolean; sampled?: boolean }> = {}
 
   if (hasFlat) {
-    // Use SQL helper functions on flat table — fast at any scale
+    // One keyset-paged pass over the deterministic 50K sample (sql/168) —
+    // replaces the serial per-field full-scan RPCs that 57014'd at 1M (perf
+    // review §7 Brief B). Below 50K the walk reaches every row = EXACT (and
+    // returns up to 500 distinct categorical values vs the old 200 — the
+    // owner-reported "missing values" fix); above it, counts/blanks are scaled
+    // to the total and flagged `sampled`. Falls back to the legacy per-field
+    // loop if the RPC hasn't reached this database yet (deploy-order safety).
+    const totalRows = flatCount || 0
+    const isSampled = totalRows > FILTER_SAMPLE_CAP
+    try {
+      const { options: sampled, scanned } = await sampledFilterOptions(
+        service, params.datasetId, fields.map(f => ({ field: f.field, type: f.type })))
+      for (const f of fields) {
+        const s = sampled[f.field]
+        const opt: typeof options[string] = { type: f.type, label: f.label || f.field }
+        if (s) {
+          // Blanks = total − non-empty (scaled to total when sampled). The modal
+          // is fed synthetic rows so it can't derive blanks itself.
+          const nonEmptyTotal = isSampled ? scaleSampledCount(s.nonempty, totalRows, scanned) : s.nonempty
+          opt.blanks = Math.max(0, totalRows - nonEmptyTotal)
+          if (f.type === 'categorical') {
+            if (s.values) opt.values = s.values
+            if (s.valuesCapped) opt.valuesCapped = true
+          }
+          if (f.type === 'numeric') {
+            if (s.min != null) opt.min = s.min
+            if (s.max != null) opt.max = s.max
+          }
+          if (f.type === 'date') {
+            if (s.dateMin != null) opt.dateMin = s.dateMin
+            if (s.dateMax != null) opt.dateMax = s.dateMax
+          }
+          if (isSampled) opt.sampled = true
+        }
+        options[f.field] = opt
+      }
+      return NextResponse.json({ fields: options })
+    } catch {
+      // sampled_filter_options unavailable (PGRST202) or errored — fall through
+      // to the legacy per-field path (pre-sql/168 behavior). Above 50K this can
+      // still 57014, i.e. no worse than before the sampled path existed.
+    }
+  }
+
+  if (hasFlat) {
+    // Legacy per-field full-scan path (deploy-order fallback for sql/168).
     for (const f of fields) {
       const opt: typeof options[string] = { type: f.type, label: f.label || f.field }
 
