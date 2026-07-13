@@ -4876,6 +4876,14 @@ CREATE INDEX "idx_drf_dataset_idx" ON "public"."dataset_rows_flat" USING "btree"
 
 
 
+CREATE INDEX "idx_drf_id_keyset" ON "public"."dataset_rows_flat" USING "btree" ("dataset_id", "id");
+
+
+
+COMMENT ON INDEX "public"."idx_drf_id_keyset" IS 'Backs the classify id-keyset (WHERE dataset_id = X AND id > cursor ORDER BY id) — without it the planner walks the PK filtering dataset_id per row, which times out past ~1M total rows. sql/165.';
+
+
+
 CREATE INDEX "idx_drf_sample" ON "public"."dataset_rows_flat" USING "btree" ("dataset_id", (((('x'::"text" || "substr"("md5"((("id")::"text" || ("dataset_id")::"text")), 1, 8)))::bit(32))::bigint), "id");
 
 
