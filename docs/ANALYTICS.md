@@ -491,11 +491,33 @@ prompt instructs NER to skip them — they are what the data is *about*, not fin
 `sample_count` is a discovery-frequency hint, **not** a row count — real counts are live.
 
 ### Counting (`lib/entityFilter.ts` + `count_entity_terms`)
-`entity_catalog` deliberately stores **no counts**. At read time, `getEntitiesWithCounts`
+At read time, `getEntitiesWithCounts`
 builds one `websearch_to_tsquery` per entity (canonical + aliases OR'd) and calls the
 `count_entity_terms` SQL function (migrations 064 + 070) — a single set-based query
 across the scope's members. An optional theme query ANDs in a theme's keyword match.
 Zero-count entities are dropped from results (self-heals on the next discovery run).
+
+**Stored + sampled counts at scale (sql/172, perf review §7 Brief E item 1).**
+`count_entity_terms` ran on EVERY entities read (the card isn't client-cached) and
+57014'd at ~1M rows — common terms match hundreds of thousands of rows via the GIN
+`tsv` prefilter, × up to ~300 catalog terms. Two mechanisms close it:
+- **STORED counts.** Four `entity_catalog.mention_count*` columns cache the computed
+  count per row, keyed by the scope's total `row_count` (the signal-stats keying).
+  A **default read** (no theme, no field scoping, not the Manage panel) serves the
+  stored value with **zero scans** when every row is populated and keyed to the current
+  total; otherwise it computes live and fires `storeEntityMentionCounts` in the
+  **background** (fire-and-forget) so the next read is a hit. Discovery + manual-add
+  both re-store at the end (they already rebuild the catalog). Theme / field-scoped /
+  Manage reads always compute live (their counts vary per request).
+- **SAMPLED compute** for a **single-member** scope above the 50K cap (plain dataset OR
+  a branded upload with no siblings): `sampled_count_entity_terms` (sql/172)
+  keyset-pages the deterministic 50K `idx_drf_sample` and matches terms per page (same
+  tsv-prefilter + open-ended recheck), page size adapting to the term count so no page
+  nears the timeout; the caller scales by `total/scanned` and flags the result
+  `sampled: true` → the Entities card shows a "≈ sampled" chip. Below the cap the walk
+  reaches every row = exact. Multi-member collections (many small members) stay on the
+  live path. Verified sampled-vs-exact within ±2% on Carrabba 56K
+  (`scripts/_verify_entity_counts.mts`).
 
 **Open-ended recheck (migration 070)**: `dataset_rows_flat.tsv` is built from *every*
 string value in a row — including structured columns like `location`. Counting raw `tsv`

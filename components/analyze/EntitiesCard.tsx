@@ -23,6 +23,9 @@ interface Props {
   entities:      EntityRow[]
   totalDistinct: number | null
   scopeType:     'dataset' | 'collection' | null
+  /** true when counts were estimated over the 50K sample + scaled (dataset
+   *  above the cap, sql/172) — shows a "~ estimated" note. */
+  sampled?:      boolean
   loading:       boolean
   error:         string
   onDrillEntity: (entity: EntityRow) => void
@@ -61,7 +64,7 @@ const CATEGORY_COLOR: Record<string, string> = {
 const MIN_MENTIONS  = 10
 const ROW_CAP_PX    = 112  // ~4 rows of pills at current type metrics
 
-export default function EntitiesCard({ entities, totalDistinct, scopeType, loading, error, onDrillEntity, ratings, overallRating }: Props) {
+export default function EntitiesCard({ entities, totalDistinct, scopeType, sampled, loading, error, onDrillEntity, ratings, overallRating }: Props) {
   // Two independent toggles:
   //   rowsExpanded — visual row cap (4 rows when collapsed)
   //   showAll       — include low-frequency entities (<10 mentions)
@@ -103,6 +106,12 @@ export default function EntitiesCard({ entities, totalDistinct, scopeType, loadi
         {scopeType === 'collection' && (
           <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 20, background: P.bg, color: P.textMute, border: '1px solid ' + P.border }}>
             brand-wide
+          </span>
+        )}
+        {sampled && (
+          <span title="Mention counts are estimated from a deterministic 50,000-row sample (dataset exceeds the exact-count cap) and scaled to all rows."
+            style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 20, background: P.bg, color: P.textMute, border: '1px solid ' + P.border }}>
+            {'≈'} sampled
           </span>
         )}
       </div>

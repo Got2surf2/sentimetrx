@@ -19,7 +19,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
-import { getEntitiesWithCounts, resolveEntityScope, slugify } from '@/lib/entityFilter'
+import { getEntitiesWithCounts, resolveEntityScope, slugify, storeEntityMentionCounts } from '@/lib/entityFilter'
 import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
@@ -277,6 +277,11 @@ export async function POST(req: Request, props: Params) {
       .select('slug')
     entitiesAutoHidden += (hidden || []).length
   }
+
+  // Refresh the stored mention counts (sql/172) now that the catalog changed —
+  // new manual rows start with null mention_count, so without this the next
+  // entities GET would recompute live. Best-effort; never throws.
+  await storeEntityMentionCounts(service, params.datasetId)
 
   // Append-only audit log entry so the Schema panel can show "Last updated"
   // covering manual edits as well as discovery runs.

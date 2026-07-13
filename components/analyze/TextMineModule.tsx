@@ -1261,6 +1261,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [entityCatalogRows, setEntityCatalogRows]         = useState<EntityRow[]>([])
   const [entityCatalogTotal, setEntityCatalogTotal]       = useState<number | null>(null)
   const [entityCatalogScopeType, setEntityCatalogScopeType] = useState<'dataset' | 'collection' | null>(null)
+  const [entityCatalogSampled, setEntityCatalogSampled]   = useState(false)
   const [entityCatalogLoading, setEntityCatalogLoading]   = useState(true)
   const [entityCatalogError, setEntityCatalogError]       = useState('')
 
@@ -1274,6 +1275,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       setEntityCatalogRows(data.entities || [])
       setEntityCatalogTotal(typeof data.total_distinct === 'number' ? data.total_distinct : null)
       setEntityCatalogScopeType(data.scope_type || null)
+      setEntityCatalogSampled(!!data.sampled)
     } catch (err: unknown) {
       setEntityCatalogError(err instanceof Error ? err.message : 'Failed to load entities')
     } finally {
@@ -2772,6 +2774,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                           entities={entityCatalogRows}
                           totalDistinct={entityCatalogTotal}
                           scopeType={entityCatalogScopeType}
+                          sampled={entityCatalogSampled}
                           loading={entityCatalogLoading}
                           error={entityCatalogError}
                           onDrillEntity={handleDrillEntity}

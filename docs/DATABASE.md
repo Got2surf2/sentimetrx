@@ -259,6 +259,20 @@ exact functions and the sql/169 counts twins. Verified sampled-vs-exact within
 ±2% on the 128K Outback and no-57014 on the 1M PERF TEST
 (`scripts/_verify_taxonomy_sampled.mts`).
 
+sql/172 (2026-07-13, perf review §7 Brief E item 1) closes the `entities` GET's
+live FTS counts. `count_entity_terms` (sql/070) ran on every entities read and
+57014'd at ~1M (common terms match hundreds of thousands of rows × ~300 catalog
+terms). Added: (a) four `entity_catalog.mention_count*` columns
+(`mention_count`, `mention_count_sampled`, `mention_count_row_total`,
+`mention_count_at`) that cache the computed count per row keyed by the scope
+row total — default reads serve them with zero scans, refreshing in the
+background on drift; (b) `sampled_count_entity_terms` — a single-dataset sampled
+twin that keyset-pages the 50K `idx_drf_sample` and matches terms per page (same
+tsv-prefilter + open-ended recheck as count_entity_terms) so counts never 57014;
+(c) `apply_entity_mention_counts` — a one-round-trip batched writer
+(slug-keyed jsonb → UPDATE). All service_role-only. Verified sampled-vs-exact
+within ±2% on Carrabba 56K (`scripts/_verify_entity_counts.mts`).
+
 ---
 
 *Update this file when a migration adds/removes/repurposes a table — the

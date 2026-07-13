@@ -19,7 +19,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { SchemaConfig } from '@/lib/analyzeTypes'
 import { callAI } from '@/lib/ai'
 import { logError } from '@/lib/log'
-import { resolveEntityScope, slugify, eligibleEntityFields } from '@/lib/entityFilter'
+import { resolveEntityScope, slugify, eligibleEntityFields, storeEntityMentionCounts } from '@/lib/entityFilter'
 import { datasetSourceToKind, authorityOf, mergeProvenance, type SourceKind, type Provenance } from '@/lib/correction/provenance'
 
 export type DiscoveryMode = 'initial' | 'incremental' | 'manual' | 'cron'
@@ -701,6 +701,11 @@ export async function discoverEntities(opts: {
     cost_est_cents: costCents,
     error: refreshError,
   })
+
+  // Store per-entity mention counts now that the catalog is rebuilt (sql/172) —
+  // so entities GET serves stored counts without a live FTS scan. Best-effort:
+  // storeEntityMentionCounts swallows its own errors and never throws.
+  await storeEntityMentionCounts(service, datasetId)
 
   return {
     scope_type:       scope.scopeType,

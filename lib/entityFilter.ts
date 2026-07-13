@@ -198,6 +198,151 @@ export function buildThemeQuery(keywords: string[]): string | null {
   return quoted.length > 0 ? quoted.join(' OR ') : null
 }
 
+// ── Entity mention counts (stored + sampled at scale) ──────────────────────
+// getEntitiesWithCounts attaches a live full-text `mentions` count per catalog
+// entity via count_entity_terms — on EVERY read (entities aren't client-cached).
+// At ~1M rows that RPC 57014s (common terms match hundreds of thousands of rows
+// × up to ~300 catalog terms). Two mechanisms close it (sql/172):
+//   * SAMPLED compute for single-dataset scope above the 50K cap
+//     (sampled_count_entity_terms, keyset-paged over idx_drf_sample, scaled).
+//   * STORED counts on entity_catalog, keyed by the scope row total, served on
+//     default reads with zero scans and refreshed in the background on drift.
+
+/** Platform 50K sampling cap, shared with the bulk-rows/signal-stats family. */
+const ENTITY_SAMPLE_CAP = 50000
+const ENTITY_PAGE_TERMROW_BUDGET = 80000 // term×rows per page → per-page well under the 8s timeout
+
+/** Sum of stored row_count across a scope's member datasets (O(1) per member —
+ *  reads the stored column, no scan). The staleness key for stored counts. */
+async function scopeRowTotal(service: SupabaseClient, datasetIds: string[]): Promise<number> {
+  if (datasetIds.length === 0) return 0
+  const { data } = await service.from('datasets').select('row_count').in('id', datasetIds)
+  return ((data || []) as Array<{ row_count: number | null }>).reduce((a, r) => a + (Number(r.row_count) || 0), 0)
+}
+
+/** Sampled entity counts for ONE dataset above the cap — keyset-pages the 50K
+ *  idx_drf_sample (sql/172) and scales counts by total/scanned. Page size adapts
+ *  to the term count so no single RPC page approaches the statement timeout.
+ *  Returns raw scaled counts keyed by term (the websearch query string). */
+async function sampledEntityTermCounts(
+  service: SupabaseClient, datasetId: string, terms: string[],
+  themeQuery: string | null, textFields: string[], total: number,
+): Promise<Map<string, number>> {
+  const raw = new Map<string, number>()
+  if (terms.length === 0) return raw
+  const pageSize = Math.min(5000, Math.max(500, Math.round(ENTITY_PAGE_TERMROW_BUDGET / terms.length)))
+  let scanned = 0, afterHash = -1, afterId = -1
+  while (scanned < ENTITY_SAMPLE_CAP) {
+    const { data, error } = await service.rpc('sampled_count_entity_terms', {
+      p_dataset_id: datasetId,
+      p_terms: terms,
+      p_theme_query: themeQuery,
+      p_text_fields: textFields.length ? textFields : null,
+      p_after_hash: afterHash,
+      p_after_id: afterId,
+      p_limit: Math.min(pageSize, ENTITY_SAMPLE_CAP - scanned),
+    })
+    if (error) throw new Error('sampled_count_entity_terms: ' + error.message)
+    const page = data as { n_scanned?: number; counts?: [string, number][]; last_hash?: number | null; last_id?: number | null } | null
+    const n = Number(page?.n_scanned) || 0
+    if (!page || n === 0) break
+    scanned += n
+    for (const c of page.counts || []) raw.set(c[0], (raw.get(c[0]) || 0) + Number(c[1]))
+    if (page.last_hash == null || page.last_id == null) break
+    afterHash = Number(page.last_hash); afterId = Number(page.last_id)
+  }
+  // Scale sample matches to the full dataset (exact below the cap: scanned==total).
+  const scaled = new Map<string, number>()
+  for (const [term, n] of raw) scaled.set(term, scanned > 0 ? Math.round(n * total / scanned) : 0)
+  return scaled
+}
+
+interface CatalogEntry { slug: string; canonical: string; category: string; aliases: string[]; source: string; hidden: boolean }
+
+/** Compute live full-text counts for a catalog, choosing the sampled twin for a
+ *  single dataset above the cap and the exact count_entity_terms otherwise.
+ *  Returns counts keyed by the entity query string + whether they're sampled. */
+async function computeEntityCounts(
+  service: SupabaseClient,
+  scope: EntityScope,
+  queryByEntity: Map<string, string>,
+  themeQuery: string | null,
+  total: number,
+  textFieldKeys?: string[],
+): Promise<{ countByTerm: Map<string, number>; sampled: boolean }> {
+  const countByTerm = new Map<string, number>()
+  const terms = Array.from(new Set(Array.from(queryByEntity.values()).filter(Boolean)))
+  if (terms.length === 0) return { countByTerm, sampled: false }
+
+  // Scope counts to caller-selected fields when asked, else every eligible field.
+  let textFields = (textFieldKeys && textFieldKeys.length > 0)
+    ? await scopeTextFieldsToKeys(service, scope.memberDatasetIds, textFieldKeys)
+    : await resolveScopeTextFields(service, scope.memberDatasetIds)
+  if (Object.keys(textFields).length === 0) {
+    textFields = await resolveScopeTextFields(service, scope.memberDatasetIds)
+  }
+
+  // A single member dataset above the cap → sampled (never 57014s). Covers both
+  // plain datasets and single-member brand collections (a branded upload with
+  // no siblings still resolves to collection scope). Multi-member collections
+  // stay on the live path (many small member datasets, not 1M-row ones).
+  const singleDataset = scope.memberDatasetIds.length === 1
+  if (singleDataset && total > ENTITY_SAMPLE_CAP) {
+    const dsId = scope.memberDatasetIds[0]
+    const scaled = await sampledEntityTermCounts(service, dsId, terms, themeQuery, textFields[dsId] || [], total)
+    for (const [term, n] of scaled) countByTerm.set(term, n)
+    return { countByTerm, sampled: true }
+  }
+
+  const { data: counts, error: countsErr } = await service.rpc('count_entity_terms', {
+    p_dataset_ids: scope.memberDatasetIds,
+    p_terms:       terms,
+    p_theme_query: themeQuery,
+    p_text_fields: textFields,
+  })
+  if (countsErr) void logError('entityFilter.computeEntityCounts', countsErr)
+  for (const c of (counts || []) as Array<{ term: string; row_count: number }>) {
+    countByTerm.set(c.term, Number(c.row_count) || 0)
+  }
+  return { countByTerm, sampled: false }
+}
+
+/** Recompute + store the default (no theme, no field-scoping) mention counts for
+ *  a dataset's scope, keyed by the current row total. Called at discovery /
+ *  manual-add time (the catalog already rebuilds then) and fired in the
+ *  background by getEntitiesWithCounts when stored counts drift. Best-effort:
+ *  logs and swallows failures so it never breaks its caller. */
+export async function storeEntityMentionCounts(service: SupabaseClient, datasetId: string): Promise<void> {
+  try {
+    const scope = await resolveEntityScope(service, datasetId)
+    if (!scope.found) return
+    let q = service
+      .from('entity_catalog')
+      .select('slug, canonical, aliases, hidden')
+      .eq('scope_type', scope.scopeType)
+      .eq('scope_id', scope.scopeId)
+      .eq('hidden', false)
+    if (scope.scopeType === 'collection') q = q.neq('category', 'person')
+    const { data: catalog, error } = await q
+    if (error) { void logError('entityFilter.storeEntityMentionCounts', error); return }
+    const rows = (catalog || []) as Array<{ slug: string; canonical: string; aliases: string[] | null }>
+    if (rows.length === 0) return
+    const queryByEntity = new Map<string, string>()
+    for (const e of rows) queryByEntity.set(e.slug, buildEntityQuery(e.canonical, e.aliases || []))
+    const total = await scopeRowTotal(service, scope.memberDatasetIds)
+    const { countByTerm, sampled } = await computeEntityCounts(service, scope, queryByEntity, null, total)
+    const bySlug: Record<string, number> = {}
+    for (const e of rows) bySlug[e.slug] = countByTerm.get(queryByEntity.get(e.slug) || '') || 0
+    const { error: applyErr } = await service.rpc('apply_entity_mention_counts', {
+      p_scope_type: scope.scopeType, p_scope_id: scope.scopeId,
+      p_row_total: total, p_sampled: sampled, p_counts: bySlug,
+    })
+    if (applyErr) void logError('entityFilter.storeEntityMentionCounts', applyErr)
+  } catch (e) {
+    void logError('entityFilter.storeEntityMentionCounts', e instanceof Error ? e : new Error(String(e)))
+  }
+}
+
 // ── getEntitiesWithCounts ──────────────────────────────────────────────────
 
 export interface EntityWithCount {
@@ -221,6 +366,9 @@ export interface EntitiesResult {
   total_distinct: number
   scope_type:     'dataset' | 'collection'
   last_refresh:   { triggered_at: string; triggered_by: string; entities_after: number | null } | null
+  /** true when counts were estimated over the 50K sample + scaled (dataset
+   *  above the cap) — the UI shows a "~". sql/172. */
+  sampled?:       boolean
 }
 
 /** Read the entity catalog for a dataset's scope and attach live counts.
@@ -277,7 +425,7 @@ export async function getEntitiesWithCounts(opts: {
   // there, "Maria got 40 mentions" is genuine signal.
   let catalogQuery = service
     .from('entity_catalog')
-    .select('slug, canonical, category, aliases, sample_count, source, hidden')
+    .select('slug, canonical, category, aliases, sample_count, source, hidden, mention_count, mention_count_sampled, mention_count_row_total')
     .eq('scope_type', scope.scopeType)
     .eq('scope_id', scope.scopeId)
   if (includeHidden) {
@@ -298,6 +446,7 @@ export async function getEntitiesWithCounts(opts: {
 
   const entries = (catalog || []) as Array<{
     slug: string; canonical: string; category: string; aliases: string[]; sample_count: number; source: string; hidden: boolean
+    mention_count: number | null; mention_count_sampled: boolean | null; mention_count_row_total: number | null
   }>
 
   // Latest refresh audit row — drives the "last refreshed" UI.
@@ -318,31 +467,32 @@ export async function getEntitiesWithCounts(opts: {
   // One websearch query per entity; dedupe identical queries.
   const queryByEntity = new Map<string, string>()
   for (const e of entries) queryByEntity.set(e.slug, buildEntityQuery(e.canonical, e.aliases))
-  const terms = Array.from(new Set(Array.from(queryByEntity.values()).filter(Boolean)))
 
   const themeQuery = opts.themeKeywords ? buildThemeQuery(opts.themeKeywords) : null
 
+  // A DEFAULT read (no theme, no field scoping, not the Manage panel) is the hot
+  // path (Schema tab, cloud, Ask Ana) and can serve STORED counts (sql/172) with
+  // zero scans when they're present + keyed to the current scope row total. The
+  // theme / field-scoped / manage paths always compute live (their counts vary
+  // per request and aren't cached).
+  const isDefaultRead = !themeQuery && !(opts.textFieldKeys && opts.textFieldKeys.length) && !includeHidden
+  const total = await scopeRowTotal(service, scope.memberDatasetIds)
+
   const countByTerm = new Map<string, number>()
-  if (terms.length > 0) {
-    // Scope counts to caller-selected fields when asked, else every eligible field.
-    // Fall back to the unscoped map if the requested keys match nothing (so the
-    // deck still renders entities rather than coming back empty).
-    let textFields = (opts.textFieldKeys && opts.textFieldKeys.length > 0)
-      ? await scopeTextFieldsToKeys(service, scope.memberDatasetIds, opts.textFieldKeys)
-      : await resolveScopeTextFields(service, scope.memberDatasetIds)
-    if (Object.keys(textFields).length === 0) {
-      textFields = await resolveScopeTextFields(service, scope.memberDatasetIds)
-    }
-    const { data: counts, error: countsErr } = await service.rpc('count_entity_terms', {
-      p_dataset_ids: scope.memberDatasetIds,
-      p_terms:       terms,
-      p_theme_query: themeQuery,
-      p_text_fields: textFields,
-    })
-    if (countsErr) void logError('entityFilter.getEntitiesWithCounts', countsErr)
-    for (const c of (counts || []) as Array<{ term: string; row_count: number }>) {
-      countByTerm.set(c.term, Number(c.row_count) || 0)
-    }
+  let sampled = false
+  const storedFresh = isDefaultRead && entries.every(e =>
+    e.mention_count != null && Number(e.mention_count_row_total) === total)
+
+  if (storedFresh) {
+    for (const e of entries) countByTerm.set(queryByEntity.get(e.slug) || '', Number(e.mention_count) || 0)
+    sampled = entries.some(e => !!e.mention_count_sampled)
+  } else {
+    const computed = await computeEntityCounts(service, scope, queryByEntity, themeQuery, total, opts.textFieldKeys)
+    for (const [term, n] of computed.countByTerm) countByTerm.set(term, n)
+    sampled = computed.sampled
+    // Populate / refresh the store in the background (default reads only) so the
+    // next read is a zero-scan hit. Fire-and-forget — never blocks this response.
+    if (isDefaultRead) void storeEntityMentionCounts(service, datasetId)
   }
 
   // Attach counts. Default reads drop zero-count entries — discovery
@@ -376,6 +526,7 @@ export async function getEntitiesWithCounts(opts: {
     total_distinct: withCounts.length,
     scope_type:     scope.scopeType,
     last_refresh,
+    sampled,
   }
 }
 
