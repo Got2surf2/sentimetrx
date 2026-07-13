@@ -12,9 +12,14 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { serverError } from '@/lib/apiError'
+import {
+  type MinedTheme,
+  scanThemes, pruneDeadKeywords, deficientThemes,
+  mergeKeywordAdditions, applyMeasuredCoverage, buildRefinePrompt,
+} from '@/lib/themeMining'
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 120 // two AI calls when the validation loop refines
 
 interface Props { params: Promise<{ datasetId: string }> }
 
@@ -63,11 +68,13 @@ export async function POST(request: Request, props: Props) {
   const userMsg =
     'Thematic analysis on ' + texts.length + ' responses for field \'' + fieldLabel + '\'.' +
     schemaLine + '\n\nResponses:\n' + corpusText +
-    '\n\nIdentify 4-7 distinct themes. For each theme, provide 8-15 keywords that include:\n' +
-    '- Core terms that define the theme\n' +
-    '- Common synonyms and related phrases respondents might use\n' +
-    '- Informal/colloquial variants (e.g. "pricey" for expensive, "meh" for mediocre)\n' +
-    '- Short phrases (2-3 words) where a single word is ambiguous\n\n' +
+    '\n\nIdentify 4-7 distinct themes. For each theme, provide 8-15 keywords. Keywords are matched ' +
+    'against responses by word stem (multi-word phrases match their words in order, allowing a few ' +
+    'words in between), so every keyword must be wording that LITERALLY appears in the responses:\n' +
+    '- Prefer single distinctive words respondents actually wrote (e.g. "overcooked", "pricey", "understaffed")\n' +
+    '- Informal/colloquial variants they used (e.g. "meh" for mediocre)\n' +
+    '- A 2-3 word phrase ONLY when a single word is too ambiguous ("wait time", "portion size")\n' +
+    '- Never invent paraphrase-phrases the respondents did not write\n\n' +
     '\n\nAlso judge whether these responses are reviews or feedback about a ' +
     'RESTAURANT, bar, café, or other food-service venue (food/drink/service/dining), ' +
     'as opposed to a hotel, retailer, clinic, app, or anything non-food-service. ' +
@@ -113,6 +120,52 @@ export async function POST(request: Request, props: Props) {
     if (!parsed || !Array.isArray(parsed.themes) || !parsed.themes.length) {
       return NextResponse.json({ error: 'AI returned no themes' }, { status: 500 })
     }
+
+    // ── Corpus validation (2026-07-13) ─────────────────────────────────
+    // The AI reads the sample and estimates each theme's prevalence, but the
+    // product counts by keyword scan — and nothing ever checked the two
+    // against each other. Measured gap on Carrabba's GSS "Liked Least":
+    // AI said 28/25/16/13/12% per theme, the keywords it invented matched
+    // 7/3/2/2/0.3% (63 of 105 keywords matched ≤1 of 3,000 comments).
+    // Scan the sample with the REAL matcher; where coverage falls far short
+    // of the AI's own estimate, feed the unmatched responses back once so it
+    // extends keywords with the respondents' literal wording; prune keywords
+    // that match nothing; restate count/percentage from the scan so the
+    // stored model reports the same numbers every UI surface will show.
+    let themes = parsed.themes as MinedTheme[]
+    let refined = false
+    try {
+      let scan = scanThemes(texts, themes)
+      const deficient = deficientThemes(themes, scan, texts.length)
+      if (deficient.length && scan.unmatched.length >= 10) {
+        try {
+          const refineResult = await callAI({
+            tier: 'standard',
+            maxTokens: 2000,
+            timeoutMs: 45000,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: buildRefinePrompt(deficient, scan.unmatched) }],
+            apiKey,
+          })
+          const refineClean = refineResult.text.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim()
+          const refineParsed = JSON.parse(refineClean) as { additions?: { id: string; keywords: string[] }[] }
+          if (Array.isArray(refineParsed.additions) && refineParsed.additions.length) {
+            themes = mergeKeywordAdditions(themes, refineParsed.additions)
+            scan = scanThemes(texts, themes)
+            refined = true
+          }
+          logUsage({ org_id: orgId ?? undefined, resource_type: 'dataset', resource_id: params.datasetId, event_type: 'mine_themes' }, refineResult.usage)
+        } catch { /* refinement is best-effort — keep the initial themes */ }
+      }
+      themes = pruneDeadKeywords(themes, scan)
+      scan = scanThemes(texts, themes) // recount post-prune (pruning never changes matches, but keeps kwCounts aligned)
+      themes = applyMeasuredCoverage(themes, scan, texts.length)
+      parsed.themes = themes
+      ;(parsed as Record<string, unknown>).fit = {
+        sampleFitPct: texts.length ? Math.round((scan.union / texts.length) * 100) : 0,
+        refined,
+      }
+    } catch { /* validation must never block mining — worst case is pre-validation behavior */ }
 
     // Smart Dimensions: act on the AI's restaurant judgement. food-service →
     // enable (the client then auto-classifies) and clear any prior suppression.

@@ -7,6 +7,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { countNonEmptyRows } from '@/lib/nonEmptyCount'
 import { memberRowCounts } from '@/lib/signalStats'
+import { kwPatternFragment } from '@/lib/themeUtils'
 import { sampledSignalCounts, scaleSampledCount, SIGNAL_SAMPLE_CAP, type SampledSignalCounts } from '@/lib/sampledSignalCounts'
 
 interface Props { params: Promise<{ datasetId: string }> }
@@ -167,10 +168,14 @@ export async function POST(req: Request, props: Props) {
           c += scaleSampledCount(s.perTheme[ti] || 0, rowCounts.get(did) || 0, s.scanned)
           continue
         }
+        // Canonical fragments (kwPatternFragment) — same patterns the client
+        // matcher compiles, so SQL counts and client recounts agree. The RPC
+        // splices these unescaped into its \m(…|…) alternation, which is why
+        // raw keywords used to mean exact-adjacency phrases only.
         const { data: matchCount } = await service.rpc('count_theme_matches', {
           p_dataset_id: did,
           p_field_keys: fields,
-          p_keywords: kws,
+          p_keywords: kws.map(kwPatternFragment),
         })
         c += Number(matchCount) || 0
       }
@@ -192,7 +197,7 @@ export async function POST(req: Request, props: Props) {
       cooccurrenceMatrix = {}
       const themesPayload = themes
         .filter(t => (t.keywords || []).filter(Boolean).length > 0)
-        .map(t => ({ id: t.id, keywords: (t.keywords || []).filter(Boolean) }))
+        .map(t => ({ id: t.id, keywords: (t.keywords || []).filter(Boolean).map(kwPatternFragment) }))
 
       const memberMatrices = await runPool(datasetIds.map(did => async () => {
         const { data } = await service.rpc('compute_theme_cooccurrence_matrix', {
@@ -259,7 +264,7 @@ export async function POST(req: Request, props: Props) {
           const { data } = await service.rpc('theme_dimension_counts', {
             p_dataset_id: did,
             p_field_keys: fields,
-            p_keywords: kws,
+            p_keywords: kws.map(kwPatternFragment),
             p_limit: 12,   // a bit wider than the card shows so the post-merge top-N has room
           })
           for (const r of ((data || []) as { axis: string; sub: string; count: number }[])) {

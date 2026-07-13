@@ -74,12 +74,42 @@ TextMine is **four peer sections** in a persistent **two-row bar** — the share
 
 ### API: `POST /api/datasets/[datasetId]/mine-themes`
 - Uses Claude to extract 4-7 distinct themes with 8-15 keywords each
-- Keywords include: core terms, synonyms, informal variants, short phrases
+- Keywords must be corpus-literal (the prompt says so explicitly): single distinctive
+  words respondents actually wrote, informal variants, 2-3 word phrases only where a
+  single word is ambiguous
 - Input: caller-supplied `texts[]` + field name + schema context (no hard cap;
   the calling page picks the sample)
 - API key: **defaults to the server's `ANTHROPIC_API_KEY`** so customer orgs piggyback
   on the platform key; usage is logged per-org in `usage_log`. The body accepts an
   optional `apiKey` override but it is not required — there is no localStorage-only mode.
+
+**Mine-time corpus validation (`lib/themeMining.ts`, 2026-07-13).** The AI's keywords are
+never trusted blindly anymore: the route scans the mining sample with the real matcher
+(`buildKwRegex`) and compares each theme's scan coverage against the AI's own prevalence
+estimate. Themes falling under 60% of their estimate (estimates ≥3%) trigger ONE refinement
+call: the unmatched sample responses go back to the AI, which must add keywords copied from
+the respondents' literal wording. Zero-hit keywords are then pruned (min 3 kept per theme),
+and each theme's `count`/`percentage` are restated from the measured scan — so the stored
+model reports the same numbers every counting surface will display, not the AI's readership
+estimate. The response carries `fit: {sampleFitPct, refined}`. Validation is best-effort and
+never blocks mining. WHY: measured on Carrabba's GSS "Liked Least" (3K verbatims), the AI
+estimated 28/25/16/13/12% per theme while its invented keywords matched 7/3/2/2/0.3% — 63 of
+105 keywords matched ≤1 comment, shipping a silent "Diffuse 12%" fit. The validated pipeline
+measures 60.3% fit on the same corpus (was 17.9%).
+
+**Keyword matching semantics (`kwPatternFragment`, 2026-07-13).** One canonical pattern per
+keyword, built in `lib/themeUtils.kwPatternFragment` and used EVERYWHERE: `buildKwRegex`
+wraps it for JS matching (client recounts, exports, theme entities), and the server counting
+paths pass the same fragments into the SQL RPCs (`count_theme_matches`,
+`theme_dimension_counts`, `compute_theme_cooccurrence_matrix` take them unescaped in their
+`\m(…)` alternation; `sampled_signal_counts` accepts them as a `patterns` array per theme,
+sql/166, with a legacy escaped-keyword fallback for deploy-order safety). Single words match
+lemma-expanded stems (unchanged); **multi-word phrases match their words in order with up to
+4 intervening words** ("slow service" matches "slow table service"; order still matters —
+"poor service" does not match "service was poor"). Fragments are POSIX-safe (no lookarounds)
+because Postgres ARE evaluates them too. Known edge: keywords starting with a non-word
+character (e.g. "$10 deal") don't match in the `\m`-anchored RPCs (pre-existing) but do in
+JS and the sampled RPC.
 
 **Multiple open-ended columns → one theme set PER column (per-field theme sets, 2026-07-11).**
 `dataset_state.theme_model` still keeps the legacy shape at the **top level** — the *active*

@@ -177,22 +177,53 @@ export interface TextSegment {
   matched: boolean
 }
 
+// Regex-special escape for a single token.
+function escToken(t: string): string {
+  return t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Lemma alternation for ONE word: expands irregular forms then builds an
+// alternation, each with stem-suffix \w*. "run" → run\w*|ran\w*|running\w*.
+// Plain array dedup (no Set) for client bundle compatibility.
+function wordAlternation(w: string): string {
+  const forms = expandLemma(w)
+  const seen: Record<string, boolean> = {}
+  const alts: string[] = []
+  for (let i = 0; i < forms.length; i++) {
+    const alt = escToken(forms[i]) + '\\w*'
+    if (!seen[alt]) { seen[alt] = true; alts.push(alt) }
+  }
+  const escOrig = escToken(w) + '\\w*'
+  if (!seen[escOrig]) alts.push(escOrig)
+  return alts.length === 1 ? alts[0] : '(?:' + alts.join('|') + ')'
+}
+
+// Canonical keyword → regex fragment. This is the ONE pattern definition for
+// theme-keyword matching: buildKwRegex wraps it for JS matching, and the
+// server counting paths pass the same fragments to the SQL RPCs
+// (count_theme_matches / theme_dimension_counts / cooccurrence matrix /
+// sampled_signal_counts), so client recounts and DB counts agree.
+// POSIX-safe by construction — only (?:), |, \w, \W, {m,n} — because Postgres
+// ARE has no lookarounds; each consumer adds its own word-start anchor
+// ((?<![a-z]) in JS, \m or (?:^|\W) in SQL, unchanged).
+//
+// Single word → lemma alternation with stem suffix (behavior unchanged).
+// Multi-word → each word in ORDER with up to 4 intervening words: "slow
+// service" now also matches "slow table service", "food disappointing"
+// matches "food was very disappointing". The old exact-adjacency phrase
+// match left 63 of 105 AI-mined keywords matching ≤1 comment (Carrabba's
+// GSS Liked-Least, 3K verbatims, 2026-07-13).
+export function kwPatternFragment(kw: string): string {
+  const words = kw.trim().split(/\s+/)
+  if (words.length <= 1) return wordAlternation(kw.trim())
+  return words.map(wordAlternation).join('(?:\\W+\\w+){0,4}\\W+')
+}
+
 // Lemma-aware keyword regex: expands irregular forms then builds alternation.
 // "run" → matches run|runs|ran|running|runner|runners (via lemma) plus stem-suffix via \w*
 // "good" → matches good|better|best plus stem-suffix
 export function buildKwRegex(kw: string): RegExp {
-  const forms = expandLemma(kw)
-  // Build alternation of all lemma forms, each with stem-suffix \w*
-  // Use plain array dedup (no Set) for client bundle compatibility
-  const seen: Record<string, boolean> = {}
-  const alts: string[] = []
-  for (let i = 0; i < forms.length; i++) {
-    const alt = forms[i].replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\w*'
-    if (!seen[alt]) { seen[alt] = true; alts.push(alt) }
-  }
-  const escOrig = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\w*'
-  if (!seen[escOrig]) alts.push(escOrig)
-  return new RegExp('(?<![a-z])(?:' + alts.join('|') + ')', 'i')
+  return new RegExp('(?<![a-z])(?:' + kwPatternFragment(kw) + ')', 'i')
 }
 
 export function commentMatchesTheme(text: string, theme: Theme): boolean {

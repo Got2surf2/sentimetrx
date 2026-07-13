@@ -15,7 +15,7 @@ import { mergeDatasetAnalytics, deleteDatasetAnalyticsKey } from '@/lib/datasetA
 import { logError } from '@/lib/log'
 import { countNonEmptyRows } from '@/lib/nonEmptyCount'
 import { sampledSignalCounts, scaleSampledCount, SIGNAL_SAMPLE_CAP } from '@/lib/sampledSignalCounts'
-import { themeFieldEntries, themeModelKey, type ThemeModel as UtilThemeModel } from '@/lib/themeUtils'
+import { kwPatternFragment, themeFieldEntries, themeModelKey, type ThemeModel as UtilThemeModel } from '@/lib/themeUtils'
 
 export interface SignalStats {
   records: number
@@ -243,13 +243,16 @@ export async function computeSignalStatsRaw(
         service.rpc('count_theme_matches', {
           p_dataset_id: did,
           p_field_keys: fields,
-          p_keywords: (t.keywords || []).filter(Boolean),
+          // Canonical fragments (kwPatternFragment) — the same patterns the
+          // client matcher compiles; the RPC splices them unescaped into its
+          // \m(…|…) alternation, so SQL counts and client recounts agree.
+          p_keywords: (t.keywords || []).filter(Boolean).map(kwPatternFragment),
         }),
       )),
       service.rpc('count_theme_matches', {
         p_dataset_id: did,
         p_field_keys: fields,
-        p_keywords: allKeywords,
+        p_keywords: allKeywords.map(kwPatternFragment),
       }),
     ])
     return {

@@ -15,6 +15,7 @@
 // up to ~7s cold on TEST — too close to the 8s ceiling).
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { kwPatternFragment } from '@/lib/themeUtils'
 
 /** The platform-wide sampling cap — matches the bulk rows route / RowsContext. */
 export const SIGNAL_SAMPLE_CAP = 50000
@@ -60,7 +61,13 @@ export async function sampledSignalCounts(
     union: 0,
     scanned: 0,
   }
-  const themesPayload = themes.map(t => ({ keywords: (t.keywords || []).filter(Boolean) }))
+  // `patterns` = canonical prebuilt fragments (kwPatternFragment), used by
+  // sql/166+; `keywords` kept alongside so a pre-166 database still counts
+  // via its legacy escaped-keyword build (deploy-order safety, sql/164 style).
+  const themesPayload = themes.map(t => {
+    const kws = (t.keywords || []).filter(Boolean)
+    return { keywords: kws, patterns: kws.map(kwPatternFragment) }
+  })
   let afterHash = -1
   let afterId = -1
   while (acc.scanned < cap) {

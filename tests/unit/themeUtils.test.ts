@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  lexiconScore, classifySentiment, buildKwRegex, commentMatchesTheme,
+  lexiconScore, classifySentiment, buildKwRegex, commentMatchesTheme, kwPatternFragment,
   sampleSize95, evenSample, highlightKeywords,
   sentColor, sentBg, ratingColor, ratingBg, getThemeColor, getRowText,
   THEME_PALETTE,
@@ -47,6 +47,45 @@ describe('themeUtils — keyword matching', () => {
     expect(commentMatchesTheme('the service was slow', t)).toBe(true)
     expect(commentMatchesTheme('great food, fast service', t)).toBe(false)
     expect(commentMatchesTheme('anything', theme([]))).toBe(false)
+  })
+
+  it('multi-word keywords match their words in order with intervening words', () => {
+    // The exact-adjacency phrase behavior left 63/105 mined keywords dead
+    // (Carrabba's GSS Liked-Least, 2026-07-13) — phrases now allow up to 4
+    // words between each pair, in order.
+    const re = buildKwRegex('slow service')
+    expect(re.test('slow service')).toBe(true)                    // adjacency still works
+    expect(re.test('slow table service tonight')).toBe(true)      // 1 intervening word
+    expect(re.test('slow and honestly pretty poor service')).toBe(true) // 4 intervening
+    expect(re.test('food disappointing but service fine')).toBe(false)  // words out of order / absent
+    expect(buildKwRegex('food disappointing').test('the food was very disappointing')).toBe(true)
+    expect(buildKwRegex('menu limited').test('menu felt very limited')).toBe(true)
+    // order is preserved: "poor service" should not match "service was poor"
+    expect(buildKwRegex('poor service').test('the service was poor')).toBe(false)
+  })
+
+  it('multi-word matching does not bridge more than 4 intervening words', () => {
+    const re = buildKwRegex('cold food')
+    expect(re.test('cold soggy food')).toBe(true)                       // 1 intervening
+    expect(re.test('cold when it arrived, the food')).toBe(true)        // exactly 4 intervening
+    expect(re.test('cold when it finally arrived all of the food')).toBe(false) // 6 intervening — too far
+  })
+
+  it('kwPatternFragment is POSIX-safe (no lookarounds) for the SQL RPCs', () => {
+    for (const kw of ['wait', 'slow service', '$10 deal', 'not hot', 'a.b (c)']) {
+      const frag = kwPatternFragment(kw)
+      expect(frag.includes('(?<')).toBe(false)
+      expect(frag.includes('(?=')).toBe(false)
+      expect(frag.includes('(?!')).toBe(false)
+      // and it compiles as a JS regex too
+      expect(() => new RegExp(frag, 'i')).not.toThrow()
+    }
+  })
+
+  it('kwPatternFragment escapes regex specials in phrases', () => {
+    const re = buildKwRegex('$10 deal')
+    expect(re.test('the $10 deal was great')).toBe(true)
+    expect(re.test('a 10 deal')).toBe(false)
   })
 
   it('highlightKeywords preserves the full text and marks matches', () => {
