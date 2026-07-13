@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import type { Study } from '@/lib/types'
 import SurveyWidget from '@/components/survey/SurveyWidget'
@@ -5,8 +6,13 @@ import SurveyWidget from '@/components/survey/SurveyWidget'
 interface Props { params: Promise<{ guid: string }> }
 export const dynamic = 'force-dynamic'
 
-// Look up study by slug first, then by guid
-async function findStudy(supabase: ReturnType<typeof createServiceRoleClient>, identifier: string) {
+// Look up study by slug first, then by guid. React.cache dedupes the lookup
+// within one request (perf review §7 Brief D) — the page render and
+// generateMetadata both call it, and without this a QR-burst page view paid
+// the ~3–5 point lookups TWICE. Keyed by identifier only (the client is
+// created inside so the memo key stays stable across both call sites).
+const findStudy = cache(async (identifier: string) => {
+  const supabase = createServiceRoleClient()
   // If it looks like a UUID, try guid first
   const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier)
 
@@ -51,12 +57,11 @@ async function findStudy(supabase: ReturnType<typeof createServiceRoleClient>, i
   }
 
   return null
-}
+})
 
 export default async function SurveyPage(props: Props) {
   const params = await props.params;
-  const supabase = createServiceRoleClient()
-  const study = await findStudy(supabase, params.guid)
+  const study = await findStudy(params.guid)
 
   if (!study) {
     return (
@@ -73,6 +78,7 @@ export default async function SurveyPage(props: Props) {
   // Fetch org name for AI prompts
   let orgName = ''
   if (study.org_id) {
+    const supabase = createServiceRoleClient()
     const { data: org } = await supabase
       .from('organizations')
       .select('name')
@@ -92,8 +98,7 @@ export default async function SurveyPage(props: Props) {
 
 export async function generateMetadata(props: Props) {
   const params = await props.params;
-  const supabase = createServiceRoleClient()
-  const study = await findStudy(supabase, params.guid)
+  const study = await findStudy(params.guid)
   if (!study) return { title: 'Survey' }
   return {
     title: `${study.bot_emoji} ${study.bot_name} — ${study.name}`,

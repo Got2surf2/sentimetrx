@@ -104,8 +104,8 @@ Enabled per-survey from the **Publish** page (`/studies/[id]/deploy`) → **Kios
 ## AI Engine
 
 ### Clarifier API (`POST /api/clarify`)
-- Rate limited: 10/min per IP
-- Input: study context, question asked, user answer, sentiment, scores, optional `studyGuid` (public), and `priorQA` — the **full question+answer text** of every earlier open-ended/rating answer in this same session (in order), so the model can see what the respondent has already told it
+- **Rate limited two-tier (perf review §7 Brief D, 2026-07-13):** per **(IP, session_id)** at **6/min** (the primary bucket) + a per-IP **backstop at 120/min**. The old flat `clarify:<ip>` at 10/min meant a QR-code-on-TV / venue-WiFi crowd (all behind one NAT IP) exhausted the AI follow-up budget almost instantly and every later respondent's probes silently died. `session_id` now rides in the body; body parsed before the rate check; bodies > 100 KB rejected first. Cellular scanners (own IP) are unaffected.
+- Input: study context, question asked, user answer, sentiment, scores, `session_id`, optional `studyGuid` (public), and `priorQA` — the **full question+answer text** of every earlier open-ended/rating answer in this same session (in order), so the model can see what the respondent has already told it
 - Output: follow-up question or `null` (`SKIP` when the answer is already detailed — 3+ specific points — OR it only refers back to something already covered in `priorQA`, e.g. "just the slow pacing I mentioned earlier" — or off-topic/unsafe)
 - Rules: max 25 words, no repetition, only probe if vague. The prior Q/A are framed as "already captured — do NOT ask them to repeat or expand on any of it", which kills the repeat-question complaint where a later answer back-references an earlier one
 - **Why `priorQA` (not the old `priorAnswers` map)**: the client previously sent only the bare answer strings keyed `q1`/`q3` with no question text, so the model couldn't tell *what* was asked and would re-probe detail the respondent had already given on a different question. The engine (`useSurveyEngine`) now records each question's prompt text as it's asked (`questionsAsked`) and ships the paired Q+A list.
@@ -170,6 +170,8 @@ Enabled per-survey from the **Publish** page (`/studies/[id]/deploy`) → **Kios
 - `datasets` — TextMine analysis container (source: upload/study/google_reviews)
 
 ### Response timestamps & partial saves
+**Rate limiting (`POST /api/respond`) is two-tier (perf review §7 Brief D, 2026-07-13):** per **(IP, session_id)** at **20/min** (each respondent their own bucket) + a per-IP **backstop at 600/min** (abuse ceiling). Replaces the flat `respond:<ip>` at 120/min, which capped a whole venue-NAT room at ~2 saves/s. Body is parsed before the rate check (the key reads `session_id`); bodies > 100 KB are rejected first.
+
 A `responses` row is created on the first partial save and upserted by `session_id` on every step. `app/api/respond/route.ts` stamps `completed_at` on **every** save (partial or final), so it's really a *last-activity* time — every row has a real date, including abandoned surveys. **`status` (`incomplete` / `complete`) is the authoritative complete-vs-incomplete signal — never the presence of `completed_at`.** (Before mid-2026, partial saves wrote `completed_at = NULL`; migration `068_backfill_response_timestamps.sql` recovered those historical dates from `payload.timestamp`.)
 
 ### Key Indexes

@@ -25,13 +25,16 @@ interface ClarifyRequest {
   language?:       string
   testing?:        boolean
   force?:          boolean               // always ask a follow-up (deep-probe/demo mode); skip only for unsafe/off-topic
+  session_id?:     string                // respondent session — the primary rate-limit key (venue-NAT safe)
 }
 
 export async function POST(req: NextRequest) {
-  // Rate limit: 10 AI clarification requests per minute per IP
   var ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown'
-  var rl = await checkRateLimit('clarify:' + ip, 10, 60000)
-  if (rl.limited) return NextResponse.json({ question: null }, { status: 429 })
+
+  // Reject oversized bodies before parsing (the rate-limit key is read from it).
+  if (Number(req.headers.get('content-length') || 0) > 100_000) {
+    return NextResponse.json({ question: null }, { status: 413 })
+  }
 
   let body: ClarifyRequest
   try {
@@ -39,6 +42,17 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
+
+  // Two-tier rate limiting (perf review §7 Brief D). The old flat
+  // `clarify:<ip>` at 10/min meant a venue-WiFi room (one NAT IP) exhausted the
+  // AI follow-up budget almost instantly and every later respondent's probes
+  // silently died. Key primarily by (ip, session_id) so each respondent has
+  // their own budget, with a per-IP backstop against abuse.
+  const cid = typeof body.session_id === 'string' && body.session_id ? body.session_id : 'anon'
+  const rlSession = await checkRateLimit('clarify:' + ip + ':' + cid, 6, 60000)
+  if (rlSession.limited) return NextResponse.json({ question: null }, { status: 429 })
+  const rlIp = await checkRateLimit('clarify-ip:' + ip, 120, 60000)
+  if (rlIp.limited) return NextResponse.json({ question: null }, { status: 429 })
 
   const {
     studyName, studyPurpose, questionAsked,

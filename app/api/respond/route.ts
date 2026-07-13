@@ -21,12 +21,15 @@ import { auditContent, auditConversationLog, type ContentFlag } from '@/lib/cont
 // timestamp.
 
 export async function POST(req: NextRequest) {
-  // Rate limit: 120 requests per minute per IP (partial saves + final submit; multiple users may share an IP)
   var ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown'
-  var rl = await checkRateLimit('respond:' + ip, 120, 60000)
-  if (rl.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
-  let body: SubmitResponseBody
 
+  // Reject oversized bodies before parsing (cheap header check; the key below
+  // is read from the body so it must be parsed first).
+  if (Number(req.headers.get('content-length') || 0) > 100_000) {
+    return NextResponse.json({ error: 'Request too large' }, { status: 413 })
+  }
+
+  let body: SubmitResponseBody
   try {
     body = await req.json()
   } catch {
@@ -34,6 +37,18 @@ export async function POST(req: NextRequest) {
   }
 
   const { study_guid, payload, duration_sec, session_id, status } = body
+
+  // Two-tier rate limiting (perf review §7 Brief D). A QR-code-on-TV burst puts
+  // a whole venue-WiFi crowd behind ONE NAT IP, where the old flat
+  // `respond:<ip>` at 120/min capped the ROOM at ~2 saves/s. Key primarily by
+  // (ip, session_id) so each respondent gets their own bucket, with a high
+  // per-IP backstop that still stops a single abusive source. Cellular
+  // scanners (own IP) are unaffected either way.
+  const rlKey = 'respond:' + ip + ':' + (typeof session_id === 'string' && session_id ? session_id : 'anon')
+  const rlSession = await checkRateLimit(rlKey, 20, 60000)
+  if (rlSession.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
+  const rlIp = await checkRateLimit('respond-ip:' + ip, 600, 60000)
+  if (rlIp.limited) return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
   const isPartial = status === 'incomplete'
   const isFinal   = status === 'complete' || !status
 

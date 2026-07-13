@@ -551,6 +551,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           studyName:       orgName || study.name,
           studyPurpose:    config.greeting,
           studyGuid:       study.guid,
+          session_id:      sessionId.current,   // per-session rate-limit key (venue-NAT safe)
           questionAsked:   s.currentQuestion,
           questionKey:     qKey,
           answer:          text,

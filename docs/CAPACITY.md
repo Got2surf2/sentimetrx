@@ -121,11 +121,17 @@ confirmation of the §5 bottleneck ordering.
 
 Interpretation per surface:
 
-- **Public widgets (surveys):** stateless insert + upsert path. Per-IP
-  limit 120/min means one venue NAT (kiosk event) supports ~2 submits/s
-  sustained — sized for real events. Platform-wide, ingestion is
-  DB-write-bound; hundreds of concurrent respondents fit inside the
-  pooler envelope since each submit holds a connection for <1 s.
+- **Public widgets (surveys):** stateless insert + upsert path.
+  **Two-tier rate keying (perf review §7 Brief D, 2026-07-13):** the flat
+  per-IP `respond:<ip>` at 120/min (which capped a whole venue NAT at
+  ~2 submits/s — a QR-code-on-TV crowd shares one WiFi IP) was replaced by a
+  per-**(IP, session_id)** bucket at 20/min + a per-IP backstop at 600/min, so
+  each respondent gets their own budget and a busy room no longer throttles
+  itself; `/api/clarify` got the same split (6/min per session + 120/min per
+  IP, was a flat 10/min that silently killed follow-ups for a whole room).
+  Platform-wide, ingestion is DB-write-bound; hundreds of concurrent
+  respondents fit inside the pooler envelope since each submit holds a
+  connection for <1 s.
 - **AI chat (agents + PulseIQ):** each turn = 1 main Sonnet call + ~6
   auxiliary AI calls + ~10–15 pooled DB round trips, 5–13 s wall time.
   Rate limits (30/min/IP agents; 20/min/participant + 600/min/IP town

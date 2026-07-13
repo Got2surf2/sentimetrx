@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
+import { checkRateLimit } from '@/lib/rateLimit'
 
 // Bypass the rate limiter in tests so we never thrash the in-memory bucket.
 vi.mock('@/lib/rateLimit', () => ({
@@ -149,5 +150,46 @@ describe('POST /api/respond (public survey-response endpoint)', () => {
       jsonRequest({ study_guid: 'g1', payload: { x: 1 } }),
     )
     expect(res.status).toBe(403)
+  })
+})
+
+// Two-tier rate-limit keying (perf review §7 Brief D) — a venue-NAT crowd
+// (one IP, many sessions) must not cross-throttle, while a per-IP backstop
+// still stops abuse.
+describe('POST /api/respond — rate-limit keying (Brief D)', () => {
+  const rl = checkRateLimit as unknown as ReturnType<typeof vi.fn>
+  beforeEach(() => { rl.mockClear(); rl.mockResolvedValue({ limited: false, remaining: 100 }) })
+
+  it('keys the per-session bucket by (ip, session_id) + a per-IP backstop', async () => {
+    const POST = await loadHandler()
+    await POST(jsonRequest({ study_guid: 'g1', payload: { x: 1 }, session_id: 'ses_A', status: 'incomplete' }))
+    const keys = rl.mock.calls.map(c => c[0])
+    // per-session bucket (20/min) + per-IP backstop (600/min)
+    expect(rl.mock.calls).toContainEqual(['respond:127.0.0.1:ses_A', 20, 60000])
+    expect(rl.mock.calls).toContainEqual(['respond-ip:127.0.0.1', 600, 60000])
+    expect(keys).not.toContain('respond:127.0.0.1') // the old flat key is gone
+  })
+
+  it('two sessions on the same IP get separate buckets (no cross-throttle)', async () => {
+    const POST = await loadHandler()
+    await POST(jsonRequest({ study_guid: 'g1', payload: { x: 1 }, session_id: 'ses_A', status: 'incomplete' }))
+    await POST(jsonRequest({ study_guid: 'g1', payload: { x: 1 }, session_id: 'ses_B', status: 'incomplete' }))
+    const sessionKeys = rl.mock.calls.map(c => c[0]).filter(k => k.startsWith('respond:'))
+    expect(sessionKeys).toContain('respond:127.0.0.1:ses_A')
+    expect(sessionKeys).toContain('respond:127.0.0.1:ses_B')
+  })
+
+  it('per-IP backstop 429s even when the per-session bucket is fine', async () => {
+    rl.mockImplementation((key: string) =>
+      Promise.resolve({ limited: key.startsWith('respond-ip:'), remaining: 0 }))
+    const POST = await loadHandler()
+    const res = await POST(jsonRequest({ study_guid: 'g1', payload: { x: 1 }, session_id: 'ses_A', status: 'incomplete' }))
+    expect(res.status).toBe(429)
+  })
+
+  it('a session-less request falls back to an anon per-session bucket', async () => {
+    const POST = await loadHandler()
+    await POST(jsonRequest({ study_guid: 'g1', payload: { x: 1 }, status: 'incomplete' }))
+    expect(rl.mock.calls).toContainEqual(['respond:127.0.0.1:anon', 20, 60000])
   })
 })
