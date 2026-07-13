@@ -1,0 +1,307 @@
+# PERFORMANCE_REVIEW.md — Architectural Performance Review (2026-07-13)
+
+Owner-mandated review: **where does the platform break at multi-million total
+rows, single datasets of 1M+ rows, many simultaneous users, and QR-code-on-TV
+survey bursts?** Companion to `docs/CAPACITY.md` (provider envelope, k6
+baselines, 2026-07-04) — this doc is the scored bottleneck map and the
+decisions it implies. Seed evidence: the 2026-07-13 production slowness
+incident (785K scale-test dataset → 84.6% cache hit → platform-wide crawl),
+whose findings this review verifies and generalizes rather than re-derives.
+
+**Method.** Read-only production measurements (2026-07-13); a ~1.03M-row
+dataset seeded on the TEST project (`[PERF TEST] Outback x8`, id
+`d1000000-0000-4000-8000-000000001000`) with every dataset surface's DB path
+timed over PostgREST — the real app path, honoring the 8s statement timeout
+and 1000-row REST caps; a code audit of all 41 dataset routes + collection
+paths classifying each as O(1) stored / O(50K sample) / O(N) full-scan.
+k6 burst numbers cite CAPACITY.md §3 (2026-07-04) — the submit path is
+unchanged since that baseline, so it was not re-run.
+
+---
+
+## 0. Executive summary — the bottleneck map
+
+Ranked by which wall arrives first. "Breaks at" is the estimate for current
+prod compute (Supabase **Micro**, 1 GB RAM) unless stated.
+
+| # | Bottleneck | Surface | Breaks at | Fix | Cost |
+|---|---|---|---|---|---|
+| 1 | **DB working set vs 1 GB RAM** — data outgrowing cache turns EVERY query disk-bound; Micro's 11 MB/s baseline I/O + daily burst budget is the amplifier (proven 2026-07-13) | platform-wide | ~500K–1M total rows of *hot* data (~2–4 GB relation) | **Compute tier bump** — see §1 recommendation | $15–110/mo |
+| 2 | **`/aggregate` route: every Charts/Stats server op is an O(N) scan** (crosstab, group stats, date series, taxonomy_*) — no sampling | Charts + Statistics tabs | ~300–600K rows/dataset (8s statement timeout) | Sampled variants over `idx_drf_sample` (sql/162/163 pattern) | ~1–2 sessions |
+| 3 | **`filter-options` route: serial per-field full scans** (non-empty count, distinct values, exact numeric stats, date min/max full sorts ×2) | Filters modal (pre-load) | ~300–600K rows/dataset; wide schemas multiply | Same sampling treatment + expression indexes for date min/max; fold into the owner-reported exact-values fix | ~1 session |
+| 4 | **`entities` GET: live FTS counts for ~300 terms over all rows** ("not a sample" by design) | Entities panel | risk from ~500K rows/dataset | Sampled counts or stored counts refreshed at classify time | ~1 session |
+| 5 | **Org-snapshot cron: single-org dump > 240s has no intra-org continuation** (hit 2026-07-13 at 785K rows) | nightly backup | one org holding ~1M+ rows | Incremental/per-table manifests (named in BACKUPS.md) | ~1–2 sessions |
+| 6 | **`study_response_stats` MV refresh scans ALL responses platform-wide**, debounced to 1/30s during submit bursts | survey ingestion at scale | ~1M+ total responses (forward-looking: prod has 191 today) | Replace MV with per-study counter table (trigger or upsert) | ~1 session |
+| 7 | **Venue-NAT rate limiting** — `respond: 120/min/IP` (~2 submits/s/venue-WiFi), `clarify: 10/min/IP` (follow-ups silently stop for the whole room) | QR-TV burst | one venue router funneling ≥ ~30 active respondents | Key by session_id + IP hybrid; raise clarify per-IP or key per session | hours |
+| 8 | **Ask Ana: filter-blind `ORDER BY random()` fetch** — full scan+sort (measured: 57014 at 1.03M), and filters apply only to the ~600-row pre-fetch, so selective filters starve or empty the sample at ANY size | Ask Ana | errors at ~300–600K rows; silently thin under narrow filters today | filtered sampling in SQL (push `SerializedFilters` into an RPC over `idx_drf_sample`); report the true filtered n | ~1 session |
+| 9 | **Collection project-report: Node union up to 80K rows/member via deep OFFSET pages** | project report | 1M-row members | `pageSampledRows` (lib/bulkRowSample) like the bulk path | ~half session |
+| 10 | **Client main-thread: 50K-row sample = ~35 MB JSON parse + ~6–8 O(N) memo passes per interaction** | TextMine/Stats/Charts in-browser | fine on desktop; tablets/phones strain | keep 50K cap; virtualize long lists as needed; hold the memoization rule (ANALYTICS.md) | doctrine, not a fix |
+
+**Not bottlenecks** (verified): Vercel functions/concurrency, Anthropic Scale
+tier, bulk-rows load (O(sample) by design — though heavy at 1M on Micro-class
+cache, see §2 caveat), signal-stats
+(cached + sampled), taxonomy classify (keyset-chunked), `/state` (2 keyed
+reads), theme-counts base path (sampled), Charts CSV (bounded at the 50K
+sample — but silently partial on bigger datasets; labeling nit, §2).
+
+---
+
+## 1. Whole-DB scale: multi-million total rows
+
+**The 2026-07-13 incident, generalized.** At 3.56 GB of `dataset_rows_flat`
+against 1 GB RAM (256 MB shared_buffers / 768 MB effective cache), cache hit
+fell to 84.6% and *every* page's auth/org point-lookups paid disk I/O at
+Micro's 11 MB/s baseline (the daily burst budget having been drained by an
+index build + classify scans). Deleting the 785K scale-test rows restored
+sub-ms queries. The mechanism is general:
+
+- All-in cost is **~3.8 KB/row** (heap + indexes + toast + tsv, CAPACITY §1),
+  so cache holds roughly **200K hot rows per GB of RAM**.
+- Once the hot working set exceeds cache, it is not "the big dataset is slow"
+  — it is **every tenant's auth lookup is slow**, because the pooled
+  PostgREST backends (§3) queue behind disk-bound scans.
+
+**Read-only prod snapshot (2026-07-13, this review):** DB file 3,129 MB;
+`dataset_rows_flat` relation 3,029 MB (heap 2,257 MB) holding only ~274K live
+rows (~1 GB of real data) — **~2 GB is post-delete bloat**. Plain VACUUM makes
+the space reusable but never returns it; seq-scan-shaped work (backups, MV
+refreshes, analyze) still reads the dead extent. Cumulative cache hit reads
+69% but includes the incident window; see the delta sample in §6.
+
+### Scale model and compute-tier recommendation
+
+| Tier | RAM (≈cache) | Hot-row budget | Disk baseline | $/mo |
+|---|---|---|---|---|
+| Micro (today) | 1 GB | ~200K rows | 11 MB/s | in Pro |
+| Small | 2 GB | ~400K | 11 MB/s | $15 |
+| Medium | 4 GB | ~900K | 11 MB/s | $60 |
+| **Large** | **8 GB dedicated** | **~2M** | **79 MB/s** | **$110** |
+| XL | 16 GB | ~4M+ | 79+ MB/s | $210 |
+
+(Ladder from CAPACITY §2, verified live 2026-07-04; resize ≈ 2 min downtime,
+billed hourly, reversible.)
+
+**Recommendation:**
+
+1. **Now (free):** reclaim the ~2 GB bloat — `pg_repack` 1.5.2 is available
+   on the instance (online, no long table lock; `VACUUM FULL` in a quiet
+   window is the cruder alternative). This alone puts the live working set
+   (~1 GB) back inside Micro's cache with margin, and shrinks nightly
+   backup/MV scan cost.
+2. **At the first real 500K+ dataset or ~1M total rows:** move to
+   **Medium ($60/mo)**. Small ($15) only buys ~400K hot rows — it would be
+   outgrown by the very scenario this review models.
+3. **If 1M+-row datasets become a sold product scenario** (the owner's
+   framing): **Large ($110/mo)** is the honest floor — 8 GB holds a ~2M-row
+   working set, dedicated cores stop noisy-neighbor variance, and the 7×
+   disk baseline (79 MB/s) makes even the cold-cache case tolerable
+   (~3.8 GB dataset scan ≈ 50s at baseline vs ~6 min on Micro).
+4. **Standing rule** (banked 7/11, holds): after any bulk load,
+   `VACUUM ANALYZE` before judging performance; watch Dashboard → Database
+   Health → Disk IO % on heavy days.
+
+Disk-size footnote: Pro includes 8 GB database; ~2M rows ≈ 7.7 GB all-in.
+Multi-M rows also means $0.125/GB/mo overage and longer PITR/backup windows —
+budget line, not a wall.
+
+### Platform-wide O(all-history) scans to retire
+
+- **`study_response_stats` MV** (§0 #6): refresh is a full GROUP BY over
+  `responses` platform-wide, triggered (debounced 30s) by survey submits.
+  Today trivial (191 rows); at 1M+ accumulated responses each refresh is a
+  multi-second scan re-run every 30s during bursts, competing for the same
+  I/O budget that ingestion needs. Replace with a per-study stats table
+  maintained by trigger/upsert before response volume becomes real.
+- **Nightly org-snapshot** (§0 #5): continuation is *across orgs* only; the
+  single-org dump has no cursor, so one org holding a 1M-row dataset
+  overruns the 240s budget every night (observed 2026-07-13, 785K). Fix =
+  intra-org continuation or incremental manifests (BACKUPS.md names this).
+
+## 2. Single datasets at 1M+ rows
+
+Verdicts from the 41-route code audit, spot-verified by measurement on the
+TEST ~1.03M-row dataset over PostgREST (8s statement timeout, identical to
+prod; TEST is also Micro-class, so timings are prod-representative).
+Headline measurement: **every exact/full-scan RPC hit the 8s statement
+timeout (57014) at 1.03M rows — cold AND warm** — while every keyset,
+sampled-page, and stored path stayed in the 0.1–0.7s range. The 8s timeout
+is the cliff; ~300–600K rows is where full jsonb scans start crossing it
+(the 7/11 measurements bracketed the low end).
+
+**SAFE at 1M (verified):**
+
+| Surface | Why | Measured at 1.03M |
+|---|---|---|
+| Bulk rows / TextMine load | `sample_dataset_rows` index-range-scans exactly the 50K sample (sql/160) — the *index* is flat; heap-fetch locality is not (see caveat below) | 50K in 10 pages: **56s cold / 44s warm; slowest page 6.4s / 5.1s** |
+| signal-stats (strip) | cached in `dataset_state.analytics` keyed by theme-hash + row_count; recompute sampled (sql/162/166) | 5K page **4.8s cold / 3.0s warm** → full 50K recompute ~30–48s (then cached until row_count changes) |
+| avg rating | sampled (sql/163) | 5K page **130 ms** |
+| taxonomy GET | stored rollup; fallback guarded → degrades to empty | code-audit |
+| taxonomy POST classify | 10K keyset chunks on `idx_drf_id_keyset` (sql/165), browser-looped | keyset page **83–103 ms** |
+| stored row_count / exact count head | `datasets.row_count` (O(1)); count head is index-only | **0.3s / 0.2s** |
+| /state | 2 keyed single-row reads | code-audit |
+| theme-counts (base) | stored row totals + sampled pass | code-audit |
+| theme-impact | hard 10K cap (first-N, biased but bounded) | code-audit |
+| Charts CSV export | fetches `rows?all=true` → the 50K sample. **Nit: silently partial above the cap — label it** like the strip's "~" | code-audit |
+
+**SAFE-but-heavy caveat (measured):** at 1.03M rows the 50K sample load
+runs ~45–60s with individual 5K pages at 5–6.4s — *one bad I/O day from the
+8s timeout*. The index range scan is O(sample), but the 50K heap fetches
+scatter across a ~2.6 GB partition that no longer fits Micro-class cache.
+Two levers if 1M datasets become real: drop the page size (5000 → 2500,
+halves per-statement exposure at the cost of more round trips) and/or the
+§1 compute bump (8 GB cache makes the fetches RAM-speed). Same math applies
+to the sampled_signal_counts recompute (3–4.8s per 5K page at 1M).
+
+**BREAKS at 1M (times out / unbounded):**
+
+| Surface | Failing op | Measured at 1.03M | Fix |
+|---|---|---|---|
+| `/aggregate` (all Charts + Statistics server ops) | `crosstab_counts`, `group_numeric_stats`, `date_series_stats`, `count_field_values`, `numeric_field_stats`, `taxonomy_*` — all full jsonb scans | **57014 at 8s** (crosstab + group stats measured, cold and warm) | sampled variants over `idx_drf_sample`, exact below the cap (the proven sql/162 pattern); label "~" |
+| `filter-options` | per-field serial: `count_nonempty_rows` + `count_field_values` + exact numeric + **two full sorts** on an unindexed jsonb date expression | **57014 at 8s** — all four op types measured, per field, so a wide schema fails serially for the whole 60s budget | one sampled multi-field pass; date min/max via expression index or stored analytics; merge with the owner-reported exact-values item |
+| **Ask Ana** | `sample_row_pairs` = `ORDER BY random()` over the whole partition — full scan + sort just to pick ~600 rows | **57014 at 8.5s** → route returns "No rows found in dataset" | sample via `idx_drf_sample` (the sql/160 machinery already returns deterministic samples cheaply); see filter finding below |
+| `entities` GET | `count_entity_terms`: live tsv FTS counts for up to ~300 terms over every row | code-audit (catalog empty on PERF TEST) | store counts at classify/refresh time, or sample |
+| theme-counts w/ `cooccurrence`/`topical`/`dimensions` | those three RPCs full-scan | code-audit | sampled variants |
+| collections project-report | Node union via OFFSET pages up to 80K rows/member | code-audit | `pageSampledRows` (lib/bulkRowSample), already used by the bulk path |
+| org-snapshot (that org) | single-org dump > 240s | observed on prod 7/13 | §1 |
+
+**DEGRADES (bounded but slow/biased at 1M):** `comments` + `search` +
+`rows-by-entity` (GIN-backed page fetches are fine; the exact match-count
+over all FTS hits grows with data), `export/html` (30K cap via deep OFFSET),
+`export/pptx` (50K rows via 50 OFFSET pages + the entities FTS count above).
+Acceptable for now; note OFFSET-paging in export paths is the next candidate
+for the keyset treatment if exports feel slow at scale.
+
+### Ask Ana: filter compliance (owner question, 2026-07-13)
+
+**Does Ask Ana comply with active filters rather than sampling the full
+dataset? Partially — filters are honored, but applied too late in the
+pipeline.** Verified in `lib/anaReportContext.ts` (`loadAnaSample`, the
+shared ask-ana/report pipeline):
+
+1. **Filters ARE applied** — the panel passes the active `SerializedFilters`,
+   the route filters every fetched row against them (cat + range, blanks
+   semantics matching the Filters modal) before anything reaches the model,
+   and the prompt tells Ana filters are active. No filter is ignored.
+2. **But the fetch is filter-blind.** The pipeline fetches a bounded budget
+   first — 3× the sample size, so ~600 rows for the default 200 (2,000 max) —
+   *then* filters in Node. On a selective filter the sample starves: a 5%
+   segment of a 56K dataset yields ~30 analyzed rows; a narrow-enough filter
+   yields zero and the route errors "No rows found in dataset" even though
+   thousands of matching rows exist. The model's context note ("you are
+   seeing N of M total rows") reports survivors-of-the-600 as if it were the
+   dataset-wide filtered count — a denominator-credibility violation.
+3. **And at ~1M rows the fetch itself breaks** (the `ORDER BY random()`
+   timeout above) regardless of filters.
+
+**Fix (one change retires all three):** push the serialized filters into a
+sampled SQL fetch — either a filtered variant of the sql/160 sample (keyset
+over `idx_drf_sample` with cat/range predicates compiled to jsonb conditions)
+or reuse of the `get_rows_by_filters` machinery the comments route already
+has — and return the true filtered count for the prompt note.
+
+**The compounding rule:** none of the BREAKS items fail gracefully into the
+platform staying healthy — each is a multi-GB scan that (a) 57014s after 8s
+*and* (b) evicts the shared cache while trying (§1). Fixing them is not just
+per-surface UX; it protects every other tenant.
+
+## 3. Many simultaneous users
+
+The app's only DB path is PostgREST over HTTP (no direct pg connections in
+app code — verified). That makes the **PostgREST backend pool, not the
+Supavisor 200-client ceiling, the real concurrency choke** on Micro: ~5
+pooled backends observed at idle. Every authed API call spends ~3 point
+round-trips before real work (auth server + users→organizations join +
+resource org check).
+
+- **Healthy cache:** point lookups are sub-ms; ~5 backends × ms-scale
+  queries ≈ thousands of queries/s — dozens of concurrent admin users are
+  nowhere near the wall. Survey/agent load adds brief holds (§4). Fine.
+- **Unhealthy cache or an 8s scan in flight:** the pool queues behind
+  disk-bound statements and *everyone* feels it — this, not connection
+  exhaustion, is the observed failure mode (7/13). The fix is §1 + §2, not
+  connection tuning.
+- The CAPACITY ~200-participant PulseIQ ceiling still stands as the
+  burst-hold model; its documented mitigation (pre-event compute bump)
+  doubles as the pool fix, since bigger tiers get bigger PostgREST pools.
+- `/admin/health` SSR still blocks first byte on live vendor probes
+  (seconds by design; worse when throttled) — known, deliberate; stream or
+  defer if it starts masking real checks.
+
+## 4. QR-code-on-TV survey burst
+
+Scenario: hundreds of respondents scanning within a minute or two.
+Per-respondent cost (measured path):
+
+- **Page load** `/s/[guid]`: force-dynamic SSR, ~3–5 point lookups — and
+  `findStudy` runs **twice** (page + generateMetadata, no `React.cache()`
+  dedup). Cheap fix, halves burst read load.
+- **Per question:** one debounced partial save (2s) → `/api/respond` ≈ 4–6
+  brief pooled round trips (rate-limit RPC, study lookup, session lookup,
+  upsert, MV-debounce RPC).
+- **Open-ended answers:** `/api/clarify` = 1 rate-limit RPC + study lookup +
+  one fast-tier AI call (≤80 tokens out).
+
+At **500 joins/min** (aggressive for one TV): ~8 page views/s ≈ 30–40 point
+lookups/s + ~10–20 respond calls/s ≈ 60–120 brief statements/s. Within the
+pool's envelope **provided the cache is healthy** — burst capacity is
+downstream of §1, not a separate wall. The k6 baseline (25 concurrent
+sustained, p95 748 ms, 0 failures — CAPACITY §3) supports this; the submit
+path is unchanged since.
+
+What actually breaks first in the room:
+
+1. **Venue NAT vs per-IP keys.** Cellular scanners each carry their own IP —
+   fine. But a venue-WiFi crowd shares one NAT IP: `respond:` at 120/min
+   caps the *room* at ~2 saves/s (~1 question-advance/s across everyone),
+   and `clarify:` at 10/min means **follow-up probes silently stop for
+   everyone on the WiFi** — the survey completes but the room's data is
+   shallower, invisibly. Fix: include `session_id` in the respond/clarify
+   keys (keep a higher per-IP backstop against abuse), e.g.
+   `respond:<ip>:<session_id>` at ~20/min + `respond-ip:<ip>` at ~600/min.
+2. **MV refresh under fire** (§1): every 30s during the burst, a
+   platform-wide `responses` scan competes with ingestion. Trivial today,
+   the counter-table fix retires it.
+3. **Device-limit checks** on final submit add 1–2 indexed reads keyed by
+   `(study_id, ip_hash)` — at high volume ensure the index exists before a
+   flagship event (same pre-event checklist as the compute bump).
+
+**Pre-event checklist (an hour of ops, not an architecture change):** bump
+compute for the day (CAPACITY §3's PulseIQ mitigation, applies here too),
+confirm rate-limit keying fix is deployed if venue WiFi is expected, avoid
+scheduling imports/classifies that day (I/O budget), watch Disk IO %.
+
+## 5. Client main-thread (the browser is a tier too)
+
+- The 50K sample ships ~35 MB of JSON (extrapolated from 27K → 18.5 MB
+  measured; 14K → 11 MB measured 7/13) and parses in roughly 0.5–1s on
+  desktop, holding a few hundred MB of heap. Admin-only surface: acceptable
+  on desktop, strained on tablets. The cap is the protection — hold it.
+- Each filter/pill interaction runs ~6–8 memoized O(N) passes over up to
+  50K rows in TextMine (recount, entities, substantive-count, etc.) —
+  tens of ms each on desktop; acceptable.
+- The proven failure class is **unmemoized identity in render-path deps**
+  (Statistics-tab infinite loop, fixed 7/13 + caught by e2e; classify-loop
+  nav-stomp, fixed 7/13). The rule is banked in ANALYTICS.md: render-path
+  `themeSetForField()` (and anything returning fresh objects) MUST memoize.
+  The remaining ~269 `react-hooks/*` lint warnings ride the ratchet —
+  behavior-sensitive, fix per-file with browser verification, never bulk.
+
+## 6. Delta cache-hit sample (current state, post-785K-delete)
+
+Two samples of `pg_statio_user_tables` heap counters 25 minutes apart
+(2026-07-13 ~12:17→12:42 EDT): hit 47,382,673 / read 21,272,922 — **frozen,
+zero heap activity in the window** (prod idle at sampling time), so no live
+delta was observable. The cumulative 69% figure includes the whole incident
+window and should not be read as current health; sub-ms auth/org queries
+were verified immediately after the 785K delete (7/13 05:30Z). Re-sample the
+delta during an active usage day; healthy is ≥99%.
+
+---
+
+*Re-run policy: re-verify §2 measurements after any change to the sampling
+RPCs or `idx_drf_sample`; re-take the §1 snapshot after a compute resize,
+a bloat reclaim, or any dataset crossing 500K real rows. Harness:
+`scripts/_perf_measure_1m.ts` (untracked, KEEP) against the TEST
+`[PERF TEST] Outback x8` dataset (id `d1000000-0000-4000-8000-000000001000`,
+1,028,952 rows — kept on TEST for owner UI testing; delete + VACUUM when
+done; re-seed = copy Outback's rows ×8 with fresh identity ids).*

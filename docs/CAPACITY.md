@@ -3,7 +3,10 @@
 What the platform can hold and serve **today**, on the plans and compute
 tiers actually paid for — measured 2026-07-04, not aspirational. Companion
 to `docs/ARCHITECTURE.md` (design decisions), `docs/ENGINEERING.md`
-(perf budgets), `docs/SCALABILITY_ROADMAP.md` (historical 500K-row work).
+(perf budgets), `docs/SCALABILITY_ROADMAP.md` (historical 500K-row work),
+and `docs/PERFORMANCE_REVIEW.md` (2026-07-13 architectural bottleneck map:
+multi-M rows, 1M+ datasets, concurrency, QR-burst — supersedes this doc's
+§5 ordering where they differ).
 
 **Method.** Provider limits were read live from the accounts (API
 rate-limit response headers, Vercel/Supabase account APIs, `pg_settings`)
