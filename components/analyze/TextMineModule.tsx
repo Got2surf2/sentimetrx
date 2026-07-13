@@ -1123,6 +1123,18 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // Dimensions are being classified in the background (the "zero-click" path).
   const [dimAutoNotice, setDimAutoNotice] = useState<string | null>(null)
 
+  // Unmount guard for the background classify loops below: they run up to 300
+  // sequential chunks (minutes on large datasets) and MUST stop when the user
+  // navigates away — a loop surviving unmount kept hammering the DB and its
+  // router.refresh() stomped in-flight tab navigations (owner-observed "system
+  // hangs switching Statistics → Schema", 2026-07-12). Classification is
+  // idempotent/resumable, so breaking mid-run is safe.
+  const classifyAlive = useRef(true)
+  useEffect(function () {
+    classifyAlive.current = true
+    return function () { classifyAlive.current = false }
+  }, [])
+
   // Restaurant data was detected at theme-generation time (AI food-service flag,
   // or a restaurant theme library was applied) → turn Dimensions on and classify
   // in the background, no clicks: PATCH the flag, loop the keyword classifier over
@@ -1137,6 +1149,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         body: JSON.stringify({ taxonomy_enabled: true }),
       })
       for (var guard = 0; guard < 300; guard++) {
+        if (!classifyAlive.current) return // user left — resume on next visit
         var r = await fetch('/api/datasets/' + datasetId + '/taxonomy', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ pendingOnly: true, textFields: fields }),
@@ -1145,6 +1158,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         var j = await r.json()
         if (j.done) break
       }
+      if (!classifyAlive.current) return // never refresh from an unmounted tab
       setDimAutoNotice('Dimensions ready ✓')
       router.refresh()
       setTimeout(function () { setDimAutoNotice(null) }, 4000)
@@ -1164,6 +1178,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     setDimAutoNotice('Tagging emotion language (disappointment · blame · churn intent)…')
     try {
       for (var guard = 0; guard < 300; guard++) {
+        if (!classifyAlive.current) return // user left — resume on next visit
         var r = await fetch('/api/datasets/' + datasetId + '/taxonomy', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ pendingOnly: true, textFields: fields }),
@@ -1172,6 +1187,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         var j = await r.json()
         if (j.done) break
       }
+      if (!classifyAlive.current) return // never refresh from an unmounted tab
       var qs = fields.map(function (f) { return 'fields=' + encodeURIComponent(f) }).join('&')
       var rollupRes = await fetch('/api/datasets/' + datasetId + '/taxonomy?' + qs)
       var rollup = rollupRes.ok ? await rollupRes.json() : null
