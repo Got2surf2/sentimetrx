@@ -535,5 +535,13 @@ RPCs or `idx_drf_sample`; re-take the §1 snapshot after a compute resize,
 a bloat reclaim, or any dataset crossing 500K real rows. Harness:
 `scripts/_perf_measure_1m.ts` (untracked, KEEP) against the TEST
 `[PERF TEST] Outback x8` dataset (id `d1000000-0000-4000-8000-000000001000`,
-1,028,952 rows — kept on TEST for owner UI testing; delete + VACUUM when
-done; re-seed = copy Outback's rows ×8 with fresh identity ids).*
+1,028,952 rows — re-seed = copy Outback's rows ×8 with fresh identity ids).*
+
+**Retention decision (owner, 2026-07-13):** the 1M `[PERF TEST]` dataset is
+**KEPT on the TEST project until the §7 fix-queue is finished** — it is the
+verification target for the still-open briefs (the bar is "no 57014 on the 1M
+PERF TEST"): **Brief C Part 3** (taxonomy-family sampled twins) and **Brief E**
+(long-tail). It lives on TEST only (no prod/production impact and does not
+touch the always-on `npm test`, which is mocked), but at ~2.6 GB it bloats the
+Micro-tier TEST DB and can slow the env-gated suites. **Delete + `VACUUM
+ANALYZE` once Brief C Part 3 and Brief E land** (re-seed is cheap if needed).
