@@ -507,7 +507,7 @@ type GroupTestResult =
   | { type: 'chisq'; res: ChiSquareResult | null; groups?: undefined; boxStats?: undefined }
   | { type: 'mw_unsupported'; res?: undefined; groups?: undefined; boxStats?: undefined }
 
-function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId, dimFieldKey }: { numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string>; datasetId: string; dimFieldKey?: string }) {
+function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId, dimFieldKey, filteredRowIds }: { numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string>; datasetId: string; dimFieldKey?: string; filteredRowIds?: number[] | null }) {
   var _gk = 'statsGroup_' + datasetId
   var [testType, setTestType] = useState('auto')
   var [numF, setNumF] = useState(numFields[0]?.field || '')
@@ -577,7 +577,7 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId, dimFi
           var axis = chiDimA || chiDimB
           var other = chiDimA ? catF2 : catF
           if (!axis || !other || isDimField(other)) { if (!cancelled) setDimResult(null); return }  // both-dim unsupported
-          var d = await post({ op: 'tax_crosstab', axis: axis, field: other, axisIsRow: !!chiDimA, limit: 50, fieldKey: dimFieldKey })
+          var d = await post({ op: 'tax_crosstab', axis: axis, field: other, axisIsRow: !!chiDimA, limit: 50, fieldKey: dimFieldKey, rowIds: filteredRowIds })
           if (cancelled) return
           var grid: Record<string, Record<string, number>> = d.grid || {}
           var rkeys = Object.keys(grid)
@@ -587,7 +587,7 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId, dimFi
           return
         }
         if (!numF || !groupDimAxis) { if (!cancelled) setDimResult(null); return }
-        var dg = await post({ op: 'tax_group_stats', axis: groupDimAxis, valueField: numF, fieldKey: dimFieldKey })
+        var dg = await post({ op: 'tax_group_stats', axis: groupDimAxis, valueField: numF, fieldKey: dimFieldKey, rowIds: filteredRowIds })
         if (cancelled) return
         var groups = (dg.groups || {}) as Record<string, { n: number; mean: number; median: number; min: number; max: number; stddev: number; q1: number | null; q3: number | null }>
         var gKeys = Object.keys(groups).filter(function(k) { return groups[k].n >= 2 })
@@ -609,7 +609,7 @@ function GroupTestsPanel({ numFields, catFields, data, aliases, datasetId, dimFi
       } catch { if (!cancelled) setDimResult(null) }
     })()
     return function() { cancelled = true }
-  }, [dimInvolved, testType, catF, catF2, numF, groupDimAxis, chiDimA, chiDimB, datasetId, dimFieldKey])
+  }, [dimInvolved, testType, catF, catF2, numF, groupDimAxis, chiDimA, chiDimB, datasetId, dimFieldKey, filteredRowIds])
 
   // const so the `result && result.res` narrowings survive into the JSX IIFEs below
   const result: GroupTestResult | null = dimInvolved ? dimResult : syncResult
@@ -1928,6 +1928,20 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
     return applyFilters(rows, filters)
   }, [rows, filters])
 
+  // Filtered row-id set for the server dimension tests (GroupTestsPanel posts
+  // tax_crosstab/tax_group_stats to /aggregate). Mirrors ChartsModule exactly:
+  // derived from the FULL loaded sample (shared.rows, up to 50K) — NOT the
+  // stats subsample — and ONLY when filters are active (else null = whole
+  // dataset, the pre-fix behavior). Without this the Stats-tab dimension
+  // t-test/ANOVA/chi-square ran over the entire dataset while the sibling
+  // Charts tab filtered the same RPCs (perf review §7 Brief F, class-d drop).
+  var dimFilteredRowIds = useMemo(function() {
+    if (!Object.keys(filters || {}).length || !shared.rowsLoaded) return null
+    return applyFilters(shared.rows, filters)
+      .map(function(r) { return (r as { _rowId?: number })._rowId })
+      .filter(function(v): v is number { return typeof v === 'number' })
+  }, [shared.rows, shared.rowsLoaded, filters])
+
   // Inject __themes__ and remapped-numeric columns — memoised so stable refs don't re-trigger effects
   var enrichedData = useMemo(function() {
     var mappedFields = allSchemaFields.filter(function(f) { return f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0 })
@@ -2181,7 +2195,7 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
             <>
               {activePanel === 'descriptives' && <DescriptivesPanel numFields={numFields} data={enrichedData} mcResults={mcResults} mcRunning={mcRunning} confidenceLevel={confidenceLevel} datasetId={datasetId} />}
               {activePanel === 'correlations' && <CorrelationsPanel numFields={numFields} data={enrichedData} aliases={aliases} datasetId={datasetId} />}
-              {activePanel === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={groupTestCatFields} data={enrichedData} aliases={aliases} datasetId={datasetId} dimFieldKey={themeSourceField || undefined} />}
+              {activePanel === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={groupTestCatFields} data={enrichedData} aliases={aliases} datasetId={datasetId} dimFieldKey={themeSourceField || undefined} filteredRowIds={dimFilteredRowIds} />}
               {activePanel === 'regression' && <RegressionPanel numFields={numFields} data={enrichedData} aliases={aliases} datasetId={datasetId} />}
               {activePanel === 'insights' && <AutoInsightsPanel numFields={numFields} catFields={catFields} data={enrichedData} aliases={aliases} />}
               {activePanel === 'outliers' && <OutlierAnalysisPanel numFields={numFields} catFields={catFields} data={enrichedData} datasetId={datasetId} />}

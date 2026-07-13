@@ -481,6 +481,53 @@ those for the owner rather than redesigning. Verification bar per the
 global rules; for any SQL touch, extend `_verify_ana_filters.mts` parity
 cases rather than writing a new harness.
 
+#### Brief F results (executed 2026-07-13)
+
+Canonical = `lib/filterUtils.applyFilters` + its SQL mirror
+`ana_row_matches_filters` (sql/167). Every consumer was traced (four parallel
+classification passes, then each (b)/(d) finding re-verified against the code).
+
+| Consumer | Class | Verdict | Action taken |
+|---|---|---|---|
+| TextMineModule | a | `applyFilters(rows, effectiveFilters)` | none |
+| StatsModule (main compute) | a | `applyFilters(rows, filters)` | none |
+| StatsModule (dimension tests) | **d** | posted `tax_crosstab`/`tax_group_stats` to `/aggregate` **without** `rowIds` → t-test/ANOVA/chi-square ran over the whole dataset while the sibling Charts tab filtered the same RPCs | **FIXED (mechanical)**: derive `filteredRowIds` from the full loaded sample when filters active (null otherwise = whole dataset), pass to the tax posts — route already accepts `p_row_ids` |
+| ChartsModule (raw-row charts) | a | `applyFilters(enriched, effectiveFilters)` | none |
+| ChartsModule (taxonomy charts) | a | forwards `filteredRowIds` → `p_row_ids` (the correct pattern) | none |
+| ChartsModule (scalar server aggs: crosstab/group_stats/date_series/field_counts/numeric_stats) | **d** | full-dataset numbers under a filtered UI — the 5 scalar RPCs take **no** row-id/filter param | **ESCALATED** (needs new SQL) — see below |
+| ComparisonStrip | a | canonical, with its own aligned period ranges layered in | none |
+| ViewsBar / FilterContext / FiltersModal | a / c / c | canonical count; state containers; the filter *editor* (out of scope) | none |
+| DatasetShell | a | forwards serialized filters to canonical server routes; inline `serializeFilters` is a cosmetic dup of the shared one (behaviorally identical, serializes user filters only — a scope choice, not a semantics bug) | none (noted) |
+| export/html, export/pptx | a | `deserializeFilters` + `applyFilters` (caveat: `MAX_ROWS` cap → filters a truncated prefix on datasets past the cap — completeness, not semantics) | none |
+| ad-hoc-report | a | `loadAnaSample` → `applyFilters` / `sampled_filtered_rows` (sql/167) | none |
+| **share/analytics** | **b** | bespoke `rowMatchesFilter` — faithful today but an independently-maintained copy (drift risk) | **FIXED (mechanical)**: swapped to `deserializeFilters` + `applyFilters`; parity regression test `tests/unit/shareAnalyticsFilterParity.test.ts` |
+| projectReportLoad / collection project-report | c | no filter UI in its chain (full-dataset by design; would become (d) if a filter control is ever added) | none (noted) |
+| signal-stats (metric strip) | c | intentional all-reviews average ("ratings = all reviews"); no filter context feeds it | none |
+| dataset decks (operational-review / improvement-plan / outlet-plan) | c | raw unfiltered sample fed to the LLM; no aggregate RPCs, not a filtered-UI surface | none |
+| theme-counts | **d** | theme-prevalence bars ignore active filters (dataset-wide %) under the filtered Charts UI; `count_theme_matches`/`sampledSignalCounts` have no filter param | **ESCALATED** (needs new SQL) — see below |
+| `get_rows_by_filters` (TextMine Comments tab) | c | **premise corrected**: this is a theme/entity/dimension *facet* filter, NOT a cat/range/daterange peer of `applyFilters` — nothing to diff, no bug. Its only filter families are keyword/entity/taxonomy facets | none (reclassified) |
+
+**Fixed here (mechanical, 1 commit + tests):** StatsModule dimension-test
+`rowIds` forwarding; share/analytics → canonical `applyFilters`.
+
+**⚠️ ESCALATED TO OWNER — needs NEW SQL (Brief C territory), NOT fixed here.**
+Two real filters-silently-dropped bugs surface **only on the server aggregate
+path** (i.e. large datasets past the client-compute threshold, with active
+filters), where numbers render full-dataset under a filtered UI:
+1. **`/aggregate` scalar ops** (`crosstab_counts`, `group_numeric_stats`,
+   `date_series_stats`, `count_field_values`, `numeric_field_stats`) — the
+   clean fix is to add a `p_row_ids` param mirroring the taxonomy family
+   (which already does this correctly), then drop the `isTax` gate in
+   `ChartsModule.useAggregation` so scalar specs forward `filteredRowIds` too.
+2. **`theme-counts`** (`count_theme_matches` / `sampledSignalCounts`) — the
+   theme-prevalence bars need a filtered row-id set / filter predicate.
+Both are new SQL semantics, so per the Brief F escalation rule they are handed
+to the owner rather than guessed. **Recommend folding the `p_row_ids` treatment
+into Brief C** (the `/aggregate` sampled-twins rework touches these exact
+RPCs). A client-only mitigation exists (force the raw-row client-compute path
+when filters are active) but it changes the rendering strategy at scale, so it
+is a deliberate product call, not a mechanical wire-through — owner's decision.
+
 ---
 
 *Re-run policy: re-verify §2 measurements after any change to the sampling

@@ -5,6 +5,7 @@
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { ratingAliases } from '@/lib/scaleUtils'
+import { applyFilters, deserializeFilters, type SerializedFilters } from '@/lib/filterUtils'
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 
@@ -13,40 +14,6 @@ export const dynamic = 'force-dynamic'
 const MIN_BENCHMARK_N = 10
 const MIN_OUTLIER_N = 10
 const MIN_THEME_COUNT = 5
-
-interface SerializedCatFilter { type: 'cat'; mode?: 'include' | 'exclude'; values: string[]; excludeBlanks: boolean }
-interface SerializedRangeFilter { type: 'range'; values: [number, number]; includeBlanks: boolean }
-interface SerializedDateRangeFilter { type: 'daterange'; values: [number, number]; includeBlanks: boolean }
-type SerializedFilter = SerializedCatFilter | SerializedRangeFilter | SerializedDateRangeFilter
-type SerializedFilters = Record<string, SerializedFilter>
-
-function rowMatchesFilter(data: Record<string, unknown>, filters: SerializedFilters): boolean {
-  return Object.entries(filters).every(([field, f]) => {
-    const val = data[field]
-    if (f.type === 'cat') {
-      // Match lib/filterUtils.ts applyFilters semantics: blanks governed by
-      // excludeBlanks, then mode-specific allow/deny on non-blanks.
-      const isBlank = val == null || String(val).trim() === ''
-      if (isBlank) return !f.excludeBlanks
-      const str = String(val)
-      if (f.mode === 'exclude') return !f.values.includes(str)
-      return f.values.includes(str)
-    }
-    if (f.type === 'range') {
-      const n = parseFloat(String(val ?? ''))
-      if (isNaN(n)) return f.includeBlanks !== false
-      return n >= f.values[0] && n <= f.values[1]
-    }
-    if (f.type === 'daterange') {
-      if (val == null || String(val).trim() === '') return f.includeBlanks !== false
-      const d = new Date(String(val))
-      if (isNaN(d.getTime())) return f.includeBlanks !== false
-      const ts = d.getTime()
-      return ts >= f.values[0] && ts <= f.values[1]
-    }
-    return true
-  })
-}
 
 function computeStats(values: number[]) {
   if (!values.length) return { n: 0, mean: 0, stddev: 0, median: 0 }
@@ -210,12 +177,11 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Step 1: Apply active filters to get "in view" rows
+  // Step 1: Apply active filters to get "in view" rows — via the CANONICAL
+  // lib/filterUtils.applyFilters (was a faithful-but-independent bespoke copy;
+  // perf review §7 Brief F swept it onto the shared path to kill drift risk).
   var filters = meta.filters || {}
-  var inViewRows: Record<string, unknown>[] = []
-  for (const row of allRows) {
-    if (Object.keys(filters).length === 0 || rowMatchesFilter(row, filters)) inViewRows.push(row)
-  }
+  var inViewRows = applyFilters(allRows, deserializeFilters(filters))
 
   // Step 2: From in-view rows, split by primary field into primary vs comparison
   var filteredRows: Record<string, unknown>[] = []
