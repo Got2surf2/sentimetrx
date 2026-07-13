@@ -208,6 +208,24 @@ scans every row = exact (500 distinct values, fixing the "missing values"
 bug), above the cap it samples and the caller labels blanks/values "~";
 service_role-only, per-field semantics match the functions it replaces.
 
+sql/169 (2026-07-13, perf review §7 Brief C) reworked the five scalar
+`/aggregate` RPCs — `crosstab_counts`, `group_numeric_stats`,
+`date_series_stats`, `count_field_values`, `numeric_field_stats`. Each
+was **DROP+re-CREATE'd** with an appended `p_row_ids bigint[] DEFAULT NULL`
+(`id = ANY(p_row_ids)`, mirroring the taxonomy family so Charts honor active
+filters — Brief F escalation #1; DEFAULT NULL keeps every existing caller and
+is `PGRST202`-fallback safe). It also added five keyset-paged `sampled_*`
+twins over `idx_drf_sample` — `sampled_crosstab_counts`,
+`sampled_group_numeric_stats`, `sampled_date_series_stats`,
+`sampled_count_field_values`, `sampled_numeric_field_values` (distinct from
+sql/163's metric-strip `sampled_numeric_field_stats`) — each returning one
+page as `{n_scanned, <partial aggregate>, last_hash, last_id}` for the caller
+(`lib/sampledAggregate.ts`) to page + scale counts by `total/scanned` (means/
+medians/stddev reported unscaled). Twins also take `p_row_ids` (narrows
+numerators, not the denominator). Used above the 50K cap where the exact
+scans 57014 (§2); service_role-only; value predicates byte-identical to the
+exact functions.
+
 ---
 
 *Update this file when a migration adds/removes/repurposes a table — the

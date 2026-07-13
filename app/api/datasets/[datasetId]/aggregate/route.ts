@@ -6,6 +6,14 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { serverError } from '@/lib/apiError'
+import {
+  AGG_SAMPLE_CAP,
+  sampledCrosstabCounts,
+  sampledGroupNumericStats,
+  sampledDateSeriesStats,
+  sampledCountFieldValues,
+  sampledNumericFieldStats,
+} from '@/lib/sampledAggregate'
 
 type Params = { params: Promise<{ datasetId: string }> }
 
@@ -53,7 +61,7 @@ export async function POST(req: Request, props: Params) {
   var auth = await authCheck(supabase)
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  var { data: dsCheck } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
+  var { data: dsCheck } = await supabase.from('datasets').select('org_id, row_count').eq('id', params.datasetId).single()
   if (!dsCheck) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
   if (!auth.isAdmin && dsCheck.org_id !== auth.orgId) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
 
@@ -63,50 +71,98 @@ export async function POST(req: Request, props: Params) {
   var op = body.op
   var service = createServiceRoleClient()
 
+  // Stored row_count (O(1)) gates the sampled path. Above the 50K cap every
+  // exact scalar/taxonomy RPC is an O(N) jsonb scan that 57014s at ~1M rows;
+  // below it, exact is fast and stays exact. (Collections don't reach this
+  // route — the client falls back to raw-row client compute for them.)
+  var rowCount = Number((dsCheck as { row_count?: number }).row_count) || 0
+  var useSampled = rowCount > AGG_SAMPLE_CAP
+
+  // Optional filtered row-id set (the filtered view). null = whole dataset;
+  // else restrict the aggregate to those flat row ids. Sanitized to finite
+  // numbers. The client (ChartsModule) sends this whenever filters are active,
+  // capped at its 50K row sample — so on an above-cap dataset the filtered ids
+  // are themselves a subset of the deterministic sample the twins walk.
+  var filterRowIds: number[] | null = Array.isArray(body.rowIds)
+    ? (body.rowIds.filter(function(x: unknown): x is number { return typeof x === 'number' && Number.isFinite(x) }).slice(0, 200000))
+    : null
+  if (filterRowIds && filterRowIds.length === 0) filterRowIds = null
+
+  // Exact scalar RPC with filter-awareness (Brief F escalation): append
+  // p_row_ids when filters are active, and drop it on PGRST202 so an
+  // un-migrated database (pre-sql/169) still answers (filters ignored, the
+  // pre-fix behavior) instead of erroring. Deploy-order safe.
+  async function scalarRpc(fn: string, args: Record<string, unknown>) {
+    if (filterRowIds) {
+      var r = await service.rpc(fn, { ...args, p_row_ids: filterRowIds })
+      if (!r.error || r.error.code !== 'PGRST202') return r
+    }
+    return service.rpc(fn, args)
+  }
+
   // ── crosstab: row_field × col_field counts ──
   if (op === 'crosstab') {
     var { rowField, colField, limit } = body
     if (!rowField || !colField) return NextResponse.json({ error: 'rowField and colField required' }, { status: 400 })
-    var { data, error } = await service.rpc('crosstab_counts', {
-      p_dataset_id: params.datasetId, p_row_field: rowField, p_col_field: colField, p_limit: limit || 50,
-    })
-    if (error) return serverError(error, 'datasets.aggregate.crosstab', { orgId: auth.orgId })
+    var xtRows: CrosstabRow[] | null = null
+    var xtSampled = false
+    if (useSampled) {
+      try { var xs = await sampledCrosstabCounts(service, params.datasetId, rowField, colField, limit || 50, rowCount, filterRowIds); xtRows = xs.rows as CrosstabRow[]; xtSampled = true } catch { /* fall through to exact */ }
+    }
+    if (!xtRows) {
+      var xt = await scalarRpc('crosstab_counts', { p_dataset_id: params.datasetId, p_row_field: rowField, p_col_field: colField, p_limit: limit || 50 })
+      if (xt.error) return serverError(xt.error, 'datasets.aggregate.crosstab', { orgId: auth.orgId })
+      xtRows = (xt.data || []) as CrosstabRow[]
+    }
     // Reshape into grid
     var grid: Record<string, Record<string, number>> = {}
     var colSet = new Set<string>()
-    ;(data || []).forEach(function(r: CrosstabRow) {
+    ;(xtRows || []).forEach(function(r: CrosstabRow) {
       if (!grid[r.row_val]) grid[r.row_val] = {}
       grid[r.row_val][r.col_val || '(blank)'] = Number(r.cnt)
       colSet.add(r.col_val || '(blank)')
     })
-    return NextResponse.json({ grid: grid, rows: Object.keys(grid), cols: Array.from(colSet) })
+    return NextResponse.json({ grid: grid, rows: Object.keys(grid), cols: Array.from(colSet), sampled: xtSampled })
   }
 
   // ── group_stats: numeric stats grouped by a categorical field ──
   if (op === 'group_stats') {
     var { groupField, valueField } = body
     if (!groupField || !valueField) return NextResponse.json({ error: 'groupField and valueField required' }, { status: 400 })
-    var { data, error } = await service.rpc('group_numeric_stats', {
-      p_dataset_id: params.datasetId, p_group_field: groupField, p_value_field: valueField,
-    })
-    if (error) return serverError(error, 'datasets.aggregate.groupStats', { orgId: auth.orgId })
+    var gsRows: GroupStatsRow[] | null = null
+    var gsSampled = false
+    if (useSampled) {
+      try { var gss = await sampledGroupNumericStats(service, params.datasetId, groupField, valueField, rowCount, filterRowIds); gsRows = gss.rows as unknown as GroupStatsRow[]; gsSampled = true } catch { /* fall through */ }
+    }
+    if (!gsRows) {
+      var gs = await scalarRpc('group_numeric_stats', { p_dataset_id: params.datasetId, p_group_field: groupField, p_value_field: valueField })
+      if (gs.error) return serverError(gs.error, 'datasets.aggregate.groupStats', { orgId: auth.orgId })
+      gsRows = (gs.data || []) as GroupStatsRow[]
+    }
     var groups: Record<string, { n: number; mean: number; median: number; min: number; max: number; stddev: number }> = {}
-    ;(data || []).forEach(function(r: GroupStatsRow) {
+    ;(gsRows || []).forEach(function(r: GroupStatsRow) {
       groups[r.group_val] = { n: Number(r.n), mean: Number(r.avg_val), median: Number(r.median_val), min: Number(r.min_val), max: Number(r.max_val), stddev: Number(r.stddev_val) }
     })
-    return NextResponse.json({ groups: groups })
+    return NextResponse.json({ groups: groups, sampled: gsSampled })
   }
 
   // ── date_series: time-bucketed counts/averages ──
   if (op === 'date_series') {
     var { dateField, metricField, bucket } = body
     if (!dateField) return NextResponse.json({ error: 'dateField required' }, { status: 400 })
-    var { data, error } = await service.rpc('date_series_stats', {
-      p_dataset_id: params.datasetId, p_date_field: dateField, p_metric_field: metricField || null, p_bucket: bucket || 'day',
-    })
-    if (error) return serverError(error, 'datasets.aggregate.dateSeries', { orgId: auth.orgId })
+    var dsRows: DateSeriesRow[] | null = null
+    var dsSampled = false
+    if (useSampled) {
+      try { var dss = await sampledDateSeriesStats(service, params.datasetId, dateField, metricField || null, bucket || 'day', rowCount, filterRowIds); dsRows = dss.rows as DateSeriesRow[]; dsSampled = true } catch { /* fall through */ }
+    }
+    if (!dsRows) {
+      var ds = await scalarRpc('date_series_stats', { p_dataset_id: params.datasetId, p_date_field: dateField, p_metric_field: metricField || null, p_bucket: bucket || 'day' })
+      if (ds.error) return serverError(ds.error, 'datasets.aggregate.dateSeries', { orgId: auth.orgId })
+      dsRows = (ds.data || []) as DateSeriesRow[]
+    }
     return NextResponse.json({
-      series: (data || []).map(function(r: DateSeriesRow) { return { date: r.bucket_date, count: Number(r.n), avg: r.avg_val != null ? Number(r.avg_val) : null } }),
+      series: (dsRows || []).map(function(r: DateSeriesRow) { return { date: r.bucket_date, count: Number(r.n), avg: r.avg_val != null ? Number(r.avg_val) : null } }),
+      sampled: dsSampled,
     })
   }
 
@@ -114,26 +170,42 @@ export async function POST(req: Request, props: Params) {
   if (op === 'field_counts') {
     var { field, limit } = body
     if (!field) return NextResponse.json({ error: 'field required' }, { status: 400 })
-    var { data, error } = await service.rpc('count_field_values', {
-      p_dataset_id: params.datasetId, p_field_key: field, p_limit: limit || 200,
-    })
-    if (error) return serverError(error, 'datasets.aggregate.fieldCounts', { orgId: auth.orgId })
+    var fcRows: FieldCountRow[] | null = null
+    var fcSampled = false
+    if (useSampled) {
+      try { var fcs = await sampledCountFieldValues(service, params.datasetId, field, limit || 200, rowCount, filterRowIds); fcRows = fcs.rows as FieldCountRow[]; fcSampled = true } catch { /* fall through */ }
+    }
+    if (!fcRows) {
+      var fc = await scalarRpc('count_field_values', { p_dataset_id: params.datasetId, p_field_key: field, p_limit: limit || 200 })
+      if (fc.error) return serverError(fc.error, 'datasets.aggregate.fieldCounts', { orgId: auth.orgId })
+      fcRows = (fc.data || []) as FieldCountRow[]
+    }
     var counts: Record<string, number> = {}
-    ;(data || []).forEach(function(r: FieldCountRow) { counts[r.value] = Number(r.count) })
-    return NextResponse.json({ counts: counts })
+    ;(fcRows || []).forEach(function(r: FieldCountRow) { counts[r.value] = Number(r.count) })
+    return NextResponse.json({ counts: counts, sampled: fcSampled })
   }
 
   // ── numeric_stats: stats for a single field (alias for existing SQL fn) ──
   if (op === 'numeric_stats') {
     var { field } = body
     if (!field) return NextResponse.json({ error: 'field required' }, { status: 400 })
-    var { data, error } = await service.rpc('numeric_field_stats', {
-      p_dataset_id: params.datasetId, p_field_key: field,
-    })
-    if (error) return serverError(error, 'datasets.aggregate.numericStats', { orgId: auth.orgId })
-    var r = (data || [])[0]
-    if (!r) return NextResponse.json({ error: 'No data' }, { status: 404 })
-    return NextResponse.json({ n: Number(r.n), min: Number(r.min_val), max: Number(r.max_val), avg: Number(r.avg_val), median: Number(r.median_val), stddev: Number(r.stddev_val) })
+    var nsRow: { n: number; min_val: number | null; max_val: number | null; avg_val: number | null; median_val: number | null; stddev_val: number | null } | null = null
+    var nsSampled = false
+    if (useSampled) {
+      try { var nss = await sampledNumericFieldStats(service, params.datasetId, field, rowCount, filterRowIds); nsRow = nss.rows; nsSampled = true } catch { /* fall through */ }
+    }
+    if (!nsSampled) {
+      var ns = await scalarRpc('numeric_field_stats', { p_dataset_id: params.datasetId, p_field_key: field })
+      if (ns.error) return serverError(ns.error, 'datasets.aggregate.numericStats', { orgId: auth.orgId })
+      nsRow = ((ns.data || [])[0] as typeof nsRow) || null
+    }
+    // Sampled path scanned the sample and found no numeric values → an honest
+    // n:0 (not a 404); the exact path's 404 is kept for a truly empty dataset.
+    if (!nsRow) {
+      if (nsSampled) return NextResponse.json({ n: 0, min: null, max: null, avg: null, median: null, stddev: null, sampled: true })
+      return NextResponse.json({ error: 'No data' }, { status: 404 })
+    }
+    return NextResponse.json({ n: Number(nsRow.n), min: Number(nsRow.min_val), max: Number(nsRow.max_val), avg: Number(nsRow.avg_val), median: Number(nsRow.median_val), stddev: Number(nsRow.stddev_val), sampled: nsSampled })
   }
 
   // ── Taxonomy ("Dimensions") aggregations — group by a multi-value axis ──
@@ -142,13 +214,9 @@ export async function POST(req: Request, props: Params) {
   // chart components consume them unchanged.
   var TAX_AXES = ['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome', 'emotion']
 
-  // Optional filtered row-id set (view-level dimensions). null = whole dataset;
-  // an empty/array value restricts the aggregate to those flat row ids. Sanitized
-  // to finite numbers. The client (ChartsModule) sends this only when filters are
-  // active, capped at its 50K row sample.
-  var taxRowIds: number[] | null = Array.isArray(body.rowIds)
-    ? body.rowIds.filter(function(x: unknown): x is number { return typeof x === 'number' && Number.isFinite(x) }).slice(0, 200000)
-    : null
+  // Filtered row-id set shared with the scalar ops above (parsed once at the
+  // top as filterRowIds). null = whole dataset; else restrict to those ids.
+  var taxRowIds: number[] | null = filterRowIds
 
   // Per-question dimension aggregates (sql/164): the client's fieldKey (the
   // Charts/Stats source-field picker) rides into every tax_* RPC; the SQL

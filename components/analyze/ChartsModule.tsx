@@ -655,6 +655,9 @@ interface AggResult {
   groups?: Record<string, { n: number; mean: number; median: number; min: number; max: number; stddev?: number; q1?: number | null; q3?: number | null }>
   series?: { sub: string; date: string; count: number; avg: number | null }[]
   counts?: Record<string, number>
+  /** true when the server computed this over the deterministic 50K sample and
+   *  scaled (dataset above the cap) — the charts carry the "~" affordance. */
+  sampled?: boolean
 }
 
 var _aggCache: Record<string, AggResult> = {}
@@ -662,19 +665,23 @@ var _aggCache: Record<string, AggResult> = {}
 function useAggregation(datasetId: string, spec: Record<string, unknown> | null) {
   var [data, setData] = useState<AggResult | null>(null)
   var [loaded, setLoaded] = useState(false)
-  // For taxonomy (dimension) ops, attach the view's filtered row-id set so the
-  // server aggregate honors active filters (null = whole dataset). Done here (one
-  // place) so every tax_* chart spec is filter-aware without per-spec plumbing.
-  // rowIds is part of the cache key so the chart re-fetches when filters change.
+  // Attach the view's filtered row-id set so the server aggregate honors active
+  // filters (null = whole dataset). Done here (one place) so EVERY chart spec —
+  // scalar (crosstab/group_stats/date_series/field_counts/numeric_stats, sql/169)
+  // AND taxonomy (tax_*, sql/164) — is filter-aware without per-spec plumbing.
+  // Previously gated to tax_* only, so scalar charts silently showed full-dataset
+  // numbers under a filtered UI (Brief F escalation #1). fieldKey stays tax-only
+  // (per-question dimensions, sql/164). rowIds is part of the cache key so the
+  // chart re-fetches when filters change.
   var isTax = !!spec && typeof spec.op === 'string' && (spec.op as string).indexOf('tax_') === 0
   var effSpec: Record<string, unknown> | null = spec
-  if (isTax && (_enrichCtx.filteredRowIds || _enrichCtx.dimFieldKey)) {
+  if (spec && (_enrichCtx.filteredRowIds || (isTax && _enrichCtx.dimFieldKey))) {
     effSpec = Object.assign({}, spec,
       _enrichCtx.filteredRowIds ? { rowIds: _enrichCtx.filteredRowIds } : null,
       // per-question dimensions (sql/164): the source-field picker drives
       // dimension charts too; the server falls back to the primary classified
       // field when this question has no classification
-      _enrichCtx.dimFieldKey ? { fieldKey: _enrichCtx.dimFieldKey } : null)
+      (isTax && _enrichCtx.dimFieldKey) ? { fieldKey: _enrichCtx.dimFieldKey } : null)
   }
   var cacheKey = datasetId + ':' + JSON.stringify(effSpec)
   useEffect(function() {
@@ -2639,6 +2646,16 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
 
           {/* Chart render area */}
           <div ref={chartBodyRef}>
+            {/* Above the 50K cap every server-side chart aggregate is computed
+                over the deterministic 50K sample and scaled (sql/169) — same "~"
+                doctrine as the metric strip. Dataset-level (not per-chart) since
+                it's true of every aggregate on this dataset. */}
+            {hasData && analytics!.totalRows > 50000 && (
+              <div title="Charts are estimated from a deterministic 50,000-row sample (dataset exceeds the exact-count cap) and scaled to all rows; counts are approximate, averages/medians are direct sample estimates."
+                style={{ fontSize: 11, color: T.textFaint, fontStyle: 'italic', padding: '6px 10px 0' }}>
+                {'≈'} Estimated from a 50,000-row sample
+              </div>
+            )}
             {!hasData && <EmptyChart msg="No data loaded." />}
             {hasData && renderChart(activeChart, currentConfig, enrichedAnalytics!, allFields, datasetId, { barMode: barMode, barStack: barStack, smartAxes: smartAxes, colors: currentColors, orient: barOrient })}
           </div>
