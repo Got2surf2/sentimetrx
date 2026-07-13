@@ -8,12 +8,14 @@
 //
 // Scope is the whole origin (served from /sw.js). Registered from the /m
 // route only, but once active it stays active for the whole origin until
-// unregistered — that's fine, the rest of the app doesn't care.
+// unregistered — which is exactly why the v2 rules below matter for every
+// page, not just the status surface.
 
 self.addEventListener('install', function(event) {
   // skipWaiting so a new SW activates immediately instead of waiting for
-  // every existing tab to close. For a personal-use PWA this is what you
-  // want: the latest code lands the moment it deploys.
+  // every existing tab to close. Safe ONLY because this worker has no fetch
+  // listener (see below) — activating over live tabs can't break their
+  // in-flight requests when the worker never intercepts requests at all.
   self.skipWaiting()
 })
 
@@ -23,9 +25,14 @@ self.addEventListener('activate', function(event) {
   event.waitUntil(self.clients.claim())
 })
 
-self.addEventListener('fetch', function(event) {
-  // Network-first, no caching. Letting all requests fall through to the
-  // network keeps the status surface honest. If we add offline screens
-  // later, special-case those routes here.
-  return
-})
+// NO fetch listener — deliberately (v2, 2026-07-13). The v1 no-op handler
+// inserted this worker into EVERY request on the origin: each fetch had to
+// wake the SW process, and skipWaiting+claim swapped workers over live tabs
+// on every deploy — leaving sessions where soft navigations 200'd on the
+// server but the response never reached React (owner: "Schema comes up once
+// after a hard refresh, then never again" — a hard refresh is the one
+// navigation that bypasses the SW, which is why it always cured it).
+// A worker with no fetch listener is skipped by the browser entirely
+// (no-fetch-handler optimization) while push + installability keep working —
+// which is all this worker exists for. If offline caching ever lands here,
+// it must ship with a versioned-cache strategy, not skipWaiting over live tabs.

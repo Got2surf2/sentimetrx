@@ -1197,11 +1197,14 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ taxonomy_enabled: true }),
         })
+        if (!classifyAlive.current) return // the awaits above take seconds — re-check before touching state
         setDimAutoNotice('Emotion language tagged ✓')
         setTimeout(function () { setDimAutoNotice(null) }, 4000)
       } else {
+        if (!classifyAlive.current) return
         setDimAutoNotice(null)
       }
+      if (!classifyAlive.current) return // never refresh from an unmounted tab (rollup/PATCH ran since the last check)
       router.refresh()
     } catch {
       setDimAutoNotice(null)
