@@ -2055,12 +2055,22 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   var themesSig = hasThemes
     ? effectiveThemeModel!.themes.map(function(t: { id?: string; name?: string; keywords?: string[] }) { return (t.id || t.name) + ':' + (t.keywords || []).join('|') }).join(';;')
     : ''
+  // Stable signature of the filtered row-id set (content, not identity) so the
+  // theme-counts effect re-fetches when the filter changes — including the
+  // async null→ids transition once the filtered sample loads.
+  var _filterIdSig = _filteredRowIds && _filteredRowIds.length
+    ? _filteredRowIds.length + ':' + _filteredRowIds[0] + ':' + _filteredRowIds[_filteredRowIds.length - 1]
+    : 'none'
   useEffect(function() {
     if (!hasThemes || !themeSourceField) { setLiveThemeCounts(null); return }
     var cancelled = false
     var body = JSON.stringify({
       themes: effectiveThemeModel!.themes.map(function(t: { id?: string; name?: string; keywords?: string[] }) { return { id: t.id || t.name, keywords: t.keywords || [] } }),
       fields: [themeSourceField],
+      // Filter-aware prevalence bars (sql/170): scope the numerator/denominator
+      // to the filtered view so the % bars match the filtered Charts UI (null =
+      // whole dataset). In the cache key via `body` → re-fetches on filter change.
+      rowIds: _filteredRowIds,
     })
     // Cached across module remounts (tab bounces) — the server recomputes
     // per-theme SQL scans on every request; the body captures every input.
@@ -2086,7 +2096,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
       })
       .catch(function() { /* fall back to stored counts */ })
     return function() { cancelled = true }
-  }, [datasetId, hasThemes, themeSourceField, themesSig])
+  }, [datasetId, hasThemes, themeSourceField, themesSig, _filterIdSig])
   var allFields = hasThemes
     ? fields.concat([{ field: '__themes__', type: 'categorical', label: 'Themes' }])
     : fields

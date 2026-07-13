@@ -56,6 +56,7 @@ export async function POST(req: Request, props: Props) {
     cooccurrence?: boolean      // when true, also compute pairwise theme intersection counts
     topical?: boolean           // when true, also extract topical-word lists per theme
     dimensions?: boolean        // when true, also compute the per-theme Dimensions (taxonomy) breakdown
+    rowIds?: unknown            // filtered-view flat row ids → prevalence bars honor active filters (sql/170)
   }
   try {
     body = await req.json()
@@ -67,6 +68,16 @@ export async function POST(req: Request, props: Props) {
   if (!themes?.length || !fields?.length) {
     return NextResponse.json({ error: 'Provide themes and fields' }, { status: 400 })
   }
+
+  // Active filters (Brief F escalation #2): the client sends the filtered
+  // view's flat row-id set (a subset of the loaded 50K sample). Restrict the
+  // prevalence numerator/denominator to it so the Charts theme bars reflect
+  // filters instead of dataset-wide %. Bounded (≤ sample), so the filtered
+  // path is EXACT — sampling (below) is only for scale on the unfiltered path.
+  let filterRowIds: number[] | null = Array.isArray(body.rowIds)
+    ? body.rowIds.filter((x: unknown): x is number => typeof x === 'number' && Number.isFinite(x)).slice(0, 200000)
+    : null
+  if (filterRowIds && filterRowIds.length === 0) filterRowIds = null
 
   const service = createServiceRoleClient()
 
@@ -131,13 +142,31 @@ export async function POST(req: Request, props: Props) {
     // 8s DB statement timeout there (785K rows ≈ 1.4GB of jsonb per scan,
     // prod 2026-07-11). At or under the cap: exact counts, unchanged. If the
     // sampled RPC fails/isn't migrated yet, fall through to the exact path.
+    // When filters are active the row-id set is bounded (≤ sample) so the exact
+    // path with p_row_ids is cheap and correct — skip sampling entirely (a
+    // sampled scaling denominator would be wrong for a filtered subset).
     const sampledByMember = new Map<string, SampledSignalCounts>()
-    await Promise.all(datasetIds.map(async did => {
-      if ((rowCounts.get(did) || 0) <= SIGNAL_SAMPLE_CAP) return
-      try {
-        sampledByMember.set(did, await sampledSignalCounts(service, did, fields, themes))
-      } catch { /* exact path below — pre-sql/162 behavior */ }
-    }))
+    if (!filterRowIds) {
+      await Promise.all(datasetIds.map(async did => {
+        if ((rowCounts.get(did) || 0) <= SIGNAL_SAMPLE_CAP) return
+        try {
+          sampledByMember.set(did, await sampledSignalCounts(service, did, fields, themes))
+        } catch { /* exact path below — pre-sql/162 behavior */ }
+      }))
+    }
+
+    // count_theme_matches with filter-awareness (sql/170) + PGRST202 fallback:
+    // append p_row_ids only when filters are active; drop it on an un-migrated
+    // DB (filters ignored, the pre-fix behavior) instead of erroring.
+    async function themeMatchCount(did: string, patterns: string[]): Promise<number> {
+      const base = { p_dataset_id: did, p_field_keys: fields, p_keywords: patterns }
+      if (filterRowIds) {
+        const r = await service.rpc('count_theme_matches', { ...base, p_row_ids: filterRowIds })
+        if (!r.error || r.error.code !== 'PGRST202') return Number(r.data) || 0
+      }
+      const { data } = await service.rpc('count_theme_matches', base)
+      return Number(data) || 0
+    }
 
     // Get total non-empty rows (denominator), summed across members
     let totalNonEmpty = 0
@@ -151,8 +180,9 @@ export async function POST(req: Request, props: Props) {
         }
         // Comma-safe count (sql/161) — the raw PostgREST filter used here
         // silently returned 0 for question-sentence column names, zeroing
-        // the percentage denominator. Degrade to 0 on failure (old behavior).
-        try { fieldTotal += await countNonEmptyRows(service, did, f) } catch { /* keep old swallow */ }
+        // the percentage denominator. Filter-scoped via p_row_ids (sql/170)
+        // when active. Degrade to 0 on failure (old behavior).
+        try { fieldTotal += await countNonEmptyRows(service, did, f, filterRowIds) } catch { /* keep old swallow */ }
       }
       totalNonEmpty = Math.max(totalNonEmpty, fieldTotal)
     }
@@ -171,13 +201,9 @@ export async function POST(req: Request, props: Props) {
         // Canonical fragments (kwPatternFragment) — same patterns the client
         // matcher compiles, so SQL counts and client recounts agree. The RPC
         // splices these unescaped into its \m(…|…) alternation, which is why
-        // raw keywords used to mean exact-adjacency phrases only.
-        const { data: matchCount } = await service.rpc('count_theme_matches', {
-          p_dataset_id: did,
-          p_field_keys: fields,
-          p_keywords: kws.map(kwPatternFragment),
-        })
-        c += Number(matchCount) || 0
+        // raw keywords used to mean exact-adjacency phrases only. Filter-scoped
+        // via p_row_ids (sql/170) when active.
+        c += await themeMatchCount(did, kws.map(kwPatternFragment))
       }
 
       return {

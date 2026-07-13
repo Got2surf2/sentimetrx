@@ -226,6 +226,17 @@ numerators, not the denominator). Used above the 50K cap where the exact
 scans 57014 (§2); service_role-only; value predicates byte-identical to the
 exact functions.
 
+sql/170 (2026-07-13, perf review §7 Brief C / Brief F escalation #2)
+DROP+re-CREATE'd `count_theme_matches` and `count_nonempty_rows` (sql/161)
+with an appended `p_row_ids bigint[] DEFAULT NULL` (`id = ANY(p_row_ids)`) so
+the Charts theme-prevalence bars honor active filters — the numerator
+(`count_theme_matches`) and denominator (`count_nonempty_rows`) were the last
+filter-blind surface on the filtered Charts tab. DEFAULT NULL keeps every
+existing caller (signalStats, nonEmptyCount, the theme-counts sampled/exact
+paths) unchanged and PGRST202-fallback safe. When filters are active the
+client row-id set is bounded (≤ the 50K sample), so the filtered path is exact
+— no sampling twin needed there.
+
 ---
 
 *Update this file when a migration adds/removes/repurposes a table — the

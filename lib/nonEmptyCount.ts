@@ -22,21 +22,28 @@ export async function countNonEmptyRows(
   service: SupabaseClient,
   datasetId: string,
   field: string,
+  // Optional flat-row-id filter (sql/170) — restricts to the filtered view.
+  // null/undefined = whole dataset. The RPC drops it on PGRST202; the legacy
+  // fallback applies it via an `id in (...)` filter (bounded — the caller only
+  // passes a ≤50K sample subset when filters are active).
+  rowIds?: number[] | null,
 ): Promise<number> {
-  const { data, error } = await service.rpc('count_nonempty_rows', {
-    p_dataset_id: datasetId,
-    p_field: field,
-  })
+  const { data, error } = await service.rpc('count_nonempty_rows',
+    rowIds && rowIds.length
+      ? { p_dataset_id: datasetId, p_field: field, p_row_ids: rowIds }
+      : { p_dataset_id: datasetId, p_field: field })
   if (!error && typeof data === 'number') return data
   if (error && error.code !== 'PGRST202') {
     throw new Error('count_nonempty_rows failed for ' + datasetId + ': ' + error.message)
   }
-  const { count, error: legacyErr } = await service
+  let q = service
     .from('dataset_rows_flat')
     .select('id', { count: 'exact', head: true })
     .eq('dataset_id', datasetId)
     .not('data->' + field, 'is', null)
     .neq('data->>' + field, '')
+  if (rowIds && rowIds.length) q = q.in('id', rowIds)
+  const { count, error: legacyErr } = await q
   if (legacyErr) throw new Error('non-empty count failed for ' + datasetId + ': ' + legacyErr.message)
   return count || 0
 }
