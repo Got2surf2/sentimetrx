@@ -187,7 +187,17 @@ Charts/Stats dimension charts are per-question; defaults preserve the
 primary-classified-field behavior. sql/165 (2026-07-12) added
 `idx_drf_id_keyset (dataset_id, id)` — backs the classify id-keyset,
 which otherwise walked the PK filtering dataset_id per row and timed
-out past ~1M total rows.
+out past ~1M total rows. sql/167 (2026-07-13) added the Ask Ana filtered
+sampler: `sampled_filtered_rows` (keyset page over the idx_drf_sample
+order with the user's serialized filters applied in SQL, returning
+matched rows + scan/match counts for honest denominators) and its
+helpers `ana_row_matches_filters` (plpgsql mirror of
+`lib/filterUtils.applyFilters` — cat include/exclude/blanks,
+parseFloat-style numerics incl. scientific notation, daterange on
+epoch-ms) + `ana_try_parse_ts`; service_role-only. Replaces
+`sample_row_pairs` (`ORDER BY random()`, O(N log N), 57014 at ~1M) in
+the loadAnaSample path — that function remains only as the deploy-order
+fallback (docs/PERFORMANCE_REVIEW.md §2).
 
 ---
 

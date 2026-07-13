@@ -971,6 +971,28 @@ analytics export — dataset-row CSV download is not part of this module.
 
 ### PPTX (Consulting-Quality Deck)
 > **Naming (2026-06-29):** the user-facing button label is **"Reports"** (📊, plural, in the analyze-view header). The old cutesy "StoryTime" name was retired as opaque. Internal route/code names (`export/pptx`, `renderDeck`, etc.) are unchanged. A **unified "Reports" picker** is being rolled out — source of truth `lib/reportCatalog.ts` (`availableReports(ctx)`, pure + unit-tested), rendered by `components/analyze/ReportsMenu.tsx`. **Surfaces live (2026-06-29):** (1) the collection card ⋯ menu renders the catalog (community/competitive/brand-360) under a "Reports" header with **PDF + HTML** pills (were PDF-only), competitive keeps its focus picker; (2) the **analyze-view header "Report" button** is catalog-driven — and (refined 2026-06-29) when a **deck** is available it runs the deck DIRECTLY (the common case, zero extra clicks), with a **caret ▾** beside it that opens the full picker for the other types (Operational Review on restaurants, ad-hoc, …). A collection (no deck) makes the button itself the picker toggle, and the caret now shows there too (consistency). (Earlier the button always opened the picker → one extra click for the deck; the owner flagged it, this is the fix.) **Dropdown positioning (2026-06-30 fix):** the picker is rendered `position: fixed` anchored to the button's bounding rect — the header tab strip is `overflow: hidden`, which silently CLIPPED the old `position: absolute` dropdown (it opened but was invisible → "the caret does nothing"). The deck-direct modal was unaffected (it's a full-screen fixed modal), which is why only the caret/picker looked broken. `ReportsMenu` renders configurable types as a single row (format chosen in their own modal) and one-click types with format pills; the header's launcher dispatches GET→open / POST→blob-download. The **ad-hoc Ask-Ana report** endpoint is built — `POST /api/datasets/[datasetId]/ad-hoc-report {prompt, format, filters?}`: org-gated + content-safety-checked → `loadAnaSample` (the shared Ana data layer, `lib/anaReportContext.ts`, extracted from ask-ana) → one `callAI('advanced')` producing a grounded HTML fragment → `pdfDoc` → HTML or PDF. Collections route through the same datasets endpoint (`source='collection'` id). **Wired + live (2026-06-29):** `components/analyze/AdHocReportModal.tsx` (prompt textarea + PDF/HTML choice) opens from the "Ad-hoc report" picker row on both the collection card and the analyze-view header; `adHocEnabled` is on in both. The header ad-hoc **honors the in-view filters** — `DatasetShell` serializes the active filters → `DatasetHeader` `inViewFilters` → the modal → the endpoint's `loadAnaSample` (so: full dataset from a card, filtered from the analyze view). **Format honesty (keep-me-honest):** deck **PDF** is intentionally NOT offered — the deck's HTML form is a Reveal.js *presentation* (won't print cleanly) and PPTX→PDF needs LibreOffice (unavailable on Vercel); the deck is PPTX (slides) + HTML (presentation), the ad-hoc reports are HTML+PDF. Collection reports are now **PDF + PPTX + HTML** — the collection **PPTX** shipped 2026-06-29 (`projectType.formats` = `['pdf','pptx','html']`; renderer above), so both the card ⋯ menu and the analyze-view header offer a PPT pill on community/competitive/brand-360; the competitive PPT path reuses the focus picker (the chosen format is stashed in `projectFormat` until the focus is picked).
+**Ask Ana / ad-hoc data layer — filter-aware deterministic sampling (2026-07-13, sql/167).**
+`loadAnaSample` (`lib/anaReportContext.ts`, shared by `POST /api/ask-ana` and the ad-hoc
+report) no longer fetches a filter-blind random prefetch (`sample_row_pairs` =
+`ORDER BY random()`, a full-partition sort that hit the 8s statement timeout at ~1M rows)
+and filters in Node afterwards — a selective filter starved the sample (5% segment of 56K
+→ ~30 analyzed rows; narrow filter → a wrong "No rows found"). It now pushes the
+serialized filters into `sampled_filtered_rows` (sql/167): keyset pages over the
+deterministic sample order (`idx_drf_sample`, the same D6 population every sampled surface
+uses) with the filter predicate applied in SQL (`ana_row_matches_filters` — a plpgsql
+mirror of `applyFilters`, incl. cat include/exclude, blanks, parseFloat-style numerics
+with scientific notation, daterange on epoch-ms). Datasets ≤ the 50K cap are scanned to
+the end even after the row budget fills, so the reported filtered population is **exact**
+and reconciles with the exact numbers every other surface shows; above the cap the count
+is an unbiased sample estimate and both AI prompt notes ("N of M match the filters") carry
+"~" (`AnaSample.totalFilteredIsEstimate`). Datasets small enough to fetch whole filter in
+Node via the **canonical** `applyFilters` — fixing two silent pre-167 bugs in the inline
+copy: cat `exclude` mode was treated as include (inverted results), and `daterange`
+filters were ignored entirely. RPC-missing (deploy order) falls back to legacy behavior.
+Parity + scale verified by `scripts/_verify_ana_filters.mts` (untracked KEEP): 6 filter
+shapes JS↔SQL exact-equal over the Outback 50K sample; 1.03M-row ask with a filter in
+~4s (was: timeout); unit coverage in `tests/unit/anaFilteredSample.test.ts`.
+
 - **API**: `POST /api/datasets/[datasetId]/export/pptx`
 - **Rendering (2026-06-25 — the cream flip)**: the route no longer builds slides with its own
   bespoke navy/gold helpers. Its compute phase (auth + cross-org gate, row fetch under the

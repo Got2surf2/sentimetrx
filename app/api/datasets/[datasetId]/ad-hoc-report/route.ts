@@ -62,9 +62,17 @@ export async function POST(req: Request, props: Props) {
   if (sample.rows.length === 0) return NextResponse.json({ error: 'No analyzable rows in this dataset.' }, { status: 400 })
 
   const sourceLabel = getSourceLabel(dataset.source)
+  const hasFilters = !!body.filters && Object.keys(body.filters as object).length > 0
+  const tfDisplay = (sample.totalFilteredIsEstimate ? '~' : '') + sample.totalFiltered.toLocaleString()
   const sampleNote = sample.sampled
-    ? `This is a random sample of ${sample.rows.length} of ${sample.totalDatasetRows.toLocaleString()} rows — note findings are sample-based.`
-    : `All ${sample.rows.length} rows are included.`
+    ? `This is a representative sample of ${sample.rows.length} rows drawn from ` +
+      (hasFilters
+        ? `the ${tfDisplay} rows matching the user's active filters (dataset total: ${sample.totalDatasetRows.toLocaleString()} rows)`
+        : `${sample.totalDatasetRows.toLocaleString()} rows`) +
+      ` — note findings are sample-based.`
+    : hasFilters
+      ? `All ${sample.rows.length} rows matching the user's active filters are included (dataset total: ${sample.totalDatasetRows.toLocaleString()} rows).`
+      : `All ${sample.rows.length} rows are included.`
 
   const system = `You are Ana, a senior analyst writing a focused, board-ready report from a dataset of ${sourceLabel} called "${dataset.name}".
 

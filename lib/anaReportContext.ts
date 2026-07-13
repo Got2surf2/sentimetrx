@@ -10,7 +10,9 @@ import type { createServiceRoleClient } from '@/lib/supabase/server'
 import { DEFAULT_SIGNAL_CUTOFFS } from '@/lib/signalTier'
 import { formatRowsForContext } from '@/lib/anaContext'
 import { logError } from '@/lib/log'
+import { applyFilters, deserializeFilters } from '@/lib/filterUtils'
 import type { SerializedFilters } from '@/lib/filterUtils'
+import { SIGNAL_SAMPLE_CAP } from '@/lib/sampledSignalCounts'
 
 type Service = ReturnType<typeof createServiceRoleClient>
 
@@ -27,7 +29,14 @@ export interface AnaSample {
   dataContext:      string                       // formatted for the system prompt
   collectionMembers: CollectionMember[]
   totalDatasetRows: number
+  /** Rows matching the active filters across the WHOLE dataset/collection —
+   *  exact when every row was examined, else scaled from the deterministic
+   *  sample (see totalFilteredIsEstimate). Equals totalDatasetRows when no
+   *  filters are active. */
   totalFiltered:    number
+  /** True when totalFiltered is a sample-scaled estimate (dataset larger than
+   *  the D6 scan cap) — callers prefix the number with "~". */
+  totalFilteredIsEstimate: boolean
   afterSignalCount: number
   sampled:          boolean
   signalNote:       string
@@ -99,6 +108,71 @@ export async function fetchDatasetRows(
   return (sampled as { data: Record<string, unknown> }[]).map(function(r) { return r.data })
 }
 
+// ── Filter-aware deterministic sampling (sql/167) ──────────────────────────
+// Pages the sample order (idx_drf_sample — the SAME deterministic population
+// every other sampled surface uses, D6) with the user's filters applied in
+// SQL, so selective filters draw from the whole (sampled) population instead
+// of starving a tiny filter-blind prefetch. Datasets at/below the scan cap are
+// scanned in full = exact filtering; above it, the scan covers the 50K sample.
+// Throws on RPC error (incl. PGRST202 before the migration reaches the DB) —
+// the caller falls back to the legacy fetch+Node-filter path.
+
+const FILTER_SCAN_PAGE = 5000  // per-statement scan bound (sql/162 sizing)
+
+interface FilteredFetch {
+  rows:      Record<string, unknown>[]  // matching rows, deterministic order
+  scanned:   number                      // rows examined
+  matched:   number                      // matches among scanned (≥ rows.length)
+  exhausted: boolean                     // every row of the dataset was examined
+}
+
+async function fetchFilteredSampledRows(
+  service: Service,
+  datasetId: string,
+  budget: number,
+  totalRows: number,
+  filters: SerializedFilters | undefined,
+): Promise<FilteredFetch> {
+  const rows: Record<string, unknown>[] = []
+  let scanned = 0
+  let matched = 0
+  let exhausted = false
+  let afterHash = -1
+  let afterId = -1
+  const scanCap = Math.min(Math.max(totalRows, 1), SIGNAL_SAMPLE_CAP)
+  // Datasets at/below the cap: keep scanning (match_limit 0, counts only) even
+  // after the row budget fills, so totalFiltered is EXACT — every other surface
+  // reports exact numbers under the cap and Ana's denominator must reconcile
+  // with them (deck credibility). Above the cap everything is "~" anyway, so
+  // stop as soon as the budget fills.
+  const countToEnd = totalRows <= SIGNAL_SAMPLE_CAP
+  while (scanned < scanCap && (rows.length < budget || countToEnd)) {
+    const scanLimit = Math.min(FILTER_SCAN_PAGE, scanCap - scanned)
+    const { data, error } = await service.rpc('sampled_filtered_rows', {
+      p_dataset_id:  datasetId,
+      p_filters:     filters || {},
+      p_after_hash:  afterHash,
+      p_after_id:    afterId,
+      p_scan_limit:  scanLimit,
+      p_match_limit: Math.max(0, budget - rows.length),
+    })
+    if (error) throw new Error('sampled_filtered_rows failed for ' + datasetId + ': ' + error.message)
+    const page = data as { n_scanned?: number; n_matched?: number; rows?: Record<string, unknown>[]; last_hash?: number | null; last_id?: number | null } | null
+    const n = Number(page?.n_scanned) || 0
+    if (!page || n === 0) { exhausted = true; break }        // no rows past the cursor
+    scanned += n
+    matched += Number(page.n_matched) || 0
+    for (const r of page.rows || []) rows.push(r)
+    if (n < scanLimit) { exhausted = true; break }           // short page = dataset ends here
+    if (page.last_hash == null || page.last_id == null) { exhausted = true; break }
+    afterHash = Number(page.last_hash)
+    afterId = Number(page.last_id)
+  }
+  // Scanning the cap on a dataset no bigger than the cap = examined everything.
+  if (!exhausted && scanned >= totalRows) exhausted = true
+  return { rows, scanned, matched, exhausted }
+}
+
 // ── Resolve a collection's members (empty for a single dataset) ───────────
 export async function resolveCollectionMembers(service: Service, dataset: { id: string; source: string }): Promise<CollectionMember[]> {
   if (dataset.source !== 'collection') return []
@@ -136,45 +210,69 @@ export async function loadAnaSample(opts: {
   const samplingStrategy = opts.samplingStrategy || 'proportional'
   const collectionMembers = opts.collectionMembers ?? await resolveCollectionMembers(service, dataset)
 
-  const allRows: Record<string, unknown>[] = []
   const fetchBudget = Math.min(sampleSize * 3, FETCH_CAP)
   const totalDatasetRows = dataset.source === 'collection'
     ? collectionMembers.reduce(function(s, m) { return s + m.row_count }, 0)
     : (dataset.row_count || 0)
+
+  const activeFilters = filters && Object.keys(filters).length > 0 ? filters : undefined
+
+  // Fetch one dataset's MATCHING rows. Small datasets load fully and filter in
+  // Node via the canonical applyFilters (exact — and, unlike the pre-sql/167
+  // inline filter, honors cat exclude-mode and daterange). Larger ones use the
+  // filter-aware sampled RPC so selective filters draw from the whole
+  // (deterministically sampled) population instead of starving a filter-blind
+  // prefetch; on RPC error (incl. PGRST202 before sql/167 reaches the DB) it
+  // falls back to the legacy fetch + Node filter — pre-167 behavior.
+  async function fetchMember(dsId: string, budget: number, memberTotal: number): Promise<FilteredFetch> {
+    if (memberTotal <= budget) {
+      const all = await fetchDatasetRows(service, dsId, budget, memberTotal)
+      const kept = activeFilters ? applyFilters(all, deserializeFilters(activeFilters)) : all
+      return { rows: kept, scanned: all.length, matched: kept.length, exhausted: true }
+    }
+    try {
+      return await fetchFilteredSampledRows(service, dsId, budget, memberTotal, activeFilters)
+    } catch (e) {
+      void logError('anaReportContext.filteredSample', e, { datasetId: dsId })
+      const fetched = await fetchDatasetRows(service, dsId, budget, memberTotal)
+      const kept = activeFilters ? applyFilters(fetched, deserializeFilters(activeFilters)) : fetched
+      return { rows: kept, scanned: fetched.length, matched: kept.length, exhausted: false }
+    }
+  }
+
+  let filteredRows: Record<string, unknown>[] = []
+  let scannedSum = 0
+  let matchedSum = 0
+  let allExhausted = true
 
   if (dataset.source === 'collection' && collectionMembers.length > 0) {
     const budgets = computeMemberBudgets(collectionMembers, fetchBudget, samplingStrategy)
     for (const b of budgets) {
       if (b.budget <= 0) continue
       const memberInfo = collectionMembers.find(function(m) { return m.dataset_id === b.dataset_id })
-      const fetched = await fetchDatasetRows(service, b.dataset_id, b.budget, memberInfo ? memberInfo.row_count : 0)
-      for (let i = 0; i < fetched.length; i++) allRows.push(fetched[i])
+      const res = await fetchMember(b.dataset_id, b.budget, memberInfo ? memberInfo.row_count : 0)
+      for (let i = 0; i < res.rows.length; i++) filteredRows.push(res.rows[i])
+      scannedSum += res.scanned
+      matchedSum += res.matched
+      if (!res.exhausted) allExhausted = false
     }
   } else {
-    const fetched = await fetchDatasetRows(service, dataset.id, fetchBudget, dataset.row_count || 0)
-    for (let i = 0; i < fetched.length; i++) allRows.push(fetched[i])
+    const res = await fetchMember(dataset.id, fetchBudget, dataset.row_count || 0)
+    filteredRows = res.rows
+    scannedSum = res.scanned
+    matchedSum = res.matched
+    allExhausted = res.exhausted
   }
 
-  // Apply filters
-  let filteredRows = allRows
-  if (filters && Object.keys(filters).length > 0) {
-    filteredRows = allRows.filter(function(row) {
-      for (const field of Object.keys(filters)) {
-        const f = filters[field]
-        const val = row[field]
-        if (f.type === 'cat') {
-          const allowed = new Set(f.values || [])
-          if (val == null && f.excludeBlanks) return false
-          if (val != null && !allowed.has(String(val))) return false
-        } else if (f.type === 'range') {
-          const num = Number(val)
-          if (isNaN(num)) { if (!f.includeBlanks) return false }
-          else if (num < f.values[0] || num > f.values[1]) return false
-        }
-      }
-      return true
-    })
-  }
+  // Dataset-wide filtered population, for honest denominators in the prompt:
+  // exact when every row was examined; otherwise scaled from the deterministic
+  // sample (flagged so callers show "~").
+  const populationFiltered = !activeFilters
+    ? totalDatasetRows
+    : allExhausted
+      ? matchedSum
+      : scannedSum > 0 ? Math.round((matchedSum / scannedSum) * totalDatasetRows) : 0
+  const totalFilteredIsEstimate = !!activeFilters && !allExhausted
 
   // Drop URL-only rows for text sources
   if (dataset.source === 'reddit' || dataset.source === 'substack' || dataset.source === 'google_reviews') {
@@ -184,7 +282,7 @@ export async function loadAnaSample(opts: {
     })
   }
 
-  const totalFiltered = filteredRows.length
+  const fetchedFilteredCount = filteredRows.length  // matching rows actually in hand
   let signalNote = ''
 
   // Reddit: vote-weighted signal selection
@@ -207,12 +305,14 @@ export async function loadAnaSample(opts: {
     })
     if (signalRows.length >= 10) {
       filteredRows = signalRows
-      signalNote = '\n\nNote: Only mainstream and controversial comments are included (top ' + (100 - NOISE_CUTOFF) + '% by score within each thread). ' + (totalFiltered - signalRows.length) + ' noise/fringe comments excluded.'
+      signalNote = '\n\nNote: Only mainstream and controversial comments are included (top ' + (100 - NOISE_CUTOFF) + '% by score within each thread). ' + (fetchedFilteredCount - signalRows.length) + ' noise/fringe comments excluded.'
     }
   }
 
   const afterSignalCount = filteredRows.length
-  let sampled = false
+  // Sampled if we truncate here OR the fetch itself drew from a sample of a
+  // larger (or larger-than-scanned) population.
+  let sampled = !allExhausted || totalDatasetRows > scannedSum
   if (filteredRows.length > sampleSize) {
     for (let i = filteredRows.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
@@ -227,7 +327,8 @@ export async function loadAnaSample(opts: {
     dataContext: formatRowsForContext(filteredRows, dataset.source),
     collectionMembers,
     totalDatasetRows,
-    totalFiltered,
+    totalFiltered: populationFiltered,
+    totalFilteredIsEstimate,
     afterSignalCount,
     sampled,
     signalNote,

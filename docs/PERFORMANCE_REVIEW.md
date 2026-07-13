@@ -33,7 +33,7 @@ prod compute (Supabase **Micro**, 1 GB RAM) unless stated.
 | 5 | **Org-snapshot cron: single-org dump > 240s has no intra-org continuation** (hit 2026-07-13 at 785K rows) | nightly backup | one org holding ~1M+ rows | Incremental/per-table manifests (named in BACKUPS.md) | ~1–2 sessions |
 | 6 | **`study_response_stats` MV refresh scans ALL responses platform-wide**, debounced to 1/30s during submit bursts | survey ingestion at scale | ~1M+ total responses (forward-looking: prod has 191 today) | Replace MV with per-study counter table (trigger or upsert) | ~1 session |
 | 7 | **Venue-NAT rate limiting** — `respond: 120/min/IP` (~2 submits/s/venue-WiFi), `clarify: 10/min/IP` (follow-ups silently stop for the whole room) | QR-TV burst | one venue router funneling ≥ ~30 active respondents | Key by session_id + IP hybrid; raise clarify per-IP or key per session | hours |
-| 8 | **Ask Ana: filter-blind `ORDER BY random()` fetch** — full scan+sort (measured: 57014 at 1.03M), and filters apply only to the ~600-row pre-fetch, so selective filters starve or empty the sample at ANY size | Ask Ana | errors at ~300–600K rows; silently thin under narrow filters today | filtered sampling in SQL (push `SerializedFilters` into an RPC over `idx_drf_sample`); report the true filtered n | ~1 session |
+| 8 | ~~**Ask Ana: filter-blind `ORDER BY random()` fetch**~~ **FIXED 2026-07-13** (sql/167 + loadAnaSample rework, same-day Fable session): filtered sampling over `idx_drf_sample`, exact denominators ≤50K / "~" estimates above, canonical filter semantics (also fixed the silent cat-exclude inversion + ignored daterange). 1M filtered ask: ~4s, was 57014 + error. Verified by `scripts/_verify_ana_filters.mts`. | Ask Ana | — | done | — |
 | 9 | **Collection project-report: Node union up to 80K rows/member via deep OFFSET pages** | project report | 1M-row members | `pageSampledRows` (lib/bulkRowSample) like the bulk path | ~half session |
 | 10 | **Client main-thread: 50K-row sample = ~35 MB JSON parse + ~6–8 O(N) memo passes per interaction** | TextMine/Stats/Charts in-browser | fine on desktop; tablets/phones strain | keep 50K cap; virtualize long lists as needed; hold the memoization rule (ANALYTICS.md) | doctrine, not a fix |
 
@@ -172,6 +172,16 @@ Acceptable for now; note OFFSET-paging in export paths is the next candidate
 for the keyset treatment if exports feel slow at scale.
 
 ### Ask Ana: filter compliance (owner question, 2026-07-13)
+
+> **STATUS: all three findings below FIXED same day** — sql/167
+> (`sampled_filtered_rows` + `ana_row_matches_filters`) + the
+> `loadAnaSample` rework. The fix also surfaced and closed two bugs the
+> review had missed: the Node filter treated cat **exclude-mode as
+> include** (inverted results) and **ignored daterange filters** entirely.
+> Verification: `scripts/_verify_ana_filters.mts` (6-shape JS↔SQL parity
+> exact; 1M filtered ask ~4s; exact denominators ≤50K) +
+> `tests/unit/anaFilteredSample.test.ts`. Kept below as the record of what
+> was wrong.
 
 **Does Ask Ana comply with active filters rather than sampling the full
 dataset? Partially — filters are honored, but applied too late in the

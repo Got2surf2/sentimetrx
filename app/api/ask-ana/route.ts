@@ -302,22 +302,33 @@ Ask the user 1-2 brief questions about what they're looking to learn, then make 
   }
 
   // ── Normal mode: fetch + filter + sample rows (shared pipeline) ─────────
-  const { rows: filteredRows, dataContext, totalDatasetRows, totalFiltered, afterSignalCount, sampled, signalNote } =
+  const { rows: filteredRows, dataContext, totalDatasetRows, totalFiltered, totalFilteredIsEstimate, sampled, signalNote } =
     await loadAnaSample({ service, dataset, sampleSize, samplingStrategy, filters: filters as SerializedFilters | undefined, collectionMembers })
 
+  const hasFilters = !!filters && Object.keys(filters).length > 0
   if (filteredRows.length === 0) {
-    return NextResponse.json({ error: 'No rows found in dataset' }, { status: 400 })
+    return NextResponse.json({
+      error: hasFilters ? 'No rows match the active filters.' : 'No rows found in dataset',
+    }, { status: 400 })
   }
 
   // Build system prompt
   const sourceLabel = getSourceLabel(dataset.source)
 
+  // One denominator story, stated once: the filtered population (with "~" when
+  // it is a sample-scaled estimate), then the sample drawn from it.
+  const tfDisplay = (totalFilteredIsEstimate ? '~' : '') + totalFiltered.toLocaleString()
+
   const sampleNote = sampled
-    ? '\n\nNote: This is a random sample of ' + filteredRows.length + ' rows from ' + totalDatasetRows.toLocaleString() + ' total rows (' + afterSignalCount.toLocaleString() + ' after filtering). Base your analysis on patterns in this sample and note that findings are based on a sample.'
+    ? '\n\nNote: You are seeing a representative sample of ' + filteredRows.length + ' rows drawn from ' +
+      (hasFilters
+        ? 'the ' + tfDisplay + ' rows matching the active filters (dataset total: ' + totalDatasetRows.toLocaleString() + ' rows)'
+        : totalDatasetRows.toLocaleString() + ' total rows') +
+      '. Base your analysis on patterns in this sample and note that findings are sample-based.'
     : ''
 
-  const filterNote = filters && Object.keys(filters).length > 0
-    ? '\n\nNote: The user has active filters applied. You are seeing ' + totalFiltered + ' of ' + totalDatasetRows.toLocaleString() + ' total rows.'
+  const filterNote = hasFilters
+    ? '\n\nNote: The user has active filters applied. ' + tfDisplay + ' of ' + totalDatasetRows.toLocaleString() + ' total rows match the filters, and the rows you see are drawn only from those matching rows.'
     : ''
 
   const redditContext = dataset.source === 'reddit'
