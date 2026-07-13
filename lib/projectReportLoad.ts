@@ -16,6 +16,8 @@ import { renderProjectReportHtml } from '@/lib/projectReportHtml'
 import { buildCompareModel, renderCompareReportHtml, type ComparePurpose, type CompareReportModel } from '@/lib/projectCompare'
 import { AXES, AXIS_LABEL } from '@/lib/taxonomyRollup'
 import { buildKwRegex, lexiconScore, classifySentiment, type Theme } from '@/lib/themeUtils'
+import { pageSampledRows } from '@/lib/bulkRowSample'
+import { SIGNAL_SAMPLE_CAP } from '@/lib/sampledSignalCounts'
 import { isPanelMember } from '@/lib/recordings/panel'
 import { displayQuestion, displayAnswer } from '@/lib/recordings/qaDisplay'
 import type { SourceSummary } from '@/lib/sourceSummary'
@@ -229,25 +231,27 @@ const rowText = (d: Record<string, unknown>): string => {
 
 interface MemberRow { text: string; rating: number | null; sentiment: string | null; author: string | null; date: string | null }
 
-// Page all of a member's flat rows (text + rating + date), capped so a runaway
-// dataset can't stall the report. Datasets in a competitive set are ~8–30K.
-async function readMemberRows(svc: Svc, datasetId: string, cap = 80000): Promise<MemberRow[]> {
+// Read a member's flat rows (text + rating + date) for the report substrate.
+// Competitive-set datasets are ~8–30K, but a 1M-row member deep-OFFSET-paged
+// via `.range()` 57014s (each page re-scans from row 0). Now pages the
+// deterministic 50K `idx_drf_sample` via `pageSampledRows` (sql/160, the same
+// sample the bulk-rows route + every sampled surface serves) — an index-range
+// scan flat in dataset size. At/under the sample size the walk returns every
+// row (exact, order-independent aggregates unaffected); above it the report's
+// rating-over-time + theme sample are computed over the 50K sample. (Brief E
+// item 3, PERFORMANCE_REVIEW.md §7.)
+async function readMemberRows(svc: Svc, datasetId: string, cap = SIGNAL_SAMPLE_CAP): Promise<MemberRow[]> {
   const out: MemberRow[] = []
-  let from = 0
-  for (;;) {
-    const { data, error: pageErr } = await svc.from('dataset_rows_flat').select('data')
-      .eq('dataset_id', datasetId).order('row_index', { ascending: true }).range(from, from + 999)
-    if (pageErr) void logError('projectReportLoad.readMemberRows', pageErr)
-    if (!data || data.length === 0) break
-    for (const r of data) {
-      const d = (r.data || {}) as RowData
+  try {
+    await pageSampledRows(svc, datasetId, cap, row => {
+      const d = (row.data || {}) as RowData
       const rv = d.rating
       const rating = rv != null && rv !== '' && isFinite(Number(rv)) ? Number(rv) : null
       const rawDate = d.review_date ?? d.date ?? null
       out.push({ text: rowText(d), rating, sentiment: d.sentiment ?? null, author: d.author ?? d.reviewer ?? null, date: rawDate ? String(rawDate) : null })
-    }
-    from += data.length
-    if (data.length < 1000 || out.length >= cap) break
+    })
+  } catch (e) {
+    void logError('projectReportLoad.readMemberRows', e instanceof Error ? e : new Error(String(e)))
   }
   return out
 }
