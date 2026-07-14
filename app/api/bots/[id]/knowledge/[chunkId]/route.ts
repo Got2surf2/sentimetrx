@@ -5,13 +5,14 @@
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { generateEmbedding } from '@/lib/embeddings'
 import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
 
 interface Params { params: Promise<{ id: string; chunkId: string }> }
 
-async function gateBotAccess(supabase: Awaited<ReturnType<typeof createClient>>, service: ReturnType<typeof createServiceRoleClient>, userId: string, botId: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+async function gateBotAccess(supabase: Awaited<ReturnType<typeof createClient>>, service: ReturnType<typeof createServiceRoleClient>, userId: string, botId: string): Promise<{ ok: true; orgId: string | null } | { ok: false; status: number; error: string }> {
   type OrgRel = { is_admin_org: boolean | null }
   type UserRow = { org_id: string | null; organizations: OrgRel | OrgRel[] | null }
   const { data: userData } = await supabase
@@ -25,8 +26,9 @@ async function gateBotAccess(supabase: Awaited<ReturnType<typeof createClient>>,
 
   const { data: bot } = await service.from('agents').select('id, org_id').eq('id', botId).single()
   if (!bot) return { ok: false, status: 404, error: 'Bot not found' }
-  if (!isAdmin && (bot as { org_id: string | null }).org_id !== userOrgId) return { ok: false, status: 404, error: 'Bot not found' }
-  return { ok: true }
+  const botOrgId = (bot as { org_id: string | null }).org_id
+  if (!isAdmin && botOrgId !== userOrgId) return { ok: false, status: 404, error: 'Bot not found' }
+  return { ok: true, orgId: botOrgId }
 }
 
 export async function PATCH(req: NextRequest, props: Params) {
@@ -49,15 +51,31 @@ export async function PATCH(req: NextRequest, props: Params) {
   const gate = await gateBotAccess(supabase, service, user.id, params.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
-  // Verify chunk belongs to this bot
+  // Verify chunk belongs to this bot (and grab current text for re-embedding)
   var { data: chunk } = await service
     .from('agent_knowledge_chunks')
-    .select('id')
+    .select('id, title, content')
     .eq('id', params.chunkId)
     .eq('bot_id', params.id)
     .single()
 
   if (!chunk) return NextResponse.json({ error: 'Chunk not found' }, { status: 404 })
+
+  // D2: the tsvector auto-refreshes via trigger on title/content change, but
+  // the pgvector `embedding` does NOT — leaving it would keep semantically
+  // matching the OLD text forever. Re-embed the (merged) new text on every
+  // edit. Blocking, one chunk, cheap. On failure clear the embedding rather
+  // than keep a stale one — the chunk stays findable via the lexical fallback.
+  const existing = chunk as { title?: string | null; content?: string | null }
+  const newTitle = typeof updates.title === 'string' ? updates.title : (existing.title || '')
+  const newContent = typeof updates.content === 'string' ? updates.content : (existing.content || '')
+  try {
+    const emb = await generateEmbedding(newTitle + '\n' + newContent, gate.orgId ?? undefined)
+    updates.embedding = emb ? JSON.stringify(emb) : null
+  } catch (e: unknown) {
+    console.error({ at: 'bots.knowledge.chunk.update', msg: 'Re-embed failed; clearing stale embedding', err: e instanceof Error ? e.message : undefined })
+    updates.embedding = null
+  }
 
   var { error } = await service
     .from('agent_knowledge_chunks')

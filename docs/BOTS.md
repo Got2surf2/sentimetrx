@@ -214,6 +214,12 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- NOTE (D2): the trigger keeps `tsv` current on edit, but `embedding` is NOT
+-- trigger-maintained. `PATCH /api/bots/[id]/knowledge/[chunkId]` therefore
+-- re-embeds the merged new title+content on every edit (blocking, one chunk);
+-- if embedding can't be produced it writes NULL rather than leave a vector
+-- that still matches the OLD text — the chunk stays findable via the lexical
+-- (tsv/trigram) path. Without this the semantic score matched stale text forever.
 CREATE TRIGGER trg_knowledge_tsv
   BEFORE INSERT OR UPDATE OF title, content ON bot_knowledge_chunks
   FOR EACH ROW EXECUTE FUNCTION knowledge_tsv_trigger();
