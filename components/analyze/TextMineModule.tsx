@@ -550,19 +550,26 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
     return breakdownFields.map(function(f) { return String(row[f] ?? '(blank)') }).join(' \u00D7 ')
   }
 
+  // Two-count model: theme prevalence in the Compare view divides by SUBSTANTIVE
+  // comments (per the active field), and the z-test (sigTest) baseline runs on
+  // the same base — numerator and denominator both substantive, so a segment's
+  // "mentions theme X at Y%" isn't inflated by non-answers. Rating averages
+  // (groupRating/overallRatAvg) stay over ALL rated rows (ratings-all-reviews).
+  var isSubField = function(r: Record<string, unknown>) { return isSubstantiveText(String(r[field] || '')) }
+
   var compStats = (function() {
     if (!themes || !themes.themes || !breakdownFields.length || !parsedData.length) return null
-    var totalRows = parsedData.length
+    var totalRows = parsedData.filter(isSubField).length
     var groupMap: Record<string, Record<string, unknown>[]> = {}
     parsedData.forEach(function(r) { var key = groupKey(r); if (!groupMap[key]) groupMap[key] = []; groupMap[key].push(r) })
     var groupKeys = Object.keys(groupMap).sort()
 
     var groupStats = groupKeys.map(function(gk) {
       var rows = groupMap[gk]
-      var groupTotal = rows.length
-      var groupPct = Math.round(groupTotal / totalRows * 100)
+      var groupTotal = rows.filter(isSubField).length
+      var groupPct = totalRows > 0 ? Math.round(groupTotal / totalRows * 100) : 0
       var themeCounts = themes.themes.map(function(t) {
-        var matches = rows.filter(function(r) { return commentMatchesTheme(String(r[field] || ''), t) })
+        var matches = rows.filter(function(r) { return isSubField(r) && commentMatchesTheme(String(r[field] || ''), t) })
         var avgRating: number | null = null
         var ratingValues: number[] = []
         if (ratingField && matches.length > 0) {
@@ -572,7 +579,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
         return { themeId: t.id, themeName: t.name, count: matches.length, avgRating: avgRating, ratingValues: ratingValues }
       })
       var unclassified = rows.filter(function(r) {
-        return String(r[field] || '').trim().length > 0 && !themes.themes.some(function(t) { return commentMatchesTheme(String(r[field] || ''), t) })
+        return isSubField(r) && !themes.themes.some(function(t) { return commentMatchesTheme(String(r[field] || ''), t) })
       }).length
       // Group-level overall avg rating (across all rows in the segment, not
       // theme-scoped) — powers the "Avg rating" sort. Null when no rating field.
@@ -1855,22 +1862,6 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     return computeThemeEntities(ths, filteredRows, effectiveFields, entityCatalogRows)
   }, [displayThemes, themes, filteredRows, effectiveFields, entityCatalogRows])
 
-  // "% of comments that carried usable feedback" (owner ask 2026-07-11):
-  // deterministic per-comment test (isSubstantiveText — ≥5 words, or ≥4 with
-  // an everyday function word), computed client-side over the loaded rows for
-  // the ACTIVE question. Aggregate-only v1; per-row scoring is scoped.
-  var substantiveShare = useMemo(function() {
-    if (!effectiveFields.length || !filteredRows.length) return null
-    var nonEmpty = 0, substantive = 0
-    filteredRows.forEach(function(r) {
-      var txt = effectiveFields.map(function(f) { return String(r[f] || '') }).join(' ').trim()
-      if (!txt) return
-      nonEmpty++
-      if (isSubstantiveText(txt)) substantive++
-    })
-    return nonEmpty > 0 ? Math.round(substantive / nonEmpty * 100) : null
-  }, [filteredRows, effectiveFields])
-
   // Prepare corpus sample for mining (combines all active fields)
   function prepareCorpus() {
     if (!effectiveFields.length || !filteredRows.length) return { texts: [], total: 0 }
@@ -2651,7 +2642,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 {/* ─── Themes content (with Distribution/Cards toggle) ─── */}
                 {rowsLoaded && hasThemes && displayThemes && !loading && (function() {
                   var sortedThemes = [...displayThemes.themes].sort(function(a, b) { return (b.count || 0) - (a.count || 0) })
-                  var totalResp = filteredRows.filter(function(r) { return effectiveFields.some(function(f) { return String(r[f] || '').trim().length > 0 }) }).length
+                  // Two-count model (owner 2026-07-14): "comments" = SUBSTANTIVE
+                  // answers only (a comment is substantive-or-blank). Every theme
+                  // prevalence % divides by this base, in lockstep with the
+                  // server's substantive numerator (t.count, sql/181). Matches the
+                  // SQL substantive map (isSubstantiveText per field, any).
+                  var totalResp = filteredRows.filter(function(r) { return effectiveFields.some(function(f) { return isSubstantiveText(String(r[f] || '')) }) }).length
                   var visibleThemes = showAllThemes ? sortedThemes : sortedThemes.filter(function(t) { return totalResp > 0 && (t.count / totalResp * 100) >= 3 })
                   if (!visibleThemes.length) visibleThemes = sortedThemes.slice(0, 5)
                   var topTone = sortedThemes[0] ? sortedThemes[0].sentiment : '\u2014'
@@ -2711,13 +2707,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                                 <div>
                                   <div style={{ fontSize: 22, fontWeight: 800, color: T.accent, lineHeight: 1 }}>{totalResp.toLocaleString()}</div>
-                                  <div style={{ fontSize: 10, color: T.textMute, marginTop: 3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Comments</div>
-                                  {substantiveShare != null && (
-                                    <div title={SUBSTANTIVE_RULE_NOTE}
-                                      style={{ fontSize: 11, color: T.textMid, marginTop: 5 }}>
-                                      <strong>{substantiveShare}%</strong> substantive
-                                    </div>
-                                  )}
+                                  {/* Two-count model: this IS the substantive comment count
+                                      (non-answers excluded); the rule lives in the tooltip
+                                      now that the separate "% substantive" line is gone. */}
+                                  <div title={SUBSTANTIVE_RULE_NOTE} style={{ fontSize: 10, color: T.textMute, marginTop: 3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', cursor: 'help' }}>Comments</div>
                                 </div>
                                 {isSampled && (
                                   <div style={{ textAlign: 'right' }}>

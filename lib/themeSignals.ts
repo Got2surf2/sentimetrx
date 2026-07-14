@@ -20,6 +20,7 @@
 
 import { deriveTrendWindows } from '@/lib/trendWindows'
 import { buildKwRegex } from '@/lib/themeUtils'
+import { isSubstantiveText } from '@/lib/datasetUtils'
 import type { ThemeSignalInput } from '@/lib/insightAlerts'
 
 export interface ThemeSpec { label: string; keywords: string[] }
@@ -61,12 +62,17 @@ export function buildThemeSignals(opts: {
   if (!themes.length || !rows.length || !textKeys.length) return { signals: [], windowLabel: null }
 
   // Pre-join each row's theme text + rating + timestamp ONCE (not per theme).
+  // Two-count model (owner 2026-07-14): theme prevalence in the deck's Heads-Up
+  // engine divides by SUBSTANTIVE comments only (per-field-any, matching the
+  // in-app strip's union_substantive), so a theme's `rate` isn't diluted by
+  // "N/A"/"Nothing" non-answers. Ratings below stay over the matching rows.
   const docs = rows.map(r => {
-    const text = textKeys.map(k => String(r[k] ?? '')).join('  ').toLowerCase()
+    const perField = textKeys.map(k => String(r[k] ?? ''))
+    const text = perField.join('  ').toLowerCase()
     const rv = ratingKey ? Number(r[ratingKey]) : NaN
     const t = dateKey ? Date.parse(String(r[dateKey] ?? '')) : NaN
-    return { text, rating: ratingKey && isFinite(rv) ? rv : null, t: isFinite(t) ? t : null }
-  }).filter(d => d.text.trim().length > 0)
+    return { text, substantive: perField.some(v => isSubstantiveText(v)), rating: ratingKey && isFinite(rv) ? rv : null, t: isFinite(t) ? t : null }
+  }).filter(d => d.substantive)
 
   const total = docs.length || 1
 

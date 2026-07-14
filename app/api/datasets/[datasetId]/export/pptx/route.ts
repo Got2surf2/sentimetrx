@@ -11,6 +11,7 @@ import { aliasedCounts } from '@/lib/aliasUtils'
 import { deserializeFilters, applyFilters, type SerializedFilters } from '@/lib/filterUtils'
 import { pickBestComments } from '@/lib/export/scoreComments'
 import { buildKwRegex, themeSetsForExport, themeModelKey, type ThemeModel, type ThemeFieldSet } from '@/lib/themeUtils'
+import { isSubstantiveText } from '@/lib/datasetUtils'
 import { computeThemeImpact } from '@/lib/themeImpact'
 import { DN as DN_SHARED, trunc } from '@/lib/pptx/shared'
 import { renderDeck, type DeckSpec, type SlideSpec, type DistBarsSlide, type NumericStatsSlide, type CompactGridSlide } from '@/lib/pptx/slideRenderer'
@@ -706,13 +707,16 @@ export async function POST(req: Request, props: Params) {
 
   // Re-compute theme counts by keyword-matching allRows against a specific open-ended field.
   // Uses multi-match semantics (a row can match multiple themes) so percentage = "% of
-  // respondents who mentioned this theme", with denominator = rows that have text in this field.
+  // respondents who mentioned this theme". Two-count model (owner 2026-07-14): the
+  // denominator = SUBSTANTIVE comments in this field ("N/A"/"Nothing" excluded), and
+  // because count is over the same filtered array the numerator is substantive too —
+  // both flip in lockstep, matching the in-app theme %.
   function computeFieldThemes(fieldKey: string, themeList: DeckTheme[]): DeckTheme[] {
     if (!themeList.length || !allRows.length) return themeList
     // Extract + lowercase each row's text once (not per theme)
     const texts = allRows
       .map(function(row) { return rowVal(row, fieldKey) })
-      .filter(function(t) { return t.trim().length > 0 })
+      .filter(function(t) { return isSubstantiveText(t) })
       .map(function(t) { return t.toLowerCase() })
     const total = texts.length || 1
     // Pre-compile regexes once per theme (not per row)
@@ -768,9 +772,11 @@ export async function POST(req: Request, props: Params) {
   function computeCanonicalThemes(themeList: DeckTheme[], fieldsOverride?: string[]): DeckTheme[] {
     const countFields = fieldsOverride && fieldsOverride.length ? fieldsOverride : themeFields
     if (!themeList.length || !allRows.length || !countFields.length) return themeList
+    // Two-count model: substantive comments only (per-field-any, matching the
+    // in-app union_substantive) — filter rows first, then join for matching.
     const rowTexts = allRows
+      .filter(function(row) { return countFields.some(function(fk) { return isSubstantiveText(rowVal(row, fk)) }) })
       .map(function(row) { return countFields.map(function(fk) { return rowVal(row, fk) }).join('  ').toLowerCase() })
-      .filter(function(txt) { return txt.trim().length > 0 })
     const total = rowTexts.length || 1
     return themeList
       .map(function(t: DeckTheme) {
@@ -890,7 +896,7 @@ export async function POST(req: Request, props: Params) {
     const sortedThemes = [...themes].sort((a, b) => (b.count || 0) - (a.count || 0))
     const canonicalThemes = (allRows.length > 0) ? visibleThemes(computeCanonicalThemes(sortedThemes)) : sortedThemes
     const canonMeta: TextCounts | undefined = (allRows.length > 0 && themeFields.length > 0)
-      ? { comments: canonicalThemes[0]?.totalResponses ?? allRows.filter(r => themeFields.some(fk => rowVal(r, fk).trim().length > 0)).length,
+      ? { comments: canonicalThemes[0]?.totalResponses ?? allRows.filter(r => themeFields.some(fk => isSubstantiveText(rowVal(r, fk)))).length,
           signals: canonicalThemes.reduce((sum, t) => sum + (t.count || 0), 0) }
       : undefined
     const metaSub = (base: string) => canonMeta ? base + ' · ' + canonMeta.comments.toLocaleString() + ' comments · ' + canonMeta.signals.toLocaleString() + ' signals' : base
@@ -985,7 +991,11 @@ export async function POST(req: Request, props: Params) {
         { value: dateStr, label: 'Report Generated', sub: audience + ' edition · v' + STORYTIME_VERSION },
       ]
       const collectionMethod = dataSource === 'study' ? 'Collected using Sarina (AI conversational survey). ' : 'Data uploaded from an external source. '
-      const aboutNote = [samplingNote, filterDescription || '', 'Methodology: ' + collectionMethod + 'Analyzed using Datanautix AI Text Analytics.'].filter(Boolean).join('   ')
+      // Two-count model: state the base once so every "N comments" / theme % in
+      // the deck is read against substantive comments (raw response counts above
+      // and rating averages stay over all rows).
+      const substantiveNote = canonMeta ? ' Comment counts and theme percentages are over substantive comments — real feedback; one-word and "N/A"/"Nothing" non-answers are excluded.' : ''
+      const aboutNote = [samplingNote, filterDescription || '', 'Methodology: ' + collectionMethod + 'Analyzed using Datanautix AI Text Analytics.' + substantiveNote].filter(Boolean).join('   ')
       slides.push({ type: 'kpi_grid', title: 'About This Report', subtitle: 'Methodology, scope and data coverage', kpis: aboutKpis, insight: aboutNote })
     }
 
@@ -1234,7 +1244,7 @@ export async function POST(req: Request, props: Params) {
       items.forEach(c => usedCommentTexts.add(c.text.slice(0, 120)))
       if (items.length === 0) return
       const cFieldThemes = allRows.length > 0 ? computeFieldThemes(f.field, sortedThemes) : []
-      const cComments = cFieldThemes[0]?.totalResponses ?? allRows.filter(r => rowVal(r, f.field).trim().length > 0).length
+      const cComments = cFieldThemes[0]?.totalResponses ?? allRows.filter(r => isSubstantiveText(rowVal(r, f.field))).length
       const cSignals = cFieldThemes.reduce((sum, t) => sum + (t.count || 0), 0)
       const numSlides = Math.ceil(items.length / perSlide)
       for (let si = 0; si < numSlides; si++) {
@@ -1317,7 +1327,7 @@ export async function POST(req: Request, props: Params) {
         // full question. Card-slide headers wrap cleanly, so they keep more.
         const sectionTitle = labeled ? 'Theme Analysis — ' + trunc(label, 30) : 'Theme Analysis'
         const cardsTitle = labeled ? 'Theme Analysis — ' + label : 'Theme Analysis'
-        const comments = blockThemes[0]?.totalResponses ?? allRows.filter(r => blockFields.some(fk => rowVal(r, fk).trim().length > 0)).length
+        const comments = blockThemes[0]?.totalResponses ?? allRows.filter(r => blockFields.some(fk => isSubstantiveText(rowVal(r, fk)))).length
         const signals = blockThemes.reduce((sum, t) => sum + (t.count || 0), 0)
         const blockMeta = (base: string) => base + ' · ' + comments.toLocaleString() + ' comments · ' + signals.toLocaleString() + ' signals'
         const sub = labeled ? blockMeta : metaSub

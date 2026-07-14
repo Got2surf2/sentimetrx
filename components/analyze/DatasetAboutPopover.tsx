@@ -135,15 +135,14 @@ export default function DatasetAboutPopover({ datasetId, datasetName, open, anch
                 </div>
                 {data.verbatimFields.map(function(f) {
                   const fillPct = data.rows > 0 ? Math.round((f.fill / data.rows) * 100) : 0
-                  const substPct = f.substantive != null && f.fill > 0 ? Math.round((f.substantive / f.fill) * 100) : null
                   return (
                     <div key={f.field} style={{ padding: '3px 0' }}>
                       <div style={{ color: '#111827', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={f.label}>{f.label}</div>
                       <div style={{ color: '#6b7280', fontSize: 11 }}>
                         {(data.sampled ? '≈' : '') + f.fill.toLocaleString()} filled ({fillPct}%)
-                        {substPct != null && (
-                          <span title={'Share of answers carrying usable feedback. ' + SUBSTANTIVE_RULE_NOTE}>
-                            {' · '}<strong style={{ color: '#047857' }}>{substPct}%</strong> substantive
+                        {f.substantive != null && (
+                          <span title={'Comments carrying usable feedback (the two-count base). ' + SUBSTANTIVE_RULE_NOTE}>
+                            {' · '}<strong style={{ color: '#047857' }}>{(data.sampled ? '≈' : '') + f.substantive.toLocaleString()}</strong> comments
                           </span>
                         )}
                       </div>

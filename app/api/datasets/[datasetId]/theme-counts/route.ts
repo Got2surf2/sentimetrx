@@ -159,8 +159,13 @@ export async function POST(req: Request, props: Props) {
     // count_theme_matches with filter-awareness (sql/170) + PGRST202 fallback:
     // append p_row_ids only when filters are active; drop it on an un-migrated
     // DB (filters ignored, the pre-fix behavior) instead of erroring.
+    //
+    // Two-count model (sql/181): the prevalence numerator is gated to
+    // substantive rows (p_substantive_only) so it divides by the substantive
+    // denominator in lockstep — a full-match numerator over a substantive
+    // denominator would overstate every theme's fit.
     async function themeMatchCount(did: string, patterns: string[]): Promise<number> {
-      const base = { p_dataset_id: did, p_field_keys: fields, p_keywords: patterns }
+      const base = { p_dataset_id: did, p_field_keys: fields, p_keywords: patterns, p_substantive_only: true }
       if (filterRowIds) {
         const r = await service.rpc('count_theme_matches', { ...base, p_row_ids: filterRowIds })
         if (!r.error || r.error.code !== 'PGRST202') return Number(r.data) || 0
@@ -169,21 +174,25 @@ export async function POST(req: Request, props: Props) {
       return Number(data) || 0
     }
 
-    // Get total non-empty rows (denominator), summed across members
+    // Total SUBSTANTIVE comments (denominator), summed across members — the
+    // two-count-model base for every theme prevalence % (sql/178/179/181).
     let totalNonEmpty = 0
     for (const [fi, f] of fields.entries()) {
       let fieldTotal = 0
       for (const did of datasetIds) {
         const s = sampledByMember.get(did)
         if (s) {
-          fieldTotal += scaleSampledCount(s.recordsPerField[fi] || 0, rowCounts.get(did) || 0, s.scanned)
+          // Substantive denominator (two-count model): divide by comments that
+          // carry usable feedback, not every non-empty answer.
+          fieldTotal += scaleSampledCount(s.recordsSubstantivePerField[fi] || 0, rowCounts.get(did) || 0, s.scanned)
           continue
         }
         // Comma-safe count (sql/161) — the raw PostgREST filter used here
         // silently returned 0 for question-sentence column names, zeroing
         // the percentage denominator. Filter-scoped via p_row_ids (sql/170)
-        // when active. Degrade to 0 on failure (old behavior).
-        try { fieldTotal += await countNonEmptyRows(service, did, f, filterRowIds) } catch { /* keep old swallow */ }
+        // when active. Substantive-gated (sql/179) for the two-count base.
+        // Degrade to 0 on failure (old behavior).
+        try { fieldTotal += await countNonEmptyRows(service, did, f, filterRowIds, true) } catch { /* keep old swallow */ }
       }
       totalNonEmpty = Math.max(totalNonEmpty, fieldTotal)
     }
@@ -196,7 +205,9 @@ export async function POST(req: Request, props: Props) {
       for (const did of datasetIds) {
         const s = sampledByMember.get(did)
         if (s) {
-          c += scaleSampledCount(s.perTheme[ti] || 0, rowCounts.get(did) || 0, s.scanned)
+          // Substantive per-theme numerator (sql/181) — in lockstep with the
+          // substantive denominator above.
+          c += scaleSampledCount(s.perThemeSubstantive[ti] || 0, rowCounts.get(did) || 0, s.scanned)
           continue
         }
         // Canonical fragments (kwPatternFragment) — same patterns the client

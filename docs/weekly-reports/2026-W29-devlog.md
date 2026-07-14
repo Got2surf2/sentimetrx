@@ -253,3 +253,24 @@ WHY (owner): "like we ignore blanks we should ignore non-substantive — so only
 WHAT (this commit — the headline): DatasetMetricStrip now shows ONE comment count (= substantive) and a single Theme fit (matches ÷ substantive comments); dropped the "signals" number and the dual "all vs substantive"/hover-both display + the "of substantive" qualifier. DatasetHeader dropped the separate "% substantive" chip (comments now live on the strip; the header carries the other reference count, rows) — and the now-orphaned filter-aware substantivePct plumbing (DatasetShell useMemo + prop + isSubstantiveText import) was removed. Pre-sql/179 caches fall back to the all-based numbers so nothing blanks during rollout. tsc clean, lint 0 new, 1516 green.
 
 REMAINING (careful next step, NOT yet done): per-theme prevalence on the two-count base — TextMine overview/CompareBars, Charts theme bars, Statistics — requires flipping the theme-count NUMERATOR to substantive (count_theme_matches p_substantive_only, sql/179 — shared by the /theme-counts route + fetchServerThemeCounts) IN LOCKSTEP with the denominators (totalResp/total/groupTotal → substantive count), then re-verifying the significance tests. Comments tile (totalResp) + About popover per-field + decks/exports inherit the same base. Scoped for a focused pass with tests.
+
+---
+
+## 2026-07-14 — Substantive flag pt7: per-theme PREVALENCE on the two-count base (Charts/TextMine/decks) + sql/181
+
+WHY (owner, two-count model continued): every theme prevalence % — not just the strip's single Theme fit — must divide by substantive comments, with the theme NUMERATOR gated to substantive in LOCKSTEP (a full-match numerator over a substantive denominator overstates each theme). "When we sample/report, ignore non-answers like blanks."
+
+WHAT:
+- **sql/181** — `sampled_signal_counts` now also returns `theme_counts_substantive` (per-theme hit-AND-substantive), the per-theme prevalence numerator on the >50K sampled path (sql/179 only added the union). Same signature (CREATE OR REPLACE), old callers ignore the key. TEST-applied.
+- **`/theme-counts` route** (shared by Charts bars + TextMine server counts): numerator = `count_theme_matches(p_substantive_only)` (exact) / `perThemeSubstantive` (sampled); denominator = `count_nonempty_rows(...,substantive)` / `recordsSubstantivePerField`. `totalNonEmpty` is now the substantive comment total. `lib/sampledSignalCounts` gained `perThemeSubstantive`.
+- **TextMine**: `totalResp` + Compare `groupTotal`/`totalRows`/`unclassified` + theme match counts → substantive (isSubstantiveText per field, matching the SQL map); CompareBars `sigTest` z-test now runs num+denom on the same base. Comments tile shows the substantive count (rule in tooltip); dropped the "% substantive" line + the orphaned `substantiveShare` memo.
+- **Charts**: `__themes__` denominator = substantive comment total from `/theme-counts` (filter-aware), was `analytics.totalRows`.
+- **Statistics**: NO change — themes/dimensions are only GROUPING variables for chi-square/t-test/ANOVA (group totals = classified counts, not an all-non-empty base); dimension counts already clean.
+- **About popover** per open-ended field: shows the substantive **comment count**, not "% substantive".
+- **Decks/exports**: `export/pptx` `computeFieldThemes`/`computeCanonicalThemes` filter rows with `isSubstantiveText` (num+denom flip together); "N comments" fallbacks + `themeSignals.buildThemeSignals` docs filter → substantive; About-This-Report methodology line states the base. Carve-outs stay full: raw verbatim quote lists, rating averages, response/completion scope counts, Survey Overview "With comments" (engagement). `projectCompare` NOT flipped (counts assembled upstream per source — a denominator-only flip would inflate; deferred).
+
+VERIFY: fresh tsc clean, 1517 tests green (+1 themeSignals substantive-exclusion), lint 0 new. End-to-end on Carrabba's GSS (56K, both paths) via `scripts/_verify_deck_substantive.mts` (full-scan) + `_verify_theme_counts_route.mts` (sampled RPC): 35.6K non-empty → 19.1K substantive (46% non-answers); Service & Staff Issues 7%→12%, Food Quality 6%→10%, Pacing 5%→8%; numerator ⊆ denominator throughout, both paths agree within sampling noise.
+
+OPEN QUESTIONS resolved (owner, AskUserQuestion): (a) "signals" stays dropped from the strip/overview; (b) decks use substantive for insight numbers, full denominator for raw dumps/ratings.
+
+DEPLOY (on push): `npm run migrate sql/178` `179` `180` `181` in order, then push; after deploy run `scripts/_backfill-substantive.mts --prod`.

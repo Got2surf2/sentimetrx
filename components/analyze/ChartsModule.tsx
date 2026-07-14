@@ -2057,6 +2057,11 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   // because it already has the rows loaded; Charts doesn't, so we ask the
   // server (count_theme_matches SQL → fast for 20K+ row datasets).
   var [liveThemeCounts, setLiveThemeCounts] = useState<Record<string, number> | null>(null)
+  // Substantive comment total from /theme-counts (two-count model): the theme
+  // prevalence-bar denominator, in lockstep with the substantive numerators in
+  // liveThemeCounts. Filter-aware. null until the fetch resolves → fall back to
+  // analytics.totalRows so the bars still render.
+  var [liveThemeTotal, setLiveThemeTotal] = useState<number | null>(null)
   var themesSig = hasThemes
     ? effectiveThemeModel!.themes.map(function(t: { id?: string; name?: string; keywords?: string[] }) { return (t.id || t.name) + ':' + (t.keywords || []).join('|') }).join(';;')
     : ''
@@ -2067,7 +2072,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     ? _filteredRowIds.length + ':' + _filteredRowIds[0] + ':' + _filteredRowIds[_filteredRowIds.length - 1]
     : 'none'
   useEffect(function() {
-    if (!hasThemes || !themeSourceField) { setLiveThemeCounts(null); return }
+    if (!hasThemes || !themeSourceField) { setLiveThemeCounts(null); setLiveThemeTotal(null); return }
     var cancelled = false
     var body = JSON.stringify({
       themes: effectiveThemeModel!.themes.map(function(t: { id?: string; name?: string; keywords?: string[] }) { return { id: t.id || t.name, keywords: t.keywords || [] } }),
@@ -2089,7 +2094,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
         return r.json()
       })
     })
-      .then(function(d: { counts?: { id: string; count: number }[] } | null) {
+      .then(function(d: { counts?: { id: string; count: number }[]; totalNonEmpty?: number } | null) {
         if (cancelled || !d || !Array.isArray(d.counts)) return
         var counts = d.counts
         var map: Record<string, number> = {}
@@ -2098,6 +2103,9 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
           map[t.name] = hit ? hit.count : 0
         })
         setLiveThemeCounts(map)
+        // Substantive comment total (two-count-model denominator); 0 is a valid
+        // "no substantive comments" answer, so accept any finite number.
+        setLiveThemeTotal(typeof d.totalNonEmpty === 'number' ? d.totalNonEmpty : null)
       })
       .catch(function() { /* fall back to stored counts */ })
     return function() { cancelled = true }
@@ -2128,7 +2136,12 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
           var live = liveThemeCounts ? liveThemeCounts[t.name] : undefined
           themeCounts[t.name] = live != null ? live : (t.count || 0)
         })
-      extraSummaries['__themes__'] = { type: 'categorical', nonNull: analytics.totalRows, counts: themeCounts, topN: Object.keys(themeCounts) }
+      // Two-count model: theme prevalence bars divide by SUBSTANTIVE comments
+      // (filter-aware, from /theme-counts) instead of all rows — in lockstep
+      // with the substantive numerators in themeCounts. Falls back to totalRows
+      // until the live total resolves (or if the fetch failed).
+      var themeDenom = liveThemeTotal != null ? liveThemeTotal : analytics.totalRows
+      extraSummaries['__themes__'] = { type: 'categorical', nonNull: themeDenom, counts: themeCounts, topN: Object.keys(themeCounts) }
     }
     // Build summaries for mapped numeric fields from categorical counts + remapping
     mappedFields.forEach(function(f) {

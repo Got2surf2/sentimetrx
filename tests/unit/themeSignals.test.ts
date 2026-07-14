@@ -22,11 +22,13 @@ const SERVICE = [{ label: 'Service', keywords: ['service'] }]
 
 describe('buildThemeSignals', () => {
   it('derives real pos/neg + avg ★ from rated rows (no dates → full-period snapshot)', () => {
+    // Substantive comments only (≥5 words) — the two-count base; each mentions
+    // "service" so the theme matches.
     const r = [
-      { comment: 'great service', rating: 5 },
-      { comment: 'good service', rating: 4 },
-      { comment: 'ok service', rating: 3 },
-      { comment: 'bad service', rating: 1 },
+      { comment: 'the service tonight was genuinely great overall', rating: 5 },
+      { comment: 'good service from the whole team here today', rating: 4 },
+      { comment: 'the service was just ok nothing really special', rating: 3 },
+      { comment: 'bad service and the wait was far too long', rating: 1 },
     ]
     const { signals } = buildThemeSignals({ themes: SERVICE, rows: r, textKeys: ['comment'], ratingKey: 'rating' })
     expect(signals).toHaveLength(1)
@@ -38,10 +40,23 @@ describe('buildThemeSignals', () => {
   })
 
   it('leaves posPct null when there is no rating field (no invented precision)', () => {
-    const r = [{ comment: 'service was slow' }, { comment: 'love the service' }]
+    const r = [{ comment: 'the service here today was really quite slow' }, { comment: 'i absolutely love the service at this place' }]
     const { signals } = buildThemeSignals({ themes: SERVICE, rows: r, textKeys: ['comment'] })
     expect(signals[0].posPct).toBeNull()
     expect(signals[0].avgRating).toBeNull()
+  })
+
+  it('excludes non-substantive answers from the theme base (two-count model)', () => {
+    // "great service" (2 words) and "N/A" are non-substantive → not counted;
+    // only the substantive mention forms the denominator + the theme count.
+    const r = [
+      { comment: 'great service', rating: 5 },
+      { comment: 'N/A', rating: 4 },
+      { comment: 'the service tonight was genuinely excellent all round', rating: 5 },
+    ]
+    const { signals } = buildThemeSignals({ themes: SERVICE, rows: r, textKeys: ['comment'], ratingKey: 'rating' })
+    expect(signals).toHaveLength(1)
+    expect(signals[0].count).toBe(1)
   })
 
   it('produces a recent-vs-prior trend when dates are present', () => {

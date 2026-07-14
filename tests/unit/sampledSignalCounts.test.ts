@@ -23,16 +23,20 @@ describe('sampledSignalCounts — keyset pager', () => {
   it('accumulates pages up to the cap and advances the cursor', async () => {
     const calls: Record<string, unknown>[] = []
     const svc = makeService([
-      { n: 5000, records: [4000], theme_counts: [1000, 200], union_count: 1100, last_hash: 10, last_id: 20 },
-      { n: 5000, records: [3800], theme_counts: [900, 300], union_count: 1150, last_hash: 30, last_id: 40 },
+      { n: 5000, records: [4000], records_substantive: [3000], theme_counts: [1000, 200], theme_counts_substantive: [800, 150], union_count: 1100, union_substantive: 900, last_hash: 10, last_id: 20 },
+      { n: 5000, records: [3800], records_substantive: [2900], theme_counts: [900, 300], theme_counts_substantive: [700, 240], union_count: 1150, union_substantive: 950, last_hash: 30, last_id: 40 },
     ], calls)
 
     const r = await sampledSignalCounts(svc, 'd1', ['f'], THEMES, 10000)
 
     expect(r.scanned).toBe(10000)
     expect(r.recordsPerField).toEqual([7800])
+    expect(r.recordsSubstantivePerField).toEqual([5900])
     expect(r.perTheme).toEqual([1900, 500])
+    // sql/181: per-theme substantive numerator accumulates in lockstep
+    expect(r.perThemeSubstantive).toEqual([1500, 390])
     expect(r.union).toBe(2250)
+    expect(r.unionSubstantive).toBe(1850)
     // page 2 must resume from page 1's cursor
     expect(calls[1].p_after_hash).toBe(10)
     expect(calls[1].p_after_id).toBe(20)

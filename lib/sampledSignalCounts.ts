@@ -29,6 +29,9 @@ export interface SampledSignalCounts {
   recordsSubstantivePerField: number[]
   /** Match counts aligned to the input themes order (sampled, unscaled). */
   perTheme: number[]
+  /** Per-theme match counts gated to substantive rows (sql/181) — the
+   *  prevalence-bar numerator for the two-count model (sampled, unscaled). */
+  perThemeSubstantive: number[]
   /** Rows matching ANY theme (sampled, unscaled). */
   union: number
   /** Rows matching ANY theme AND substantive in a scanned field (sampled). */
@@ -42,6 +45,7 @@ interface PageResult {
   records: number[]
   records_substantive?: number[]
   theme_counts: number[]
+  theme_counts_substantive?: number[]
   union_count: number
   union_substantive?: number
   last_hash: number | null
@@ -65,6 +69,7 @@ export async function sampledSignalCounts(
     recordsPerField: fields.map(() => 0),
     recordsSubstantivePerField: fields.map(() => 0),
     perTheme: themes.map(() => 0),
+    perThemeSubstantive: themes.map(() => 0),
     union: 0,
     unionSubstantive: 0,
     scanned: 0,
@@ -95,6 +100,7 @@ export async function sampledSignalCounts(
     page.records.forEach((c, i) => { acc.recordsPerField[i] += Number(c) || 0 })
     ;(page.records_substantive || []).forEach((c, i) => { acc.recordsSubstantivePerField[i] += Number(c) || 0 })
     page.theme_counts.forEach((c, i) => { acc.perTheme[i] += Number(c) || 0 })
+    ;(page.theme_counts_substantive || []).forEach((c, i) => { acc.perThemeSubstantive[i] += Number(c) || 0 })
     acc.union += Number(page.union_count) || 0
     acc.unionSubstantive += Number(page.union_substantive) || 0
     if (page.last_hash == null || page.last_id == null) break

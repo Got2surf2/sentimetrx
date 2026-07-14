@@ -236,9 +236,10 @@ drops the whole map alongside `signal_stats`. Non-empty "records" counts are **c
 (sql/161, field as bind parameter) shared by signalStats / theme-counts / filter-options blanks /
 analyticsCompute through `lib/nonEmptyCount.countNonEmptyRows` — the raw `data->field` PostgREST
 filter silently matched nothing for question-sentence column names (comma = filter separator).
-The Comments KPI tile shows **"N% substantive"** for the active question (`isSubstantiveText`,
-lib/datasetUtils: ≥5 words, or ≥4 containing a function word; deterministic, client-side
-aggregate).
+The Comments KPI tile shows the **substantive comment count** for the active question
+(`isSubstantiveText`, lib/datasetUtils: ≥5 words, or ≥4 containing a function word; deterministic,
+client-side) — the two-count base; the earlier separate "% substantive" line was dropped, its rule
+kept in the tile tooltip.
 
 **Substantive theme-fit + header "% substantive" (sql/179, 2026-07-14).** The metric strip
 now LEADS with the substantive fit — `inThemes-among-substantive / substantive` — and reveals
@@ -264,10 +265,51 @@ with n. The per-field fill/substantive counts come from ONE `sampled_signal_coun
 themes (exact ≤50K, deterministic sample above), so it never full-scans; everything else is read
 straight from the stored `schema_config` + `analytics.fieldSummaries`.
 
+**Two-count model — per-theme prevalence on the substantive base (sql/181, 2026-07-14).** Owner
+directive: "ignore non-substantive like blanks — only TWO counts, total rows + total (substantive)
+comments; every %/prevalence divides by the substantive comment base." So EVERY theme-prevalence
+% (not just the strip's single Theme fit) now divides by substantive comments, with the theme
+NUMERATOR gated to substantive in LOCKSTEP — a full-match numerator over a substantive denominator
+would overstate each theme. Surfaces:
+- **`/theme-counts` route** — the shared prevalence source for the Charts theme bars AND
+  TextMine's server counts. Exact path (≤50K): `count_theme_matches(p_substantive_only:true)` /
+  `count_nonempty_rows(...,substantiveOnly)`. Sampled path (>50K): `sampled_signal_counts` now
+  returns `theme_counts_substantive` (sql/181, per-theme hit-AND-substantive) alongside
+  `records_substantive`; the route scales both. `totalNonEmpty` in the response IS the substantive
+  comment total.
+- **TextMine distribution / Compare** — `totalResp` and the Compare `groupTotal`/`totalRows`/
+  `unclassified` count substantive rows (`isSubstantiveText` per field, matching the SQL map);
+  theme match counts are substantive-gated too, so the CompareBars z-test (`sigTest`) runs
+  numerator+denominator on the same base. The Comments KPI tile shows the substantive count (rule
+  in a tooltip; the separate "% substantive" line was dropped per the two-count model).
+- **Charts** — the `__themes__` virtual field's denominator (`nonNull`) is the substantive comment
+  total from `/theme-counts` (filter-aware) instead of `analytics.totalRows`.
+- **Statistics** — NO prevalence denominator to flip: StatsModule uses themes/dimensions only as
+  GROUPING variables for chi-square/t-test/ANOVA (group totals = classified counts, not an
+  all-non-empty base), and dimension counts are already clean. Left untouched.
+- **About popover per-field** — shows the substantive **comment count** (the two-count base), not
+  a "% substantive".
+- Verified on Carrabba's GSS (56K, both paths): 35.6K non-empty → 19.1K substantive (46%
+  non-answers); Service & Staff Issues reads its true **12%** vs a diluted 7%, Food Quality 10% vs
+  6% — numerator ⊆ denominator throughout (`scripts/_verify_deck_substantive.mts` full-scan +
+  `_verify_theme_counts_route.mts` sampled RPC agree within sampling noise).
+
+**Decks/exports inherit the substantive base (2026-07-14).** "N comments" and every theme
+prevalence % in the PPTX deck (`export/pptx`: `computeFieldThemes` / `computeCanonicalThemes`
+filter rows with `isSubstantiveText` — so numerator+denominator flip together) and the Heads-Up
+alert engine (`themeSignals.buildThemeSignals` filters `docs` to substantive) count substantive
+comments only; the About-This-Report methodology line states the base. CARVE-OUTS stay full: raw
+verbatim quote lists, rating averages, response/completion scope counts, and the Survey Overview
+"With comments" engagement KPI (a participation metric, kept consistent with the funnel's fill
+stages). `projectCompare` (the multi-source project-report matrix) is NOT flipped — its counts are
+assembled upstream per source; a denominator-only flip would inflate, and threading substantive
+per-source counts through the project-report pipeline is deferred.
+
 **Substantive lens across insight surfaces (2026-07-14).** The stored flag is the DEFAULT scope
 for text insights, always shown never silently dropped:
 - **Mining** ✅ — `prepareCorpus` filters to substantive.
 - **Theme-fit strip + header %** ✅ — sql/179 substantive twin.
+- **Per-theme prevalence (Charts/TextMine bars) + decks** ✅ — sql/181, see above.
 - **Word clouds** ✅ — `WordCloud` builds `perRowText` + the denominator from substantive rows
   only (client-side `isSubstantiveText`); the header notes "over N substantive of M answered".
 - **Ask Ana** ✅ — `loadAnaSample` prioritizes substantive comments when the sample truncates
