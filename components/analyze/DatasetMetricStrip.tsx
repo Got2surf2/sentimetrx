@@ -145,11 +145,14 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
     ? { display: 'flex', alignItems: 'center', gap: 14, fontSize: 12, color: '#374151', flexWrap: 'wrap', minWidth: 0 }
     : { background: '#fafafa', borderBottom: '1px solid #e8e8ec', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, fontSize: 12, color: '#374151', flexWrap: 'wrap' }
 
-  // Above the sampling cap counts are estimated from the deterministic 50K
-  // sample and scaled to the full dataset — mark them "~" and say so on hover.
-  const approx = stats.sampled ? '~' : ''
+  // Model A (owner 2026-07-14): above the cap we treat the deterministic 50K
+  // sample AS the view — the comment/theme counts are EXACT counts of that
+  // sample (no scaling to the full dataset, so no "~"). The "◱ Sampled" chip in
+  // the header row is the disclosure; the tooltip says the counts are over the
+  // sample. (Rating avg keeps its own "~" — it's a ties-to-Google carve-out.)
+  const approx = ''
   const sampledNote = stats.sampled
-    ? ' Estimated from a deterministic 50,000-row sample (dataset exceeds the exact-count cap) and scaled to all rows.'
+    ? ' These are exact counts over the deterministic 50,000-row sample (the dataset exceeds the exact-count cap, so the sample is the current view).'
     : ''
 
   return (

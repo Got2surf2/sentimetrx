@@ -8,7 +8,7 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { countNonEmptyRows } from '@/lib/nonEmptyCount'
 import { memberRowCounts } from '@/lib/signalStats'
 import { kwPatternFragment } from '@/lib/themeUtils'
-import { sampledSignalCounts, scaleSampledCount, SIGNAL_SAMPLE_CAP, type SampledSignalCounts } from '@/lib/sampledSignalCounts'
+import { sampledSignalCounts, SIGNAL_SAMPLE_CAP, type SampledSignalCounts } from '@/lib/sampledSignalCounts'
 import { sampledThemeCooccurrence, sampledThemeTopical, sampledThemeDimensions } from '@/lib/sampledThemeExtras'
 
 interface Props { params: Promise<{ datasetId: string }> }
@@ -182,9 +182,10 @@ export async function POST(req: Request, props: Props) {
       for (const did of datasetIds) {
         const s = sampledByMember.get(did)
         if (s) {
-          // Substantive denominator (two-count model): divide by comments that
-          // carry usable feedback, not every non-empty answer.
-          fieldTotal += scaleSampledCount(s.recordsSubstantivePerField[fi] || 0, rowCounts.get(did) || 0, s.scanned)
+          // Substantive denominator (two-count model), EXACT over the 50K sample
+          // — Model A (owner 2026-07-14): the sample is the view, so no scaling
+          // to the full dataset (the "Sampled" chip is the disclosure).
+          fieldTotal += s.recordsSubstantivePerField[fi] || 0
           continue
         }
         // Comma-safe count (sql/161) — the raw PostgREST filter used here
@@ -205,9 +206,9 @@ export async function POST(req: Request, props: Props) {
       for (const did of datasetIds) {
         const s = sampledByMember.get(did)
         if (s) {
-          // Substantive per-theme numerator (sql/181) — in lockstep with the
-          // substantive denominator above.
-          c += scaleSampledCount(s.perThemeSubstantive[ti] || 0, rowCounts.get(did) || 0, s.scanned)
+          // Substantive per-theme numerator (sql/181), EXACT over the 50K sample
+          // (Model A — no scaling), in lockstep with the substantive denominator.
+          c += s.perThemeSubstantive[ti] || 0
           continue
         }
         // Canonical fragments (kwPatternFragment) — same patterns the client

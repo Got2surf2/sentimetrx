@@ -310,3 +310,13 @@ WHY (owner): saw the strip at "~30,308 comments" (Liked Most's 27,004 scaled) wh
 WHAT: (1) BUG FIX — TextMine dispatches 'dataset-active-field-changed' at the TOP of the per-field-swap effect now, before its early returns (`!k` / no-binding model / already-shown), so the strip can't get stuck on the previous question. Pure event emit, no setState. (2) Mined banner now reads "Themes AI-mined from N substantive (P%) of M comments · K-row sample" — EXACT sample counts (totalResp/answeredResp/substPct), no "~", tooltip notes they're exact-within-sample not extrapolated. fresh tsc clean, lint 0 delta.
 
 STILL OPEN: the metric STRIP still shows the scaled full-dataset estimate with "~" (that's a different number from the banner's exact-sample count — deliberately, for the "dataset scale" framing on listing cards etc.). Switching the strip to exact-sample would need signalStats to expose raw sample counts (additive, but touches cached shape + tests + listing-card framing) — flagged to owner as a framing decision. Perf: cold Liked-Least load is slow because the non-active per-field signal-stats + the sampled theme-counts (10× 5K-row RPC pages over the 50K sample) compute fresh; both cache client-side after.
+
+---
+
+## 2026-07-14 — Model A: the 50K sample IS the view (exact sample counts, no scaling, no "~")
+
+WHY (owner): "after sampling rows everything else should be precise numbers on the sample… at this point we're looking at the sample as our view so everything should be based on the 50K." The strip was scaling the exact sample count up to the full dataset and marking it "~", which (a) added false precision and (b) disagreed with the client's sample-based counts (mined banner/distribution). Owner confirmed Model A over Model B (exact-full headline).
+
+WHAT: signalStats (strip) + /theme-counts route (Charts/TextMine theme bars) stop calling scaleSampledCount on the count paths — they now return the EXACT counts of the deterministic 50K sample. Theme-fit % is a ratio (unchanged). DatasetMetricStrip drops the "~" on comment/theme counts (rating avg keeps its ties-to-Google "~"). Result: strip == mined banner (both ~17,048 substantive on Carrabba's Least, vs the old scaled ~19,134/30,308). signalStats sampled test updated to exact sample numbers. fresh tsc clean, lint 0 delta, 18 targeted tests green.
+
+NEXT (owner asked): decks/PDFs should use the same approach. The deck already counts exactly over its loaded ≤50K rows (no scaling) — but it loads the FIRST 50K (.range in id order), not the deterministic hash-based 50K the app uses, so deck numbers won't match the app. Fix = load the same deterministic sample in the deck's row loader.

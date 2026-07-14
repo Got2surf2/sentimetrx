@@ -146,10 +146,11 @@ describe('computeSignalStats — cache freshness', () => {
 })
 
 describe('computeSignalStats — sampled path above the cap (sql/162)', () => {
-  it('computes over the deterministic sample, scales to total rows, flags sampled', async () => {
+  it('computes EXACT counts over the deterministic sample (Model A — no scaling), flags sampled', async () => {
     const updateSpy = vi.fn()
-    // 150K rows (> 50K cap): the pager should draw two 25K pages, then stop at
-    // the cap. Counts scale by 150000/50000 = 3.
+    // 150K rows (> 50K cap): the pager draws two 25K pages, then stops at the
+    // cap. Model A (owner 2026-07-14): the sample IS the view — report the exact
+    // counts of the 50K sample, NOT scaled to the full dataset.
     const page = {
       n: 25000, records: [20000], records_substantive: [10000],
       theme_counts: [5000], union_count: 5000, union_substantive: 4000,
@@ -163,14 +164,14 @@ describe('computeSignalStats — sampled path above the cap (sql/162)', () => {
     const stats = await computeSignalStats(svc, 'd1')
 
     expect(stats.sampled).toBe(true)
-    expect(stats.records).toBe(120000)  // (20000+20000) × 3
-    expect(stats.signals).toBe(30000)   // (5000+5000) × 3
-    expect(stats.inThemes).toBe(30000)
-    expect(stats.themeFitPct).toBe(25)  // ratio survives scaling
-    // substantive twin: denom (10000+10000)×3 = 60000, num (4000+4000)×3 = 24000
-    expect(stats.substantiveRecords).toBe(60000)
-    expect(stats.inThemesSubstantive).toBe(24000)
-    expect(stats.themeFitPctSubstantive).toBe(40)  // 24000/60000 — higher, junk dropped
+    expect(stats.records).toBe(40000)  // 20000+20000, exact sample (no scaling)
+    expect(stats.signals).toBe(10000)  // 5000+5000
+    expect(stats.inThemes).toBe(10000)
+    expect(stats.themeFitPct).toBe(25)  // ratio unchanged (10000/40000)
+    // substantive twin: denom 10000+10000 = 20000, num 4000+4000 = 8000
+    expect(stats.substantiveRecords).toBe(20000)
+    expect(stats.inThemesSubstantive).toBe(8000)
+    expect(stats.themeFitPctSubstantive).toBe(40)  // 8000/20000 — higher, junk dropped
     expect(updateSpy).toHaveBeenCalledTimes(1) // persisted with the sampled flag
   })
 

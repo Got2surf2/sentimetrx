@@ -14,7 +14,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { mergeDatasetAnalytics, deleteDatasetAnalyticsKey } from '@/lib/datasetAnalytics'
 import { logError } from '@/lib/log'
 import { countNonEmptyRows } from '@/lib/nonEmptyCount'
-import { sampledSignalCounts, scaleSampledCount, SIGNAL_SAMPLE_CAP } from '@/lib/sampledSignalCounts'
+import { sampledSignalCounts, SIGNAL_SAMPLE_CAP } from '@/lib/sampledSignalCounts'
 import { kwPatternFragment, themeFieldEntries, themeModelKey, type ThemeModel as UtilThemeModel } from '@/lib/themeUtils'
 
 export interface SignalStats {
@@ -227,12 +227,20 @@ export async function computeSignalStatsRaw(
     if (memberTotal > SIGNAL_SAMPLE_CAP) {
       try {
         const s = await sampledSignalCounts(service, did, fields, themes)
+        // Model A (owner 2026-07-14): "we're looking at the sample as our view,
+        // so everything is based on the 50K." Report the EXACT counts OF the
+        // deterministic sample — no scaling to the full dataset, no "~". The
+        // "◱ Sampled 50,000/M" chip is the single disclosure that it's a sample;
+        // theme-fit stays a ratio (unaffected by whether we scale). This keeps
+        // the strip's numbers identical to the client's sample-based counts
+        // (mined banner / distribution) instead of a scaled estimate that
+        // disagreed with them.
         return {
-          recordsPerField: s.recordsPerField.map(c => scaleSampledCount(c, memberTotal, s.scanned)),
-          recordsSubstantivePerField: s.recordsSubstantivePerField.map(c => scaleSampledCount(c, memberTotal, s.scanned)),
-          perTheme: s.perTheme.map(c => scaleSampledCount(c, memberTotal, s.scanned)),
-          union: scaleSampledCount(s.union, memberTotal, s.scanned),
-          unionSubstantive: scaleSampledCount(s.unionSubstantive, memberTotal, s.scanned),
+          recordsPerField: s.recordsPerField,
+          recordsSubstantivePerField: s.recordsSubstantivePerField,
+          perTheme: s.perTheme,
+          union: s.union,
+          unionSubstantive: s.unionSubstantive,
           sampled: true,
         }
       } catch (err) {

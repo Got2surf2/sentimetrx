@@ -308,15 +308,24 @@ stages). `projectCompare` (the multi-source project-report matrix) is NOT flippe
 assembled upstream per source; a denominator-only flip would inflate, and threading substantive
 per-source counts through the project-report pipeline is deferred.
 
+**Model A — the 50K sample IS the view; report EXACT sample counts, no scaling (owner 2026-07-14).**
+Above the cap the analyze view stopped extrapolating: `signalStats` (strip) and the `/theme-counts`
+route (Charts/TextMine theme bars) now return the EXACT counts of the deterministic 50K sample
+instead of scaling them to the full dataset — so there is no more "~" and every number on the page
+agrees (the strip's comment count now equals the mined banner's, both ~17,048 on Carrabba's Least,
+because both count the same deterministic sample). `scaleSampledCount` is no longer called on these
+count paths (theme-fit % is a ratio, unaffected). Rating averages keep their own "~" — a
+ties-to-Google carve-out that still averages all rated rows. Rationale: "at this point we're looking
+at the sample as our view, so everything is based on the 50K."
+
 **"Sampled" chip on the metric-strip row (2026-07-14).** When the active dataset exceeds the 50K
 cap (`RowsContext.sampled && totalRows > sampledCount`), `DatasetShell` leads the shared metric-strip
 row (the one carrying comments · Theme fit · themes) with a compact blue chip "◱ Sampled P% ·
-N/M" (tooltip: estimates scaled to the full dataset). It rides the existing strip row rather than
-its own banner — one signal, no extra vertical row — and persists across tabs so a sample is never
-mistaken for the full dataset. The AI-mined banner on the Themes tab is a slim single line reading
-"Themes AI-mined from **N substantive (P%) of M comments · K-row sample**" — these are EXACT counts
-within the sample (not extrapolated, so no "~"; the strip's "~" numbers are the scaled full-dataset
-estimate, a different thing).
+N/M" — the single disclosure that the on-screen counts are over the 50K sample (Model A). It rides
+the existing strip row rather than its own banner — one signal, no extra vertical row — and persists
+across tabs so a sample is never mistaken for the full dataset. The AI-mined banner on the Themes tab
+is a slim single line reading "Themes AI-mined from **N substantive (P%) of M comments · K-row
+sample**" — exact counts of the sample, no "~".
 
 **Metric-strip follows the active TEXT pill — dispatch moved before the swap-effect early returns
 (2026-07-14).** The strip (`DatasetMetricStrip`) listens for `dataset-active-field-changed` to show
