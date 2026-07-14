@@ -23,6 +23,115 @@ COMMENT ON SCHEMA "public" IS 'standard public schema';
 
 
 
+CREATE OR REPLACE FUNCTION "public"."ana_row_matches_filters"("p_data" "jsonb", "p_filters" "jsonb") RETURNS boolean
+    LANGUAGE "plpgsql" IMMUTABLE
+    AS $$
+DECLARE
+  k        text;
+  f        jsonb;
+  v        text;
+  is_blank boolean;
+  n        numeric;
+  ts       timestamptz;
+BEGIN
+  IF p_filters IS NULL OR p_filters = '{}'::jsonb THEN
+    RETURN true;
+  END IF;
+  FOR k, f IN SELECT * FROM jsonb_each(p_filters) LOOP
+    v := p_data->>k;
+    is_blank := v IS NULL OR btrim(v) = '';
+
+    IF f->>'type' = 'cat' THEN
+      -- Blanks governed solely by excludeBlanks, regardless of mode.
+      IF is_blank THEN
+        IF COALESCE((f->>'excludeBlanks')::boolean, false) THEN RETURN false; END IF;
+      ELSIF COALESCE(f->>'mode', 'include') = 'exclude' THEN
+        IF f->'values' ? v THEN RETURN false; END IF;
+      ELSE
+        IF NOT (f->'values' ? v) THEN RETURN false; END IF;
+      END IF;
+
+    ELSIF f->>'type' = 'range' THEN
+      -- parseFloat semantics: leading numeric prefix incl. scientific notation
+      -- ("1.19152E+11" — real export data); no prefix -> NaN branch, which
+      -- passes unless includeBlanks is literally false. POSIX regex: bracket
+      -- expressions don't support \s, use [[:space:]].
+      -- NB: substring() returns the FIRST parenthesized group, so the whole
+      -- number is wrapped in one.
+      n := substring(COALESCE(v, '') FROM '^[[:space:]]*(-?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)')::numeric;
+      IF n IS NULL THEN
+        IF (f->>'includeBlanks') = 'false' THEN RETURN false; END IF;
+      ELSE
+        IF n < (f->'values'->>0)::numeric OR n > (f->'values'->>1)::numeric THEN
+          RETURN false;
+        END IF;
+      END IF;
+
+    ELSIF f->>'type' = 'daterange' THEN
+      -- Bounds are epoch MILLISECONDS (JS Date.getTime()).
+      IF is_blank THEN
+        IF (f->>'includeBlanks') = 'false' THEN RETURN false; END IF;
+      ELSE
+        ts := public.ana_try_parse_ts(v);
+        IF ts IS NULL THEN
+          IF (f->>'includeBlanks') = 'false' THEN RETURN false; END IF;
+        ELSE
+          IF extract(epoch FROM ts) * 1000 < (f->'values'->>0)::numeric
+             OR extract(epoch FROM ts) * 1000 > (f->'values'->>1)::numeric THEN
+            RETURN false;
+          END IF;
+        END IF;
+      END IF;
+    END IF;
+    -- Unknown filter types pass (matches applyFilters' `return true` default).
+  END LOOP;
+  RETURN true;
+END $$;
+
+
+ALTER FUNCTION "public"."ana_row_matches_filters"("p_data" "jsonb", "p_filters" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."ana_try_parse_ts"("p_val" "text") RETURNS timestamp with time zone
+    LANGUAGE "plpgsql" IMMUTABLE
+    AS $$
+BEGIN
+  RETURN p_val::timestamptz;
+EXCEPTION WHEN OTHERS THEN
+  RETURN NULL;
+END $$;
+
+
+ALTER FUNCTION "public"."ana_try_parse_ts"("p_val" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."apply_entity_mention_counts"("p_scope_type" "text", "p_scope_id" "uuid", "p_row_total" bigint, "p_sampled" boolean, "p_counts" "jsonb") RETURNS integer
+    LANGUAGE "sql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+  WITH upd AS (
+    UPDATE entity_catalog ec
+    SET mention_count           = (p_counts ->> ec.slug)::int,
+        mention_count_sampled   = p_sampled,
+        mention_count_row_total = p_row_total,
+        mention_count_at        = now()
+    FROM jsonb_object_keys(p_counts) AS k(slug)
+    WHERE ec.scope_type = p_scope_type
+      AND ec.scope_id   = p_scope_id
+      AND ec.slug       = k.slug
+    RETURNING 1
+  )
+  SELECT count(*)::int FROM upd;
+$$;
+
+
+ALTER FUNCTION "public"."apply_entity_mention_counts"("p_scope_type" "text", "p_scope_id" "uuid", "p_row_total" bigint, "p_sampled" boolean, "p_counts" "jsonb") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."apply_entity_mention_counts"("p_scope_type" "text", "p_scope_id" "uuid", "p_row_total" bigint, "p_sampled" boolean, "p_counts" "jsonb") IS 'Batched write of getEntitiesWithCounts'' computed mention counts back onto entity_catalog (keyed by slug), with the scope row-total staleness key. sql/172.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."apply_taxonomy_verdicts"("p_dataset_id" "uuid", "p_field_key" "text", "p_items" "jsonb") RETURNS bigint
     LANGUAGE "sql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -265,8 +374,9 @@ COMMENT ON FUNCTION "public"."count_entity_terms"("p_dataset_ids" "uuid"[], "p_t
 
 
 
-CREATE OR REPLACE FUNCTION "public"."count_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_limit" integer DEFAULT 200) RETURNS TABLE("value" "text", "count" bigint)
+CREATE OR REPLACE FUNCTION "public"."count_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_limit" integer DEFAULT 200, "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS TABLE("value" "text", "count" bigint)
     LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
     AS $$
 BEGIN
   RETURN QUERY
@@ -275,6 +385,7 @@ BEGIN
     count(*)::bigint AS count
   FROM dataset_rows_flat
   WHERE dataset_id = p_dataset_id
+    AND (p_row_ids IS NULL OR id = ANY(p_row_ids))
     AND data ->> p_field_key IS NOT NULL
     AND data ->> p_field_key != ''
   GROUP BY data ->> p_field_key
@@ -284,20 +395,22 @@ END;
 $$;
 
 
-ALTER FUNCTION "public"."count_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_limit" integer) OWNER TO "postgres";
+ALTER FUNCTION "public"."count_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_limit" integer, "p_row_ids" bigint[]) OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."count_nonempty_rows"("p_dataset_id" "uuid", "p_field" "text") RETURNS bigint
+CREATE OR REPLACE FUNCTION "public"."count_nonempty_rows"("p_dataset_id" "uuid", "p_field" "text", "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS bigint
     LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
     AS $$
   SELECT count(*)
   FROM dataset_rows_flat drf
   WHERE drf.dataset_id = p_dataset_id
+    AND (p_row_ids IS NULL OR drf.id = ANY(p_row_ids))
     AND NULLIF(btrim(drf.data ->> p_field), '') IS NOT NULL;
 $$;
 
 
-ALTER FUNCTION "public"."count_nonempty_rows"("p_dataset_id" "uuid", "p_field" "text") OWNER TO "postgres";
+ALTER FUNCTION "public"."count_nonempty_rows"("p_dataset_id" "uuid", "p_field" "text", "p_row_ids" bigint[]) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."count_theme_intersection"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords_a" "text"[], "p_keywords_b" "text"[]) RETURNS bigint
@@ -339,20 +452,22 @@ $$;
 ALTER FUNCTION "public"."count_theme_intersection"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords_a" "text"[], "p_keywords_b" "text"[]) OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."count_theme_matches"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[]) RETURNS bigint
+CREATE OR REPLACE FUNCTION "public"."count_theme_matches"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[], "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS bigint
     LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
     AS $$
 DECLARE
   pattern text;
   total bigint;
 BEGIN
-  -- Build a single regex pattern: \m(kw1|kw2|kw3) (word boundary match, case-insensitive)
+  -- Build a single regex pattern: \m(kw1|kw2|kw3) (word boundary, case-insensitive)
   pattern := '\m(' || array_to_string(p_keywords, '|') || ')';
 
   SELECT count(DISTINCT drf.id) INTO total
   FROM dataset_rows_flat drf,
        LATERAL unnest(p_field_keys) AS fk(key)
   WHERE drf.dataset_id = p_dataset_id
+    AND (p_row_ids IS NULL OR drf.id = ANY(p_row_ids))
     AND drf.data ->> fk.key IS NOT NULL
     AND drf.data ->> fk.key != ''
     AND drf.data ->> fk.key ~* pattern;
@@ -362,11 +477,12 @@ END;
 $$;
 
 
-ALTER FUNCTION "public"."count_theme_matches"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[]) OWNER TO "postgres";
+ALTER FUNCTION "public"."count_theme_matches"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[], "p_row_ids" bigint[]) OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."crosstab_counts"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_limit" integer DEFAULT 50) RETURNS TABLE("row_val" "text", "col_val" "text", "cnt" bigint)
+CREATE OR REPLACE FUNCTION "public"."crosstab_counts"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_limit" integer DEFAULT 50, "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS TABLE("row_val" "text", "col_val" "text", "cnt" bigint)
     LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
     AS $$
 BEGIN
   RETURN QUERY
@@ -376,6 +492,7 @@ BEGIN
     count(*)::bigint AS cnt
   FROM dataset_rows_flat
   WHERE dataset_id = p_dataset_id
+    AND (p_row_ids IS NULL OR id = ANY(p_row_ids))
     AND data ->> p_row_field IS NOT NULL
     AND data ->> p_row_field != ''
   GROUP BY data ->> p_row_field, data ->> p_col_field
@@ -385,7 +502,7 @@ END;
 $$;
 
 
-ALTER FUNCTION "public"."crosstab_counts"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_limit" integer) OWNER TO "postgres";
+ALTER FUNCTION "public"."crosstab_counts"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_limit" integer, "p_row_ids" bigint[]) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."current_client_id"() RETURNS "uuid"
@@ -507,9 +624,10 @@ $$;
 ALTER FUNCTION "public"."dataset_rows_with_text_count"("p_dataset_id" "uuid", "p_field" "text") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."date_series_stats"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text" DEFAULT NULL::"text", "p_bucket" "text" DEFAULT 'day'::"text") RETURNS TABLE("bucket_date" "text", "n" bigint, "avg_val" double precision)
+CREATE OR REPLACE FUNCTION "public"."date_series_stats"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text" DEFAULT NULL::"text", "p_bucket" "text" DEFAULT 'day'::"text", "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS TABLE("bucket_date" "text", "n" bigint, "avg_val" double precision)
     LANGUAGE "plpgsql" SECURITY DEFINER
-    AS $$
+    SET "search_path" TO 'public'
+    AS $_$
 BEGIN
   RETURN QUERY
   SELECT
@@ -523,21 +641,22 @@ BEGIN
     count(*)::bigint AS n,
     CASE
       WHEN p_metric_field IS NOT NULL AND p_metric_field != '' THEN
-        avg((data ->> p_metric_field)::double precision)
+        avg((data ->> p_metric_field)::double precision) FILTER (WHERE data ->> p_metric_field ~ '^-?[0-9]+\.?[0-9]*$')
       ELSE NULL
     END AS avg_val
   FROM dataset_rows_flat
   WHERE dataset_id = p_dataset_id
+    AND (p_row_ids IS NULL OR id = ANY(p_row_ids))
     AND data ->> p_date_field IS NOT NULL
     AND data ->> p_date_field != ''
     AND (data ->> p_date_field) ~ '^\d{4}-\d{2}-\d{2}'
   GROUP BY bucket_date
   ORDER BY bucket_date;
 END;
-$$;
+$_$;
 
 
-ALTER FUNCTION "public"."date_series_stats"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text") OWNER TO "postgres";
+ALTER FUNCTION "public"."date_series_stats"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_row_ids" bigint[]) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."delete_dataset_analytics_key"("p_dataset_id" "uuid", "p_key" "text") RETURNS "void"
@@ -898,8 +1017,10 @@ CREATE OR REPLACE FUNCTION "public"."get_study_response_stats_for_user"("p_study
     AS $$
   SELECT srs.study_id, srs.total_responses, srs.complete_count,
          srs.promoters, srs.passives, srs.detractors,
-         srs.avg_experience, srs.avg_nps, srs.last_response_at
-  FROM study_response_stats srs
+         srs.exp_sum / NULLIF(srs.exp_n, 0) AS avg_experience,
+         srs.nps_sum / NULLIF(srs.nps_n, 0) AS avg_nps,
+         srs.last_response_at
+  FROM study_response_stats_live srs
   WHERE srs.study_id = ANY(p_study_ids)
     AND srs.study_id IN (
       SELECT s.id FROM studies s
@@ -915,8 +1036,9 @@ $$;
 ALTER FUNCTION "public"."get_study_response_stats_for_user"("p_study_ids" "uuid"[]) OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text") RETURNS TABLE("group_val" "text", "n" bigint, "min_val" double precision, "max_val" double precision, "avg_val" double precision, "median_val" double precision, "stddev_val" double precision)
+CREATE OR REPLACE FUNCTION "public"."group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text", "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS TABLE("group_val" "text", "n" bigint, "min_val" double precision, "max_val" double precision, "avg_val" double precision, "median_val" double precision, "stddev_val" double precision)
     LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
     AS $_$
 BEGIN
   RETURN QUERY
@@ -926,6 +1048,7 @@ BEGIN
       (data ->> p_value_field)::double precision AS v
     FROM dataset_rows_flat
     WHERE dataset_id = p_dataset_id
+      AND (p_row_ids IS NULL OR id = ANY(p_row_ids))
       AND data ->> p_group_field IS NOT NULL
       AND data ->> p_group_field != ''
       AND data ->> p_value_field IS NOT NULL
@@ -946,7 +1069,7 @@ END;
 $_$;
 
 
-ALTER FUNCTION "public"."group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text") OWNER TO "postgres";
+ALTER FUNCTION "public"."group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text", "p_row_ids" bigint[]) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."increment_probe_answered"("p_agent_id" "uuid", "p_probe_id" "text", "p_probe_version" integer, "p_delta" integer DEFAULT 1) RETURNS integer
@@ -1069,8 +1192,9 @@ COMMENT ON FUNCTION "public"."merge_dataset_analytics"("p_dataset_id" "uuid", "p
 
 
 
-CREATE OR REPLACE FUNCTION "public"."numeric_field_stats"("p_dataset_id" "uuid", "p_field_key" "text") RETURNS TABLE("n" bigint, "min_val" double precision, "max_val" double precision, "avg_val" double precision, "median_val" double precision, "stddev_val" double precision)
+CREATE OR REPLACE FUNCTION "public"."numeric_field_stats"("p_dataset_id" "uuid", "p_field_key" "text", "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS TABLE("n" bigint, "min_val" double precision, "max_val" double precision, "avg_val" double precision, "median_val" double precision, "stddev_val" double precision)
     LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
     AS $_$
 BEGIN
   RETURN QUERY
@@ -1078,6 +1202,7 @@ BEGIN
     SELECT (data ->> p_field_key)::double precision AS v
     FROM dataset_rows_flat
     WHERE dataset_id = p_dataset_id
+      AND (p_row_ids IS NULL OR id = ANY(p_row_ids))
       AND data ->> p_field_key IS NOT NULL
       AND data ->> p_field_key ~ '^-?[0-9]+\.?[0-9]*$'
   )
@@ -1093,7 +1218,7 @@ END;
 $_$;
 
 
-ALTER FUNCTION "public"."numeric_field_stats"("p_dataset_id" "uuid", "p_field_key" "text") OWNER TO "postgres";
+ALTER FUNCTION "public"."numeric_field_stats"("p_dataset_id" "uuid", "p_field_key" "text", "p_row_ids" bigint[]) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."numeric_field_stats_present"("p_dataset_id" "uuid", "p_field_key" "text", "p_present_field" "text") RETURNS TABLE("n" bigint, "min_val" double precision, "max_val" double precision, "avg_val" double precision, "median_val" double precision, "stddev_val" double precision)
@@ -1200,9 +1325,13 @@ ALTER FUNCTION "public"."public_tables_rls_status"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."refresh_study_response_stats"() RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
     AS $$
 BEGIN
-  REFRESH MATERIALIZED VIEW CONCURRENTLY study_response_stats;
+  -- No-op since sql/174: study_response_stats_live is maintained live by the
+  -- responses trigger. Retained as a stub so any lingering caller (the
+  -- pre-deploy /api/respond) is harmless; safe to drop once no caller remains.
+  RETURN;
 END;
 $$;
 
@@ -1321,6 +1450,326 @@ $$;
 ALTER FUNCTION "public"."sample_row_pairs"("p_dataset_id" "uuid", "p_fields" "text"[], "p_limit" integer) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."sampled_count_entity_terms"("p_dataset_id" "uuid", "p_terms" "text"[], "p_theme_query" "text", "p_text_fields" "text"[], "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+  WITH page AS MATERIALIZED (
+    SELECT f.id, f.tsv, f.data,
+           (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint) AS h
+    FROM dataset_rows_flat f
+    WHERE f.dataset_id = p_dataset_id
+      AND ( (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id )
+          > (p_after_hash, p_after_id)
+    ORDER BY (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id
+    LIMIT p_limit
+  ),
+  matched AS (
+    SELECT t.term, count(*)::bigint AS n
+    FROM unnest(p_terms) AS t(term)
+    JOIN page
+      ON page.tsv @@ websearch_to_tsquery('english', t.term)          -- tsv prefilter (matches count_entity_terms)
+     AND (
+       p_text_fields IS NULL
+       OR to_tsvector('english', COALESCE(
+            (SELECT string_agg(page.data ->> fld, ' ') FROM unnest(p_text_fields) AS fld), '')
+          ) @@ websearch_to_tsquery('english', t.term)               -- exact recheck: open-ended fields only
+     )
+     AND (
+       p_theme_query IS NULL
+       OR page.tsv @@ websearch_to_tsquery('english', p_theme_query)  -- theme keywords stay on the full row
+     )
+    GROUP BY t.term
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'counts',    COALESCE((SELECT jsonb_agg(jsonb_build_array(term, n)) FROM matched), '[]'::jsonb),
+    'last_hash', (SELECT h  FROM page ORDER BY h DESC, id DESC LIMIT 1),
+    'last_id',   (SELECT id FROM page ORDER BY h DESC, id DESC LIMIT 1)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_count_entity_terms"("p_dataset_id" "uuid", "p_terms" "text"[], "p_theme_query" "text", "p_text_fields" "text"[], "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."sampled_count_entity_terms"("p_dataset_id" "uuid", "p_terms" "text"[], "p_theme_query" "text", "p_text_fields" "text"[], "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) IS 'Sampled twin of count_entity_terms (sql/070) for ONE dataset — keyset-pages the 50K idx_drf_sample and matches terms per page (same tsv-prefilter + open-ended recheck) so entity counts never 57014 at 1M. Caller pages to the cap + scales by total/scanned. sql/172.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_count_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  WITH page AS MATERIALIZED (
+    SELECT f.id, f.data,
+           (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint) AS h
+    FROM dataset_rows_flat f
+    WHERE f.dataset_id = p_dataset_id
+      AND ( (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id )
+          > (p_after_hash, p_after_id)
+    ORDER BY (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id
+    LIMIT p_limit
+  ),
+  g AS (
+    SELECT (data ->> p_field_key)::text AS v, count(*)::bigint AS n
+    FROM page
+    WHERE (p_row_ids IS NULL OR id = ANY(p_row_ids))
+      AND data ->> p_field_key IS NOT NULL
+      AND data ->> p_field_key != ''
+    GROUP BY 1
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'groups',    COALESCE((SELECT jsonb_agg(jsonb_build_array(v, n)) FROM g), '[]'::jsonb),
+    'last_hash', (SELECT h  FROM page ORDER BY h DESC, id DESC LIMIT 1),
+    'last_id',   (SELECT id FROM page ORDER BY h DESC, id DESC LIMIT 1)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_count_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_crosstab_counts"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  WITH page AS MATERIALIZED (
+    SELECT f.id, f.data,
+           (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint) AS h
+    FROM dataset_rows_flat f
+    WHERE f.dataset_id = p_dataset_id
+      AND ( (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id )
+          > (p_after_hash, p_after_id)
+    ORDER BY (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id
+    LIMIT p_limit
+  ),
+  g AS (
+    SELECT COALESCE(data ->> p_row_field, '')::text AS r,
+           COALESCE(data ->> p_col_field, '')::text AS c,
+           count(*)::bigint AS n
+    FROM page
+    WHERE (p_row_ids IS NULL OR id = ANY(p_row_ids))
+      AND data ->> p_row_field IS NOT NULL
+      AND data ->> p_row_field != ''
+    GROUP BY 1, 2
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'groups',    COALESCE((SELECT jsonb_agg(jsonb_build_array(r, c, n)) FROM g), '[]'::jsonb),
+    'last_hash', (SELECT h  FROM page ORDER BY h DESC, id DESC LIMIT 1),
+    'last_id',   (SELECT id FROM page ORDER BY h DESC, id DESC LIMIT 1)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_crosstab_counts"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_date_series_stats"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $_$
+  WITH page AS MATERIALIZED (
+    SELECT f.id, f.data,
+           (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint) AS h
+    FROM dataset_rows_flat f
+    WHERE f.dataset_id = p_dataset_id
+      AND ( (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id )
+          > (p_after_hash, p_after_id)
+    ORDER BY (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id
+    LIMIT p_limit
+  ),
+  b AS (
+    SELECT
+      CASE p_bucket
+        WHEN 'week'    THEN to_char(date_trunc('week',    (data ->> p_date_field)::date), 'YYYY-MM-DD')
+        WHEN 'month'   THEN to_char(date_trunc('month',   (data ->> p_date_field)::date), 'YYYY-MM')
+        WHEN 'quarter' THEN to_char(date_trunc('quarter', (data ->> p_date_field)::date), 'YYYY') || '-Q' || extract(quarter from date_trunc('quarter', (data ->> p_date_field)::date))::text
+        WHEN 'year'    THEN to_char(date_trunc('year',    (data ->> p_date_field)::date), 'YYYY')
+        ELSE to_char((data ->> p_date_field)::date, 'YYYY-MM-DD')
+      END AS bkt,
+      count(*)::bigint AS n,
+      sum((data ->> p_metric_field)::double precision)
+        FILTER (WHERE p_metric_field IS NOT NULL AND p_metric_field != '' AND data ->> p_metric_field ~ '^-?[0-9]+\.?[0-9]*$') AS msum,
+      count(*) FILTER (WHERE p_metric_field IS NOT NULL AND p_metric_field != '' AND data ->> p_metric_field ~ '^-?[0-9]+\.?[0-9]*$')::bigint AS mn
+    FROM page
+    WHERE (p_row_ids IS NULL OR id = ANY(p_row_ids))
+      AND data ->> p_date_field IS NOT NULL
+      AND data ->> p_date_field != ''
+      AND (data ->> p_date_field) ~ '^\d{4}-\d{2}-\d{2}'
+    GROUP BY 1
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'buckets',   COALESCE((SELECT jsonb_agg(jsonb_build_array(bkt, n, msum, mn)) FROM b), '[]'::jsonb),
+    'last_hash', (SELECT h  FROM page ORDER BY h DESC, id DESC LIMIT 1),
+    'last_id',   (SELECT id FROM page ORDER BY h DESC, id DESC LIMIT 1)
+  );
+$_$;
+
+
+ALTER FUNCTION "public"."sampled_date_series_stats"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_filter_options"("p_dataset_id" "uuid", "p_fields" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $_$
+  WITH page AS MATERIALIZED (
+    SELECT f.id, f.data,
+           (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint) AS h
+    FROM dataset_rows_flat f
+    WHERE f.dataset_id = p_dataset_id
+      AND ( (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id )
+          > (p_after_hash, p_after_id)
+    ORDER BY (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id
+    LIMIT p_limit
+  ),
+  fld AS (
+    SELECT (e ->> 'field') AS field, (e ->> 'type') AS type, ord
+    FROM jsonb_array_elements(p_fields) WITH ORDINALITY AS x(e, ord)
+  ),
+  -- one (field, row) cell with the RAW extracted text value (untrimmed).
+  cells AS MATERIALIZED (
+    SELECT fl.ord, fl.field, fl.type, (p.data ->> fl.field) AS raw
+    FROM fld fl CROSS JOIN page p
+  ),
+  agg AS (
+    SELECT ord, field, type,
+      -- non-empty = count_nonempty_rows (sql/161): trim, all-whitespace is blank
+      count(*) FILTER (WHERE NULLIF(btrim(raw), '') IS NOT NULL) AS nonempty,
+      -- numeric min/max = numeric_field_stats predicate (no trim)
+      min(CASE WHEN type = 'numeric' AND raw ~ '^-?[0-9]+\.?[0-9]*$' THEN raw::double precision END) AS num_min,
+      max(CASE WHEN type = 'numeric' AND raw ~ '^-?[0-9]+\.?[0-9]*$' THEN raw::double precision END) AS num_max,
+      -- date min/max = legacy .order('data->>field') probe: raw lexical, blanks out
+      min(CASE WHEN type = 'date' AND raw IS NOT NULL AND raw <> '' THEN raw END) AS date_min,
+      max(CASE WHEN type = 'date' AND raw IS NOT NULL AND raw <> '' THEN raw END) AS date_max
+    FROM cells
+    GROUP BY ord, field, type
+  ),
+  vc AS (
+    -- distinct value counts = count_field_values (raw data->>field, exclude
+    -- null/''; NO trim). ONLY for categorical fields — the Filters modal value-
+    -- filters categorical/numeric/date; open-ended is never a checkbox list, so
+    -- counting its (high-cardinality free-text) distincts was pure waste and the
+    -- ~40s-at-1M cost driver. Capped per page at 2000 by frequency; the Node
+    -- caller merges across pages and caps the final list at 500.
+    SELECT ord, field,
+           jsonb_agg(jsonb_build_object('v', raw, 'c', c) ORDER BY rn) FILTER (WHERE rn <= 2000) AS values,
+           count(*) AS distinct_n
+    FROM (
+      SELECT ord, field, raw, count(*) AS c,
+             row_number() OVER (PARTITION BY ord ORDER BY count(*) DESC, raw) AS rn
+      FROM cells
+      WHERE type = 'categorical' AND raw IS NOT NULL AND raw <> ''
+      GROUP BY ord, field, raw
+    ) g
+    GROUP BY ord, field
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'fields', (
+      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'ord',        a.ord,
+        'nonempty',   a.nonempty,
+        'num_min',    a.num_min,
+        'num_max',    a.num_max,
+        'date_min',   a.date_min,
+        'date_max',   a.date_max,
+        'values',     COALESCE(vc.values, '[]'::jsonb),
+        'distinct_n', COALESCE(vc.distinct_n, 0)
+      ) ORDER BY a.ord), '[]'::jsonb)
+      FROM agg a LEFT JOIN vc ON vc.ord = a.ord
+    ),
+    'last_hash', (SELECT h  FROM page ORDER BY h DESC, id DESC LIMIT 1),
+    'last_id',   (SELECT id FROM page ORDER BY h DESC, id DESC LIMIT 1)
+  );
+$_$;
+
+
+ALTER FUNCTION "public"."sampled_filter_options"("p_dataset_id" "uuid", "p_fields" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."sampled_filter_options"("p_dataset_id" "uuid", "p_fields" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) IS 'One keyset page of SAMPLED filter options over the deterministic idx_drf_sample order (same sample as sample_dataset_rows, sql/160). p_fields = [{"field","type"},…]; returns {n_scanned, fields:[{ord, nonempty, num_min, num_max, date_min, date_max, values:[{v,c}], distinct_n}], last_hash, last_id}. Per-field semantics match count_nonempty_rows (nonempty, btrim), count_field_values (values, raw — CATEGORICAL only), numeric_field_stats (numeric), and the legacy date .order probe. Values capped 2000/page by frequency; caller pages to the 50K cap, merges values, caps 500, and labels sampled above the cap. Replaces the filter-options route serial per-field full scans (57014 at 1M).';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_filtered_rows"("p_dataset_id" "uuid", "p_filters" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_scan_limit" integer, "p_match_limit" integer) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  WITH scan AS MATERIALIZED (
+    SELECT f.id, f.data,
+           (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint) AS h
+    FROM dataset_rows_flat f
+    WHERE f.dataset_id = p_dataset_id
+      AND ( (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id )
+          > (p_after_hash, p_after_id)
+    ORDER BY (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id
+    LIMIT p_scan_limit
+  ), matched AS MATERIALIZED (
+    SELECT s.id, s.data, s.h
+    FROM scan s
+    WHERE public.ana_row_matches_filters(s.data, p_filters)
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM scan),
+    'n_matched', (SELECT count(*) FROM matched),
+    'rows', COALESCE(
+      (SELECT jsonb_agg(m.data ORDER BY m.h, m.id)
+       FROM (SELECT id, data, h FROM matched ORDER BY h, id LIMIT p_match_limit) m),
+      '[]'::jsonb),
+    'last_hash', (SELECT h  FROM scan ORDER BY h DESC, id DESC LIMIT 1),
+    'last_id',   (SELECT id FROM scan ORDER BY h DESC, id DESC LIMIT 1)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_filtered_rows"("p_dataset_id" "uuid", "p_filters" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_scan_limit" integer, "p_match_limit" integer) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."sampled_filtered_rows"("p_dataset_id" "uuid", "p_filters" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_scan_limit" integer, "p_match_limit" integer) IS 'Filter-aware page over the deterministic sample order (idx_drf_sample). Scans p_scan_limit rows past the (p_after_hash,p_after_id) cursor, applies ana_row_matches_filters (mirror of lib/filterUtils.applyFilters), returns {n_scanned, n_matched, rows: up to p_match_limit matching data blobs, last_hash, last_id (of the last SCANNED row)}. Callers page until enough matches or the D6 scan cap. Ask Ana / ad-hoc report data layer (docs/PERFORMANCE_REVIEW.md §2).';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $_$
+  WITH page AS MATERIALIZED (
+    SELECT f.id, f.data,
+           (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint) AS h
+    FROM dataset_rows_flat f
+    WHERE f.dataset_id = p_dataset_id
+      AND ( (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id )
+          > (p_after_hash, p_after_id)
+    ORDER BY (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id
+    LIMIT p_limit
+  ),
+  v AS (
+    SELECT COALESCE(data ->> p_group_field, '')::text AS g,
+           (data ->> p_value_field)::double precision AS x
+    FROM page
+    WHERE (p_row_ids IS NULL OR id = ANY(p_row_ids))
+      AND data ->> p_group_field IS NOT NULL
+      AND data ->> p_group_field != ''
+      AND data ->> p_value_field IS NOT NULL
+      AND data ->> p_value_field ~ '^-?[0-9]+\.?[0-9]*$'
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'vals',      COALESCE((SELECT jsonb_agg(jsonb_build_array(g, x)) FROM v), '[]'::jsonb),
+    'last_hash', (SELECT h  FROM page ORDER BY h DESC, id DESC LIMIT 1),
+    'last_id',   (SELECT id FROM page ORDER BY h DESC, id DESC LIMIT 1)
+  );
+$_$;
+
+
+ALTER FUNCTION "public"."sampled_group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."sampled_numeric_field_stats"("p_dataset_id" "uuid", "p_field" "text", "p_aliases" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) RETURNS "jsonb"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -1365,6 +1814,39 @@ COMMENT ON FUNCTION "public"."sampled_numeric_field_stats"("p_dataset_id" "uuid"
 
 
 
+CREATE OR REPLACE FUNCTION "public"."sampled_numeric_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $_$
+  WITH page AS MATERIALIZED (
+    SELECT f.id, f.data,
+           (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint) AS h
+    FROM dataset_rows_flat f
+    WHERE f.dataset_id = p_dataset_id
+      AND ( (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id )
+          > (p_after_hash, p_after_id)
+    ORDER BY (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id
+    LIMIT p_limit
+  ),
+  v AS (
+    SELECT (data ->> p_field_key)::double precision AS x
+    FROM page
+    WHERE (p_row_ids IS NULL OR id = ANY(p_row_ids))
+      AND data ->> p_field_key IS NOT NULL
+      AND data ->> p_field_key ~ '^-?[0-9]+\.?[0-9]*$'
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'vals',      COALESCE((SELECT jsonb_agg(x) FROM v), '[]'::jsonb),
+    'last_hash', (SELECT h  FROM page ORDER BY h DESC, id DESC LIMIT 1),
+    'last_id',   (SELECT id FROM page ORDER BY h DESC, id DESC LIMIT 1)
+  );
+$_$;
+
+
+ALTER FUNCTION "public"."sampled_numeric_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."sampled_signal_counts"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) RETURNS "jsonb"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -1376,9 +1858,19 @@ CREATE OR REPLACE FUNCTION "public"."sampled_signal_counts"("p_dataset_id" "uuid
   -- once, fetch the page once, evaluate each regex once per (row, theme).
   WITH pats AS MATERIALIZED (
     SELECT t.ord,
-           (SELECT string_agg('(?:^|\W)' || regexp_replace(kw, '([.*+?^${}()|[\]\\])', '\\\1', 'g') || '\w*', '|')
-              FROM jsonb_array_elements_text(t.elem -> 'keywords') AS kw
-             WHERE btrim(kw) <> '') AS pattern
+           CASE WHEN t.elem ? 'patterns' THEN
+             -- Prebuilt canonical fragments (lib/themeUtils.kwPatternFragment),
+             -- used verbatim: each already carries its own \w* stem suffixes
+             -- and word-gap quantifiers. Only the word-start anchor is added.
+             (SELECT string_agg('(?:^|\W)(?:' || pat || ')', '|')
+                FROM jsonb_array_elements_text(t.elem -> 'patterns') AS pat
+               WHERE btrim(pat) <> '')
+           ELSE
+             -- Legacy build: escape each raw keyword, exact-adjacency phrases.
+             (SELECT string_agg('(?:^|\W)' || regexp_replace(kw, '([.*+?^${}()|[\]\\])', '\\\1', 'g') || '\w*', '|')
+                FROM jsonb_array_elements_text(t.elem -> 'keywords') AS kw
+               WHERE btrim(kw) <> '')
+           END AS pattern
     FROM jsonb_array_elements(p_themes) WITH ORDINALITY AS t(elem, ord)
   ),
   page AS MATERIALIZED (
@@ -1433,8 +1925,355 @@ $_$;
 ALTER FUNCTION "public"."sampled_signal_counts"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."sampled_signal_counts"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) IS 'One keyset page of SAMPLED signal counts over the deterministic idx_drf_sample order (same sample as sample_dataset_rows, sql/160). Returns {n, records: per-field non-empty counts, theme_counts: per-theme match counts, union_count: rows matching any theme, last_hash, last_id}. Semantics match count_nonempty_rows (sql/161) and count_theme_matches (phase4) exactly. Used above the 50K cap where per-theme full scans exceed the 8s statement timeout; callers scale to total rows and label results as sampled.';
+COMMENT ON FUNCTION "public"."sampled_signal_counts"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) IS 'One keyset page of SAMPLED signal counts over the deterministic idx_drf_sample order (same sample as sample_dataset_rows, sql/160). Theme elements may carry prebuilt "patterns" (lib/themeUtils.kwPatternFragment — canonical matching semantics, sql/166) used verbatim; falls back to the legacy escaped-keyword build when absent. Returns {n, records, theme_counts, union_count, last_hash, last_id}. Used above the 50K cap; callers scale to total rows and label results as sampled.';
 
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_taxonomy_axis_crosstab"("p_dataset_id" "uuid", "p_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_field_key" "text" DEFAULT NULL::"text") RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  WITH fld AS (SELECT taxonomy_field_or_primary(p_dataset_id, p_field_key) AS f),
+  page AS MATERIALIZED (
+    SELECT f.id, f.data,
+           (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint) AS h
+    FROM dataset_rows_flat f
+    WHERE f.dataset_id = p_dataset_id
+      AND ( (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id )
+          > (p_after_hash, p_after_id)
+    ORDER BY (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id
+    LIMIT p_limit
+  ),
+  g AS (
+    SELECT ax.key::text AS axv,
+           COALESCE(page.data ->> p_field, '')::text AS fv,
+           count(*)::bigint AS n
+    FROM page, fld,
+         jsonb_each(page.data -> '_tx' -> 'f' -> fld.f -> 'a') AS ax(key, subs),
+         jsonb_array_elements_text(ax.subs) AS sub
+    WHERE (p_row_ids IS NULL OR page.id = ANY(p_row_ids))
+    GROUP BY 1, 2
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'groups',    COALESCE((SELECT jsonb_agg(jsonb_build_array(axv, fv, n)) FROM g), '[]'::jsonb),
+    'last_hash', (SELECT h  FROM page ORDER BY h DESC, id DESC LIMIT 1),
+    'last_id',   (SELECT id FROM page ORDER BY h DESC, id DESC LIMIT 1)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_taxonomy_axis_crosstab"("p_dataset_id" "uuid", "p_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_field_key" "text" DEFAULT NULL::"text") RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  WITH fld AS (SELECT taxonomy_field_or_primary(p_dataset_id, p_field_key) AS f),
+  page AS MATERIALIZED (
+    SELECT f.id, f.data,
+           (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint) AS h
+    FROM dataset_rows_flat f
+    WHERE f.dataset_id = p_dataset_id
+      AND ( (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id )
+          > (p_after_hash, p_after_id)
+    ORDER BY (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id
+    LIMIT p_limit
+  ),
+  g AS (
+    SELECT sub::text AS s,
+           COALESCE(page.data ->> p_field, '')::text AS fv,
+           count(*)::bigint AS n
+    FROM page, fld,
+         jsonb_array_elements_text(page.data -> '_tx' -> 'f' -> fld.f -> 'a' -> p_axis) AS sub
+    WHERE (p_row_ids IS NULL OR page.id = ANY(p_row_ids))
+    GROUP BY 1, 2
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'groups',    COALESCE((SELECT jsonb_agg(jsonb_build_array(s, fv, n)) FROM g), '[]'::jsonb),
+    'last_hash', (SELECT h  FROM page ORDER BY h DESC, id DESC LIMIT 1),
+    'last_id',   (SELECT id FROM page ORDER BY h DESC, id DESC LIMIT 1)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_taxonomy_date_series"("p_dataset_id" "uuid", "p_axis" "text", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_field_key" "text" DEFAULT NULL::"text") RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $_$
+  WITH fld AS (SELECT taxonomy_field_or_primary(p_dataset_id, p_field_key) AS f),
+  page AS MATERIALIZED (
+    SELECT f.id, f.data,
+           (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint) AS h
+    FROM dataset_rows_flat f
+    WHERE f.dataset_id = p_dataset_id
+      AND ( (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id )
+          > (p_after_hash, p_after_id)
+    ORDER BY (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id
+    LIMIT p_limit
+  ),
+  b AS (
+    SELECT sub::text AS s,
+      CASE p_bucket
+        WHEN 'week'    THEN to_char(date_trunc('week',    (page.data ->> p_date_field)::date), 'YYYY-MM-DD')
+        WHEN 'month'   THEN to_char(date_trunc('month',   (page.data ->> p_date_field)::date), 'YYYY-MM')
+        WHEN 'quarter' THEN to_char(date_trunc('quarter', (page.data ->> p_date_field)::date), 'YYYY') || '-Q' || extract(quarter from date_trunc('quarter', (page.data ->> p_date_field)::date))::text
+        WHEN 'year'    THEN to_char(date_trunc('year',    (page.data ->> p_date_field)::date), 'YYYY')
+        ELSE to_char((page.data ->> p_date_field)::date, 'YYYY-MM-DD')
+      END AS bkt,
+      count(*)::bigint AS n,
+      sum((page.data ->> p_metric_field)::double precision)
+        FILTER (WHERE p_metric_field IS NOT NULL AND p_metric_field != '' AND page.data ->> p_metric_field ~ '^-?[0-9]+\.?[0-9]*$') AS msum,
+      count(*) FILTER (WHERE p_metric_field IS NOT NULL AND p_metric_field != '' AND page.data ->> p_metric_field ~ '^-?[0-9]+\.?[0-9]*$')::bigint AS mn
+    FROM page, fld,
+         jsonb_array_elements_text(page.data -> '_tx' -> 'f' -> fld.f -> 'a' -> p_axis) AS sub
+    WHERE (p_row_ids IS NULL OR page.id = ANY(p_row_ids))
+      AND page.data ->> p_date_field IS NOT NULL
+      AND (page.data ->> p_date_field) ~ '^\d{4}-\d{2}-\d{2}'
+    GROUP BY 1, 2
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'buckets',   COALESCE((SELECT jsonb_agg(jsonb_build_array(s, bkt, n, msum, mn)) FROM b), '[]'::jsonb),
+    'last_hash', (SELECT h  FROM page ORDER BY h DESC, id DESC LIMIT 1),
+    'last_id',   (SELECT id FROM page ORDER BY h DESC, id DESC LIMIT 1)
+  );
+$_$;
+
+
+ALTER FUNCTION "public"."sampled_taxonomy_date_series"("p_dataset_id" "uuid", "p_axis" "text", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_taxonomy_group_stats"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_field_key" "text" DEFAULT NULL::"text") RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $_$
+  WITH fld AS (SELECT taxonomy_field_or_primary(p_dataset_id, p_field_key) AS f),
+  page AS MATERIALIZED (
+    SELECT f.id, f.data,
+           (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint) AS h
+    FROM dataset_rows_flat f
+    WHERE f.dataset_id = p_dataset_id
+      AND ( (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id )
+          > (p_after_hash, p_after_id)
+    ORDER BY (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id
+    LIMIT p_limit
+  ),
+  v AS (
+    SELECT sub::text AS g,
+           (page.data ->> p_value_field)::double precision AS x
+    FROM page, fld,
+         jsonb_array_elements_text(page.data -> '_tx' -> 'f' -> fld.f -> 'a' -> p_axis) AS sub
+    WHERE (p_row_ids IS NULL OR page.id = ANY(p_row_ids))
+      AND page.data ->> p_value_field IS NOT NULL
+      AND page.data ->> p_value_field ~ '^-?[0-9]+\.?[0-9]*$'
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'vals',      COALESCE((SELECT jsonb_agg(jsonb_build_array(g, x)) FROM v), '[]'::jsonb),
+    'last_hash', (SELECT h  FROM page ORDER BY h DESC, id DESC LIMIT 1),
+    'last_id',   (SELECT id FROM page ORDER BY h DESC, id DESC LIMIT 1)
+  );
+$_$;
+
+
+ALTER FUNCTION "public"."sampled_taxonomy_group_stats"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_taxonomy_sub_counts"("p_dataset_id" "uuid", "p_axis" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_field_key" "text" DEFAULT NULL::"text") RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  WITH fld AS (SELECT taxonomy_field_or_primary(p_dataset_id, p_field_key) AS f),
+  page AS MATERIALIZED (
+    SELECT f.id, f.data,
+           (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint) AS h
+    FROM dataset_rows_flat f
+    WHERE f.dataset_id = p_dataset_id
+      AND ( (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id )
+          > (p_after_hash, p_after_id)
+    ORDER BY (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id
+    LIMIT p_limit
+  ),
+  g AS (
+    SELECT sub::text AS v, count(*)::bigint AS n
+    FROM page, fld,
+         jsonb_array_elements_text(page.data -> '_tx' -> 'f' -> fld.f -> 'a' -> p_axis) AS sub
+    WHERE (p_row_ids IS NULL OR page.id = ANY(p_row_ids))
+    GROUP BY sub
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'groups',    COALESCE((SELECT jsonb_agg(jsonb_build_array(v, n)) FROM g), '[]'::jsonb),
+    'last_hash', (SELECT h  FROM page ORDER BY h DESC, id DESC LIMIT 1),
+    'last_id',   (SELECT id FROM page ORDER BY h DESC, id DESC LIMIT 1)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_taxonomy_sub_counts"("p_dataset_id" "uuid", "p_axis" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_theme_cooccurrence_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+  WITH page AS MATERIALIZED (
+    SELECT f.id, f.data,
+           (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint) AS h
+    FROM dataset_rows_flat f
+    WHERE f.dataset_id = p_dataset_id
+      AND ( (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id )
+          > (p_after_hash, p_after_id)
+    ORDER BY (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id
+    LIMIT p_limit
+  ),
+  tp AS (
+    SELECT (theme->>'id') AS tid,
+           '\m(' || (SELECT string_agg(kw, '|') FROM jsonb_array_elements_text(theme->'keywords') AS kw WHERE kw <> '') || ')' AS pat
+    FROM jsonb_array_elements(p_themes) AS theme
+    WHERE jsonb_array_length(theme->'keywords') > 0
+  ),
+  rc AS (
+    SELECT page.id, string_agg(coalesce(page.data ->> k, ''), ' ') AS combined
+    FROM page, unnest(p_field_keys) AS k
+    GROUP BY page.id
+  ),
+  rt AS (
+    SELECT rc.id, array_agg(tp.tid) AS tids
+    FROM rc JOIN tp ON rc.combined ~* tp.pat
+    GROUP BY rc.id HAVING count(*) >= 2
+  ),
+  pc AS (
+    SELECT a AS ta, b AS tb, count(*)::bigint AS n
+    FROM rt, LATERAL unnest(tids) AS a, LATERAL unnest(tids) AS b
+    WHERE a <> b GROUP BY a, b
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'pairs',     COALESCE((SELECT jsonb_agg(jsonb_build_array(ta, tb, n)) FROM pc), '[]'::jsonb),
+    'last_hash', (SELECT h  FROM page ORDER BY h DESC, id DESC LIMIT 1),
+    'last_id',   (SELECT id FROM page ORDER BY h DESC, id DESC LIMIT 1)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_theme_cooccurrence_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_theme_dimension_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+  WITH page AS MATERIALIZED (
+    SELECT f.id, f.data,
+           (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint) AS h
+    FROM dataset_rows_flat f
+    WHERE f.dataset_id = p_dataset_id
+      AND ( (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id )
+          > (p_after_hash, p_after_id)
+    ORDER BY (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id
+    LIMIT p_limit
+  ),
+  fld AS (SELECT taxonomy_primary_field(p_dataset_id) AS f),
+  tp AS (
+    SELECT (theme->>'id') AS tid,
+           '\m(' || (SELECT string_agg(kw, '|') FROM jsonb_array_elements_text(theme->'keywords') AS kw WHERE kw <> '') || ')' AS pat
+    FROM jsonb_array_elements(p_themes) AS theme
+    WHERE jsonb_array_length(theme->'keywords') > 0
+  ),
+  matched AS (   -- (theme, row) where the row's text matches the theme
+    SELECT DISTINCT tp.tid, page.id, page.data
+    FROM page, tp, unnest(p_field_keys) AS fk(key)
+    WHERE page.data ->> fk.key IS NOT NULL
+      AND page.data ->> fk.key != ''
+      AND page.data ->> fk.key ~* tp.pat
+  ),
+  dims AS (
+    SELECT m.tid, ax.key::text AS axis, sb::text AS sub, count(*)::bigint AS cnt
+    FROM matched m, fld,
+         jsonb_each(m.data -> '_tx' -> 'f' -> fld.f -> 'a') AS ax(key, subs),
+         jsonb_array_elements_text(ax.subs) AS sb
+    GROUP BY m.tid, ax.key, sb
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'dims',      COALESCE((SELECT jsonb_agg(jsonb_build_array(tid, axis, sub, cnt)) FROM dims), '[]'::jsonb),
+    'last_hash', (SELECT h  FROM page ORDER BY h DESC, id DESC LIMIT 1),
+    'last_id',   (SELECT id FROM page ORDER BY h DESC, id DESC LIMIT 1)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_theme_dimension_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_theme_topical_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_extra_excludes" "text"[], "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $_$
+  WITH page AS MATERIALIZED (
+    SELECT f.id, f.data,
+           (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint) AS h
+    FROM dataset_rows_flat f
+    WHERE f.dataset_id = p_dataset_id
+      AND ( (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id )
+          > (p_after_hash, p_after_id)
+    ORDER BY (('x' || substr(md5(f.id::text || f.dataset_id::text), 1, 8))::bit(32)::bigint), f.id
+    LIMIT p_limit
+  ),
+  tp AS (
+    SELECT (theme->>'id') AS tid,
+           '\m(' || (SELECT string_agg(kw, '|') FROM jsonb_array_elements_text(theme->'keywords') AS kw WHERE kw <> '') || ')' AS pat
+    FROM jsonb_array_elements(p_themes) AS theme
+    WHERE jsonb_array_length(theme->'keywords') > 0
+  ),
+  row_text AS (
+    SELECT page.id, string_agg(lower(coalesce(page.data ->> k, '')), ' ') AS combined
+    FROM page, unnest(p_field_keys) AS k
+    GROUP BY page.id
+  ),
+  tokens AS (
+    SELECT rt.id, tk.word, tk.pos
+    FROM row_text rt,
+         LATERAL unnest(regexp_split_to_array(rt.combined, '[^a-z0-9'']+')) WITH ORDINALITY AS tk(word, pos)
+    WHERE tk.word IS NOT NULL AND tk.word != ''
+  ),
+  kw_positions AS (   -- token positions where each theme's keywords hit
+    SELECT tp.tid, tp.pat, t.id, t.pos
+    FROM tokens t JOIN tp ON t.word ~* tp.pat
+  ),
+  window_words AS (   -- ±2 window per (theme, keyword-hit), excluding the hit position
+    SELECT kp.tid, kp.pat, t.word
+    FROM tokens t
+    JOIN kw_positions kp ON t.id = kp.id
+    WHERE t.pos BETWEEN kp.pos - 2 AND kp.pos + 2 AND t.pos <> kp.pos
+  ),
+  filtered AS (
+    SELECT tid, word, count(*)::bigint AS cnt
+    FROM window_words ww
+    WHERE length(word) >= 3
+      AND word !~ '^[0-9]+$'
+      AND word !~* ww.pat                          -- exclude that theme's own keyword stems
+      AND NOT (word = ANY(p_extra_excludes))
+      AND NOT (word = ANY(topical_stopwords()))
+    GROUP BY tid, word
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'words',     COALESCE((SELECT jsonb_agg(jsonb_build_array(tid, word, cnt)) FROM filtered), '[]'::jsonb),
+    'last_hash', (SELECT h  FROM page ORDER BY h DESC, id DESC LIMIT 1),
+    'last_id',   (SELECT id FROM page ORDER BY h DESC, id DESC LIMIT 1)
+  );
+$_$;
+
+
+ALTER FUNCTION "public"."sampled_theme_topical_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_extra_excludes" "text"[], "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."search_dataset_rows"("p_dataset_id" "uuid", "p_query" "text", "p_limit" integer DEFAULT 50, "p_offset" integer DEFAULT 0) RETURNS TABLE("id" bigint, "row_index" integer, "data" "jsonb", "rank" real, "headline" "text")
@@ -1608,6 +2447,48 @@ ALTER FUNCTION "public"."slugify"("p_input" "text") OWNER TO "postgres";
 
 COMMENT ON FUNCTION "public"."slugify"("p_input" "text") IS 'Canonical slug for brand names. Strips leading articles + apostrophes, lowercases, underscores non-alphanumerics. Used for brand-collection dedup.';
 
+
+
+CREATE OR REPLACE FUNCTION "public"."srs_apply_delta"("p_study_id" "uuid", "p_sign" integer, "p_status" "text", "p_sentiment" "text", "p_exp" integer, "p_nps" integer, "p_completed" timestamp with time zone) RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+BEGIN
+  IF p_study_id IS NULL THEN RETURN; END IF;
+  INSERT INTO study_response_stats_live AS s (
+    study_id, total_responses, complete_count, promoters, passives, detractors,
+    exp_sum, exp_n, nps_sum, nps_n, last_response_at
+  ) VALUES (
+    p_study_id,
+    p_sign,
+    p_sign * (CASE WHEN p_status = 'complete' OR p_status IS NULL THEN 1 ELSE 0 END),
+    p_sign * (CASE WHEN p_sentiment IN ('positive', 'promoter')  THEN 1 ELSE 0 END),
+    p_sign * (CASE WHEN p_sentiment IN ('neutral',  'passive')   THEN 1 ELSE 0 END),
+    p_sign * (CASE WHEN p_sentiment IN ('negative', 'detractor') THEN 1 ELSE 0 END),
+    p_sign * COALESCE(p_exp, 0),  p_sign * (CASE WHEN p_exp IS NOT NULL THEN 1 ELSE 0 END),
+    p_sign * COALESCE(p_nps, 0),  p_sign * (CASE WHEN p_nps IS NOT NULL THEN 1 ELSE 0 END),
+    CASE WHEN p_sign > 0 THEN p_completed ELSE NULL END
+  )
+  ON CONFLICT (study_id) DO UPDATE SET
+    total_responses  = s.total_responses  + EXCLUDED.total_responses,
+    complete_count   = s.complete_count   + EXCLUDED.complete_count,
+    promoters        = s.promoters        + EXCLUDED.promoters,
+    passives         = s.passives         + EXCLUDED.passives,
+    detractors       = s.detractors       + EXCLUDED.detractors,
+    exp_sum          = s.exp_sum          + EXCLUDED.exp_sum,
+    exp_n            = s.exp_n            + EXCLUDED.exp_n,
+    nps_sum          = s.nps_sum          + EXCLUDED.nps_sum,
+    nps_n            = s.nps_n            + EXCLUDED.nps_n,
+    -- last_response_at only advances on inserts (a delete can't cheaply
+    -- recompute the max without a scan — acceptable staleness for a rare event).
+    last_response_at = CASE WHEN p_sign > 0
+                         THEN GREATEST(s.last_response_at, p_completed)
+                         ELSE s.last_response_at END;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."srs_apply_delta"("p_study_id" "uuid", "p_sign" integer, "p_status" "text", "p_sentiment" "text", "p_exp" integer, "p_nps" integer, "p_completed" timestamp with time zone) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."study_stats_for_ids"("p_study_ids" "uuid"[]) RETURNS TABLE("study_id" "uuid", "total_responses" bigint, "complete_count" bigint, "promoters" bigint, "passives" bigint, "detractors" bigint, "avg_experience" double precision, "avg_nps" double precision, "last_response_at" timestamp with time zone)
@@ -1995,6 +2876,35 @@ $$;
 ALTER FUNCTION "public"."theme_dimension_counts"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[], "p_limit" integer) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."topical_stopwords"() RETURNS "text"[]
+    LANGUAGE "sql" IMMUTABLE
+    AS $$
+  SELECT ARRAY[
+'a','an','the','this','that','these','those',
+'i','me','my','mine','we','us','our','ours','you','your','yours','he','him','his','she','her','hers','it','its','they','them','their','theirs','myself','yourself','itself','themselves',
+'is','are','was','were','be','been','being','am','have','has','had','do','does','did','done','doing','will','would','should','could','can','may','might','must','shall',
+'get','got','gets','getting','go','goes','went','going','gone','come','came','comes','coming','make','made','makes','making','take','took','takes','taking','give','gave','gives','giving','say','said','says','saying','see','saw','sees','seeing','seen','know','knew','knows','knowing','known','think','thought','thinks','thinking','feel','felt','feels','want','wanted','wants','need','needed','needs','try','tried','tries','use','used','uses','find','found','finds','put','puts','let','lets','keep','kept','keeps','seem','seemed','seems','look','looked','looks','looking','tell','told','tells','telling','ask','asked','asks','asking','show','showed','shows','call','called','calls','calling',
+'in','on','at','to','for','of','with','by','from','about','as','into','through','onto','upon','over','under','between','after','before','during','since','until','while','within','without','around','near',
+'and','or','nor','but','so','because','if','when','then','than','though','although','however','also','plus','yet','still','either','neither','whether',
+'very','really','quite','just','too','still','even','only','always','never','sometimes','often','rarely','usually','almost','nearly','already','probably','definitely','actually','basically','literally','barely','simply','exactly','especially',
+'highly','absolutely','completely','totally','extremely','incredibly','remarkably','thoroughly','truly','genuinely','particularly','specifically','consistently','frequently','occasionally','constantly','perfectly','utterly','fully','entirely','clearly','obviously','certainly','surely','strongly','heavily','deeply','widely',
+'here','there','where','everywhere','anywhere','somewhere','now','today','tonight','tomorrow','yesterday','soon','later','earlier','ever',
+'how','what','which','who','whom','whose','why',
+'all','some','any','many','much','more','most','less','least','few','several','enough','little','lot','lots',
+'other','others','another','same','different','similar','such','own','new','old','first','last','next','recent',
+'not','no','yes','none','nothing','anything','something','everything',
+'one','two','three','four','five','six','seven','eight','nine','ten','time','times','day','days','night','nights','minute','minutes','hour','hours','week','weeks','month','months','year','years',
+'way','ways','thing','things','place','people','person','someone','everyone','anyone',
+'back','again','ago',
+'good','great','excellent','amazing','awesome','fantastic','wonderful','perfect','best','delicious','tasty','fresh','friendly','nice','lovely','clean','quick','fast','warm','crispy','tender','flavorful','juicy','rich','creamy','attentive','helpful','polite','outstanding','superb','incredible','comfortable','cozy','pleasant','enjoyable','reasonable','generous','authentic','exceptional','satisfying','refreshing','favorite','love','loved','recommend',
+'bad','terrible','horrible','awful','worst','poor','slow','cold','bland','dry','stale','rude','dirty','expensive','overpriced','small','loud','noisy','crowded','long','soggy','burnt','undercooked','overcooked','raw','greasy','salty','bitter','tasteless','mediocre','disappointing','disgusting','uncomfortable','unfriendly','unprofessional','filthy','gross','lukewarm','watery','tough','chewy','rubbery','hard','wrong','missing','broken','ignored','waited','annoyed','frustrated','underwhelming','overrated'
+  ]::text[];
+$$;
+
+
+ALTER FUNCTION "public"."topical_stopwords"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."touch_updated_at"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -2084,6 +2994,27 @@ $$;
 ALTER FUNCTION "public"."transfer_recording_org"("p_recording_id" "uuid", "p_from_org" "uuid", "p_to_org" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."trg_study_response_stats"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    PERFORM srs_apply_delta(NEW.study_id, 1, NEW.status, NEW.sentiment, NEW.experience_score, NEW.nps_score, NEW.completed_at);
+  ELSIF TG_OP = 'DELETE' THEN
+    PERFORM srs_apply_delta(OLD.study_id, -1, OLD.status, OLD.sentiment, OLD.experience_score, OLD.nps_score, OLD.completed_at);
+  ELSE -- UPDATE: reverse OLD, apply NEW (handles a study_id change too)
+    PERFORM srs_apply_delta(OLD.study_id, -1, OLD.status, OLD.sentiment, OLD.experience_score, OLD.nps_score, OLD.completed_at);
+    PERFORM srs_apply_delta(NEW.study_id, 1, NEW.status, NEW.sentiment, NEW.experience_score, NEW.nps_score, NEW.completed_at);
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."trg_study_response_stats"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."update_updated_at"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -2154,6 +3085,29 @@ CREATE TABLE IF NOT EXISTS "public"."agent_conversation_reviews" (
 ALTER TABLE "public"."agent_conversation_reviews" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."agent_crawl_jobs" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "org_id" "uuid" NOT NULL,
+    "agent_id" "uuid" NOT NULL,
+    "base_urls" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
+    "queue" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
+    "visited" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
+    "page_cap" integer DEFAULT 300 NOT NULL,
+    "pages_crawled" integer DEFAULT 0 NOT NULL,
+    "chunks_added" integer DEFAULT 0 NOT NULL,
+    "near_dup_skipped" integer DEFAULT 0 NOT NULL,
+    "budget_skipped" integer DEFAULT 0 NOT NULL,
+    "status" "text" DEFAULT 'running'::"text" NOT NULL,
+    "error" "text",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "agent_crawl_jobs_status_check" CHECK (("status" = ANY (ARRAY['running'::"text", 'done'::"text", 'error'::"text", 'canceled'::"text"])))
+);
+
+
+ALTER TABLE "public"."agent_crawl_jobs" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."agent_impressions" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "org_id" "uuid" NOT NULL,
@@ -2171,6 +3125,20 @@ ALTER TABLE "public"."agent_impressions" OWNER TO "postgres";
 
 COMMENT ON TABLE "public"."agent_impressions" IS 'Widget-open beacon for agents. One row per public-widget mount, written fire-and-forget by POST /api/bots/[id]/impression. The ONLY source of true invocation counts: conversation turns are written only after the first user message, so opens that never become conversations are otherwise invisible. Powers the open->engaged response rate on the agent card + Agent Study report.';
 
+
+
+CREATE TABLE IF NOT EXISTS "public"."agent_kb_page_hashes" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "org_id" "uuid" NOT NULL,
+    "agent_id" "uuid" NOT NULL,
+    "url" "text" NOT NULL,
+    "content_hash" "text" NOT NULL,
+    "last_crawled_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."agent_kb_page_hashes" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."agent_knowledge_chunks" (
@@ -2320,6 +3288,9 @@ CREATE TABLE IF NOT EXISTS "public"."agents" (
     "probe_focus_enabled" boolean DEFAULT false NOT NULL,
     "brand_tag" "text",
     "research_probes" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
+    "capability" "text" DEFAULT 'standard'::"text" NOT NULL,
+    "capability_config" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
+    CONSTRAINT "agents_capability_check" CHECK (("capability" = ANY (ARRAY['standard'::"text", 'super'::"text"]))),
     CONSTRAINT "bots_status_check" CHECK (("status" = ANY (ARRAY['draft'::"text", 'active'::"text", 'paused'::"text"])))
 );
 
@@ -2939,6 +3910,10 @@ CREATE TABLE IF NOT EXISTS "public"."entity_catalog" (
     "source" "text" DEFAULT 'discovered'::"text" NOT NULL,
     "hidden" boolean DEFAULT false NOT NULL,
     "provenance" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
+    "mention_count" integer,
+    "mention_count_sampled" boolean,
+    "mention_count_row_total" bigint,
+    "mention_count_at" timestamp with time zone,
     CONSTRAINT "entity_catalog_scope_type_check" CHECK (("scope_type" = ANY (ARRAY['dataset'::"text", 'collection'::"text", 'bot'::"text"]))),
     CONSTRAINT "entity_catalog_source_check" CHECK (("source" = ANY (ARRAY['manual'::"text", 'document'::"text", 'crawl'::"text", 'transcript'::"text", 'conversation'::"text", 'survey'::"text", 'review'::"text", 'discovered'::"text"])))
 );
@@ -2964,6 +3939,18 @@ COMMENT ON COLUMN "public"."entity_catalog"."hidden" IS 'Soft-delete flag. Hidde
 
 
 COMMENT ON COLUMN "public"."entity_catalog"."provenance" IS 'Per-row source trail, keyed by source-kind: { "<kind>": { count, refs[] } }. Maintained by the catalog writers; read by the correction glossary to keep only authoritative-sourced canonicals.';
+
+
+
+COMMENT ON COLUMN "public"."entity_catalog"."mention_count" IS 'Cached live full-text mention count (entity mentions across the scope''s open-ended fields), served by getEntitiesWithCounts default reads. NULL = not yet computed. Keyed by mention_count_row_total; recomputed in the background when the scope row total changes. sql/172.';
+
+
+
+COMMENT ON COLUMN "public"."entity_catalog"."mention_count_sampled" IS 'TRUE when mention_count was estimated over the 50K idx_drf_sample and scaled (dataset above the cap) — the UI shows a "~". sql/172.';
+
+
+
+COMMENT ON COLUMN "public"."entity_catalog"."mention_count_row_total" IS 'Scope total row count when mention_count was written (staleness key, mirrors signal-stats row_count keying). sql/172.';
 
 
 
@@ -3897,22 +4884,22 @@ CREATE TABLE IF NOT EXISTS "public"."studies" (
 ALTER TABLE "public"."studies" OWNER TO "postgres";
 
 
-CREATE MATERIALIZED VIEW "public"."study_response_stats" AS
- SELECT "study_id",
-    "count"(*) AS "total_responses",
-    "count"(*) FILTER (WHERE (("status" = 'complete'::"text") OR ("status" IS NULL))) AS "complete_count",
-    "count"(*) FILTER (WHERE (("sentiment" = 'positive'::"text") OR ("sentiment" = 'promoter'::"text"))) AS "promoters",
-    "count"(*) FILTER (WHERE (("sentiment" = 'neutral'::"text") OR ("sentiment" = 'passive'::"text"))) AS "passives",
-    "count"(*) FILTER (WHERE (("sentiment" = 'negative'::"text") OR ("sentiment" = 'detractor'::"text"))) AS "detractors",
-    "avg"("experience_score") FILTER (WHERE ("experience_score" IS NOT NULL)) AS "avg_experience",
-    "avg"("nps_score") FILTER (WHERE ("nps_score" IS NOT NULL)) AS "avg_nps",
-    "max"("completed_at") AS "last_response_at"
-   FROM "public"."responses"
-  GROUP BY "study_id"
-  WITH NO DATA;
+CREATE TABLE IF NOT EXISTS "public"."study_response_stats_live" (
+    "study_id" "uuid" NOT NULL,
+    "total_responses" bigint DEFAULT 0 NOT NULL,
+    "complete_count" bigint DEFAULT 0 NOT NULL,
+    "promoters" bigint DEFAULT 0 NOT NULL,
+    "passives" bigint DEFAULT 0 NOT NULL,
+    "detractors" bigint DEFAULT 0 NOT NULL,
+    "exp_sum" double precision DEFAULT 0 NOT NULL,
+    "exp_n" bigint DEFAULT 0 NOT NULL,
+    "nps_sum" double precision DEFAULT 0 NOT NULL,
+    "nps_n" bigint DEFAULT 0 NOT NULL,
+    "last_response_at" timestamp with time zone
+);
 
 
-ALTER MATERIALIZED VIEW "public"."study_response_stats" OWNER TO "postgres";
+ALTER TABLE "public"."study_response_stats_live" OWNER TO "postgres";
 
 
 CREATE OR REPLACE VIEW "public"."study_stats" AS
@@ -4148,8 +5135,23 @@ ALTER TABLE ONLY "public"."admin_action_log"
 
 
 
+ALTER TABLE ONLY "public"."agent_crawl_jobs"
+    ADD CONSTRAINT "agent_crawl_jobs_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."agent_impressions"
     ADD CONSTRAINT "agent_impressions_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."agent_kb_page_hashes"
+    ADD CONSTRAINT "agent_kb_page_hashes_agent_id_url_key" UNIQUE ("agent_id", "url");
+
+
+
+ALTER TABLE ONLY "public"."agent_kb_page_hashes"
+    ADD CONSTRAINT "agent_kb_page_hashes_pkey" PRIMARY KEY ("id");
 
 
 
@@ -4553,6 +5555,11 @@ ALTER TABLE ONLY "public"."studies"
 
 
 
+ALTER TABLE ONLY "public"."study_response_stats_live"
+    ADD CONSTRAINT "study_response_stats_live_pkey" PRIMARY KEY ("study_id");
+
+
+
 ALTER TABLE ONLY "public"."pulseiq_session_conversations"
     ADD CONSTRAINT "town_hall_conversations_pkey" PRIMARY KEY ("id");
 
@@ -4733,6 +5740,14 @@ CREATE INDEX "idx_adr_dataset" ON "public"."archived_dataset_rows" USING "btree"
 
 
 CREATE INDEX "idx_adrf_dataset" ON "public"."archived_dataset_rows_flat" USING "btree" ("dataset_id");
+
+
+
+CREATE INDEX "idx_agent_crawl_jobs_agent" ON "public"."agent_crawl_jobs" USING "btree" ("agent_id", "status", "created_at" DESC);
+
+
+
+CREATE INDEX "idx_akph_agent" ON "public"."agent_kb_page_hashes" USING "btree" ("agent_id");
 
 
 
@@ -5116,10 +6131,6 @@ CREATE INDEX "idx_social_mod_log_org" ON "public"."social_moderation_log" USING 
 
 
 
-CREATE UNIQUE INDEX "idx_srs_study" ON "public"."study_response_stats" USING "btree" ("study_id");
-
-
-
 CREATE INDEX "idx_studies_client" ON "public"."studies" USING "btree" ("client_id");
 
 
@@ -5360,6 +6371,10 @@ CREATE OR REPLACE TRIGGER "studies_updated_at" BEFORE UPDATE ON "public"."studie
 
 
 
+CREATE OR REPLACE TRIGGER "study_response_stats_maintain" AFTER INSERT OR DELETE OR UPDATE ON "public"."responses" FOR EACH ROW EXECUTE FUNCTION "public"."trg_study_response_stats"();
+
+
+
 CREATE OR REPLACE TRIGGER "trg_drf_tsv" BEFORE INSERT OR UPDATE OF "data" ON "public"."dataset_rows_flat" FOR EACH ROW EXECUTE FUNCTION "public"."drf_tsv_trigger"();
 
 
@@ -5386,8 +6401,18 @@ ALTER TABLE ONLY "public"."admin_action_log"
 
 
 
+ALTER TABLE ONLY "public"."agent_crawl_jobs"
+    ADD CONSTRAINT "agent_crawl_jobs_agent_id_fkey" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."agent_impressions"
     ADD CONSTRAINT "agent_impressions_bot_id_fkey" FOREIGN KEY ("bot_id") REFERENCES "public"."agents"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."agent_kb_page_hashes"
+    ADD CONSTRAINT "agent_kb_page_hashes_agent_id_fkey" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE CASCADE;
 
 
 
@@ -5896,6 +6921,11 @@ ALTER TABLE ONLY "public"."studies"
 
 
 
+ALTER TABLE ONLY "public"."study_response_stats_live"
+    ADD CONSTRAINT "study_response_stats_live_study_id_fkey" FOREIGN KEY ("study_id") REFERENCES "public"."studies"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."pulseiq_session_conversations"
     ADD CONSTRAINT "town_hall_conversations_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE CASCADE;
 
@@ -5991,6 +7021,12 @@ ALTER TABLE ONLY "public"."users"
 
 
 
+CREATE POLICY "acj_org_read" ON "public"."agent_crawl_jobs" FOR SELECT USING (("org_id" = ( SELECT "users"."org_id"
+   FROM "public"."users"
+  WHERE ("users"."id" = "auth"."uid"()))));
+
+
+
 CREATE POLICY "admin org reads service_health" ON "public"."service_health" FOR SELECT USING ((EXISTS ( SELECT 1
    FROM ("public"."users" "u"
      JOIN "public"."organizations" "o" ON (("o"."id" = "u"."org_id")))
@@ -6011,6 +7047,9 @@ ALTER TABLE "public"."agent_change_log" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."agent_conversation_reviews" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."agent_crawl_jobs" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "public"."agent_impressions" ENABLE ROW LEVEL SECURITY;
 
 
@@ -6018,6 +7057,9 @@ CREATE POLICY "agent_impressions_org_read" ON "public"."agent_impressions" FOR S
    FROM "public"."users"
   WHERE ("users"."id" = "auth"."uid"()))));
 
+
+
+ALTER TABLE "public"."agent_kb_page_hashes" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."agent_knowledge_chunks" ENABLE ROW LEVEL SECURITY;
@@ -6057,6 +7099,12 @@ ALTER TABLE "public"."ai_consent_audit" ENABLE ROW LEVEL SECURITY;
 
 
 CREATE POLICY "ai_consent_audit_self_read" ON "public"."ai_consent_audit" FOR SELECT USING (("user_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "akph_org_read" ON "public"."agent_kb_page_hashes" FOR SELECT USING (("org_id" = ( SELECT "users"."org_id"
+   FROM "public"."users"
+  WHERE ("users"."id" = "auth"."uid"()))));
 
 
 
@@ -6711,6 +7759,20 @@ CREATE POLICY "studies_update" ON "public"."studies" FOR UPDATE USING (("public"
 
 
 
+ALTER TABLE "public"."study_response_stats_live" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "study_response_stats_live_org_select" ON "public"."study_response_stats_live" FOR SELECT TO "authenticated" USING (("study_id" IN ( SELECT "s"."id"
+   FROM "public"."studies" "s"
+  WHERE (("s"."org_id" = ( SELECT "u"."org_id"
+           FROM "public"."users" "u"
+          WHERE ("u"."id" = "auth"."uid"()))) OR (EXISTS ( SELECT 1
+           FROM ("public"."users" "u2"
+             JOIN "public"."organizations" "o" ON (("o"."id" = "u2"."org_id")))
+          WHERE (("u2"."id" = "auth"."uid"()) AND "o"."is_admin_org")))))));
+
+
+
 CREATE POLICY "th_responses_anon_insert" ON "public"."townhall_participant_responses" FOR INSERT WITH CHECK (true);
 
 
@@ -6793,6 +7855,25 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."ana_row_matches_filters"("p_data" "jsonb", "p_filters" "jsonb") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."ana_row_matches_filters"("p_data" "jsonb", "p_filters" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."ana_row_matches_filters"("p_data" "jsonb", "p_filters" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."ana_row_matches_filters"("p_data" "jsonb", "p_filters" "jsonb") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."ana_try_parse_ts"("p_val" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."ana_try_parse_ts"("p_val" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."ana_try_parse_ts"("p_val" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."ana_try_parse_ts"("p_val" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."apply_entity_mention_counts"("p_scope_type" "text", "p_scope_id" "uuid", "p_row_total" bigint, "p_sampled" boolean, "p_counts" "jsonb") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."apply_entity_mention_counts"("p_scope_type" "text", "p_scope_id" "uuid", "p_row_total" bigint, "p_sampled" boolean, "p_counts" "jsonb") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."apply_taxonomy_verdicts"("p_dataset_id" "uuid", "p_field_key" "text", "p_items" "jsonb") TO "anon";
 GRANT ALL ON FUNCTION "public"."apply_taxonomy_verdicts"("p_dataset_id" "uuid", "p_field_key" "text", "p_items" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."apply_taxonomy_verdicts"("p_dataset_id" "uuid", "p_field_key" "text", "p_items" "jsonb") TO "service_role";
@@ -6844,15 +7925,13 @@ GRANT ALL ON FUNCTION "public"."count_entity_terms"("p_dataset_ids" "uuid"[], "p
 
 
 
-GRANT ALL ON FUNCTION "public"."count_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_limit" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."count_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_limit" integer) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."count_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_limit" integer) TO "service_role";
+REVOKE ALL ON FUNCTION "public"."count_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_limit" integer, "p_row_ids" bigint[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."count_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_limit" integer, "p_row_ids" bigint[]) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."count_nonempty_rows"("p_dataset_id" "uuid", "p_field" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."count_nonempty_rows"("p_dataset_id" "uuid", "p_field" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."count_nonempty_rows"("p_dataset_id" "uuid", "p_field" "text") TO "service_role";
+REVOKE ALL ON FUNCTION "public"."count_nonempty_rows"("p_dataset_id" "uuid", "p_field" "text", "p_row_ids" bigint[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."count_nonempty_rows"("p_dataset_id" "uuid", "p_field" "text", "p_row_ids" bigint[]) TO "service_role";
 
 
 
@@ -6862,15 +7941,13 @@ GRANT ALL ON FUNCTION "public"."count_theme_intersection"("p_dataset_id" "uuid",
 
 
 
-GRANT ALL ON FUNCTION "public"."count_theme_matches"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[]) TO "anon";
-GRANT ALL ON FUNCTION "public"."count_theme_matches"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[]) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."count_theme_matches"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[]) TO "service_role";
+REVOKE ALL ON FUNCTION "public"."count_theme_matches"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[], "p_row_ids" bigint[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."count_theme_matches"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[], "p_row_ids" bigint[]) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."crosstab_counts"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_limit" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."crosstab_counts"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_limit" integer) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."crosstab_counts"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_limit" integer) TO "service_role";
+REVOKE ALL ON FUNCTION "public"."crosstab_counts"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_limit" integer, "p_row_ids" bigint[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."crosstab_counts"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_limit" integer, "p_row_ids" bigint[]) TO "service_role";
 
 
 
@@ -6916,9 +7993,8 @@ GRANT ALL ON FUNCTION "public"."dataset_rows_with_text_count"("p_dataset_id" "uu
 
 
 
-GRANT ALL ON FUNCTION "public"."date_series_stats"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."date_series_stats"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."date_series_stats"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text") TO "service_role";
+REVOKE ALL ON FUNCTION "public"."date_series_stats"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_row_ids" bigint[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."date_series_stats"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_row_ids" bigint[]) TO "service_role";
 
 
 
@@ -6975,9 +8051,8 @@ GRANT ALL ON FUNCTION "public"."get_study_response_stats_for_user"("p_study_ids"
 
 
 
-GRANT ALL ON FUNCTION "public"."group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text") TO "service_role";
+REVOKE ALL ON FUNCTION "public"."group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text", "p_row_ids" bigint[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text", "p_row_ids" bigint[]) TO "service_role";
 
 
 
@@ -7017,9 +8092,8 @@ GRANT ALL ON FUNCTION "public"."merge_dataset_analytics"("p_dataset_id" "uuid", 
 
 
 
-GRANT ALL ON FUNCTION "public"."numeric_field_stats"("p_dataset_id" "uuid", "p_field_key" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."numeric_field_stats"("p_dataset_id" "uuid", "p_field_key" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."numeric_field_stats"("p_dataset_id" "uuid", "p_field_key" "text") TO "service_role";
+REVOKE ALL ON FUNCTION "public"."numeric_field_stats"("p_dataset_id" "uuid", "p_field_key" "text", "p_row_ids" bigint[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."numeric_field_stats"("p_dataset_id" "uuid", "p_field_key" "text", "p_row_ids" bigint[]) TO "service_role";
 
 
 
@@ -7079,13 +8153,93 @@ GRANT ALL ON FUNCTION "public"."sample_row_pairs"("p_dataset_id" "uuid", "p_fiel
 
 
 
+REVOKE ALL ON FUNCTION "public"."sampled_count_entity_terms"("p_dataset_id" "uuid", "p_terms" "text"[], "p_theme_query" "text", "p_text_fields" "text"[], "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_count_entity_terms"("p_dataset_id" "uuid", "p_terms" "text"[], "p_theme_query" "text", "p_text_fields" "text"[], "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_count_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_count_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_crosstab_counts"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_crosstab_counts"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_date_series_stats"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_date_series_stats"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_filter_options"("p_dataset_id" "uuid", "p_fields" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_filter_options"("p_dataset_id" "uuid", "p_fields" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_filtered_rows"("p_dataset_id" "uuid", "p_filters" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_scan_limit" integer, "p_match_limit" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_filtered_rows"("p_dataset_id" "uuid", "p_filters" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_scan_limit" integer, "p_match_limit" integer) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."sampled_numeric_field_stats"("p_dataset_id" "uuid", "p_field" "text", "p_aliases" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."sampled_numeric_field_stats"("p_dataset_id" "uuid", "p_field" "text", "p_aliases" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."sampled_numeric_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_numeric_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."sampled_signal_counts"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."sampled_signal_counts"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_taxonomy_axis_crosstab"("p_dataset_id" "uuid", "p_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_taxonomy_axis_crosstab"("p_dataset_id" "uuid", "p_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_taxonomy_date_series"("p_dataset_id" "uuid", "p_axis" "text", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_taxonomy_date_series"("p_dataset_id" "uuid", "p_axis" "text", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_taxonomy_group_stats"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_taxonomy_group_stats"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_taxonomy_sub_counts"("p_dataset_id" "uuid", "p_axis" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_taxonomy_sub_counts"("p_dataset_id" "uuid", "p_axis" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_theme_cooccurrence_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_theme_cooccurrence_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_theme_dimension_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_theme_dimension_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_theme_topical_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_extra_excludes" "text"[], "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_theme_topical_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_extra_excludes" "text"[], "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) TO "service_role";
 
 
 
@@ -7116,6 +8270,11 @@ GRANT ALL ON FUNCTION "public"."set_brand_collection_id"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."slugify"("p_input" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."slugify"("p_input" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."slugify"("p_input" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."srs_apply_delta"("p_study_id" "uuid", "p_sign" integer, "p_status" "text", "p_sentiment" "text", "p_exp" integer, "p_nps" integer, "p_completed" timestamp with time zone) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."srs_apply_delta"("p_study_id" "uuid", "p_sign" integer, "p_status" "text", "p_sentiment" "text", "p_exp" integer, "p_nps" integer, "p_completed" timestamp with time zone) TO "service_role";
 
 
 
@@ -7204,6 +8363,11 @@ GRANT ALL ON FUNCTION "public"."theme_dimension_counts"("p_dataset_id" "uuid", "
 
 
 
+REVOKE ALL ON FUNCTION "public"."topical_stopwords"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."topical_stopwords"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."touch_updated_at"() TO "anon";
 GRANT ALL ON FUNCTION "public"."touch_updated_at"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."touch_updated_at"() TO "service_role";
@@ -7218,6 +8382,12 @@ GRANT ALL ON FUNCTION "public"."transfer_agent_org"("p_agent_id" "uuid", "p_to_o
 
 REVOKE ALL ON FUNCTION "public"."transfer_recording_org"("p_recording_id" "uuid", "p_from_org" "uuid", "p_to_org" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."transfer_recording_org"("p_recording_id" "uuid", "p_from_org" "uuid", "p_to_org" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."trg_study_response_stats"() TO "anon";
+GRANT ALL ON FUNCTION "public"."trg_study_response_stats"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."trg_study_response_stats"() TO "service_role";
 
 
 
@@ -7245,9 +8415,21 @@ GRANT ALL ON TABLE "public"."agent_conversation_reviews" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."agent_crawl_jobs" TO "anon";
+GRANT ALL ON TABLE "public"."agent_crawl_jobs" TO "authenticated";
+GRANT ALL ON TABLE "public"."agent_crawl_jobs" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."agent_impressions" TO "anon";
 GRANT ALL ON TABLE "public"."agent_impressions" TO "authenticated";
 GRANT ALL ON TABLE "public"."agent_impressions" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."agent_kb_page_hashes" TO "anon";
+GRANT ALL ON TABLE "public"."agent_kb_page_hashes" TO "authenticated";
+GRANT ALL ON TABLE "public"."agent_kb_page_hashes" TO "service_role";
 
 
 
@@ -7683,7 +8865,8 @@ GRANT ALL ON TABLE "public"."studies" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."study_response_stats" TO "service_role";
+GRANT ALL ON TABLE "public"."study_response_stats_live" TO "authenticated";
+GRANT ALL ON TABLE "public"."study_response_stats_live" TO "service_role";
 
 
 
