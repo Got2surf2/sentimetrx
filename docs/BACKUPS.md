@@ -7,7 +7,11 @@
 
 Nightly cron at **04:00 UTC** (`vercel.json`): for every row in `organizations`, STREAMS all tenant-scoped tables to S3 as a **snapshot v2** — one gzipped NDJSON object per table plus a manifest, UNCAPPED, in constant memory (`lib/orgSnapshotV2.dumpOrgSnapshotV2` over `lib/snapshotStore`; multipart upload via `@aws-sdk/lib-storage`).
 
-**Time-budgeted continuation (2026-07-04):** the cron is no longer capped at one 300 s invocation for all orgs. Each invocation processes orgs in deterministic **id order** and bails out of the loop at **240 s** (headroom under `maxDuration: 300`); if orgs remain, it re-invokes itself via `waitUntil` with `?after=<last-org-id>&hop=N` and the `CRON_SECRET` bearer, so the chain covers every org (D16 time-budgeted slicing — this removes the CAPACITY.md "single-invocation nightly backup" 10× ceiling). Guards: the cursor strictly advances (each hop takes at least one org, and `after` filters `id >` it) and hops are capped at **20** — a deeper chain is refused loudly. Per-org dump work is unchanged.
+**Time-budgeted continuation (2026-07-04; intra-org resume 2026-07-13):** the cron is no longer capped at one 300 s invocation for all orgs. Each invocation processes orgs in deterministic **id order** and bails at **240 s** (headroom under `maxDuration: 300`); if work remains, it re-invokes itself via `waitUntil` with `?after=<org-id>&hop=N` and the `CRON_SECRET` bearer, so the chain covers every org (D16 time-budgeted slicing).
+
+The deadline also flows INTO the per-org dump (`dumpOrgSnapshotV2Resumable`), so a **single org** whose dump outruns the budget no longer dies at the 300 s kill with nothing restorable (observed on prod 2026-07-13 at 785K rows — the same org then failed identically every night). Instead the dump bails at a page boundary: the in-flight gzip part is closed and uploaded as a complete object, a **checkpoint** lands at `.../v2/partial.json` (completed tables + in-progress table's parts + a resume cursor — offset, parent+offset, or chunk+offset per filter kind), and the continuation carries `&resume=<org-id>&d=<YYYY-MM-DD>` so the next hop reloads the checkpoint and continues **mid-table** instead of restarting the org. Tables split this way become **multi-part objects** (`tables/<name>.ndjson.gz`, `.part2.ndjson.gz`, …) listed under the manifest entry's `parts[]`; the reader streams them in order, so restores are unaffected (per-parent contiguity holds across part boundaries — the cursor resumes exactly where it stopped). The checkpoint is never a snapshot: listings still show only manifest-committed days, and a same-day re-run overwrites `partial.json` along with everything else.
+
+Guards: every hop strictly advances the chain's state (a finished org moves the `after` cursor; an unfinished one advances its checkpoint by ≥1 part — the dump guarantees ≥1 page of progress per invocation), a resume hop that advances nothing gives that org up loudly (`cron.orgSnapshot.stalled`) instead of chaining, and hops are capped at **20** (~80 min of dump work) — a deeper chain is refused loudly. Residual gap, accepted: a hop hard-killed mid-page (a single 1000-row page taking > the ~60 s headroom) dies before writing its checkpoint and before kicking a continuation — the chain ends silently for that night and the next night's run resumes from the last durable checkpoint's day-prefix… which is the *previous* day, so in practice it restarts the org fresh under the new day prefix. Not worth engineering around until a real tenant approaches that scale.
 
 Object keys:
 ```
@@ -193,7 +197,7 @@ v2:
 aws s3 cp s3://sentimetrx-backups/org-snapshots/<org_id>/2026/07/04/v2/manifest.json - | jq '.table_row_counts'
 aws s3 cp s3://sentimetrx-backups/org-snapshots/<org_id>/2026/07/04/v2/tables/studies.ndjson.gz - | gunzip | jq -c '.name'
 ```
-Each table part is gzipped NDJSON — one raw `select *` row per line.
+Each table part is gzipped NDJSON — one raw `select *` row per line. A table dumped across cron hops has **multiple parts** (`studies.ndjson.gz`, `studies.part2.ndjson.gz`, …) listed in order under its manifest entry's `parts[]`; concatenated gzip members are a valid gzip stream, so `aws s3 cp part1 - part2 - | gunzip` (or cat-ing the downloaded parts) reassembles the table.
 
 v1 (legacy objects):
 ```bash
@@ -212,7 +216,7 @@ At present scale (~30 orgs, ~10 MB compressed each):
 ## Failure modes + monitoring
 
 - A single org's snapshot failure does NOT abort the whole cron — the route logs the error to its JSON response and moves on (and a budget-bail continuation still fires for the orgs after it). The cron's response body has a `results[].error` field per failed org. Check this in Vercel Cron logs.
-- Every hop fails loud for its own slice: any failed/incomplete org → HTTP 500 **and** an explicit Sentry event (`cron.orgSnapshot.run` via `lib/log.logError`) — necessary because only hop 0's response reaches the Vercel cron log; continuation hops' responses are read by no one. A continuation hop that never ran at all (non-2xx / network error on the kick) is reported as `cron.orgSnapshot.continuation`.
+- Every hop fails loud for its own slice: any failed/incomplete org → HTTP 500 **and** an explicit Sentry event (`cron.orgSnapshot.run` via `lib/log.logError`) — necessary because only hop 0's response reaches the Vercel cron log; continuation hops' responses are read by no one. A continuation hop that never ran at all (non-2xx / network error on the kick) is reported as `cron.orgSnapshot.continuation`; a resume hop that advanced an org's checkpoint by nothing is reported as `cron.orgSnapshot.stalled` and that org is given up for the night (a `partial: true` result entry is progress, not a failure — the manifest lands on a later hop).
 - If `BACKUP_S3_BUCKET` or the AWS credentials are missing, the cron returns 503-equivalent (`results[].error: "BACKUP_S3_BUCKET env var missing"` for every org).
 - S3 versioning + lifecycle is the disaster-recovery floor: even if the cron silently fails for a week and you don't notice, the prior 7 days of snapshots still exist.
 

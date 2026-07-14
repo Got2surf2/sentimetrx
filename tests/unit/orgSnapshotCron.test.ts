@@ -1,12 +1,15 @@
 // Tests for the nightly org-snapshot cron's time-budgeted continuation
 // (app/api/cron/org-snapshot/route.ts, ARCHITECTURE.md D16b). Load-bearing
 // semantics: orgs process in deterministic id order; the loop bails at
-// TIME_BUDGET_MS (but never before the first org, so the cursor always
-// advances); the bail fires a self-invocation with ?after=<last-org-id>&hop=N
-// + the CRON_SECRET bearer via waitUntil; hop > 20 is refused; and every hop
-// fails loudly (non-2xx + logError) for its own slice without blocking the
-// continuation for the orgs after it. Per-org dump work is mocked — this is
-// orchestration only; nothing here touches S3 or a real database.
+// TIME_BUDGET_MS (but never before the hop's first unit of work, so the
+// chain state always advances); the bail fires a self-invocation with
+// ?after=<org-id>&hop=N + the CRON_SECRET bearer via waitUntil; a dump that
+// bails MID-ORG (deadline) adds &resume=<org-id>&d=<day> so the next hop
+// continues that org from its checkpoint instead of restarting it; hop > 20
+// is refused; and every hop fails loudly (non-2xx + logError) for its own
+// slice without blocking the continuation for the orgs after it. Per-org
+// dump work is mocked — this is orchestration only; nothing here touches S3
+// or a real database.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
@@ -38,10 +41,22 @@ function makeServiceMock() {
 vi.mock('@/lib/supabase/server', () => ({ createServiceRoleClient: () => makeServiceMock() }))
 vi.mock('@/lib/backupS3', () => ({ s3SnapshotStore: () => ({ fake: 'store' }) }))
 
-// Per-org dump: tests control elapsed time (fake clock) and failures per org.
+// Per-org dump: tests control elapsed time (fake clock), failures, and
+// deadline bails per org. checkpointProgress mirrors the real ordinal so
+// the route's stall guard is exercised for real.
 const dumpMock = vi.fn()
+const loadCheckpointMock = vi.fn()
 vi.mock('@/lib/orgSnapshotV2', () => ({
-  dumpOrgSnapshotV2: (db: unknown, orgId: string, store: unknown) => dumpMock(db, orgId, store),
+  dumpOrgSnapshotV2Resumable: (db: unknown, orgId: string, store: unknown, opts: unknown) => dumpMock(db, orgId, store, opts),
+  loadSnapshotCheckpoint: (store: unknown, prefix: string) => loadCheckpointMock(store, prefix),
+  checkpointProgress: (cp: { tables: unknown[]; resume: { next_part: number } | null } | null) =>
+    cp ? cp.tables.length * 1_000_000 + (cp.resume ? cp.resume.next_part : 0) : -1,
+  snapshotV2Prefix: (orgId: string, date: Date = new Date()) => {
+    const y = date.getUTCFullYear()
+    const m = String(date.getUTCMonth() + 1).padStart(2, '0')
+    const d = String(date.getUTCDate()).padStart(2, '0')
+    return 'org-snapshots/' + orgId + '/' + y + '/' + m + '/' + d + '/v2/'
+  },
 }))
 
 const logErrorMock = vi.fn()
@@ -56,13 +71,30 @@ vi.mock('@vercel/functions', () => ({ waitUntil: (p: Promise<unknown>) => { wait
 
 const fetchMock = vi.fn()
 
+function doneResult(orgId: string, fetchErrors: Record<string, string> = {}) {
+  return {
+    done: true as const,
+    manifestKey: 'org-snapshots/' + orgId + '/2026/07/04/v2/manifest.json',
+    meta: { snapshot_version: 2, org_id: orgId, org_name: null, taken_at: 't', table_row_counts: { users: 1 }, fetch_errors: fetchErrors, tables: [], total_bytes: 100 },
+  }
+}
+
+function partialResult(orgId: string, tablesDone: number, nextPart: number) {
+  return {
+    done: false as const,
+    checkpoint: {
+      checkpoint_version: 1, org_id: orgId, org_name: null, taken_at: 't',
+      tables: Array.from({ length: tablesDone }, (_, i) => ({ name: 't' + i, key: 'k' + i, rows: 1, bytes: 1 })),
+      fetch_errors: {},
+      resume: nextPart > 0 ? { table: 'big', next_part: nextPart, parts: [], cursor: { kind: 'offset', from: 0 } } : null,
+    },
+  }
+}
+
 function okDump(msPerOrg = 0, fetchErrors: Record<string, string> = {}) {
   dumpMock.mockImplementation(async (_db: unknown, orgId: string) => {
     if (msPerOrg > 0) vi.advanceTimersByTime(msPerOrg)
-    return {
-      manifestKey: 'org-snapshots/' + orgId + '/2026/07/04/v2/manifest.json',
-      meta: { snapshot_version: 2, org_id: orgId, org_name: null, taken_at: 't', table_row_counts: { users: 1 }, fetch_errors: fetchErrors, tables: [], total_bytes: 100 },
-    }
+    return doneResult(orgId, fetchErrors)
   })
 }
 
@@ -78,10 +110,13 @@ async function loadGet() {
 
 beforeEach(() => {
   vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-07-14T04:00:00Z'))
   process.env.CRON_SECRET = SECRET
   process.env.NEXT_PUBLIC_BASE_URL = BASE
   orgRows = []
   dumpMock.mockReset()
+  loadCheckpointMock.mockReset()
+  loadCheckpointMock.mockResolvedValue(null)
   logErrorMock.mockClear()
   waitUntilPromises = []
   fetchMock.mockReset()
@@ -128,7 +163,7 @@ describe('cron/org-snapshot — time-budgeted continuation', () => {
     expect(waitUntilPromises.length).toBe(1)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [calledUrl, init] = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }]
-    expect(calledUrl).toBe(BASE + '/api/cron/org-snapshot?after=org-2&hop=1')
+    expect(calledUrl).toBe(BASE + '/api/cron/org-snapshot?hop=1&after=org-2')
     expect(init.headers.authorization).toBe('Bearer ' + SECRET)
     await Promise.all(waitUntilPromises)
     expect(logErrorMock).not.toHaveBeenCalled() // child hop reported 200
@@ -146,9 +181,75 @@ describe('cron/org-snapshot — time-budgeted continuation', () => {
     expect(body.continued).toBe(false)
   })
 
-  it('always processes at least one org per hop, so the cursor strictly advances even when every org overruns the budget', async () => {
+  it('passes the shared deadline into the dump so a big org bails INSIDE its dump, not at the 300s kill', async () => {
+    orgRows = [{ id: 'org-a', name: null }]
+    okDump()
+    await (await loadGet())(req())
+    const opts = dumpMock.mock.calls[0][3] as { deadlineAt: number; prefix: string }
+    expect(opts.deadlineAt).toBe(Date.parse('2026-07-14T04:00:00Z') + 240_000)
+    expect(opts.prefix).toBe('org-snapshots/org-a/2026/07/14/v2/')
+  })
+
+  it('a mid-org deadline bail reports partial (not error) and continues with resume=<org>&d=<day>', async () => {
     orgRows = [{ id: 'org-a', name: null }, { id: 'org-b', name: null }]
-    okDump(300_000) // a single org blows the whole budget
+    dumpMock.mockImplementation(async (_db: unknown, orgId: string) => {
+      vi.advanceTimersByTime(250_000) // overruns the budget mid-dump
+      return partialResult(orgId, 3, 2)
+    })
+    const res = await (await loadGet())(req())
+    const body = await res.json()
+
+    expect(res.status).toBe(200) // partial is progress, not failure
+    expect(body.results[0]).toMatchObject({ org_id: 'org-a', partial: true })
+    expect(body.continued).toBe(true)
+    expect(body.next_resume).toBe('org-a')
+    expect(dumpMock).toHaveBeenCalledTimes(1) // org-b not started this hop
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      BASE + '/api/cron/org-snapshot?hop=1&after=org-a&resume=org-a&d=2026-07-14')
+  })
+
+  it('a resume hop loads the checkpoint for the SAME day prefix and finishes the org, then moves on', async () => {
+    orgRows = [{ id: 'org-a', name: null }, { id: 'org-b', name: null }]
+    const checkpoint = partialResult('org-a', 3, 2).checkpoint
+    loadCheckpointMock.mockResolvedValue(checkpoint)
+    okDump(1_000)
+    const res = await (await loadGet())(req({ after: 'org-a', resume: 'org-a', d: '2026-07-13', hop: '1' }))
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    // checkpoint loaded from the ORIGINAL day's prefix, not today's
+    expect(loadCheckpointMock).toHaveBeenCalledWith(expect.anything(), 'org-snapshots/org-a/2026/07/13/v2/')
+    const resumeOpts = dumpMock.mock.calls[0][3] as { prefix: string; checkpoint: unknown }
+    expect(resumeOpts.prefix).toBe('org-snapshots/org-a/2026/07/13/v2/')
+    expect(resumeOpts.checkpoint).toBe(checkpoint)
+    // resumed org completed, then the list (strictly after org-a) ran too
+    expect(body.results.map((r: { org_id: string }) => r.org_id)).toEqual(['org-a', 'org-b'])
+    expect(body.continued).toBe(false)
+  })
+
+  it('a resume hop that makes NO checkpoint progress gives the org up loudly instead of chaining to the cap', async () => {
+    orgRows = [{ id: 'org-a', name: null }, { id: 'org-b', name: null }]
+    const checkpoint = partialResult('org-a', 3, 2).checkpoint
+    loadCheckpointMock.mockResolvedValue(checkpoint)
+    dumpMock.mockImplementation(async (_db: unknown, orgId: string) => {
+      if (orgId === 'org-a') return partialResult('org-a', 3, 2) // same ordinal — zero progress
+      return doneResult(orgId)
+    })
+    const res = await (await loadGet())(req({ after: 'org-a', resume: 'org-a', d: '2026-07-14', hop: '2' }))
+    const body = await res.json()
+
+    expect(res.status).toBe(500)
+    expect(body.results[0].error).toContain('no progress')
+    expect(logErrorMock).toHaveBeenCalledWith('cron.orgSnapshot.stalled', expect.anything(), expect.objectContaining({ org_id: 'org-a' }))
+    // the rest of the fleet still got backed up this hop
+    expect(body.results[1]).toMatchObject({ org_id: 'org-b' })
+    expect(body.results[1].error).toBeUndefined()
+    expect(body.continued).toBe(false)
+  })
+
+  it('always does at least one unit of work per hop, so the chain state strictly advances', async () => {
+    orgRows = [{ id: 'org-a', name: null }, { id: 'org-b', name: null }]
+    okDump(300_000) // a single org blows the whole budget (dump still completes)
     const res = await (await loadGet())(req())
     const body = await res.json()
 
@@ -156,7 +257,7 @@ describe('cron/org-snapshot — time-budgeted continuation', () => {
     expect(body.results.map((r: { org_id: string }) => r.org_id)).toEqual(['org-a'])
     expect(body.continued).toBe(true)
     expect(body.next_after).toBe('org-a') // advanced past org-a — the next hop starts at org-b
-    expect(fetchMock.mock.calls[0][0]).toContain('after=org-a&hop=1')
+    expect(fetchMock.mock.calls[0][0]).toContain('hop=1&after=org-a')
   })
 
   it('refuses hop > 20 with a loud 500 and does no work (runaway-chain breaker)', async () => {
@@ -184,12 +285,26 @@ describe('cron/org-snapshot — time-budgeted continuation', () => {
     expect(logErrorMock).toHaveBeenCalledWith('cron.orgSnapshot.hopCap', expect.anything(), expect.objectContaining({ hop: 20, orgs_remaining: 1 }))
   })
 
+  it('at the hop cap after a mid-org bail, the partial result converts to an error (no manifest = no backup)', async () => {
+    orgRows = [{ id: 'org-a', name: null }]
+    dumpMock.mockImplementation(async () => {
+      vi.advanceTimersByTime(250_000)
+      return partialResult('org-a', 3, 2)
+    })
+    const res = await (await loadGet())(req({ hop: '20' }))
+    const body = await res.json()
+
+    expect(res.status).toBe(500)
+    expect(body.continued).toBe(false)
+    expect(body.results[0].error).toContain('NO manifest')
+  })
+
   it('a failed org in the slice → 500 + Sentry for THIS hop, but the continuation still fires for the rest', async () => {
     orgRows = Array.from({ length: 3 }, (_, i) => ({ id: 'org-' + i, name: null }))
     dumpMock.mockImplementation(async (_db: unknown, orgId: string) => {
       vi.advanceTimersByTime(150_000) // 2 orgs fit the budget, 1 remains
       if (orgId === 'org-0') throw new Error('S3 exploded')
-      return { manifestKey: 'k', meta: { snapshot_version: 2, org_id: orgId, org_name: null, taken_at: 't', table_row_counts: {}, fetch_errors: {}, tables: [], total_bytes: 1 } }
+      return doneResult(orgId)
     })
     const res = await (await loadGet())(req())
     const body = await res.json()
@@ -203,7 +318,7 @@ describe('cron/org-snapshot — time-budgeted continuation', () => {
     expect(logErrorMock).toHaveBeenCalledWith('cron.orgSnapshot.run', expect.anything(), expect.objectContaining({ hop: 0, orgs_failed: 1 }))
     // ...and the failure does not strand the remaining orgs
     expect(body.continued).toBe(true)
-    expect(fetchMock.mock.calls[0][0]).toContain('after=org-1&hop=1')
+    expect(fetchMock.mock.calls[0][0]).toContain('hop=1&after=org-1')
   })
 
   it('incomplete snapshots (fetch_errors) still fail the hop, exactly as before', async () => {

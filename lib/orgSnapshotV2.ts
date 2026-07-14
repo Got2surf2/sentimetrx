@@ -22,13 +22,24 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createGzip, createGunzip, gunzipSync } from 'node:zlib'
 import { once } from 'node:events'
 import type { SnapshotStore } from './snapshotStore'
-import { TABLE_SPECS, iterateTablePages, type OrgSnapshot } from './orgSnapshot'
+import { TABLE_SPECS, iterateTablePages, type OrgSnapshot, type TableCursor } from './orgSnapshot'
+
+export interface SnapshotV2Part {
+  key: string
+  rows: number
+  bytes: number
+}
 
 export interface SnapshotV2TableEntry {
   name: string
   key: string
   rows: number
   bytes: number
+  // Present when the table was dumped across >1 cron hop (deadline bail
+  // mid-table): each part is an independent gzipped NDJSON object; readers
+  // stream them in order. Absent = single object at `key` (the common case
+  // and every pre-2026-07 snapshot).
+  parts?: SnapshotV2Part[]
 }
 
 export interface OrgSnapshotV2Meta {
@@ -61,62 +72,176 @@ export function snapshotV2Prefix(orgId: string, date: Date = new Date()): string
 }
 
 export const V2_MANIFEST_SUFFIX = 'v2/manifest.json'
+export const V2_CHECKPOINT_SUFFIX = 'v2/partial.json'
 
 // ---------------------------------------------------------------------------
 // Dump
 
-export async function dumpOrgSnapshotV2(
+// Durable intra-org resume state, written to `<prefix>partial.json` when a
+// deadline bail interrupts the dump. Never surfaced by listings (only the
+// manifest is a commit marker) and overwritten by each same-day re-run.
+export interface SnapshotV2Checkpoint {
+  checkpoint_version: 1
+  org_id: string
+  org_name: string | null
+  taken_at: string // first hop's start — the manifest keeps it
+  tables: SnapshotV2TableEntry[] // completed tables, TABLE_SPECS order
+  fetch_errors: Record<string, string>
+  resume: {
+    table: string
+    next_part: number // 1-based; part 1 is the un-suffixed key
+    parts: SnapshotV2Part[] // completed parts of the in-progress table
+    cursor: TableCursor
+  } | null
+}
+
+export async function loadSnapshotCheckpoint(store: SnapshotStore, prefix: string): Promise<SnapshotV2Checkpoint | null> {
+  try {
+    const cp = JSON.parse((await store.get(prefix + 'partial.json')).toString('utf-8')) as SnapshotV2Checkpoint
+    return cp?.checkpoint_version === 1 ? cp : null
+  } catch {
+    return null // missing or unparsable → start the org from scratch
+  }
+}
+
+// Ordinal that strictly increases whenever a resumable dump advances (a
+// table or a part completed). The cron uses it to refuse a continuation
+// chain that spins without progress.
+export function checkpointProgress(cp: SnapshotV2Checkpoint | null): number {
+  if (!cp) return -1
+  return cp.tables.length * 1_000_000 + (cp.resume ? cp.resume.next_part : 0)
+}
+
+export type ResumableDumpResult =
+  | { done: true; manifestKey: string; meta: OrgSnapshotV2Meta }
+  | { done: false; checkpoint: SnapshotV2Checkpoint }
+
+function partKey(prefix: string, table: string, partNo: number): string {
+  return prefix + 'tables/' + table + (partNo === 1 ? '' : '.part' + partNo) + '.ndjson.gz'
+}
+
+// Deadline-aware, checkpoint-resumable dump. Without `deadlineAt` it
+// behaves exactly like the original single-shot dump (always done:true).
+// With a deadline, it bails at a page boundary once the clock passes it:
+// the in-flight gzip part is closed and uploaded (each part is a complete,
+// independently-readable object), a checkpoint lands at
+// `<prefix>partial.json`, and the caller re-invokes with that checkpoint
+// next hop. Guarantees ≥1 page of progress per invocation, so every hop
+// advances the checkpoint. The manifest still lands LAST, only when every
+// table is complete — a mid-chain snapshot stays invisible to listings.
+export async function dumpOrgSnapshotV2Resumable(
   db: SupabaseClient,
   orgId: string,
   store: SnapshotStore,
-  opts: { prefix?: string } = {},
-): Promise<{ manifestKey: string; meta: OrgSnapshotV2Meta }> {
+  opts: { prefix?: string; deadlineAt?: number; checkpoint?: SnapshotV2Checkpoint | null } = {},
+): Promise<ResumableDumpResult> {
   const prefix = opts.prefix ?? snapshotV2Prefix(orgId)
+  const deadlineAt = opts.deadlineAt ?? Infinity
+  const cp = opts.checkpoint && opts.checkpoint.org_id === orgId ? opts.checkpoint : null
+
   const { data: org, error: orgErr } = await db.from('organizations').select('id, name').eq('id', orgId).single()
   if (orgErr || !org) throw new Error('Org not found for snapshot: ' + orgId + (orgErr ? ' (' + orgErr.message + ')' : ''))
+
+  const doneTables: SnapshotV2TableEntry[] = cp ? [...cp.tables] : []
+  const doneNames = new Set(doneTables.map(t => t.name))
+  const fetchErrors: Record<string, string> = cp ? { ...cp.fetch_errors } : {}
+  const takenAt = cp?.taken_at ?? new Date().toISOString()
+  let resume = cp?.resume ?? null
+
+  const writeCheckpoint = async (r: SnapshotV2Checkpoint['resume']): Promise<SnapshotV2Checkpoint> => {
+    const checkpoint: SnapshotV2Checkpoint = {
+      checkpoint_version: 1,
+      org_id: orgId,
+      org_name: (org as { name?: string | null }).name ?? null,
+      taken_at: takenAt,
+      tables: doneTables,
+      fetch_errors: fetchErrors,
+      resume: r,
+    }
+    await store.put(prefix + 'partial.json', Buffer.from(JSON.stringify(checkpoint), 'utf-8'))
+    return checkpoint
+  }
+
+  let progressed = false // ≥1 part/table completed THIS invocation
+  for (const spec of TABLE_SPECS) {
+    if (spec.filter.kind === 'skip') continue
+    if (doneNames.has(spec.name)) continue
+
+    // Between-table bail — only after this invocation did some work, so a
+    // continuation hop always advances the checkpoint.
+    if (progressed && Date.now() > deadlineAt) {
+      // `resume` still holds any not-yet-consumed in-progress state (its
+      // table may sit later in the registry after a mid-chain deploy).
+      return { done: false, checkpoint: await writeCheckpoint(resume) }
+    }
+
+    // A checkpoint's in-progress state applies only to its own table (the
+    // registry can gain/lose tables across a deploy mid-chain).
+    const tableResume = resume && resume.table === spec.name ? resume : null
+    const parts: SnapshotV2Part[] = tableResume ? [...tableResume.parts] : []
+    let partNo = tableResume ? tableResume.next_part : 1
+    let cursor: TableCursor | null = tableResume ? tableResume.cursor : null
+    let fetchError: string | undefined
+
+    for (;;) {
+      const key = partKey(prefix, spec.name, partNo)
+      const gzip = createGzip()
+      // Capture an upload failure instead of letting it reject unhandled —
+      // and race it against gzip 'drain' so a dead upload can't leave the
+      // write loop waiting on backpressure that will never release.
+      let uploadErr: unknown = null
+      const uploadDone = store.putStream(key, gzip).catch((e: unknown) => { uploadErr = e; return { size_bytes: 0 } })
+      let partRows = 0
+      let bailed = false
+      try {
+        for await (const page of iterateTablePages(db, orgId, spec, cursor)) {
+          if (uploadErr) break
+          if (page.error) { fetchError = page.error }
+          if (page.rows.length > 0) {
+            const lines = page.rows.map(r => ndjsonLine(r)).join('\n') + '\n'
+            partRows += page.rows.length
+            if (!gzip.write(lines)) await Promise.race([once(gzip, 'drain'), uploadDone])
+          }
+          cursor = page.cursor
+          // Bail mid-table only with a resumable cursor and ≥1 page consumed
+          // (the page just written IS the progress guarantee).
+          if (cursor && Date.now() > deadlineAt) { bailed = true; break }
+        }
+      } finally {
+        gzip.end()
+      }
+      const { size_bytes } = await uploadDone
+      if (uploadErr) throw uploadErr instanceof Error ? uploadErr : new Error(String(uploadErr))
+
+      // An extra part that caught zero rows (resume landed exactly at the
+      // table's end) is dead weight — drop it from the accounting.
+      if (partRows > 0 || partNo === 1) parts.push({ key, rows: partRows, bytes: size_bytes })
+      progressed = true
+
+      if (!bailed) break
+      return {
+        done: false,
+        checkpoint: await writeCheckpoint({ table: spec.name, next_part: partNo + 1, parts, cursor: cursor as TableCursor }),
+      }
+    }
+
+    const rows = parts.reduce((s, p) => s + p.rows, 0)
+    const bytes = parts.reduce((s, p) => s + p.bytes, 0)
+    doneTables.push({ name: spec.name, key: parts[0].key, rows, bytes, ...(parts.length > 1 ? { parts } : {}) })
+    doneNames.add(spec.name)
+    if (fetchError) fetchErrors[spec.name] = fetchError
+    if (tableResume) resume = null
+  }
 
   const meta: OrgSnapshotV2Meta = {
     snapshot_version: 2,
     org_id: orgId,
     org_name: (org as { name?: string | null }).name ?? null,
-    taken_at: new Date().toISOString(),
-    table_row_counts: {},
-    fetch_errors: {},
-    tables: [],
-    total_bytes: 0,
-  }
-
-  for (const spec of TABLE_SPECS) {
-    if (spec.filter.kind === 'skip') continue
-    const key = prefix + 'tables/' + spec.name + '.ndjson.gz'
-
-    const gzip = createGzip()
-    // Capture an upload failure instead of letting it reject unhandled —
-    // and race it against gzip 'drain' so a dead upload can't leave the
-    // write loop waiting on backpressure that will never release.
-    let uploadErr: unknown = null
-    const uploadDone = store.putStream(key, gzip).catch((e: unknown) => { uploadErr = e; return { size_bytes: 0 } })
-    let rows = 0
-    let fetchError: string | undefined
-    try {
-      for await (const page of iterateTablePages(db, orgId, spec)) {
-        if (uploadErr) break
-        if (page.error) { fetchError = page.error }
-        if (page.rows.length === 0) continue
-        const lines = page.rows.map(r => ndjsonLine(r)).join('\n') + '\n'
-        rows += page.rows.length
-        if (!gzip.write(lines)) await Promise.race([once(gzip, 'drain'), uploadDone])
-      }
-    } finally {
-      gzip.end()
-    }
-    const { size_bytes } = await uploadDone
-    if (uploadErr) throw uploadErr instanceof Error ? uploadErr : new Error(String(uploadErr))
-
-    meta.table_row_counts[spec.name] = rows
-    meta.total_bytes += size_bytes
-    meta.tables.push({ name: spec.name, key, rows, bytes: size_bytes })
-    if (fetchError) meta.fetch_errors[spec.name] = fetchError
+    taken_at: takenAt,
+    table_row_counts: Object.fromEntries(doneTables.map(t => [t.name, t.rows])),
+    fetch_errors: fetchErrors,
+    tables: doneTables,
+    total_bytes: doneTables.reduce((s, t) => s + t.bytes, 0),
   }
 
   // Manifest LAST — the commit marker.
@@ -125,7 +250,20 @@ export async function dumpOrgSnapshotV2(
   const { size_bytes: manifestBytes } = await store.put(manifestKey, manifestBody)
   meta.total_bytes += manifestBytes
 
-  return { manifestKey, meta }
+  return { done: true, manifestKey, meta }
+}
+
+// Single-shot dump — the admin "Snapshot now" route and laptop scripts.
+// No deadline → the resumable core always runs to the manifest.
+export async function dumpOrgSnapshotV2(
+  db: SupabaseClient,
+  orgId: string,
+  store: SnapshotStore,
+  opts: { prefix?: string } = {},
+): Promise<{ manifestKey: string; meta: OrgSnapshotV2Meta }> {
+  const res = await dumpOrgSnapshotV2Resumable(db, orgId, store, { prefix: opts.prefix })
+  if (!res.done) throw new Error('unreachable: dump without a deadline cannot bail')
+  return { manifestKey: res.manifestKey, meta: res.meta }
 }
 
 // ---------------------------------------------------------------------------
@@ -195,28 +333,35 @@ export function snapshotSourceFromV1(snapshot: OrgSnapshot): SnapshotSource {
 
 async function* readV2Table(store: SnapshotStore, entry: SnapshotV2TableEntry | undefined): AsyncGenerator<Record<string, unknown>[]> {
   if (!entry || entry.rows === 0) return
-  const raw = await store.getStream(entry.key)
-  const gunzip = raw.pipe(createGunzip())
-  // Split on '\n' ONLY — deliberately NOT node:readline, which also breaks
-  // lines on U+2028/U+2029 inside JSON strings (real tenant text contains
-  // them; caught live 2026-07-04). setEncoding keeps multi-byte UTF-8
-  // sequences intact across chunk boundaries.
-  gunzip.setEncoding('utf8')
-  let buf = ''
-  let batch: Record<string, unknown>[] = []
-  for await (const chunk of gunzip as AsyncIterable<string>) {
-    buf += chunk
-    let idx: number
-    while ((idx = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, idx)
-      buf = buf.slice(idx + 1)
-      if (!line.trim()) continue
-      batch.push(JSON.parse(line) as Record<string, unknown>)
-      if (batch.length >= BATCH) { yield batch; batch = [] }
+  // Multi-part tables (dumped across cron hops) stream part by part in
+  // order; the single-key shape covers every pre-multi-part snapshot.
+  const keys = entry.parts && entry.parts.length > 0
+    ? entry.parts.filter(p => p.rows > 0).map(p => p.key)
+    : [entry.key]
+  for (const key of keys) {
+    const raw = await store.getStream(key)
+    const gunzip = raw.pipe(createGunzip())
+    // Split on '\n' ONLY — deliberately NOT node:readline, which also breaks
+    // lines on U+2028/U+2029 inside JSON strings (real tenant text contains
+    // them; caught live 2026-07-04). setEncoding keeps multi-byte UTF-8
+    // sequences intact across chunk boundaries.
+    gunzip.setEncoding('utf8')
+    let buf = ''
+    let batch: Record<string, unknown>[] = []
+    for await (const chunk of gunzip as AsyncIterable<string>) {
+      buf += chunk
+      let idx: number
+      while ((idx = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, idx)
+        buf = buf.slice(idx + 1)
+        if (!line.trim()) continue
+        batch.push(JSON.parse(line) as Record<string, unknown>)
+        if (batch.length >= BATCH) { yield batch; batch = [] }
+      }
     }
+    if (buf.trim()) batch.push(JSON.parse(buf) as Record<string, unknown>)
+    if (batch.length > 0) yield batch
   }
-  if (buf.trim()) batch.push(JSON.parse(buf) as Record<string, unknown>)
-  if (batch.length > 0) yield batch
 }
 
 // Rebuild the v1 in-memory shape from any source — laptop-only (the whole

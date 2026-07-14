@@ -211,6 +211,20 @@ export const TABLE_SPECS: TableSpec[] = [
 const PAGE = 1000
 const PARENT_CHUNK = 500
 
+// Resume position inside one table's iteration, serializable into the
+// snapshot checkpoint (lib/orgSnapshotV2) so a deadline-bailed dump can
+// continue in the next cron hop. One shape per filter kind:
+//   offset        — org_id / col_eq_org tables (plain .range paging)
+//   parent_offset — parent_via tables with pageOrder (per-parent paging;
+//                   parentId anchors which parent, from is the offset in it)
+//   chunk_offset  — parent_via tables paged by .in() chunks of parent ids
+// Offsets drift if rows are written between hops — same non-transactional
+// paging the dump already does within a single run; no worse on resume.
+export type TableCursor =
+  | { kind: 'offset'; from: number }
+  | { kind: 'parent_offset'; parentId: string; from: number }
+  | { kind: 'chunk_offset'; chunkStart: number; from: number }
+
 async function fetchParentIds(db: SupabaseClient, orgId: string, parent: SnapshotParent): Promise<{ ids: string[]; error?: string }> {
   const ids: string[] = []
   for (let from = 0; ; from += PAGE) {
@@ -233,62 +247,80 @@ async function fetchParentIds(db: SupabaseClient, orgId: string, parent: Snapsho
 // 1000 rows/table until 2026-07-03) — so everything pages via .range().
 // A page-level read error ends the table and is reported on the final
 // yield; the caller records it in meta.fetch_errors (fail-loud).
+//
+// Every page carries `cursor` = the position to resume from AFTER that
+// page (null when the table can't resume mid-way, i.e. id_eq_org).
+// Passing `startCursor` skips straight to that position — the intra-org
+// continuation for orgs whose dump outruns one cron hop (BACKUPS.md).
 export async function* iterateTablePages(
   db: SupabaseClient,
   orgId: string,
   spec: TableSpec,
-): AsyncGenerator<{ rows: Record<string, unknown>[]; error?: string }> {
+  startCursor?: TableCursor | null,
+): AsyncGenerator<{ rows: Record<string, unknown>[]; error?: string; cursor: TableCursor | null }> {
   if (spec.filter.kind === 'skip') return
 
   if (spec.filter.kind === 'id_eq_org') {
     const { data, error } = await db.from(spec.name).select('*').eq('id', orgId)
     if (error) {
       console.error('[orgSnapshot] ' + spec.name + ' fetch failed:', error.message)
-      yield { rows: [], error: error.message }
+      yield { rows: [], error: error.message, cursor: null }
       return
     }
-    if ((data || []).length > 0) yield { rows: (data || []) as Record<string, unknown>[] }
+    if ((data || []).length > 0) yield { rows: (data || []) as Record<string, unknown>[], cursor: null }
     return
   }
 
   if (spec.filter.kind === 'org_id' || spec.filter.kind === 'col_eq_org') {
     const orgCol = spec.filter.kind === 'col_eq_org' ? spec.filter.col : 'org_id'
-    for (let from = 0; ; from += PAGE) {
+    const start = startCursor?.kind === 'offset' ? startCursor.from : 0
+    for (let from = start; ; from += PAGE) {
       const { data, error } = await db.from(spec.name).select('*').eq(orgCol, orgId)
         .order(spec.orderBy || 'id', { ascending: true })
         .range(from, from + PAGE - 1)
       if (error) {
         console.error('[orgSnapshot] ' + spec.name + ' fetch failed:', error.message)
-        yield { rows: [], error: error.message }
+        yield { rows: [], error: error.message, cursor: null }
         return
       }
       const page = (data || []) as Record<string, unknown>[]
-      if (page.length > 0) yield { rows: page }
+      if (page.length > 0) yield { rows: page, cursor: { kind: 'offset', from: from + PAGE } }
       if (page.length < PAGE) return
     }
   }
 
   // parent_via — fetch parent IDs in the org, then filter the table by that FK.
   const { ids: parentIds, error: parentErr } = await fetchParentIds(db, orgId, spec.filter.parent)
-  if (parentErr) { yield { rows: [], error: 'parent fetch: ' + parentErr }; return }
+  if (parentErr) { yield { rows: [], error: 'parent fetch: ' + parentErr, cursor: null }; return }
   if (parentIds.length === 0) return
 
   if (spec.pageOrder) {
     // Per-parent, index-served pagination (eq on the FK + order on the
     // composite index column). Sorting across parents timed out on heavy
     // JSONB tables — 47K dataset_rows_flat rows hit the statement timeout.
-    for (const pid of parentIds) {
-      for (let from = 0; ; from += PAGE) {
+    // Resume: parentIds are id-ordered, so skip parents before the cursor's
+    // parent; if that parent was deleted between hops, continue from the
+    // next parent after it.
+    const pc = startCursor?.kind === 'parent_offset' ? startCursor : null
+    let startIdx = 0
+    if (pc) {
+      startIdx = parentIds.findIndex(id => id >= pc.parentId)
+      if (startIdx < 0) return // cursor past every surviving parent
+    }
+    for (let p = startIdx; p < parentIds.length; p++) {
+      const pid = parentIds[p]
+      const start = pc && pid === pc.parentId ? pc.from : 0
+      for (let from = start; ; from += PAGE) {
         const { data, error } = await db.from(spec.name).select('*').eq(spec.filter.via, pid)
           .order(spec.pageOrder, { ascending: true })
           .range(from, from + PAGE - 1)
         if (error) {
           console.error('[orgSnapshot] ' + spec.name + ' page fetch failed:', error.message)
-          yield { rows: [], error: error.message }
+          yield { rows: [], error: error.message, cursor: null }
           return
         }
         const page = (data || []) as Record<string, unknown>[]
-        if (page.length > 0) yield { rows: page }
+        if (page.length > 0) yield { rows: page, cursor: { kind: 'parent_offset', parentId: pid, from: from + PAGE } }
         if (page.length < PAGE) break
       }
     }
@@ -296,19 +328,20 @@ export async function* iterateTablePages(
   }
 
   // Supabase JS .in() has a practical limit; chunk parent IDs to be safe.
-  for (let i = 0; i < parentIds.length; i += PARENT_CHUNK) {
+  const cc = startCursor?.kind === 'chunk_offset' ? startCursor : null
+  for (let i = cc ? cc.chunkStart : 0; i < parentIds.length; i += PARENT_CHUNK) {
     const slice = parentIds.slice(i, i + PARENT_CHUNK)
-    for (let from = 0; ; from += PAGE) {
+    for (let from = cc && i === cc.chunkStart ? cc.from : 0; ; from += PAGE) {
       const { data, error } = await db.from(spec.name).select('*').in(spec.filter.via, slice)
         .order('id', { ascending: true })
         .range(from, from + PAGE - 1)
       if (error) {
         console.error('[orgSnapshot] ' + spec.name + ' chunk fetch failed:', error.message)
-        yield { rows: [], error: error.message }
+        yield { rows: [], error: error.message, cursor: null }
         return
       }
       const page = (data || []) as Record<string, unknown>[]
-      if (page.length > 0) yield { rows: page }
+      if (page.length > 0) yield { rows: page, cursor: { kind: 'chunk_offset', chunkStart: i, from: from + PAGE } }
       if (page.length < PAGE) break
     }
   }

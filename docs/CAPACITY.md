@@ -157,7 +157,7 @@ Interpretation per surface:
 | Dataset upload/sync | ~500K rows/dataset practical | browser-driven chunk loop (D16) — no timeout exposure; time cost ~50 rows/POST |
 | Taxonomy classification | 10K rows/POST chunk, browser loop | resumable cursor; keyword tier ~instant, LLM tier not yet built |
 | PPTX/PDF export | ~50K rows/deck comfortably | in-request generation (D16), maxDuration 120–300 s; heaviest deck path is AI quote-picking (serial per theme — known ceiling, below) |
-| Org backup (nightly) | ~200K rows/org proven; ~240 s of orgs per hop × up to 20 hops | streamed NDJSON per table; time-budgeted self-continuation (`?after=<org-id>&hop=N`, 2026-07-04) removed the single-300 s-invocation ceiling |
+| Org backup (nightly) | ~240 s of dump work per hop × up to 20 hops (~80 min), for the fleet AND within one org | streamed NDJSON per table; time-budgeted self-continuation (`?after=<org-id>&hop=N`, 2026-07-04) + intra-org checkpoint resume with multi-part table objects (`&resume=<org-id>`, 2026-07-13) — a single huge org chains across hops instead of dying at 300 s |
 | Org restore/clone | 200,978 rows proven (2026-07-04 drill, 0 errors self-verified) | fixpoint restore w/ FK retry (D12/BACKUPS.md) |
 | Campaign send | quota-bound (Resend plan), 15-min cron cadence | sends are sequential by design vs 10 rps API limit |
 
@@ -171,13 +171,16 @@ Ordered by which wall arrives first:
    size passing the ~8 GB included tier (~2M rows ≈ 7.7 GB all-in).
    **Mitigation: compute ladder — $15–$110/mo, minutes of downtime, no
    code change.** This is a knob, not a cliff.
-2. **Single-invocation nightly backup — FIXED 2026-07-04.** The cron now
-   slices the org list on a 240 s time budget and self-continues via
-   `?after=<last-org-id>&hop=N` (D16, ≤20 hops ≈ 80 min of dump time),
-   so 10× orgs/data no longer overruns. Failure mode stays loud per hop
-   (500 + Sentry). Residual ceiling: a SINGLE org whose dump exceeds
-   ~240 s (≥ ~10× the largest org today) — incremental manifests are the
-   named fix. See BACKUPS.md "Time-budgeted continuation".
+2. **Single-invocation nightly backup — FIXED 2026-07-04, single-org
+   residual FIXED 2026-07-13.** The cron slices the org list on a 240 s
+   time budget and self-continues via `?after=<last-org-id>&hop=N` (D16,
+   ≤20 hops ≈ 80 min of dump time), and the deadline now flows into the
+   per-org dump too: a single org that outruns the budget checkpoints to
+   `partial.json` and resumes mid-table next hop (multi-part objects) —
+   observed failing nightly at 785K rows before the fix. Failure mode
+   stays loud per hop (500 + Sentry). Remaining ceiling is the hop cap
+   itself: ~80 min of total dump time per night.
+   See BACKUPS.md "Time-budgeted continuation".
 3. **Read-amplifying live dashboards.** Facilitator console polls
    re-derive counts from raw turns (D17 consequence). Fine at ≤200
    participants; at 10× PulseIQ-session scale, cached per-topic counters are
@@ -265,10 +268,10 @@ suddenly) retired most of them.
   per poll — topic counts are stored now (sql/154) and all reads are
   hall-id-indexed (sql/156); the remaining per-poll transcript/keyword
   work is fine at ≤200 participants.
-- **Single-org backup dump > 240 s** (≥10× today's largest org;
-  incremental manifests are the named fix) and **collection-union bulk
-  sampling** (the multi-dataset union path still samples in Node —
-  needs a different RPC shape; single datasets are covered).
+- **Collection-union bulk sampling** — the multi-dataset union path
+  still samples in Node; needs a different RPC shape (single datasets
+  are covered). (Single-org backup dump > 240 s left this list
+  2026-07-13 — intra-org checkpoint resume, BACKUPS.md.)
 
 ## 7. Load-test suite
 

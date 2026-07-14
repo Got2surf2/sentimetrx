@@ -116,6 +116,10 @@ budget line, not a wall.
   single-org dump has no cursor, so one org holding a 1M-row dataset
   overruns the 240s budget every night (observed 2026-07-13, 785K). Fix =
   intra-org continuation or incremental manifests (BACKUPS.md names this).
+  > **STATUS: FIXED 2026-07-13 (fix-queue item 7, Fable)** — the dump is
+  > deadline-aware and checkpoint-resumable (`partial.json` + multi-part
+  > table objects + `&resume=<org>` continuation); BACKUPS.md
+  > "Time-budgeted continuation" has the full mechanics.
 
 ## 2. Single datasets at 1M+ rows
 
@@ -162,7 +166,7 @@ to the sampled_signal_counts recompute (3–4.8s per 5K page at 1M).
 | `entities` GET | `count_entity_terms`: live tsv FTS counts for up to ~300 terms over every row | code-audit (catalog empty on PERF TEST) | store counts at classify/refresh time, or sample |
 | theme-counts w/ `cooccurrence`/`topical`/`dimensions` | those three RPCs full-scan | code-audit | sampled variants |
 | collections project-report | Node union via OFFSET pages up to 80K rows/member | code-audit | `pageSampledRows` (lib/bulkRowSample), already used by the bulk path |
-| org-snapshot (that org) | single-org dump > 240s | observed on prod 7/13 | §1 |
+| org-snapshot (that org) | single-org dump > 240s | observed on prod 7/13 | §1 — **FIXED 7/13**: intra-org checkpoint resume (BACKUPS.md) |
 
 **DEGRADES (bounded but slow/biased at 1M):** `comments` + `search` +
 `rows-by-entity` (GIN-backed page fetches are fine; the exact match-count

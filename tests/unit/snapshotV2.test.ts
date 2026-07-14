@@ -12,7 +12,10 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { LocalDirSnapshotStore } from '@/lib/snapshotStore'
-import { dumpOrgSnapshotV2, openSnapshot, materializeSnapshot, snapshotSourceFromV1 } from '@/lib/orgSnapshotV2'
+import {
+  dumpOrgSnapshotV2, dumpOrgSnapshotV2Resumable, openSnapshot, materializeSnapshot,
+  snapshotSourceFromV1, loadSnapshotCheckpoint, checkpointProgress,
+} from '@/lib/orgSnapshotV2'
 import { restoreOrgSnapshotFromSource } from '@/lib/orgRestore'
 import { groupSnapshotObjects } from '@/lib/backupS3'
 import type { OrgSnapshot } from '@/lib/orgSnapshot'
@@ -123,6 +126,112 @@ describe('dumpOrgSnapshotV2 → openSnapshot round trip', () => {
     const source = await openSnapshot(store, manifestKey)
     expect(source.tableNames).not.toContain('campaigns')       // no rows in fixture
     expect(meta.table_row_counts.campaigns).toBe(0)
+  })
+})
+
+describe('dumpOrgSnapshotV2Resumable — deadline bail + checkpoint resume (intra-org continuation)', () => {
+  it('an expired deadline forces page-granular bails; resuming from the persisted checkpoint reaches an identical snapshot', async () => {
+    const prefix = 'org-snapshots/' + ORG + '/resume1/v2/'
+    const db = sourceDb(FIXTURE)
+
+    // deadlineAt in the past → every invocation does the minimum unit of
+    // work (≥1 page / 1 table) then bails. Drive the chain exactly like the
+    // cron does: reload the checkpoint from the STORE each hop.
+    let hops = 0
+    let manifestKey: string | null = null
+    let lastProgress = -1
+    while (manifestKey === null) {
+      if (++hops > 500) throw new Error('resumable dump failed to converge')
+      const checkpoint = await loadSnapshotCheckpoint(store, prefix)
+      const out = await dumpOrgSnapshotV2Resumable(db, ORG, store, { prefix, deadlineAt: 1, checkpoint })
+      if (out.done) {
+        manifestKey = out.manifestKey
+      } else {
+        // every hop strictly advances the progress ordinal (the cron's stall guard)
+        const p = checkpointProgress(out.checkpoint)
+        expect(p).toBeGreaterThan(lastProgress)
+        lastProgress = p
+        // mid-chain, the day is invisible to listings — no manifest yet
+        const objects = await store.list(prefix)
+        expect(groupSnapshotObjects(objects)).toEqual([])
+      }
+    }
+    expect(hops).toBeGreaterThan(3) // it genuinely chained, not one-shot
+
+    // The chained snapshot must match a single-shot dump of the same fixture.
+    const single = await dumpOrgSnapshotV2(sourceDb(FIXTURE), ORG, store, { prefix: 'org-snapshots/' + ORG + '/single1/v2/' })
+    const source = await openSnapshot(store, manifestKey)
+    for (const [table, rows] of Object.entries(single.meta.table_row_counts)) {
+      expect(source.rowCount(table), table).toBe(rows)
+    }
+    expect(source.fetchErrors).toEqual({})
+
+    // The 2500-row table was split into parts; the reader reassembles it in
+    // order with the U+2028/U+2029 row intact.
+    const manifest = JSON.parse((await store.get(manifestKey)).toString('utf-8')) as {
+      tables: Array<{ name: string; rows: number; parts?: Array<{ key: string; rows: number }> }>
+    }
+    const conv = manifest.tables.find(t => t.name === 'conversations')
+    expect(conv?.parts?.length).toBeGreaterThan(1)
+    expect(conv?.parts?.reduce((s, p) => s + p.rows, 0)).toBe(2500)
+    const all: Record<string, unknown>[] = []
+    for await (const b of source.readTable('conversations')) {
+      expect(b.length).toBeLessThanOrEqual(500)
+      all.push(...b)
+    }
+    expect(all.length).toBe(2500)
+    expect(all.map(r => r.id)).toEqual(BIG.map(r => r.id)) // order preserved across parts
+    expect(all[42].text).toBe('line one\u2028line two\u2029end')
+
+    // Per-parent tables split mid-parent stay parent-contiguous (the
+    // restore's delete-parent-on-first-appearance depends on this).
+    const flat: Record<string, unknown>[] = []
+    for await (const b of source.readTable('dataset_rows_flat')) flat.push(...b)
+    expect(flat.length).toBe(1230)
+    const firstDs2 = flat.findIndex(r => r.dataset_id === 'ds-2')
+    expect(firstDs2).toBe(1200)
+    expect(flat.slice(0, 1200).every(r => r.dataset_id === 'ds-1')).toBe(true)
+  })
+
+  it('a multi-part table restores with each parent still deleted exactly once', async () => {
+    const prefix = 'org-snapshots/' + ORG + '/resume2/v2/'
+    const db = sourceDb(FIXTURE)
+    let manifestKey: string | null = null
+    for (let i = 0; manifestKey === null && i < 500; i++) {
+      const checkpoint = await loadSnapshotCheckpoint(store, prefix)
+      const out = await dumpOrgSnapshotV2Resumable(db, ORG, store, { prefix, deadlineAt: 1, checkpoint })
+      if (out.done) manifestKey = out.manifestKey
+    }
+    const source = await openSnapshot(store, manifestKey!)
+    const { db: target, ops } = targetDb()
+
+    const { totals } = await restoreOrgSnapshotFromSource(target, source, { tables: ['dataset_rows_flat'] })
+    expect(totals.errors).toBe(0)
+    expect(totals.upserted).toBe(1230)
+    const deletes = ops.filter(o => o.table === 'dataset_rows_flat' && o.op === 'delete')
+    expect(deletes.flatMap(d => (d.payload as { vals: unknown[] }).vals).sort()).toEqual(['ds-1', 'ds-2'])
+  })
+
+  it('without a deadline the resumable dump is single-shot: no checkpoint, no parts', async () => {
+    const prefix = 'org-snapshots/' + ORG + '/nodeadline/v2/'
+    const out = await dumpOrgSnapshotV2Resumable(sourceDb(FIXTURE), ORG, store, { prefix })
+    expect(out.done).toBe(true)
+    if (!out.done) throw new Error('unreachable')
+    expect(out.meta.tables.every(t => !t.parts)).toBe(true)
+    expect(await loadSnapshotCheckpoint(store, prefix)).toBe(null)
+  })
+
+  it('ignores a checkpoint written for a different org', async () => {
+    const prefix = 'org-snapshots/' + ORG + '/wrongorg/v2/'
+    const alien = {
+      checkpoint_version: 1 as const, org_id: 'someone-else', org_name: null, taken_at: 't',
+      tables: [{ name: 'users', key: 'k', rows: 99, bytes: 9 }], fetch_errors: {}, resume: null,
+    }
+    const out = await dumpOrgSnapshotV2Resumable(sourceDb(FIXTURE), ORG, store, { prefix, checkpoint: alien })
+    expect(out.done).toBe(true)
+    if (!out.done) throw new Error('unreachable')
+    expect(out.meta.org_id).toBe(ORG)
+    expect(out.meta.table_row_counts.users).toBe(1) // dumped fresh, not inherited from the alien checkpoint
   })
 })
 
