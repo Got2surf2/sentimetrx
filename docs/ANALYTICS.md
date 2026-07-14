@@ -79,6 +79,15 @@ TextMine is **four peer sections** in a persistent **two-row bar** — the share
   single word is ambiguous
 - Input: caller-supplied `texts[]` + field name + schema context (no hard cap;
   the calling page picks the sample)
+- **Substantive-only corpus (2026-07-14).** `TextMineModule.prepareCorpus` filters the
+  mining texts with `scoreUsefulness` (`lib/usefulness.ts` v1 = `isSubstantiveText`:
+  ≥5 words, or ≥4 with a function word) instead of the old `length>0`. "Nothing"/"N/A"/
+  "all good" answers carry no theme signal and previously diluted both the AI's discovery
+  sample and the sample-fit denominator — a Liked-Least field read "Diffuse 30%" when 45%
+  of its answers were non-substantive; over real feedback the same themes cover ~48%. The
+  "usefulness" scorer is versioned/swappable (v2 later = an LLM "actionable feedback?"
+  judgment) and is being moved to a STORED per-comment flag at ingest so mining, the
+  theme-fit denominator, the dataset-level substantive %, and Filters all read one boolean.
 - API key: **defaults to the server's `ANTHROPIC_API_KEY`** so customer orgs piggyback
   on the platform key; usage is logged per-org in `usage_log`. The body accepts an
   optional `apiKey` override but it is not required — there is no localStorage-only mode.

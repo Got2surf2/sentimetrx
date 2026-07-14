@@ -1873,9 +1873,16 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // Prepare corpus sample for mining (combines all active fields)
   function prepareCorpus() {
     if (!effectiveFields.length || !filteredRows.length) return { texts: [], total: 0 }
+    // Mine themes from SUBSTANTIVE feedback only. "Nothing" / "N/A" / "all
+    // good" answers carry no theme signal, and feeding them in diluted BOTH
+    // the AI's discovery sample and the sample-fit denominator (owner
+    // 2026-07-14: a Liked-Least field read "Diffuse 30%" when 45% of its
+    // answers were non-substantive; over real feedback the same themes cover
+    // ~48%). isSubstantiveText (≥5 words, or ≥4 with a function word) subsumes
+    // the old length>0 check, so blanks are still excluded.
     var texts = filteredRows
       .map(function(r) { return effectiveFields.map(function(f) { return String(r[f] || '') }).join(' ').trim() })
-      .filter(function(t) { return t.length > 0 })
+      .filter(function(t) { return isSubstantiveText(t) })
     const total = texts.length
     const defaultN = sampleSize95(total)
     const defaultPct = total > 0 ? Math.round(defaultN / total * 100) : 100
