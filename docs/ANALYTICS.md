@@ -238,7 +238,22 @@ analyticsCompute through `lib/nonEmptyCount.countNonEmptyRows` — the raw `data
 filter silently matched nothing for question-sentence column names (comma = filter separator).
 The Comments KPI tile shows **"N% substantive"** for the active question (`isSubstantiveText`,
 lib/datasetUtils: ≥5 words, or ≥4 containing a function word; deterministic, client-side
-aggregate — per-row scoring/banding/filtering deliberately NOT built, owner 2026-07-11).
+aggregate).
+
+**Substantive theme-fit + header "% substantive" (sql/179, 2026-07-14).** The metric strip
+now LEADS with the substantive fit — `inThemes-among-substantive / substantive` — and reveals
+the all-based number on hover (no toggle). Both numerator AND denominator are gated on the
+stored substantive flag (sql/178): a denominator-only shortcut overstates fit ~6pts because
+~12% of keyword matches land on non-substantive rows. `signalStats` computes the twin on both
+paths — the exact path calls `count_nonempty_rows` / `count_theme_matches` with the new
+`p_substantive_only` gate; the sampled path reads `records_substantive` / `union_substantive`
+from `sampled_signal_counts` (same signature, extra keys). Verified end-to-end on the Carrabba's
+GSS (the origin case): all-fit 21% (7,480/35,606) → substantive-fit 34% (6,554/19,134) — the
+"Diffuse" reading was a denominator artifact (46% of the field's answers were non-answers).
+The analyze **header** carries a filter-aware **"N% substantive"** next to the row count — the
+share of answered rows (any open-ended field filled) whose text is real feedback, computed
+client-side over the loaded rows (`DatasetShell`). CARVE-OUTS keep the full denominator: rating
+averages, numeric/categorical stats, raw counts, exports.
 **Listing cards carry data facts only** (rows, fields/members, last-updated) — the per-card
 records/signals/theme-fit line and its signal-stats-batch fetch were removed as a confusion
 source (the numbers described one question's set without saying which); analysis metrics live

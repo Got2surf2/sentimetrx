@@ -22,6 +22,13 @@ interface SignalStats {
   inThemes: number
   themeFitPct: number
   themeFitBand: 'Tight' | 'Mixed' | 'Diffuse'
+  /** Substantive-scoped theme fit (sql/179) — the LEAD number; the all-based
+   *  trio above stays for the hover. Optional so a cache written before the
+   *  twin landed still renders (falls back to the all-based number). */
+  substantiveRecords?: number
+  inThemesSubstantive?: number
+  themeFitPctSubstantive?: number
+  themeFitBandSubstantive?: 'Tight' | 'Mixed' | 'Diffuse'
   themeCount: number
   /** counts estimated from the deterministic 50K sample and scaled — set for
    *  datasets above the sampling cap; rendered with "~" + a tooltip note */
@@ -121,8 +128,16 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
     return null
   }
 
-  const band = BAND_STYLES[stats.themeFitBand]
-  const barFill = Math.max(0, Math.min(100, stats.themeFitPct))
+  // Lead with the SUBSTANTIVE fit (fraction of real-feedback comments that hit a
+  // theme) — the all-based number counted "N/A" / "Nothing" answers in the
+  // denominator and read artificially Diffuse. Both show on hover; no toggle.
+  // A cache written before sql/179 lacks the substantive fields → fall back to
+  // the all-based number so the strip never blanks during rollout.
+  const hasSubstantive = typeof stats.themeFitPctSubstantive === 'number' && typeof stats.substantiveRecords === 'number'
+  const leadFitPct = hasSubstantive ? stats.themeFitPctSubstantive! : stats.themeFitPct
+  const leadBand = (hasSubstantive ? stats.themeFitBandSubstantive : stats.themeFitBand) || stats.themeFitBand
+  const band = BAND_STYLES[leadBand]
+  const barFill = Math.max(0, Math.min(100, leadFitPct))
   const outerStyle: CSSProperties = embedded
     ? { display: 'flex', alignItems: 'center', gap: 14, fontSize: 12, color: '#374151', flexWrap: 'wrap', minWidth: 0 }
     : { background: '#fafafa', borderBottom: '1px solid #e8e8ec', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, fontSize: 12, color: '#374151', flexWrap: 'wrap' }
@@ -149,21 +164,30 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
       <span
         style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
         title={
-          stats.themeFitPct + '% of comments (' + approx + stats.inThemes.toLocaleString() +
-          ' of ' + approx + stats.records.toLocaleString() + ') match at least one of the ' +
-          stats.themeCount + ' themes.' + sampledNote + ' ' +
-          (stats.themeFitBand === 'Tight'
+          (hasSubstantive
+            ? stats.themeFitPctSubstantive + '% of SUBSTANTIVE comments (' + approx + stats.inThemesSubstantive!.toLocaleString() +
+              ' of ' + approx + stats.substantiveRecords!.toLocaleString() + ') match at least one of the ' + stats.themeCount + ' themes' +
+              ' — the lead number, since it drops "N/A"/"Nothing" non-answers. ' +
+              stats.themeFitPct + '% of ALL comments (' + approx + stats.inThemes.toLocaleString() +
+              ' of ' + approx + stats.records.toLocaleString() + ') including the non-substantive ones.'
+            : stats.themeFitPct + '% of comments (' + approx + stats.inThemes.toLocaleString() +
+              ' of ' + approx + stats.records.toLocaleString() + ') match at least one of the ' + stats.themeCount + ' themes.'
+          ) + sampledNote + ' ' +
+          (leadBand === 'Tight'
             ? 'Tight: themes capture most of the signal — ready to action.'
-            : stats.themeFitBand === 'Mixed'
+            : leadBand === 'Mixed'
               ? 'Mixed: multi-topic dataset, partial theme coverage.'
               : 'Diffuse: lots of unstructured content; consider adding themes or segmenting by source.')
         }
       >
         <span style={{ color: '#6b7280' }}>Theme fit</span>
         <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: band.bg, color: band.fg, border: '1px solid ' + band.border }}>
-          {stats.themeFitBand}
+          {leadBand}
         </span>
-        <strong style={{ color: '#111827' }}>{stats.themeFitPct}%</strong>
+        <strong style={{ color: '#111827' }}>{leadFitPct}%</strong>
+        {hasSubstantive && (
+          <span style={{ color: '#9ca3af', fontSize: 11 }}>of substantive</span>
+        )}
         <span aria-hidden style={{ display: 'inline-block', height: 8, width: 80, background: '#e5e7eb', borderRadius: 4, overflow: 'hidden' }}>
           <span style={{ display: 'block', height: '100%', width: barFill + '%', background: band.fg }} />
         </span>

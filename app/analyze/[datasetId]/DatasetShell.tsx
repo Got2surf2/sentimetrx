@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { FilterProvider, useFilters } from '@/components/analyze/FilterContext'
 import { RowsProvider, useRows } from '@/components/analyze/RowsContext'
 import { filterCount, applyFilters } from '@/lib/filterUtils'
+import { isSubstantiveText } from '@/lib/datasetUtils'
 import type { Filters, SerializedFilters } from '@/lib/filterUtils'
 import FiltersModal from '@/components/analyze/FiltersModal'
 import AskAnaPanel from '@/components/analyze/AskAnaPanel'
@@ -165,6 +166,36 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
     return matched
   }, [ctxRows, ctxLoaded, ctxSampled, ctxSampledCount, ctxTotalRows, effectiveFilters])
 
+  // Live "% substantive" for the header — the share of ANSWERED rows (any
+  // open-ended field non-empty) whose text carries usable feedback, not
+  // "N/A"/"Nothing" (isSubstantiveText — the same scorer stored at ingest).
+  // Filter-aware (applies effectiveFilters) and computed over the loaded rows
+  // (a deterministic sample above the cap — representative). null until rows
+  // load or when there are no open-ended fields / no answers.
+  var openEndedFields = useMemo(function() {
+    return schemaFields.filter(function(f) { return f.type === 'open-ended' }).map(function(f) { return f.field })
+  }, [schemaFields])
+  var substantivePct = useMemo(function() {
+    if (!ctxLoaded || !ctxRows.length || openEndedFields.length === 0) return null
+    var scope = Object.keys(effectiveFilters).length ? applyFilters(ctxRows, effectiveFilters) : ctxRows
+    var answered = 0, substantive = 0
+    scope.forEach(function(r) {
+      // Per open-ended field (mirrors the stored per-field flag): a row counts
+      // as answered if any field is non-empty, substantive if any is real feedback.
+      var hasText = false, hasSubstantive = false
+      openEndedFields.forEach(function(f) {
+        var v = String(r[f] || '').trim()
+        if (!v) return
+        hasText = true
+        if (isSubstantiveText(v)) hasSubstantive = true
+      })
+      if (!hasText) return
+      answered++
+      if (hasSubstantive) substantive++
+    })
+    return answered > 0 ? Math.round(substantive / answered * 100) : null
+  }, [ctxRows, ctxLoaded, openEndedFields, effectiveFilters])
+
   // Serialize the active filters (Sets → arrays for JSON) — the wire shape the
   // export / ask-ana / ad-hoc-report routes apply. Computed at render so the
   // "Report" picker can pass the in-view scope to an ad-hoc report.
@@ -200,7 +231,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
   return (
     <>
       <div style={{ marginRight: askAnaOpen ? 420 : 0, transition: 'margin-right .25s ease', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} outletCount={outletCount} filterCount={fCount} inViewFilters={Object.keys(serializedFilters).length ? serializedFilters : undefined} filteredRowCount={filteredRowCount} filteredRowCountIsEstimate={ctxSampled && ctxSampledCount > 0 && ctxTotalRows > ctxSampledCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} onAskAna={function() { setAskAnaOpen(function(v) { return !v }) }} askAnaOpen={askAnaOpen} />
+      <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} outletCount={outletCount} filterCount={fCount} inViewFilters={Object.keys(serializedFilters).length ? serializedFilters : undefined} filteredRowCount={filteredRowCount} filteredRowCountIsEstimate={ctxSampled && ctxSampledCount > 0 && ctxTotalRows > ctxSampledCount} substantivePct={substantivePct} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} onAskAna={function() { setAskAnaOpen(function(v) { return !v }) }} askAnaOpen={askAnaOpen} />
 
       {/* Metric strip (records / signals / theme-fit) + Saved Views switcher
           share ONE row to save vertical space — visible on every tab. Metrics

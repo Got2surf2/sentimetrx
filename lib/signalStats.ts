@@ -24,6 +24,15 @@ export interface SignalStats {
   themeFitPct: number
   themeFitBand: 'Tight' | 'Mixed' | 'Diffuse'
   themeCount: number
+  /** Substantive-scoped theme fit (sql/178/179): the LEAD number on the strip.
+   *  `substantiveRecords` = comments carrying usable feedback (drops "N/A" /
+   *  "Nothing"); `inThemesSubstantive` = those matching a theme. Both numerator
+   *  AND denominator are gated so the fit isn't inflated by matches on junk. The
+   *  all-based trio (records/inThemes/themeFitPct) stays for the hover. */
+  substantiveRecords: number
+  inThemesSubstantive: number
+  themeFitPctSubstantive: number
+  themeFitBandSubstantive: 'Tight' | 'Mixed' | 'Diffuse'
   /** True when counts were computed over the deterministic 50K sample and
    *  scaled to the dataset's total rows (datasets above the sampling cap —
    *  exact per-theme scans exceed the DB statement timeout there). */
@@ -69,6 +78,8 @@ function emptyStats(themeCount: number): SignalStats {
   return {
     records: 0, signals: 0, inThemes: 0,
     themeFitPct: 0, themeFitBand: 'Diffuse',
+    substantiveRecords: 0, inThemesSubstantive: 0,
+    themeFitPctSubstantive: 0, themeFitBandSubstantive: 'Diffuse',
     themeCount,
   }
 }
@@ -218,8 +229,10 @@ export async function computeSignalStatsRaw(
         const s = await sampledSignalCounts(service, did, fields, themes)
         return {
           recordsPerField: s.recordsPerField.map(c => scaleSampledCount(c, memberTotal, s.scanned)),
+          recordsSubstantivePerField: s.recordsSubstantivePerField.map(c => scaleSampledCount(c, memberTotal, s.scanned)),
           perTheme: s.perTheme.map(c => scaleSampledCount(c, memberTotal, s.scanned)),
           union: scaleSampledCount(s.union, memberTotal, s.scanned),
+          unionSubstantive: scaleSampledCount(s.unionSubstantive, memberTotal, s.scanned),
           sampled: true,
         }
       } catch (err) {
@@ -237,8 +250,10 @@ export async function computeSignalStatsRaw(
     const allKeywords = Array.from(
       new Set(themes.flatMap(t => (t.keywords || []).filter(Boolean))),
     )
-    const [recordsPerField, signalsResults, inThemesResult] = await Promise.all([
+    const [recordsPerField, recordsSubstantivePerField, signalsResults, inThemesResult, inThemesSubstantiveResult] = await Promise.all([
       Promise.all(fields.map(f => countNonEmptyRows(service, did, f))),
+      // Substantive denominator per field (sql/178/179) — the strip's lead.
+      Promise.all(fields.map(f => countNonEmptyRows(service, did, f, null, true))),
       Promise.all(themes.map(t =>
         service.rpc('count_theme_matches', {
           p_dataset_id: did,
@@ -254,11 +269,20 @@ export async function computeSignalStatsRaw(
         p_field_keys: fields,
         p_keywords: allKeywords.map(kwPatternFragment),
       }),
+      // Substantive numerator: rows matching ANY theme AND substantive in scope.
+      service.rpc('count_theme_matches', {
+        p_dataset_id: did,
+        p_field_keys: fields,
+        p_keywords: allKeywords.map(kwPatternFragment),
+        p_substantive_only: true,
+      }),
     ])
     return {
       recordsPerField,
+      recordsSubstantivePerField,
       perTheme: signalsResults.map(r => Number(r.data) || 0),
       union: Number(inThemesResult.data) || 0,
+      unionSubstantive: Number(inThemesSubstantiveResult.data) || 0,
       sampled: false,
     }
   }))
@@ -269,14 +293,22 @@ export async function computeSignalStatsRaw(
     perMember.reduce((s, m) => s + (m.recordsPerField[i] || 0), 0),
   )
   const records = recordsPerField.reduce((m, v) => Math.max(m, v), 0)
+  const recordsSubstantivePerField = fields.map((_f, i) =>
+    perMember.reduce((s, m) => s + (m.recordsSubstantivePerField[i] || 0), 0),
+  )
+  const substantiveRecords = recordsSubstantivePerField.reduce((m, v) => Math.max(m, v), 0)
   const signals = perMember.reduce((s, m) => s + m.perTheme.reduce((a, b) => a + b, 0), 0)
   const inThemes = perMember.reduce((s, m) => s + m.union, 0)
+  const inThemesSubstantive = perMember.reduce((s, m) => s + m.unionSubstantive, 0)
   const sampled = perMember.some(m => m.sampled)
 
   const themeFitPct = records > 0 ? Math.round((inThemes / records) * 100) : 0
+  const themeFitPctSubstantive = substantiveRecords > 0 ? Math.round((inThemesSubstantive / substantiveRecords) * 100) : 0
   return {
     records, signals, inThemes,
     themeFitPct, themeFitBand: band(themeFitPct),
+    substantiveRecords, inThemesSubstantive,
+    themeFitPctSubstantive, themeFitBandSubstantive: band(themeFitPctSubstantive),
     themeCount: themes.length,
     ...(sampled ? { sampled: true } : {}),
   }
@@ -331,6 +363,9 @@ export async function computeSignalStats(
   if (
     cached &&
     !poisoned &&
+    // Entries cached before the substantive twin (sql/179) lack this field —
+    // treat as stale so they recompute once and re-key with the new numbers.
+    cached.themeFitPctSubstantive !== undefined &&
     cached.theme_model_hash === currentHash &&
     currentHash !== '' &&
     cached.row_count === currentRowCount
@@ -394,6 +429,9 @@ export async function computeSignalStatsForSet(
   if (
     cached &&
     !poisoned &&
+    // Entries cached before the substantive twin (sql/179) lack this field —
+    // treat as stale so they recompute once and re-key with the new numbers.
+    cached.themeFitPctSubstantive !== undefined &&
     cached.theme_model_hash === currentHash &&
     currentHash !== '' &&
     cached.row_count === currentRowCount

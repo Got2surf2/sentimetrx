@@ -25,10 +25,14 @@ const PAGE_SIZE = 5000
 export interface SampledSignalCounts {
   /** Non-empty counts aligned to the input fields order (sampled, unscaled). */
   recordsPerField: number[]
+  /** Substantive (sql/178) non-empty counts per field (sampled, unscaled). */
+  recordsSubstantivePerField: number[]
   /** Match counts aligned to the input themes order (sampled, unscaled). */
   perTheme: number[]
   /** Rows matching ANY theme (sampled, unscaled). */
   union: number
+  /** Rows matching ANY theme AND substantive in a scanned field (sampled). */
+  unionSubstantive: number
   /** Rows actually scanned — the scaling denominator (≤ cap). */
   scanned: number
 }
@@ -36,8 +40,10 @@ export interface SampledSignalCounts {
 interface PageResult {
   n: number
   records: number[]
+  records_substantive?: number[]
   theme_counts: number[]
   union_count: number
+  union_substantive?: number
   last_hash: number | null
   last_id: number | null
 }
@@ -57,8 +63,10 @@ export async function sampledSignalCounts(
 ): Promise<SampledSignalCounts> {
   const acc: SampledSignalCounts = {
     recordsPerField: fields.map(() => 0),
+    recordsSubstantivePerField: fields.map(() => 0),
     perTheme: themes.map(() => 0),
     union: 0,
+    unionSubstantive: 0,
     scanned: 0,
   }
   // `patterns` = canonical prebuilt fragments (kwPatternFragment), used by
@@ -85,8 +93,10 @@ export async function sampledSignalCounts(
     if (!page || n === 0) break // fewer rows than the cap — scanned them all
     acc.scanned += n
     page.records.forEach((c, i) => { acc.recordsPerField[i] += Number(c) || 0 })
+    ;(page.records_substantive || []).forEach((c, i) => { acc.recordsSubstantivePerField[i] += Number(c) || 0 })
     page.theme_counts.forEach((c, i) => { acc.perTheme[i] += Number(c) || 0 })
     acc.union += Number(page.union_count) || 0
+    acc.unionSubstantive += Number(page.union_substantive) || 0
     if (page.last_hash == null || page.last_id == null) break
     afterHash = Number(page.last_hash)
     afterId = Number(page.last_id)

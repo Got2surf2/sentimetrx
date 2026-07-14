@@ -99,6 +99,7 @@ describe('computeSignalStats — cache freshness', () => {
     const cached = {
       records: 67, signals: 115, inThemes: 59, themeFitPct: 88,
       themeFitBand: 'Tight', themeCount: 8,
+      substantiveRecords: 50, inThemesSubstantive: 47, themeFitPctSubstantive: 94, themeFitBandSubstantive: 'Tight',
       theme_model_hash: HASH, row_count: 67, computed_at: '2026-05-13T12:59:36Z',
     }
     const svc = makeService({ cached, flatCount: 67, rpcVal: 0, updateSpy })
@@ -116,6 +117,7 @@ describe('computeSignalStats — cache freshness', () => {
     const cached = {
       records: 67, signals: 115, inThemes: 59, themeFitPct: 88,
       themeFitBand: 'Tight', themeCount: 8,
+      substantiveRecords: 50, inThemesSubstantive: 47, themeFitPctSubstantive: 94, themeFitBandSubstantive: 'Tight',
       theme_model_hash: HASH, row_count: 67, computed_at: '2026-05-13T12:59:36Z',
     }
     // live DB now has 80 non-empty rows for the field
@@ -132,6 +134,7 @@ describe('computeSignalStats — cache freshness', () => {
     const cached = {
       records: 67, signals: 115, inThemes: 59, themeFitPct: 88,
       themeFitBand: 'Tight', themeCount: 8,
+      substantiveRecords: 50, inThemesSubstantive: 47, themeFitPctSubstantive: 94, themeFitBandSubstantive: 'Tight',
       theme_model_hash: HASH, computed_at: '2026-05-13T12:59:36Z', // no row_count
     }
     const svc = makeService({ cached, flatCount: 67, rpcVal: 0, updateSpy })
@@ -148,7 +151,8 @@ describe('computeSignalStats — sampled path above the cap (sql/162)', () => {
     // 150K rows (> 50K cap): the pager should draw two 25K pages, then stop at
     // the cap. Counts scale by 150000/50000 = 3.
     const page = {
-      n: 25000, records: [20000], theme_counts: [5000], union_count: 5000,
+      n: 25000, records: [20000], records_substantive: [10000],
+      theme_counts: [5000], union_count: 5000, union_substantive: 4000,
       last_hash: 123, last_id: 456,
     }
     const svc = makeService({
@@ -163,6 +167,10 @@ describe('computeSignalStats — sampled path above the cap (sql/162)', () => {
     expect(stats.signals).toBe(30000)   // (5000+5000) × 3
     expect(stats.inThemes).toBe(30000)
     expect(stats.themeFitPct).toBe(25)  // ratio survives scaling
+    // substantive twin: denom (10000+10000)×3 = 60000, num (4000+4000)×3 = 24000
+    expect(stats.substantiveRecords).toBe(60000)
+    expect(stats.inThemesSubstantive).toBe(24000)
+    expect(stats.themeFitPctSubstantive).toBe(40)  // 24000/60000 — higher, junk dropped
     expect(updateSpy).toHaveBeenCalledTimes(1) // persisted with the sampled flag
   })
 
@@ -207,6 +215,7 @@ describe('computeSignalStatsForSet — per-field cache slots', () => {
     const cachedB = {
       records: 40, signals: 12, inThemes: 10, themeFitPct: 25,
       themeFitBand: 'Diffuse', themeCount: 1,
+      substantiveRecords: 30, inThemesSubstantive: 9, themeFitPctSubstantive: 30, themeFitBandSubstantive: 'Diffuse',
       theme_model_hash: HASH_B, row_count: 67, computed_at: '2026-07-11T00:00:00Z',
     }
     const svc = makeService({
@@ -245,6 +254,7 @@ describe('computeSignalStatsForSet — per-field cache slots', () => {
     const cached = {
       records: 67, signals: 115, inThemes: 59, themeFitPct: 88,
       themeFitBand: 'Tight', themeCount: 8,
+      substantiveRecords: 50, inThemesSubstantive: 47, themeFitPctSubstantive: 94, themeFitBandSubstantive: 'Tight',
       theme_model_hash: HASH, row_count: 67, computed_at: '2026-05-13T12:59:36Z',
     }
     const svc = makeService({
