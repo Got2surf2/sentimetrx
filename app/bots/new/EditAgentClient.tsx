@@ -172,6 +172,11 @@ function BotCreatorInner() {
   const [crawlResult, setCrawlResult] = useState<{ pages: number; sites: number } | null>(null)
   const [uploadingDoc, setUploadingDoc] = useState(false)
   const [docResult, setDocResult] = useState<{ filename: string; pages: number } | null>(null)
+  // P2d — resumable super-agent deep crawl (300 pages, D16a browser loop).
+  const [superCrawlUrl, setSuperCrawlUrl] = useState('')
+  const [superCrawling, setSuperCrawling] = useState(false)
+  const [superCrawlJob, setSuperCrawlJob] = useState<{ jobId: string; pagesCrawled: number; chunksAdded: number; pageCap: number; status: string } | null>(null)
+  const superCrawlAlive = useRef(false)
   const [faq, setFaq] = useState<{ question: string; answer: string }[]>([])
   const [facts, setFacts] = useState<string[]>([])
   const [guardrails, setGuardrails] = useState<string[]>([])
@@ -344,6 +349,74 @@ function BotCreatorInner() {
     }
     setCrawling(false)
   }
+
+  // P2d — the browser-driven step loop. Checks superCrawlAlive on every
+  // iteration so it stops the instant the editor unmounts (no router churn /
+  // setState from a dead component — the banked Stats-loop lesson). The job
+  // row persists at its cursor server-side, so a later open resumes it.
+  async function loopCrawlSteps(jobId: string) {
+    while (superCrawlAlive.current) {
+      let data: { done?: boolean; status?: string; pagesCrawled?: number; chunksAdded?: number; pageCap?: number; error?: string }
+      try {
+        const res = await fetch('/api/bots/' + editId + '/crawl-job', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'step', jobId }),
+        })
+        data = await res.json()
+        if (!res.ok) { if (superCrawlAlive.current) setError(data.error || 'Crawl step failed'); break }
+      } catch { break }
+      if (!superCrawlAlive.current) break
+      setSuperCrawlJob({ jobId, pagesCrawled: data.pagesCrawled || 0, chunksAdded: data.chunksAdded || 0, pageCap: data.pageCap || 0, status: data.status || 'running' })
+      if (data.done || data.status !== 'running') break
+    }
+    superCrawlAlive.current = false
+    setSuperCrawling(false)
+  }
+
+  async function runSuperCrawl() {
+    if (!editId) { setError('Save the agent first, then run the deep crawl.'); return }
+    if (!superCrawlUrl.trim()) return
+    setSuperCrawling(true); setError('')
+    superCrawlAlive.current = true
+    try {
+      const res = await fetch('/api/bots/' + editId + '/crawl-job', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start', url: superCrawlUrl.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Crawl failed to start')
+      await loopCrawlSteps(data.jobId)
+    } catch (err: unknown) {
+      superCrawlAlive.current = false
+      setSuperCrawling(false)
+      setError(err instanceof Error ? err.message : 'Deep crawl failed')
+    }
+  }
+
+  function resumeSuperCrawl() {
+    if (!superCrawlJob || superCrawling) return
+    setSuperCrawling(true); setError('')
+    superCrawlAlive.current = true
+    void loopCrawlSteps(superCrawlJob.jobId)
+  }
+
+  // Resume-on-open: surface a running crawl job for this agent so a closed tab
+  // doesn't strand it (D16a — the cursor persists, the loop just needs restart).
+  useEffect(() => {
+    if (!editId || capability !== 'super') return
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch('/api/bots/' + editId + '/crawl-job', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'status' }),
+        })
+        const data = await res.json()
+        if (!cancelled && data.job && data.job.status === 'running') setSuperCrawlJob(data.job)
+      } catch { /* ignore */ }
+    })()
+    return () => { cancelled = true; superCrawlAlive.current = false }
+  }, [editId, capability])
 
   // P2c — upload a PDF/DOCX/text file, extract its text server-side, and append
   // it to the knowledge base (same flow as crawl/research: text accumulates,
@@ -856,6 +929,36 @@ function BotCreatorInner() {
               </label>
               {docResult && <p style={{ fontSize: 10, color: '#059669', marginTop: 4, marginBottom: 0 }}>Added {docResult.filename} ({docResult.pages} page{docResult.pages !== 1 ? 's' : ''})</p>}
             </div>
+
+            {/* Super deep crawl (P2d) — 300-page resumable crawl, super only */}
+            {capability === 'super' && (
+              <div style={{ padding: '14px', background: '#f0fdfa', borderRadius: 10, border: '1px solid #99f6e4', marginBottom: 16 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#0f766e', display: 'block', marginBottom: 4 }}>Deep Crawl — up to 300 pages (Super)</span>
+                <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 8px' }}>Sitemap-seeded crawl that indexes the whole site directly into this agent&apos;s knowledge (not the box below). Runs in the background and resumes if you leave. {editId ? '' : 'Save the agent first to enable.'}</p>
+                <textarea
+                  value={superCrawlUrl}
+                  onChange={function(e) { setSuperCrawlUrl(e.target.value) }}
+                  placeholder={"https://example.com"}
+                  rows={2}
+                  disabled={superCrawling}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, resize: 'vertical', marginBottom: 6 }}
+                />
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <button onClick={() => { void runSuperCrawl() }} disabled={superCrawling || !editId || !superCrawlUrl.trim()}
+                    style={{ padding: '5px 14px', borderRadius: 14, border: 'none', background: (superCrawling || !editId) ? '#9ca3af' : '#0F7173', color: 'white', fontSize: 11, fontWeight: 600, cursor: (superCrawling || !editId) ? 'not-allowed' : 'pointer' }}>
+                    {superCrawling ? 'Crawling…' : 'Start deep crawl'}
+                  </button>
+                  {!superCrawling && superCrawlJob && superCrawlJob.status === 'running' && (
+                    <button onClick={resumeSuperCrawl} style={{ padding: '5px 14px', borderRadius: 14, border: '1px solid #0F7173', background: 'white', color: '#0F7173', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>Resume</button>
+                  )}
+                </div>
+                {superCrawlJob && (
+                  <p style={{ fontSize: 10, color: superCrawlJob.status === 'done' ? '#059669' : '#6b7280', marginTop: 6, marginBottom: 0 }}>
+                    {superCrawlJob.status === 'done' ? 'Done — ' : 'Crawled '}{superCrawlJob.pagesCrawled}{superCrawlJob.status !== 'done' ? ' / ' + superCrawlJob.pageCap : ''} pages · {superCrawlJob.chunksAdded} chunks added
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Training URLs */}
             <div style={{ marginBottom: 12 }}>

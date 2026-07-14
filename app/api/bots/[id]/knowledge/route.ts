@@ -5,12 +5,9 @@
 
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
-import { generateEmbeddings } from '@/lib/embeddings'
-import { resolveCapability } from '@/lib/agentCapability'
-import { callAI } from '@/lib/ai'
-import { logUsage } from '@/lib/usageLog'
 import { logBotChange } from '@/lib/auditLog'
 import { serverError } from '@/lib/apiError'
+import { ingestKnowledgeText, KnowledgeInsertError } from '@/lib/botKnowledge/ingest'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,7 +15,6 @@ interface Params { params: Promise<{ id: string }> }
 
 type OrgRel = { is_admin_org: boolean | null }
 type UserWithOrg = { org_id: string | null; organizations: OrgRel | OrgRel[] | null }
-type InsertedChunk = { id: string; title: string; content: string }
 
 // ── GET: list chunks ──────────────────────────────────────────
 export async function GET(_req: Request, props: Params) {
@@ -81,190 +77,24 @@ export async function POST(req: Request, props: Params) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   }
 
-  // Split text into chunks by markdown headings or double newlines
-  const chunks = chunkText(text, source, source_type)
-
-  if (chunks.length === 0) {
-    return NextResponse.json({ error: 'No meaningful content found' }, { status: 400 })
-  }
-
-  // Dedup: fetch existing chunk contents for this bot to avoid duplicates
-  const { data: existingChunks } = await service
-    .from('agent_knowledge_chunks')
-    .select('id, content')
-    .eq('bot_id', params.id)
-
-  const existingSet = new Set((existingChunks || []).map(function(c: { content: string }) { return c.content.trim() }))
-  const deduped = chunks.filter(function(c) { return !existingSet.has(c.content.trim()) })
-
-  // D3: replace = diff-based upsert of the WHOLE KB. The editor save used to
-  // DELETE all chunks then re-POST, which left a zero-knowledge window on any
-  // mid-save failure and re-embedded every chunk each save. With replace we
-  // insert only new/changed chunks (below) and delete only the chunks whose
-  // content is gone — chunks that survive unchanged are never touched (no
-  // re-embed), and old chunks are removed AFTER the new ones land (never a
-  // zero-knowledge window; a failed insert leaves the old KB fully intact).
-  const incomingSet = new Set(chunks.map(function(c) { return c.content.trim() }))
-  const staleIds = replace
-    ? (existingChunks || []).filter(function(c: { id: string; content: string }) { return !incomingSet.has(c.content.trim()) }).map(function(c: { id: string }) { return c.id })
-    : []
-
-  async function pruneStale() {
-    if (staleIds.length === 0) return
-    const { error: delErr } = await service.from('agent_knowledge_chunks').delete().in('id', staleIds).eq('bot_id', params.id)
-    if (delErr) console.error({ at: 'knowledge', msg: 'replace prune failed (new chunks already stored)', err: delErr.message })
-  }
-
-  if (deduped.length === 0) {
-    // Nothing new to insert. In replace mode we still prune chunks the editor
-    // dropped; otherwise this is a plain append no-op.
-    await pruneStale()
-    return NextResponse.json({ stored: 0, skipped: chunks.length, removed: staleIds.length, message: staleIds.length ? 'Removed ' + staleIds.length + ' stale chunk(s); rest unchanged' : 'All content already exists' })
-  }
-
-  // Phase 2: embed the candidate chunks BEFORE inserting so we can store the
-  // vector in the same insert (no separate update loop), drop near-duplicates
-  // of existing chunks, and enforce the per-agent chunk budget. Embedding
-  // failures fall back to lexical-only chunks (embedding = null).
-  const capKnobs = resolveCapability(bot)
-  let candEmbeddings: (number[] | null)[]
   try {
-    candEmbeddings = await generateEmbeddings(deduped.map(function(c) { return c.title + '\n' + c.content }), bot.org_id)
-  } catch (e: unknown) {
-    console.error({ at: 'knowledge', msg: 'candidate embedding failed (proceeding lexical-only)', err: e instanceof Error ? e.message : undefined })
-    candEmbeddings = deduped.map(function() { return null })
-  }
-
-  // Near-dup guard — APPEND path only. Re-crawls / research runs accumulate
-  // drift copies of the same content; drop a candidate when an existing chunk
-  // is ~identical (cosine ≥ 0.95, sql/135). NOT run in replace mode: there the
-  // diff-upsert already handles unchanged/edited/removed, and a near-dup match
-  // against an about-to-be-pruned old chunk would silently drop a real edit.
-  const NEAR_DUP_SIM = 0.95
-  let nearDupSkipped = 0
-  let survivorIdx = deduped.map(function(_c, j) { return j })
-  if (!replace) {
-    const sims = await Promise.all(deduped.map(async function(_c, j): Promise<number> {
-      const emb = candEmbeddings[j]
-      if (!emb) return 0
-      try {
-        const r = await service.rpc('match_agent_knowledge_embedding', { p_bot_id: params.id, p_embedding: JSON.stringify(emb), p_exclude_id: null, p_limit: 1 }) as { data: Array<{ similarity: number }> | null }
-        return Array.isArray(r.data) && r.data[0] ? r.data[0].similarity : 0
-      } catch { return 0 }
-    }))
-    survivorIdx = survivorIdx.filter(function(j) { return sims[j] < NEAR_DUP_SIM })
-    nearDupSkipped = deduped.length - survivorIdx.length
-  }
-
-  // Chunk budget: cap new chunks so the agent's total stays under its budget
-  // (2,000 standard / 5,000 super). In replace mode the stale prune frees room.
-  const remainingExisting = (existingChunks?.length || 0) - staleIds.length
-  const budgetRoom = Math.max(0, capKnobs.chunkBudget - remainingExisting)
-  const budgetSkipped = Math.max(0, survivorIdx.length - budgetRoom)
-  survivorIdx = survivorIdx.slice(0, budgetRoom)
-
-  if (survivorIdx.length === 0) {
-    await pruneStale()
-    return NextResponse.json({ stored: 0, skipped: chunks.length, removed: staleIds.length, near_dup_skipped: nearDupSkipped, budget_skipped: budgetSkipped, message: 'No new chunks stored (duplicates or chunk budget reached)' })
-  }
-
-  // Insert survivors WITH their embeddings in one shot.
-  const rows = survivorIdx.map(function(j) {
-    const c = deduped[j]
-    return {
-      bot_id: params.id,
-      title: c.title,
-      content: c.content,
-      metadata: c.metadata,
-      embedding: candEmbeddings[j] ? JSON.stringify(candEmbeddings[j]) : null,
-    }
-  })
-
-  const { data: inserted, error } = await service.from('agent_knowledge_chunks').insert(rows).select('id, title, content')
-  if (error) {
-    // D3: insert failed — do NOT prune. The old KB is left fully intact.
-    return serverError(error, 'bots.knowledge.store')
-  }
-
-  // New chunks are committed; now it's safe to remove the chunks the editor
-  // dropped (replace mode only). Never a zero-knowledge window.
-  await pruneStale()
-
-  if (inserted && inserted.length > 0) {
-
-    // Sentiment + opponent classification
-    const subject = (bot as { subject?: string | null }).subject
-    const opponents = (bot as { opponents?: Array<string | { name?: string }> | null }).opponents
-    const opponentNames = Array.isArray(opponents) ? opponents.map(function(o: string | { name?: string }) { return typeof o === 'string' ? o : o.name || '' }).filter(Boolean) : []
-
-    if ((subject && subject.trim()) || opponentNames.length > 0) {
-      try {
-        const batchSize = 20
-        for (var b = 0; b < inserted.length; b += batchSize) {
-          var batch = inserted.slice(b, b + batchSize)
-          var chunkList = batch.map(function(c: InsertedChunk, idx: number) {
-            var preview = (c.content || '').slice(0, 300)
-            return (b + idx + 1) + '. [' + c.title + '] ' + preview
-          }).join('\n')
-
-          var classifyPrompt = 'For each numbered chunk, respond with the number followed by classifications.\n'
-          if (subject && subject.trim()) {
-            classifyPrompt += 'Sentiment toward "' + subject.trim() + '": positive, negative, or neutral.\n'
-          }
-          if (opponentNames.length > 0) {
-            classifyPrompt += 'If the chunk is primarily about an opponent (' + opponentNames.join(', ') + '), include "opponent:<name>".\n'
-          }
-          classifyPrompt += '\nFormat per line: "1:neutral" or "1:negative,opponent:Smith"\nOne line per chunk. No explanations.'
-
-          var result = await callAI({
-            tier: 'fast',
-            maxTokens: 300,
-            timeoutMs: 15000,
-            system: classifyPrompt,
-            messages: [{ role: 'user', content: 'Chunks:\n' + chunkList }],
-          })
-
-          logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'knowledge_classify' }, result.usage)
-          var lines = result.text.split('\n')
-          for (var li = 0; li < lines.length; li++) {
-            var line = lines[li].trim()
-            var numMatch = line.match(/^(\d+)\s*:\s*(.+)/i)
-            if (!numMatch) continue
-            var chunkIdx = parseInt(numMatch[1]) - 1 - b
-            if (chunkIdx < 0 || chunkIdx >= batch.length) continue
-
-            var tags = numMatch[2].toLowerCase()
-            var sentiment = /positive/.test(tags) ? 'positive' : /negative/.test(tags) ? 'negative' : 'neutral'
-            var opponentMatch = tags.match(/opponent\s*:\s*([^,]+)/)
-            var opponent = opponentMatch ? opponentMatch[1].trim() : undefined
-
-            var chunkId = (batch[chunkIdx] as InsertedChunk).id
-            var existingMeta = rows[b + chunkIdx]?.metadata || {}
-            var updatedMeta: Record<string, unknown> = { ...existingMeta, sentiment }
-            if (opponent) updatedMeta.opponent = opponent
-
-            await service.from('agent_knowledge_chunks')
-              .update({ metadata: updatedMeta })
-              .eq('id', chunkId)
-          }
-        }
-      } catch (e: unknown) {
-        console.error({ at: 'knowledge', msg: "Classification failed (chunks still usable)", err: e instanceof Error ? e.message : undefined })
+    const result = await ingestKnowledgeText(service, bot, text, {
+      source,
+      sourceType: source_type,
+      replace,
+      actor: { id: user.id, email: user.email || null },
+    })
+    if (result.message && result.stored === 0 && !result.removed && !result.skipped) {
+      // No chunkable content at all → 400 (mirrors the old behavior).
+      if (result.message === 'No meaningful content found') {
+        return NextResponse.json({ error: result.message }, { status: 400 })
       }
     }
+    return NextResponse.json(result)
+  } catch (e) {
+    if (e instanceof KnowledgeInsertError) return serverError(e.cause, 'bots.knowledge.store')
+    return serverError(e, 'bots.knowledge.store')
   }
-
-  void logBotChange({
-    botId: params.id,
-    orgId: bot.org_id,
-    actorId: user.id,
-    actorEmail: user.email || null,
-    action: 'knowledge_added',
-    summary: 'Added ' + rows.length + ' knowledge chunk' + (rows.length === 1 ? '' : 's') + (source ? ' from "' + source + '"' : '') + (source_type ? ' (' + source_type + ')' : ''),
-    metadata: { source, source_type, chunks_added: rows.length, chunks_skipped: chunks.length - rows.length },
-  })
-
-  return NextResponse.json({ stored: rows.length, removed: staleIds.length, near_dup_skipped: nearDupSkipped, budget_skipped: budgetSkipped, chunks: chunks.map(function(c) { return { title: c.title, chars: c.content.length } }) })
 }
 
 // ── DELETE: clear chunks (all, or by source_type) ────────────
@@ -319,93 +149,4 @@ export async function DELETE(req: Request, props: Params) {
   })
 
   return NextResponse.json({ cleared: true, source_type: sourceType || 'all', chunks_removed: chunkCount ?? 0 })
-}
-
-// ── Chunking logic ────────────────────────────────────────────
-// Splits markdown/text by headings (## or ---) into titled sections.
-// Falls back to paragraph-based splitting if no headings found.
-function chunkText(text: string, source?: string, sourceType?: string): { title: string; content: string; metadata: Record<string, unknown> }[] {
-  const lines = text.split('\n')
-  const chunks: { title: string; content: string; metadata: Record<string, unknown> }[] = []
-  let currentTitle = 'General'
-  let currentLines: string[] = []
-  const baseMeta: Record<string, unknown> = {}
-  if (source) baseMeta.source = source
-  if (sourceType) baseMeta.source_type = sourceType
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    // Match markdown headings: ## Title or ### Title (skip # top-level — that's the doc title)
-    const headingMatch = line.match(/^#{2,4}\s+(.+)/)
-    // Match --- separator (at least 3 dashes on its own line)
-    const isSeparator = /^-{3,}\s*$/.test(line)
-
-    if (headingMatch || isSeparator) {
-      // Flush previous chunk
-      if (currentLines.length > 0) {
-        const content = currentLines.join('\n').trim()
-        if (content.length >= 20) {
-          chunks.push({ title: currentTitle, content, metadata: { ...baseMeta } })
-        }
-      }
-      currentTitle = headingMatch ? headingMatch[1].replace(/\*\*/g, '').trim() : 'General'
-      currentLines = []
-    } else {
-      // Skip frontmatter lines
-      if (/^---\s*$/.test(line) && i < 5) continue
-      if (/^(name|description|type|originSessionId):/.test(line) && i < 10) continue
-      currentLines.push(line)
-    }
-  }
-
-  // Flush last chunk
-  if (currentLines.length > 0) {
-    const content = currentLines.join('\n').trim()
-    if (content.length >= 20) {
-      chunks.push({ title: currentTitle, content, metadata: { ...baseMeta } })
-    }
-  }
-
-  // Sub-divide any chunks over 1500 chars into smaller pieces
-  const MAX_CHUNK = 1500
-  const subdivided: typeof chunks = []
-  for (const chunk of chunks) {
-    if (chunk.content.length <= MAX_CHUNK) {
-      subdivided.push(chunk)
-    } else {
-      // Split by paragraphs, then combine into chunks under the limit
-      const paras = chunk.content.split(/\n\n+/)
-      let buf = ''
-      let subIdx = 1
-      for (const para of paras) {
-        if (buf.length + para.length > MAX_CHUNK && buf.length > 0) {
-          subdivided.push({ title: chunk.title + (subIdx > 1 ? ' (' + subIdx + ')' : ''), content: buf.trim(), metadata: { ...chunk.metadata } })
-          subIdx++
-          buf = ''
-        }
-        buf += (buf ? '\n\n' : '') + para
-      }
-      if (buf.trim().length >= 20) {
-        subdivided.push({ title: chunk.title + (subIdx > 1 ? ' (' + subIdx + ')' : ''), content: buf.trim(), metadata: { ...chunk.metadata } })
-      }
-    }
-  }
-  if (subdivided.length > chunks.length) return subdivided
-
-  // If only one giant chunk, try splitting by double newlines
-  if (chunks.length <= 1 && text.length > 2000) {
-    const paragraphs = text.split(/\n\n+/)
-    const splitChunks: typeof chunks = []
-    for (let i = 0; i < paragraphs.length; i++) {
-      const para = paragraphs[i].trim()
-      if (para.length < 20) continue
-      // Use first line as title if it looks like a heading
-      const firstLine = para.split('\n')[0]
-      const title = firstLine.length < 80 ? firstLine.replace(/^#+\s*/, '').replace(/\*\*/g, '') : 'Section ' + (i + 1)
-      splitChunks.push({ title, content: para, metadata: { ...baseMeta } })
-    }
-    if (splitChunks.length > 1) return splitChunks
-  }
-
-  return chunks
 }

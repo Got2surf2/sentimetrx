@@ -326,6 +326,32 @@ rendered, read, then cleaned up). Limits: 25 MB/file; `MAX_DOC_CHARS` 400K per
 document (the chunk budget still caps what lands). Vision reads log
 `event_type='knowledge_doc_vision'` (see USAGE_ACCOUNTING).
 
+**Super deep crawl — resumable 300-page crawl (Phase 2 P2d, Super only).**
+`POST /api/bots/[id]/crawl-job` runs a **D16a browser-driven loop** (the single
+120s `/deep-crawl` can't do 300 pages): the editor sends `{action:'start'}` once
+(super-only, 403 otherwise), then loops `{action:'step', jobId}` until `done`.
+Each step fetches a time-budgeted batch (`CRAWL_BATCH_PAGES` 20, 45s budget),
+extracts text via the shared `lib/crawlText` helpers (link preservation,
+`stripBoilerplate` per batch), ingests it through the shared
+`ingestKnowledgeText` path (P2b dedup/budget), and rewrites the cursor in
+`agent_crawl_jobs` (sql/176: `queue`/`visited`/`pages_crawled`). Page cap is the
+capability knob `crawlPageCap` (300 super). Same-host BFS + `sitemap.xml`
+seeding. If the tab closes the job row survives at its cursor; reopening the
+editor (`{action:'status'}` with no jobId → newest running job) surfaces a
+**Resume** button. The step loop is unmount-cancelled (a ref gate — the banked
+Stats-loop lesson) so a dead editor never churns the crawl. On completion the
+standing link-integrity guardrail is attached to the agent (idempotent); each
+crawled chunk already carries its real `Official page:` URL, so no 300-entry
+directory block is needed in the prompt.
+
+**Crawl chunks survive editor saves.** Super-crawl / re-crawl-cron chunks are
+tagged `metadata.source_type='deep-crawl'` and live OUTSIDE the editor's
+knowledge textarea. A D3 editor save (`replace:true`) posts only authored
+content, so `ingestKnowledgeText` **never prunes** protected `source_type`
+chunks — otherwise the next Save would wipe a 300-page crawl. (Standard
+`/deep-crawl` + document upload append to the textarea, so their content is in
+the save payload and stays replace-managed as before.)
+
 ### `sql/025_bot_enhancements.sql` (summary)
 - Adds `content_flags` and `source` columns to `bot_conversation_turns`.
 - Adds `sensitive_topics`, `focus_topics`, `deflection_enabled`, `deflection_message`, `ask_profile`, `profile_question`, `intents` columns to `bots`.

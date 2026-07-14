@@ -319,7 +319,9 @@ state which layer it uses.
 **Decision:** There is no job queue (no Inngest, no QStash, no worker
 dyno). Long-running work uses one of three shapes: (a) **resumable
 browser-driven loops** — the client POSTs bounded chunks and loops on a
-cursor (taxonomy classification, imports); (b) **time-budgeted request
+cursor (taxonomy classification, imports, the super-agent 300-page deep
+crawl `agent_crawl_jobs`/sql/176 whose cursor survives a closed tab); (b)
+**time-budgeted request
 slicing** — the handler bails at `TIME_BUDGET_MS` and reports partial
 progress for the caller to continue; (c) **cron sweeps with per-run caps**
 — every 15-min tick processes a bounded batch and the next tick picks up
