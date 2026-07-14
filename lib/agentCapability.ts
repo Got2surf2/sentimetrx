@@ -31,6 +31,7 @@ export interface CapabilityKnobs {
   hardLimit: boolean      // "HARD LIMIT" framing (standard) vs a soft aim (super)
   chunkBudget: number     // max stored KB chunks per agent (ingest cap)
   crawlPageCap: number    // max pages a deep crawl may fetch for this agent (P2d)
+  toolLoop: boolean       // Phase 3: in-turn tool use (search_knowledge / fetch_page)
 }
 
 // The super-tier model dropdown (editor). First entry is the default.
@@ -44,8 +45,8 @@ const VALID_SUPER_MODELS = new Set(SUPER_MODEL_OPTIONS.map((o) => o.value))
 // Standard knobs are EXACTLY today's hardcoded values — a standard agent
 // behaves identically after this change (no regression on existing agents).
 const DEFAULTS: Record<Capability, Omit<CapabilityKnobs, 'capability' | 'modelOverride'>> = {
-  standard: { maxTokens: 400,  ragChunks: 5,  historyWindow: 8,  inputCap: 1200, verbosityScale: 1,   hardLimit: true,  chunkBudget: 2000, crawlPageCap: 30 },
-  super:    { maxTokens: 1200, ragChunks: 12, historyWindow: 24, inputCap: 4000, verbosityScale: 2.5, hardLimit: false, chunkBudget: 5000, crawlPageCap: 300 },
+  standard: { maxTokens: 400,  ragChunks: 5,  historyWindow: 8,  inputCap: 1200, verbosityScale: 1,   hardLimit: true,  chunkBudget: 2000, crawlPageCap: 30,  toolLoop: false },
+  super:    { maxTokens: 1200, ragChunks: 12, historyWindow: 24, inputCap: 4000, verbosityScale: 2.5, hardLimit: false, chunkBudget: 5000, crawlPageCap: 300, toolLoop: true },
 }
 
 /** Normalize a raw capability value (defensive against bad DB/casing). */

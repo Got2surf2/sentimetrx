@@ -12,6 +12,10 @@ import { handleChatTurn } from '@/lib/chatCore'
 import { assertSuperTurnAllowed } from '@/lib/featureFlags'
 
 export const dynamic = 'force-dynamic'
+// Phase 3 — super-agent turns can run a bounded tool loop (up to 3 tool
+// rounds + a forced final call, each a streaming Opus call); the default
+// serverless budget is not guaranteed to cover the worst case.
+export const maxDuration = 120
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -72,12 +76,13 @@ export async function POST(req: NextRequest, props: Params) {
 
   const service = createServiceRoleClient()
   // Explicit column list — select('*') dragged unused heavy columns (faq,
-  // facts, training_urls, review/audit timestamps) over the wire on every
-  // message. This is the exact set this route + lib/chatCore.handleChatTurn
-  // read; knowledge_base stays (RAG fallback context injection).
+  // facts, review/audit timestamps) over the wire on every message. This is
+  // the exact set this route + lib/chatCore.handleChatTurn read;
+  // knowledge_base stays (RAG fallback context injection). training_urls
+  // came back in Phase 3: its hosts are the fetch_page tool's allowlist.
   const { data: agent, error } = await service
     .from('agents')
-    .select('id, org_id, name, status, config, system_prompt, knowledge_base, personality, guardrails, opponents, contrast_mode, subject, negative_content_mode, sensitive_topics, focus_topics, deflection_enabled, deflection_message, ask_profile, profile_question, intents, demographic_inference, focuses, probe_focus_enabled, research_probes, capability, capability_config')
+    .select('id, org_id, name, status, config, system_prompt, knowledge_base, personality, guardrails, opponents, contrast_mode, subject, negative_content_mode, sensitive_topics, focus_topics, deflection_enabled, deflection_message, ask_profile, profile_question, intents, demographic_inference, focuses, probe_focus_enabled, research_probes, capability, capability_config, training_urls')
     .eq('id', params.id)
     .single()
 
@@ -102,6 +107,45 @@ export async function POST(req: NextRequest, props: Params) {
     }
   }
 
-  const result = await handleChatTurn({ agent, service, ip }, body)
-  return NextResponse.json(result, { headers: cors })
+  // Phase 3 — streaming transport (client opt-in via body.stream). The wire
+  // format is SSE: `data: {type:'delta',text}` chunks and `data:
+  // {type:'tool',name,label}` status lines while the turn runs, then `data:
+  // {type:'done',result}` carrying the SAME object the JSON path returns
+  // (clients reconcile their streamed text to result.reply — the
+  // post-generation guardrail scrub may have rewritten it) before the
+  // stream closes. Clients that don't opt in get the legacy JSON response.
+  if (body.stream !== true) {
+    const result = await handleChatTurn({ agent, service, ip }, body)
+    return NextResponse.json(result, { headers: cors })
+  }
+
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream({
+    async start(controller) {
+      let closed = false
+      const send = (obj: unknown) => {
+        if (closed) return
+        try { controller.enqueue(encoder.encode('data: ' + JSON.stringify(obj) + '\n\n')) } catch { closed = true }
+      }
+      try {
+        // emit failures must never abort the turn — if the client
+        // disconnects mid-stream, handleChatTurn still finishes so turn
+        // storage and usage logging land (`send` swallows after close).
+        const result = await handleChatTurn({ agent, service, ip, emit: send }, body)
+        send({ type: 'done', result })
+      } catch (e) {
+        console.error({ at: 'bot-chat', msg: 'stream turn failed', err: (e as Error)?.message })
+        send({ type: 'error', error: 'chat failed' })
+      }
+      if (!closed) { try { controller.close() } catch { /* already closed */ } }
+    },
+  })
+  return new NextResponse(stream, {
+    headers: {
+      ...cors,
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+    },
+  })
 }

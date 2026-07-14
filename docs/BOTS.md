@@ -553,6 +553,7 @@ to the previous hardcoded ones**, so existing agents are unchanged.
 | Input cap (chars) | 1,200 | 4,000 |
 | Verbosity | word-cap ladder ×1, "HARD LIMIT" framing | ladder ×2.5, soft "aim for" framing |
 | Retrieval (Phase 2) | single-query | multi-query — raw question + one Haiku rewrite, unioned/re-ranked to top-K (`lib/multiQueryRetrieval.mergeRankedChunks`; rewrite logs `event_type='query_rewrite'`) |
+| In-turn tools (Phase 3) | none | `search_knowledge` + `fetch_page` bounded tool loop — see "Streaming + tool loop" below |
 
 The super model flows through `callAI.modelOverride`; super turns log as
 `event_type='chat_super'` (vs `chat`) so their Opus-tier cost is visible in
@@ -575,6 +576,7 @@ agent editor's Conversation Controls; POST/PATCH `/api/bots` validate via
   language?:  string                                               // ISO 639-1, optional
   debug?:     boolean                                              // returns _debug array of pipeline steps
   demo?:      boolean                                              // bypasses persistence + rate limit
+  stream?:    boolean                                              // Phase 3 — opt into the SSE transport below
 }
 ```
 
@@ -587,6 +589,44 @@ agent editor's Conversation Controls; POST/PATCH `/api/bots` validate via
   _signals?: { label: string; type: 'intent'|'flag'|'persona'; color: string }[]
 }
 ```
+
+### Streaming + tool loop (AGENT_TIERS Phase 3, 2026-07-14)
+
+**Streaming transport (all agents, client opt-in).** With `stream: true` the
+route answers `text/event-stream` (`maxDuration` 120): `data:
+{type:'delta',text}` chunks and `data: {type:'tool',name,label}` status lines
+while the turn runs, then `data: {type:'done', result}` where `result` is the
+SAME object the JSON path returns. Clients MUST reconcile their streamed text
+to `result.reply` — the post-generation `sanitizeBotReply` scrub cannot
+un-send streamed tokens, so the done event is authoritative — and must not
+render a `[[chips:…]]` trailer mid-stream (ChatBot display-truncates at
+`[[`). Without the flag the legacy single-JSON response is unchanged; older
+clients keep working. Engine side: `handleChatTurn` takes an optional
+`ctx.emit(ChatStreamEvent)`; `lib/ai.callAIStream` does the raw-SSE Anthropic
+call (BYO OpenAI/Azure orgs degrade to one non-streaming call). If the client
+disconnects mid-stream the turn still completes server-side, so turn storage
+and usage logging land.
+
+**Super-agent tool loop (`lib/agentTools.ts`, knob `toolLoop`).** Super
+agents (not in town-hall mode) run a bounded agentic loop — ≤3 tool rounds,
+then results become budget-exhausted errors and `tool_choice:'none'` forces
+the answer:
+
+- `search_knowledge {query}` — a fresh KB lookup through the IDENTICAL
+  retrieval path as the main RAG injection (semantic + keyword fallback +
+  confidence normalization), with the same negative-sentiment holdout.
+- `fetch_page {url}` — live fetch of an official page. Hosts allowlisted
+  from `training_urls` domains (+ subdomains, redirect landing re-checked,
+  8s timeout, `htmlToText` extraction); no `training_urls` → tool absent.
+  The model can never fetch a constructed URL off the official domains
+  (the Spacy link-hallucination rule, enforced in code).
+
+Non-final rounds log `event_type='chat_tool'`; the final round logs
+`chat_super` as before, so the quota backstop still counts one per turn.
+The tool definitions are stable per agent → prompt caching preserved.
+The `/pi/[guid]` PulseIQ client stays on blocking JSON and town-hall turns
+never run the tool loop (live-room latency); flipping PulseIQ to streaming
+later is a client+route change only.
 
 ### Pipeline (per request)
 

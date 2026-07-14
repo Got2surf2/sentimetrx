@@ -275,6 +275,8 @@ export const SPEC_MAP: Record<SpecKey, string[]> = {
     'app/api/cron/bot-conversation-review/**',
     'components/agent/**',
     'components/ui/ChatBot.tsx',
+    'lib/agentCapability.ts',
+    'lib/agentTools.ts',
     'lib/embeddings.ts',
     'lib/personaExtractor.ts',
     'lib/phase3DualWrite.ts',

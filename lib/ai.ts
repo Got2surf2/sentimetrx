@@ -46,7 +46,13 @@ export type ImageContentBlock = {
     | { type: 'base64'; media_type: string; data: string }
     | { type: 'url'; url: string }     // Anthropic fetches the (time-limited signed) URL
 }
-export type MessageContent = string | Array<TextContentBlock | ImageContentBlock>
+// Tool-loop content blocks (AGENT_TIERS Phase 3). Anthropic-only: the tool loop
+// in chatCore replays assistant tool_use blocks and user tool_result blocks
+// verbatim; the OpenAI/Azure builders never see them (tools are disabled on
+// those providers — see callAIStream's fallback).
+export type ToolUseContentBlock = { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+export type ToolResultContentBlock = { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }
+export type MessageContent = string | Array<TextContentBlock | ImageContentBlock | ToolUseContentBlock | ToolResultContentBlock>
 
 export interface AIRequestOptions {
   tier: ModelTier
@@ -75,6 +81,43 @@ export interface AIResponse {
   text: string
   stopReason: 'end_turn' | 'max_tokens' | string
   usage?: AIUsage
+}
+
+// ── Streaming + tool-use types (AGENT_TIERS Phase 3) ─────────────────────────
+
+/** A user-defined tool passed to the Anthropic Messages API. */
+export interface AIToolDefinition {
+  name: string
+  description: string
+  input_schema: Record<string, unknown>
+}
+
+/** One tool call requested by the model (stop_reason 'tool_use'). */
+export interface AIToolUse {
+  id: string
+  name: string
+  input: Record<string, unknown>
+}
+
+export interface AIStreamOptions extends AIRequestOptions {
+  /** Tools the model may call. Anthropic provider only — on OpenAI/Azure the
+   *  call falls back to non-streaming callAI with no tools. */
+  tools?: AIToolDefinition[]
+  /** Called with each incremental text chunk as it streams. On the
+   *  non-streaming fallback it fires once with the full text. */
+  onTextDelta?: (text: string) => void
+  /** Anthropic tool_choice — e.g. { type: 'none' } to force a text answer on
+   *  the tool loop's final budget-exhausted call. */
+  toolChoice?: Record<string, unknown>
+}
+
+export interface AIStreamResult extends AIResponse {
+  /** Tool calls the model requested this turn (empty unless stopReason is 'tool_use'). */
+  toolUses: AIToolUse[]
+  /** The assistant content blocks exactly as generated (text + tool_use, in
+   *  order) — replay these verbatim as the assistant turn when continuing a
+   *  tool loop, per the Messages API contract. */
+  contentBlocks: Array<TextContentBlock | ToolUseContentBlock>
 }
 
 // ── Model mapping ────────────────────────────────────────────────────────────
@@ -291,16 +334,16 @@ function parseOpenAIResponse(data: OpenAIResponseData, model: string, tier: Mode
 
 // ── Main export ──────────────────────────────────────────────────────────────
 
-export async function callAI(opts: AIRequestOptions): Promise<AIResponse> {
-  // Per-org AI gate. Three modes:
-  //   off       → throw AIDisabledError (no outbound vendor call, full stop)
-  //   byo       → force providerConfig to the customer's provider + key,
-  //               overriding any explicit opts.apiKey the caller passed
-  //   platform  → fall through to env-key resolution (current default)
-  // The org check runs unconditionally when usage.org_id is set, even if
-  // the caller passed an explicit apiKey — otherwise export routes that
-  // hardcode ANTHROPIC_API_KEY would bypass both the off gate AND the
-  // BYOK redirect. Cached per-org for 60s in lib/aiKey.
+// Per-org AI gate shared by callAI and callAIStream. Three modes:
+//   off       → throw AIDisabledError (no outbound vendor call, full stop)
+//   byo       → force providerConfig to the customer's provider + key,
+//               overriding any explicit opts.apiKey the caller passed
+//   platform  → fall through to env-key resolution (current default)
+// The org check runs unconditionally when usage.org_id is set, even if
+// the caller passed an explicit apiKey — otherwise export routes that
+// hardcode ANTHROPIC_API_KEY would bypass both the off gate AND the
+// BYOK redirect. Cached per-org for 60s in lib/aiKey.
+async function resolveEffectiveProvider(opts: AIRequestOptions): Promise<{ effective: AIRequestOptions; resolved: ResolvedProvider }> {
   let effective = opts
   if (opts.usage?.org_id) {
     const { resolveOrgAiConfig, AIDisabledError } = await import('@/lib/aiKey')
@@ -319,6 +362,11 @@ export async function callAI(opts: AIRequestOptions): Promise<AIResponse> {
   if (!resolved.apiKey) {
     throw new Error(`No API key configured for provider: ${resolved.provider}`)
   }
+  return { effective, resolved }
+}
+
+export async function callAI(opts: AIRequestOptions): Promise<AIResponse> {
+  const { resolved } = await resolveEffectiveProvider(opts)
 
   // Build provider-specific request
   let url: string
@@ -379,6 +427,194 @@ export async function callAI(opts: AIRequestOptions): Promise<AIResponse> {
     : parseOpenAIResponse(data, resolved.model, opts.tier)
 
   // Auto-log usage if context provided
+  if (opts.usage && result.usage) {
+    try {
+      const { logUsage } = require('@/lib/usageLog')
+      logUsage(opts.usage, result.usage)
+    } catch {}
+  }
+
+  return result
+}
+
+// ── Streaming + tools (AGENT_TIERS Phase 3) ──────────────────────────────────
+
+/** Minimal shapes of the Anthropic SSE events this parser consumes. */
+interface AnthropicStreamEvent {
+  type: string
+  index?: number
+  message?: { usage?: { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
+  content_block?: { type: string; id?: string; name?: string; text?: string }
+  delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string }
+  usage?: { output_tokens?: number }
+  error?: { type?: string; message?: string }
+}
+
+/**
+ * Streaming Messages API call with optional tool definitions. Anthropic only:
+ * on OpenAI/Azure (BYO-key orgs) it degrades to a single non-streaming callAI
+ * with no tools — onTextDelta fires once with the full text, toolUses is empty.
+ *
+ * Text deltas are surfaced through opts.onTextDelta as they arrive. When the
+ * model requests tools, stopReason is 'tool_use' and toolUses carries the
+ * parsed calls; contentBlocks holds the full assistant turn (text + tool_use,
+ * in order) for verbatim replay by the caller's tool loop.
+ */
+export async function callAIStream(opts: AIStreamOptions): Promise<AIStreamResult> {
+  const { resolved } = await resolveEffectiveProvider(opts)
+
+  if (resolved.provider !== 'anthropic') {
+    // BYO OpenAI/Azure org — no streaming, no tools. The caller's tool loop
+    // sees stopReason 'end_turn' and finishes on the first pass. (callAI's
+    // request builders read only the fields they know, so the extra
+    // tools/onTextDelta props on opts are inert.)
+    const r = await callAI(opts)
+    if (r.text) opts.onTextDelta?.(r.text)
+    return { ...r, toolUses: [], contentBlocks: r.text ? [{ type: 'text', text: r.text }] : [] }
+  }
+
+  const base = buildAnthropicRequest(resolved, opts)
+  const body: Record<string, unknown> = { ...base.body, stream: true }
+  if (opts.tools && opts.tools.length > 0) body.tools = opts.tools
+  if (opts.toolChoice) body.tool_choice = opts.toolChoice
+
+  // Streaming turns run longer than single-shot calls (the connection stays
+  // open while tokens generate), so the default budget is more generous.
+  const timeoutMs = opts.timeoutMs || 120000
+  const response = await fetch(base.url, {
+    method: 'POST',
+    headers: base.headers,
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
+  })
+
+  if (!response.ok || !response.body) {
+    let errMsg = `AI API error: ${response.status}`
+    try {
+      const errData = await response.json()
+      errMsg = (errData as { error?: { message?: string } })?.error?.message || errMsg
+    } catch { /* ignore */ }
+    if (isCreditError(response.status, errMsg)) {
+      void recordCreditError('anthropic', { code: response.status, message: errMsg })
+    }
+    const err = new Error(errMsg) as Error & { status?: number }
+    err.status = response.status
+    throw err
+  }
+
+  // Accumulators keyed by content-block index. Text blocks stream text_delta;
+  // tool_use blocks stream input_json_delta fragments that parse on block stop.
+  const blockTypes: Record<number, string> = {}
+  const textParts: Record<number, string> = {}
+  const toolMeta: Record<number, { id: string; name: string; json: string }> = {}
+  const order: number[] = []
+  let stopReason = 'end_turn'
+  let inputTokens = 0, outputTokens = 0, cacheRead = 0, cacheCreate = 0
+
+  const handleEvent = (ev: AnthropicStreamEvent) => {
+    switch (ev.type) {
+      case 'message_start': {
+        const u = ev.message?.usage || {}
+        inputTokens = u.input_tokens || 0
+        cacheRead = u.cache_read_input_tokens || 0
+        cacheCreate = u.cache_creation_input_tokens || 0
+        break
+      }
+      case 'content_block_start': {
+        const idx = ev.index ?? 0
+        const b = ev.content_block
+        if (!b) break
+        blockTypes[idx] = b.type
+        order.push(idx)
+        if (b.type === 'text') {
+          textParts[idx] = b.text || ''
+          if (b.text) opts.onTextDelta?.(b.text)
+        } else if (b.type === 'tool_use') {
+          toolMeta[idx] = { id: b.id || '', name: b.name || '', json: '' }
+        }
+        break
+      }
+      case 'content_block_delta': {
+        const idx = ev.index ?? 0
+        const d = ev.delta
+        if (!d) break
+        if (d.type === 'text_delta' && typeof d.text === 'string') {
+          textParts[idx] = (textParts[idx] || '') + d.text
+          if (d.text) opts.onTextDelta?.(d.text)
+        } else if (d.type === 'input_json_delta' && typeof d.partial_json === 'string' && toolMeta[idx]) {
+          toolMeta[idx].json += d.partial_json
+        }
+        break
+      }
+      case 'message_delta': {
+        if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason
+        if (ev.usage?.output_tokens != null) outputTokens = ev.usage.output_tokens
+        break
+      }
+      case 'error': {
+        throw new Error(ev.error?.message || 'AI stream error')
+      }
+    }
+  }
+
+  // SSE framing: events separated by a blank line; payload on `data:` lines.
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let sep: number
+      while ((sep = buffer.indexOf('\n\n')) !== -1) {
+        const rawEvent = buffer.slice(0, sep)
+        buffer = buffer.slice(sep + 2)
+        for (const line of rawEvent.split('\n')) {
+          if (!line.startsWith('data:')) continue
+          const payload = line.slice(5).trim()
+          if (!payload) continue
+          let parsed: AnthropicStreamEvent
+          try { parsed = JSON.parse(payload) as AnthropicStreamEvent } catch { continue }
+          handleEvent(parsed)
+        }
+      }
+    }
+  } finally {
+    try { reader.releaseLock() } catch { /* already released */ }
+  }
+
+  const contentBlocks: Array<TextContentBlock | ToolUseContentBlock> = []
+  const toolUses: AIToolUse[] = []
+  for (const idx of order) {
+    if (blockTypes[idx] === 'text') {
+      contentBlocks.push({ type: 'text', text: textParts[idx] || '' })
+    } else if (blockTypes[idx] === 'tool_use') {
+      const m = toolMeta[idx]
+      let input: Record<string, unknown> = {}
+      try { input = m.json ? (JSON.parse(m.json) as Record<string, unknown>) : {} } catch { /* malformed input → {} */ }
+      const call = { id: m.id, name: m.name, input }
+      contentBlocks.push({ type: 'tool_use', ...call })
+      toolUses.push(call)
+    }
+  }
+
+  const result: AIStreamResult = {
+    text: contentBlocks.filter((b): b is TextContentBlock => b.type === 'text').map((b) => b.text).join(''),
+    stopReason,
+    toolUses,
+    contentBlocks,
+    usage: {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cache_read_tokens: cacheRead,
+      cache_creation_tokens: cacheCreate,
+      model: resolved.model,
+      provider: 'anthropic',
+      tier: opts.tier,
+    },
+  }
+
   if (opts.usage && result.usage) {
     try {
       const { logUsage } = require('@/lib/usageLog')

@@ -10,7 +10,8 @@
 // consumed — that wiring happens in Phase 4 commit 2.
 
 import type { createServiceRoleClient } from '@/lib/supabase/server'
-import { callAI } from '@/lib/ai'
+import { callAI, callAIStream, type AIToolDefinition, type AIResponse, type MessageContent } from '@/lib/ai'
+import { buildAgentTools, makeToolExecutor, runAgentToolLoop, type ChatStreamEvent } from '@/lib/agentTools'
 import { checkMessage, auditContent, scoreSentiment, scoreSentimentFull, type ContentSafetyConfig } from '@/lib/contentGuard'
 import { cleanDeflectResponse, sanitizeBotReply } from '@/lib/guardrails'
 import { evaluateDeflection } from '@/lib/deflectionRouter'
@@ -96,13 +97,23 @@ export interface ChatAgent {
   research_probes?: unknown
   capability?: string | null
   capability_config?: { model?: string; liveContext?: unknown } | null
+  /** Phase 3 — hosts of these URLs form the fetch_page tool's allowlist.
+   *  Only selected by the routes for super agents; absent → no fetch_page. */
+  training_urls?: string[] | null
 }
+
+// Re-exported so route handlers can type their emit wiring off chatCore.
+export type { ChatStreamEvent } from '@/lib/agentTools'
 
 export interface ChatCoreContext {
   agent: ChatAgent
   service: ReturnType<typeof createServiceRoleClient>
   ip: string
   townHallContext?: TownHallContext
+  /** Phase 3 — when present, the main reply streams through this callback.
+   *  Absent → single blocking JSON turn, byte-identical to the legacy path
+   *  for standard agents. */
+  emit?: (ev: ChatStreamEvent) => void
 }
 
 export type ChatCoreResult = Record<string, unknown>
@@ -821,6 +832,29 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
     systemParts.push('\n\nFOLLOW-UP PILLS: When you END a reply by offering the person a choice between a few next steps (e.g. "Want to hear about the impact, the buildings, or how to get involved?"), append a trailer on its own final line in EXACTLY this format:\n[[chips: First option | Second option | Third option]]\nRules: 2–4 options, each 2–5 words, phrased in the visitor\'s voice as something they would tap, mirroring the choices you just named. Use it ONLY when there are discrete next-step options — never after an open-ended question (like asking their name) or when there is nothing concrete to choose. The widget renders the trailer as clickable buttons and hides the raw text, so never mention "chips" or the brackets in your prose.')
   }
 
+  // ── Phase 3: in-turn tool loop (super agents only) ──────────────────
+  // Two tools: a second knowledge-base lookup with a model-chosen query, and
+  // a live fetch of an official page (hosts allowlisted from training_urls —
+  // the model must never construct URLs off the agent's own domains, per the
+  // Spacy link-hallucination incident). The tool list is stable per agent, so
+  // the availability note lives in the stable (cached) prefix; the tools
+  // param itself renders before system and is equally stable.
+  // Town-hall mode is excluded this phase: PulseIQ turns are facilitated
+  // live-room exchanges where multi-round tool latency hurts, and the
+  // PulseIQ client still consumes blocking JSON. Revisit when PulseIQ
+  // streaming lands.
+  const toolLoopActive = capKnobs.toolLoop && !ctx.townHallContext
+  const fetchAllowedHosts = new Set<string>()
+  if (toolLoopActive && Array.isArray(bot.training_urls)) {
+    for (const u of bot.training_urls) {
+      try { fetchAllowedHosts.add(new URL(String(u)).hostname.toLowerCase()) } catch { /* skip malformed */ }
+    }
+  }
+  const agentTools: AIToolDefinition[] | undefined = toolLoopActive ? buildAgentTools(fetchAllowedHosts) : undefined
+  if (agentTools) {
+    systemParts.push('\n\nLIVE TOOLS: You can call tools mid-answer (search_knowledge' + (fetchAllowedHosts.size > 0 ? ', fetch_page' : '') + '). Prefer the knowledge already provided; reach for a tool only when it is genuinely needed to answer correctly. When you fetch a live page, attribute time-sensitive facts to it naturally (e.g. "as of today\'s schedule..."). Never mention tool names or internal mechanics to the user.')
+  }
+
   // Anthropic prompt-cache boundary. Everything pushed above is stable per
   // agent across turns (the date line changes daily; toneNudge/MCO blocks
   // are occasional per-turn variances that just miss the cache that turn).
@@ -828,6 +862,28 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
   // focus, verbosity, persona), so it goes after the cache breakpoint.
   const stableSystemPartCount = systemParts.length
 
+
+  // One retrieval pass for a given query string: embed → semantic RPC with
+  // keyword fallback → D1 confidence normalization. Returns scored chunks.
+  // Function-scoped (Phase 3) so both the RAG injection below and the
+  // search_knowledge tool executor run the identical retrieval path.
+  const runRetrieval = async function(q: string): Promise<RagChunk[] | null> {
+    const emb = await generateEmbedding(q, bot.org_id)
+    const params: Record<string, unknown> = { p_bot_id: bot.id, p_query: q, p_limit: capKnobs.ragChunks }
+    let name = 'search_knowledge_chunks'
+    if (emb) { params.p_embedding = JSON.stringify(emb); name = 'search_knowledge_semantic' }
+    let { data, error } = await service.rpc(name, params)
+    if (error && name === 'search_knowledge_semantic') {
+      console.error({ at: 'bot-chat', msg: "Semantic search failed, falling back", err: error.message })
+      const fb = await service.rpc('search_knowledge_chunks', { p_bot_id: bot.id, p_query: q, p_limit: capKnobs.ragChunks })
+      data = fb.data; error = fb.error
+    }
+    if (error) console.error({ at: 'bot-chat', msg: "RAG search error", err: error.message })
+    // D1: the keyword-fallback RPC returns `rank` but no `confidence`, which
+    // would read as 0 and suppress the entire KB. Derive it before scoring.
+    normalizeChunkConfidence(data as RagChunk[] | null)
+    return data as RagChunk[] | null
+  }
 
   // RAG: semantic search with embeddings + full-text + trigram
   // Skip RAG when an intent with action URL was detected — the response is the action, not knowledge
@@ -838,26 +894,6 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
     if (debugMode) _debug.push('RAG: skipped (intent with action URL detected)')
   } else if (userQuery) {
     try {
-      // One retrieval pass for a given query string: embed → semantic RPC with
-      // keyword fallback → D1 confidence normalization. Returns scored chunks.
-      const runRetrieval = async function(q: string): Promise<RagChunk[] | null> {
-        const emb = await generateEmbedding(q, bot.org_id)
-        const params: Record<string, unknown> = { p_bot_id: bot.id, p_query: q, p_limit: capKnobs.ragChunks }
-        let name = 'search_knowledge_chunks'
-        if (emb) { params.p_embedding = JSON.stringify(emb); name = 'search_knowledge_semantic' }
-        let { data, error } = await service.rpc(name, params)
-        if (error && name === 'search_knowledge_semantic') {
-          console.error({ at: 'bot-chat', msg: "Semantic search failed, falling back", err: error.message })
-          const fb = await service.rpc('search_knowledge_chunks', { p_bot_id: bot.id, p_query: q, p_limit: capKnobs.ragChunks })
-          data = fb.data; error = fb.error
-        }
-        if (error) console.error({ at: 'bot-chat', msg: "RAG search error", err: error.message })
-        // D1: the keyword-fallback RPC returns `rank` but no `confidence`, which
-        // would read as 0 and suppress the entire KB. Derive it before scoring.
-        normalizeChunkConfidence(data as RagChunk[] | null)
-        return data as RagChunk[] | null
-      }
-
       // Phase 2: super agents run MULTI-QUERY retrieval — the raw question plus
       // one Haiku rewrite, unioned/re-ranked to the top-K. Standard agents keep
       // the single-query path unchanged.
@@ -1728,7 +1764,6 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
       : null
 
   try {
-    // @ts-ignore — recentMessages roles are always 'user' | 'assistant' from client
     // Main reply model/budget come from the capability knobs (AGENT_TIERS
     // Phase 1): standard agents run tier:'advanced' (Sonnet 4.6) with no
     // modelOverride and maxTokens 400 — identical to before; super agents carry
@@ -1742,16 +1777,57 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
     // bytes the old single join('\n') produced.
     const stableSystem = systemParts.slice(0, stableSystemPartCount).join('\n')
     const volatileSystem = systemParts.slice(stableSystemPartCount).join('\n')
-    const result = await callAI({
-      tier: 'advanced',
-      modelOverride: capKnobs.modelOverride,
-      maxTokens: capKnobs.maxTokens,
-      timeoutMs: 30000,
-      messages: recentMessages,
-      system: volatileSystem
-        ? [{ type: 'text' as const, text: stableSystem, cache: true }, { type: 'text' as const, text: '\n' + volatileSystem }]
-        : [{ type: 'text' as const, text: stableSystem, cache: true }],
-    })
+    const systemBlocks = volatileSystem
+      ? [{ type: 'text' as const, text: stableSystem, cache: true }, { type: 'text' as const, text: '\n' + volatileSystem }]
+      : [{ type: 'text' as const, text: stableSystem, cache: true }]
+
+    // Phase 3 — the streaming/tool path runs when the caller is streaming
+    // (ctx.emit) or the agent has the tool loop enabled (super). Otherwise
+    // the legacy single blocking call below is unchanged.
+    const useStreamPath = !!ctx.emit || !!agentTools
+    let result: AIResponse
+    if (useStreamPath) {
+      // Bounded agentic loop (lib/agentTools): the model may request tools;
+      // each round executes them, replays the assistant blocks + tool_results
+      // verbatim, and re-calls. Text deltas from every round stream to the
+      // client as they generate. Standard agents streaming (no tools) take
+      // the same path and finish on the first call.
+      const loopMessages: Array<{ role: 'user' | 'assistant'; content: MessageContent }> =
+        recentMessages.map(function(m: ChatMessage) { return { role: m.role, content: m.content as MessageContent } })
+      const loop = await runAgentToolLoop({
+        messages: loopMessages,
+        callOnce: (msgs, toolChoice) => callAIStream({
+          tier: 'advanced',
+          modelOverride: capKnobs.modelOverride,
+          maxTokens: capKnobs.maxTokens,
+          timeoutMs: 60000,
+          messages: msgs,
+          system: systemBlocks,
+          tools: agentTools,
+          toolChoice,
+          onTextDelta: function(t) { ctx.emit?.({ type: 'delta', text: t }) },
+        }),
+        executeTool: makeToolExecutor({ runRetrieval, allowedHosts: fetchAllowedHosts }),
+        emit: ctx.emit,
+        // Intermediate rounds get their own usage rows so the tool loop's
+        // true cost is visible in /admin/usage; the FINAL round logs as
+        // chat/chat_super below (keeping the super-quota count at 1/turn).
+        onRoundUsage: function(u) { logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'chat_tool' }, u) },
+        debugLine: debugMode ? function(l) { _debug.push(l) } : undefined,
+      })
+      result = { text: loop.text, stopReason: loop.stopReason, usage: loop.usage }
+      if (debugMode && loop.rounds > 0) _debug.push('Tool loop: ' + loop.rounds + ' round(s)')
+    } else {
+      // @ts-ignore — recentMessages roles are always 'user' | 'assistant' from client
+      result = await callAI({
+        tier: 'advanced',
+        modelOverride: capKnobs.modelOverride,
+        maxTokens: capKnobs.maxTokens,
+        timeoutMs: 30000,
+        messages: recentMessages,
+        system: systemBlocks,
+      })
+    }
 
     // Log usage. Super turns log as 'chat_super' so their (Opus-tier) cost is
     // visible in /admin/usage and countable by the abuse-backstop quota.

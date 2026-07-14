@@ -201,6 +201,13 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   // repeated profanity/abuse), the input is locked — no further messages allowed.
   const [sessionEnded, setSessionEnded] = useState(false)
   const [loading, setLoading] = useState(false)
+  // Phase 3 streaming: reply text painted live as the server streams it, and
+  // the current tool-status line ("Checking example.org…") while a Super
+  // Agent runs a tool. Both are transient — on completion the reply is
+  // reconciled to the authoritative `result.reply` from the done event (the
+  // server-side guardrail scrub may rewrite streamed text) and these clear.
+  const [streamText, setStreamText] = useState('')
+  const [toolStatus, setToolStatus] = useState<string | null>(null)
   const [debugMode, setDebugMode] = useState(false)
   const [demoMode, setDemoMode] = useState(false)
   const [showVerboseAuth, setShowVerboseAuth] = useState(false)
@@ -362,7 +369,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
   useEffect(() => {
     scrollBottom()
     setTimeout(scrollBottom, 100)
-  }, [messages, loading, scrollBottom])
+  }, [messages, loading, streamText, scrollBottom])
 
   // Silence-probe idle timer. Re-arms each time a bot reply lands AND the
   // user has had at least one real exchange. Clears on any state change so
@@ -500,6 +507,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
         body: JSON.stringify({
           messages: apiMessages,
           session_id: sessionId,
+          stream: true,
           debug: debugMode || undefined,
           demo: demoMode || undefined,
           user_name: userName && userName !== '_skip' ? userName : undefined,
@@ -507,20 +515,65 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
           ...(config.extraBody || {}),
         }),
       })
-      const data = await res.json()
+
+      // Phase 3 streaming transport. Servers that support it answer with SSE
+      // (delta/tool events, then a `done` event carrying the SAME object the
+      // JSON path returns); older servers and the clara/nora endpoints ignore
+      // the stream flag and answer plain JSON. Either way `data` below ends
+      // up as the authoritative result object.
+      interface ChatResult { reply?: string | null; ended?: boolean; _debug?: string[]; _signals?: Message['_signals'] }
+      let data: ChatResult | null = null
+      const ctype = res.headers.get('content-type') || ''
+      if (res.ok && ctype.includes('text/event-stream') && res.body) {
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buf = ''
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buf += decoder.decode(value, { stream: true })
+          let sep: number
+          while ((sep = buf.indexOf('\n\n')) !== -1) {
+            const frame = buf.slice(0, sep)
+            buf = buf.slice(sep + 2)
+            for (const line of frame.split('\n')) {
+              if (!line.startsWith('data:')) continue
+              let ev: { type?: string; text?: string; label?: string; result?: ChatResult; error?: string }
+              try { ev = JSON.parse(line.slice(5).trim()) } catch { continue }
+              if (ev.type === 'delta' && typeof ev.text === 'string') {
+                const chunk = ev.text
+                setToolStatus(null)
+                setStreamText(prev => prev + chunk)
+              } else if (ev.type === 'tool' && ev.label) {
+                setToolStatus(ev.label)
+              } else if (ev.type === 'done') {
+                data = ev.result || null
+              } else if (ev.type === 'error') {
+                throw new Error(ev.error || 'stream error')
+              }
+            }
+          }
+        }
+        if (!data) throw new Error('stream ended without a result')
+      } else {
+        data = await res.json()
+      }
       setLastFailedInput(null)
-      const raw = data.reply || 'Sorry, something went wrong.'
+      const raw = data?.reply || 'Sorry, something went wrong.'
       const { text, chips } = config.dynamicChips ? extractChips(raw) : { text: raw, chips: [] }
       // Server terminated the session → lock the input (no chips either).
-      const ended = data.ended === true
-      setMessages(prev => [...prev, { role: 'assistant', content: text, _debug: data._debug, _signals: data._signals, _chips: ended ? undefined : (chips.length ? chips : undefined) }])
+      const ended = data?.ended === true
+      setMessages(prev => [...prev, { role: 'assistant', content: text, _debug: data?._debug, _signals: data?._signals, _chips: ended ? undefined : (chips.length ? chips : undefined) }])
       if (ended) setSessionEnded(true)
     } catch {
-      // All retries exhausted. Save the user's message so they can hit
-      // Retry instead of having to retype it; show a friendlier error.
+      // All retries exhausted (or the stream broke mid-turn — any partial
+      // streamed text is discarded; the message can be retried whole). Save
+      // the user's message so they can hit Retry instead of retyping.
       setLastFailedInput(text)
       setMessages(prev => [...prev, { role: 'assistant', content: "Connection hiccup — your message didn't go through. Tap Retry below to send it again." }])
     } finally {
+      setStreamText('')
+      setToolStatus(null)
       setLoading(false)
       setTimeout(() => inputRef.current?.focus(), 100)
     }
@@ -735,7 +788,11 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
           </div>
         ))}
 
-        {/* Typing indicator */}
+        {/* Typing indicator / live streaming bubble. While the reply streams
+           we paint it in-place (truncated at any `[[` so a chips trailer
+           never flashes as raw text); the finalized message replaces this
+           bubble when the done event lands. The tool-status line shows what
+           a Super Agent is doing mid-turn ("Checking example.org…"). */}
         {loading && (
           <div style={{ display: 'flex', gap: 8 }}>
             <div style={{
@@ -744,15 +801,34 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: '0.875rem', color: config.avatarTextColor || 'white', fontWeight: 700,
             }}>{config.avatarLetter}</div>
-            <div style={{
-              padding: '12px 20px', borderRadius: '18px 18px 18px 4px',
-              background: 'white', border: '1px solid #e5e7eb',
-              display: 'flex', gap: 6, alignItems: 'center',
-            }}>
-              <span className="chatbot-typing-dot" style={{ animationDelay: '0ms' }} />
-              <span className="chatbot-typing-dot" style={{ animationDelay: '200ms' }} />
-              <span className="chatbot-typing-dot" style={{ animationDelay: '400ms' }} />
-            </div>
+            {streamText ? (
+              <div style={{
+                maxWidth: '80%',
+                padding: '12px 16px', borderRadius: '18px 18px 18px 4px',
+                background: 'white', color: '#1a1a1a',
+                fontSize: '0.9rem', lineHeight: 1.6,
+                border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                whiteSpace: 'pre-wrap', overflowWrap: 'break-word' as const, wordBreak: 'break-word' as const,
+              }}>
+                <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(formatHtml(streamText.split('[[')[0])) }} />
+                {toolStatus && (
+                  <div style={{ marginTop: 8, fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic' }}>{toolStatus}</div>
+                )}
+              </div>
+            ) : (
+              <div style={{
+                padding: '12px 20px', borderRadius: '18px 18px 18px 4px',
+                background: 'white', border: '1px solid #e5e7eb',
+                display: 'flex', gap: 6, alignItems: 'center',
+              }}>
+                <span className="chatbot-typing-dot" style={{ animationDelay: '0ms' }} />
+                <span className="chatbot-typing-dot" style={{ animationDelay: '200ms' }} />
+                <span className="chatbot-typing-dot" style={{ animationDelay: '400ms' }} />
+                {toolStatus && (
+                  <span style={{ marginLeft: 6, fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic' }}>{toolStatus}</span>
+                )}
+              </div>
+            )}
           </div>
         )}
 

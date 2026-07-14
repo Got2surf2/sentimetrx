@@ -8,7 +8,9 @@
 > COMPLETE — P2a (multi-query retrieval), P2b (near-dup + chunk budget), P2c
 > (PDF/DOCX ingestion), P2d (resumable 300-page crawl, sql/176), P2e (weekly
 > hash-diff re-crawl cron, sql/177), P2f (liveContext adapter registry) all
-> SHIPPED. Phase 3 (§3.2) stays gated.**
+> SHIPPED. Phase 3 (§3.2 — streaming + in-turn tool loop) OWNER-GREENLIT and
+> SHIPPED 2026-07-14 (no SQL): agent-widget streaming for ALL agents,
+> super-only tool loop. PulseIQ stays on blocking JSON (see §3.2).**
 > Written 2026-07-14 (Fable review session) on the owner mandate: *"we are
 > running into situations where a much more sophisticated and informed bot is
 > necessary — should we have regular agents and then super agents (more
@@ -170,18 +172,57 @@ scattered literals. User-facing name (owner, 2026-07-14): **"Super Agents"**
 | KB size | ~30 pages, no docs | sitemap-driven resumable crawl (300+ pages), PDF/DOCX ingestion via the existing `readDocument` vision pipeline, per-agent chunk budget (e.g. 5,000) | crawl runs as a D16a browser-driven loop (the taxonomy-classify pattern) — serverless 120s cannot do 300 pages in one shot |
 | KB freshness | manual only | weekly re-crawl cron of `training_urls` with content-hash diffing (only changed pages re-chunk/re-embed) — **SHIPPED P2e**: `/api/cron/agent-recrawl` (Mon 07:00 UTC), per-page sha256 in `agent_kb_page_hashes` (sql/177), `lib/botKnowledge/recrawl.ts` | **super-tier only** (owner, 2026-07-14): auto-refresh is a paid differentiator; standard agents stay manual-refresh |
 | Live data | hand-wired (`config.liveContext==='wildfire'`, MCO bot-id gate) | small adapter registry: `liveContext: [{source, params}]` resolved from a typed adapter map; wildfire + MCO become the first two adapters — **SHIPPED P2f**: `lib/liveContext/registry.ts` (`resolveLiveContextBlocks`) + client-safe `types.ts`; legacy gates preserved exactly, super knob = `capability_config.liveContext` | super-only knob |
+| In-turn tools | none | `search_knowledge` (second KB lookup) + `fetch_page` (live official page, training_urls host allowlist), ≤3 rounds/turn — **SHIPPED P3** (`lib/agentTools.ts`, knob `toolLoop`; off in town-hall mode) | §3.2 |
+| Streaming | single JSON response | SSE deltas + tool status (client opt-in `body.stream`; works for standard agents too — transport, not a paid knob) — **SHIPPED P3** | §3.2 |
 | Turn metering | none (rate-limit only) | `org_features` monthly quota on super-turn count | billing hook |
 
-### 3.2 Explicitly deferred (Phase 3, gated on demand)
+### 3.2 Phase 3 — in-turn tool use + streaming (SHIPPED 2026-07-14)
 
-**In-turn tool use + streaming.** The real "heavy lifting" differentiator —
-letting the model fetch an official page live, run a second KB lookup, or
-query structured data mid-turn — requires a tool-use loop in `chatCore` and
-**streaming responses** (multi-step turns exceed acceptable blocking
-latency; today's path is a single JSON response with a 30s timeout). This
-is an architectural change to the one engine both products share. Do not
-build it until a real customer scenario demands it; §6 assigns it its own
-model tier.
+Owner-greenlit 2026-07-14 ("start phase 3"). One engine, two additions:
+
+**Streaming transport (all agents, client opt-in).** `handleChatTurn` gains
+an optional `ctx.emit` callback (`ChatStreamEvent`: `delta` text chunks +
+`tool` status lines). The agent chat route answers SSE when the client sends
+`body.stream:true` — `data: {type:'delta'|'tool'|...}` events, then `data:
+{type:'done', result}` carrying the SAME object the JSON path returns —
+and legacy JSON otherwise, so every existing client keeps working.
+`components/ui/ChatBot.tsx` opts in, paints deltas live, and **reconciles**
+the finished bubble to `result.reply`: the post-generation guardrail scrub
+(`sanitizeBotReply`) cannot un-send streamed tokens, so the done-event text
+is always authoritative (accumulate-and-reconcile; the `[[chips:…]]` trailer
+is display-truncated mid-stream and extracted from the final text).
+`lib/ai.ts` grew `callAIStream` — raw-SSE parsing on the Anthropic path;
+BYO OpenAI/Azure orgs degrade to a single non-streaming call. Route
+`maxDuration` 120s. **PulseIQ stays on blocking JSON** (its client, and the
+tool loop is disabled in town-hall mode — live facilitated rooms are
+latency-sensitive); flipping it later is a client+route change only.
+
+**Tool loop (super agents only, `CAPABILITY_DEFAULTS.toolLoop`).** Bounded
+agentic loop in `lib/agentTools.ts` (≤3 tool rounds, then tool results are
+budget-exhausted errors and `tool_choice:'none'` forces a text answer).
+Two tools:
+- `search_knowledge` — a second KB lookup with a model-chosen query, running
+  the IDENTICAL retrieval path as the main RAG injection (semantic RPC +
+  keyword fallback + D1 confidence fix) with the same negative-sentiment
+  holdout, so the tool is not a side door into deflected material.
+- `fetch_page` — live fetch of an official page, **host-allowlisted to
+  `training_urls` domains** (plus subdomains), redirect landing host
+  re-checked, 8s timeout, text extracted via `lib/crawlText.htmlToText`.
+  No allowlist (no training_urls) → the tool doesn't exist. This is the
+  Spacy-incident rule enforced in code: the model can never fetch or be
+  steered to a constructed URL off the official domains.
+
+Cost/accounting: every non-final round logs as `event_type:'chat_tool'`;
+the final round stays `chat`/`chat_super`, so the super-quota backstop still
+counts 1 per turn while /admin/usage sees the loop's true cost. Tool
+definitions render before the system prompt and are stable per agent, so
+prompt caching is preserved.
+
+Verified: 25 unit tests (`callAIStream` SSE parsing incl. byte-split frames,
+executor allowlist/redirect/holdout, loop bounds + forced-answer, widget
+stream-reconcile/fallback/ended/retry) + live bar
+`scripts/_verify_tool_loop.mts` (untracked KEEP): real Anthropic streaming,
+real multi-round tool replay, real gnu.org fetch informing the answer.
 
 ## 4. Economics (arithmetic from `lib/usageRates.ts` RATES only)
 
@@ -231,8 +272,13 @@ the reference case — read-only), no push without the owner's word.
   near-dup dedup (reuse sql/135's embedding match), weekly re-crawl cron,
   multi-query retrieval, live-context adapter registry. Verification: crawl
   a real 100+-page site on TEST; retrieval A/B on a fixed question set.
-- **Phase 3 — tool loop + streaming (GATED, not scheduled).** Owner
-  greenlights only on a concrete customer need.
+- **Phase 3 — tool loop + streaming. ✅ SHIPPED 2026-07-14** (owner
+  greenlit; Fable per §6). No SQL. `lib/ai.ts` `callAIStream` (raw SSE +
+  tools; provider fallback), `lib/agentTools.ts` (tool defs, executors,
+  bounded loop), chatCore `ctx.emit` + super-only loop wiring, agent chat
+  route SSE branch (+`maxDuration` 120, `training_urls` back in the select
+  as the fetch_page allowlist), ChatBot streaming consume with
+  reconcile-to-done + JSON fallback. Full design + verification bar in §3.2.
 
 ## 6. Who builds it — model-tier recommendation
 
@@ -262,11 +308,9 @@ the reference case — read-only), no push without the owner's word.
 These four unblock **Phase 1** (tier-split MVP) and **Phase 2** (super KB +
 retrieval), both on Opus per §6.
 
-**Still open (does NOT block Phases 1–2):**
-
-5. **Phase 3 gate** — the in-turn tool-loop + streaming build stays deferred
-   until a concrete customer scenario demands live fetch / mid-turn lookup
-   (§3.2). Revisit when such a need is named; it's the one Fable-tier item.
+5. **Phase 3 gate → RELEASED (owner, 2026-07-14).** The owner greenlit the
+   in-turn tool-loop + streaming build ("start phase 3"); it shipped the
+   same day on Fable per §6. See §3.2 for the as-built design.
 
 ## Cross-references
 

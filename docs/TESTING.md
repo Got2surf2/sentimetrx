@@ -233,6 +233,8 @@ _Pure-logic example: `tests/unit/serviceHealth.test.ts` (added 2026-06-16) cover
 
 _Pure-logic example: `tests/unit/textmineNav.test.ts` (added 2026-06-25) covers the TextMine two-row-nav state map in `lib/textmineNav.ts` — the `(section,view)⇄(subTab,viewBy)` round-trips, the Comments lens-collapse, the uniform sub-menu, the theme-lock rule, and the `availableSections`/`defaultSection` gating — see ANALYTICS.md "Navigation IA"._
 
+_AGENT_TIERS Phase 3 examples (added 2026-07-14): `tests/unit/callAIStream.test.ts` (raw-SSE parsing against a mocked fetch — text deltas, tool_use `input_json_delta` assembly, byte-split frames, in-stream errors, non-Anthropic fallback), `tests/unit/agentTools.test.ts` (fetch_page host allowlist + redirect re-check, negative-chunk holdout, tool-loop round budget + forced `tool_choice:'none'`), `tests/unit/components/ChatBotStreaming.test.tsx` (jsdom — the widget streams, reconciles to the done event, extracts chips, falls back to JSON, offers Retry on a mid-stream error). The live bar is `scripts/_verify_tool_loop.mts` (untracked KEEP): real Anthropic streaming + a real gnu.org fetch through the loop._
+
 1. Pick the boundary. If you're testing a pure function in `lib/`, write a
    unit test under `tests/unit/`. If you're testing a route handler, write
    an integration test under `tests/integration/` and mock at
