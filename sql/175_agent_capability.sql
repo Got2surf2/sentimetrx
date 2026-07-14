@@ -10,6 +10,8 @@
 -- No backfill needed: DEFAULT 'standard' preserves today's behavior for every
 -- existing agent (standard knobs == the current hardcoded values).
 
+BEGIN;
+
 ALTER TABLE agents
   ADD COLUMN IF NOT EXISTS capability text NOT NULL DEFAULT 'standard',
   ADD COLUMN IF NOT EXISTS capability_config jsonb NOT NULL DEFAULT '{}'::jsonb;
@@ -23,3 +25,5 @@ BEGIN
       ADD CONSTRAINT agents_capability_check CHECK (capability IN ('standard', 'super'));
   END IF;
 END $$;
+
+COMMIT;
