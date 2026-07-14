@@ -320,3 +320,11 @@ WHY (owner): "after sampling rows everything else should be precise numbers on t
 WHAT: signalStats (strip) + /theme-counts route (Charts/TextMine theme bars) stop calling scaleSampledCount on the count paths — they now return the EXACT counts of the deterministic 50K sample. Theme-fit % is a ratio (unchanged). DatasetMetricStrip drops the "~" on comment/theme counts (rating avg keeps its ties-to-Google "~"). Result: strip == mined banner (both ~17,048 substantive on Carrabba's Least, vs the old scaled ~19,134/30,308). signalStats sampled test updated to exact sample numbers. fresh tsc clean, lint 0 delta, 18 targeted tests green.
 
 NEXT (owner asked): decks/PDFs should use the same approach. The deck already counts exactly over its loaded ≤50K rows (no scaling) — but it loads the FIRST 50K (.range in id order), not the deterministic hash-based 50K the app uses, so deck numbers won't match the app. Fix = load the same deterministic sample in the deck's row loader.
+
+---
+
+## 2026-07-14 — Decks use the app's deterministic sample (Model A consistency)
+
+WHY (owner): "when we generate the ppt and pdfs etc. make sure we use this new approach as well." The deck already counted exactly over its loaded rows (no scaling), but above 50K it loaded the FIRST 50K by row_index — a different sample than the app's deterministic hash 50K — so deck numbers wouldn't match what the user saw.
+
+WHAT: export/pptx row loader now draws the SAME deterministic sample via pageSampledRows (lib/bulkRowSample, sql/160 idx_drf_sample hash order) for >50K datasets — proportional per-member shares for collections, sequential first-N fallback if the RPC is absent. ≤50K still loads every row. Verified on Carrabba's: deck deterministic sample = exactly 17,048 substantive on Liked Least, identical to the app strip/mined banner. fresh tsc clean, lint 0 delta. Untracked KEEP: scripts/_verify_deck_sample_match.mts.

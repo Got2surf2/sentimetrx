@@ -308,6 +308,14 @@ stages). `projectCompare` (the multi-source project-report matrix) is NOT flippe
 assembled upstream per source; a denominator-only flip would inflate, and threading substantive
 per-source counts through the project-report pipeline is deferred.
 
+**Deck rows = the app's deterministic sample (Model A, 2026-07-14).** The PPTX deck already counted
+exactly over its loaded rows (caps at 50K, never scales), but above the cap it loaded the FIRST 50K
+by `row_index` — a different 50K than the app's deterministic hash sample, so deck numbers didn't
+match the app. The row loader now draws the SAME sample via `pageSampledRows` (sql/160 idx_drf_sample
+hash order, proportional per-member shares for collections; sequential first-N fallback if the RPC
+is absent). Verified on Carrabba's: the deck sample yields exactly 17,048 substantive on Liked Least
+— identical to the strip/mined banner. ≤50K datasets still load every row (exact-full, same as the app).
+
 **Model A — the 50K sample IS the view; report EXACT sample counts, no scaling (owner 2026-07-14).**
 Above the cap the analyze view stopped extrapolating: `signalStats` (strip) and the `/theme-counts`
 route (Charts/TextMine theme bars) now return the EXACT counts of the deterministic 50K sample

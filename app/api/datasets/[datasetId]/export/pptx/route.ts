@@ -12,6 +12,7 @@ import { deserializeFilters, applyFilters, type SerializedFilters } from '@/lib/
 import { pickBestComments } from '@/lib/export/scoreComments'
 import { buildKwRegex, themeSetsForExport, themeModelKey, type ThemeModel, type ThemeFieldSet } from '@/lib/themeUtils'
 import { isSubstantiveText } from '@/lib/datasetUtils'
+import { pageSampledRows, allocateSampleShares } from '@/lib/bulkRowSample'
 import { computeThemeImpact } from '@/lib/themeImpact'
 import { DN as DN_SHARED, trunc } from '@/lib/pptx/shared'
 import { renderDeck, type DeckSpec, type SlideSpec, type DistBarsSlide, type NumericStatsSlide, type CompactGridSlide } from '@/lib/pptx/slideRenderer'
@@ -535,22 +536,26 @@ export async function POST(req: Request, props: Params) {
     }
   }
 
-  // Try flat table first
+  // Try flat table first — keep PER-MEMBER counts so a >50K load can draw the
+  // same DETERMINISTIC sample the app view uses (proportional shares for
+  // collections).
   let flatCount = 0
+  const memberCounts = new Map<string, number>()
   for (const dsId of flatDatasetIds) {
     const { count } = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', dsId)
+    memberCounts.set(dsId, count || 0)
     flatCount += count || 0
   }
   // ≤50K total → load all (no sampling, per the platform rule); >50K → cap at 50K.
   if (flatCount > 0) MAX_ROWS = flatCount <= 50_000 ? flatCount : 50_000
 
   if (flatCount > 0) {
-    // Flat table — paginate in chunks of 1000 (Supabase default limit)
     const FLAT_PAGE = 1000
-    for (const dsId of flatDatasetIds) {
+    // Sequential (row_index) loader — used for ≤50K (load EVERY row) and as the
+    // fallback if the deterministic-sample RPC isn't available.
+    async function loadSequential(dsId: string, label: string | undefined, cap: number) {
       let flatOffset = 0
-      const label = collectionLabels[dsId] || undefined
-      while (allRows.length < MAX_ROWS) {
+      while (allRows.length < cap) {
         const { data: flatRows, error: flatErr } = await service
           .from('dataset_rows_flat')
           .select('data')
@@ -562,14 +567,46 @@ export async function POST(req: Request, props: Params) {
           const row = (fr.data || fr) as Record<string, unknown>
           if (label) row._collection_label = label
           allRows.push(row)
-          if (allRows.length >= MAX_ROWS) break
+          if (allRows.length >= cap) break
         }
         if (flatRows.length < FLAT_PAGE) break
         flatOffset += FLAT_PAGE
       }
-      if (allRows.length >= MAX_ROWS) break
     }
-    if (allRows.length >= MAX_ROWS && flatCount > allRows.length) rowsSampled = true
+
+    if (flatCount > 50_000) {
+      // >50K: draw the SAME deterministic 50K sample the app view analyzes
+      // (idx_drf_sample hash order via pageSampledRows, sql/160) so every deck
+      // number MATCHES what the user saw in-app (Model A — the sample is the
+      // view, counted exactly, no scaling). Per-member proportional shares for
+      // collections. Falls back to the sequential first-N load if the sample
+      // RPC isn't in the target DB.
+      rowsSampled = true
+      const shares = flatDatasetIds.length > 1
+        ? allocateSampleShares(memberCounts, MAX_ROWS)
+        : new Map([[flatDatasetIds[0], MAX_ROWS]])
+      for (const dsId of flatDatasetIds) {
+        const capShare = shares.get(dsId) || 0
+        if (capShare <= 0) continue
+        const label = collectionLabels[dsId] || undefined
+        try {
+          await pageSampledRows(service, dsId, capShare, (r) => {
+            const row = r.data as Record<string, unknown>
+            if (label) row._collection_label = label
+            allRows.push(row)
+          })
+        } catch {
+          await loadSequential(dsId, label, allRows.length + capShare)
+        }
+      }
+    } else {
+      // ≤50K total: load EVERY row (exact-full, matches the app which also loads
+      // all under the cap).
+      for (const dsId of flatDatasetIds) {
+        await loadSequential(dsId, collectionLabels[dsId] || undefined, MAX_ROWS)
+        if (allRows.length >= MAX_ROWS) break
+      }
+    }
   }
   // Legacy dataset_rows batch fallback removed 2026-07-02 — dataset_rows_flat is
   // the sole source of truth; flatCount === 0 means the dataset has no rows.
