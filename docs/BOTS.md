@@ -1312,7 +1312,15 @@ Body: `{}`. Reads `bot.system_prompt` and returns `{ focuses: [{slug, label, des
 Lists `bot_conversation_reviews` for the bot.
 
 ### `POST /api/bots/deep-crawl`
-**Body:** `{ url }`. `maxDuration: 120s`. MAX_PAGES=30, MAX_TEXT_PER_PAGE=30KB. Follows internal links only. Returns `{ pages: [{ url, title, text }] }`.
+**Body:** `{ url }`. `maxDuration: 120s`. MAX_PAGES=30, MAX_TEXT_PER_PAGE=30KB. Follows same-host internal links.
+
+**D4 — crawl quality (the "Spacy class", pure helpers in `lib/crawlText.ts`).**
+- **(a) Link preservation** — in-body `<a href>` become `[label](absoluteUrl)` (relative hrefs resolved against the page; `mailto:`/`tel:`/`#` degrade to plain text). Previously every href was stripped, so the model had no real URLs and invented them.
+- **(b) Sitemap seeding** — the crawl queue is seeded from `/sitemap.xml` (sitemap-index fan-out capped at 3 children) before falling back to homepage BFS, so coverage doesn't depend on the homepage linking to everything.
+- **(c) Boilerplate strip** — `stripBoilerplate` drops any non-blank line appearing on more than ⅓ of pages (the same nav/header/footer on every page), kicking in at ≥3 pages.
+- **(d) Build-time link-integrity scaffolding** (`lib/agentLinks.ts`) — the response also returns `official_links` (the real crawled page URLs), a ready `links_directory` block, and the standing `link_integrity_guardrail`. The agent editor attaches the Official Links Directory to `system_prompt` (`attachLinksDirectory`, idempotent — a re-crawl replaces the block) and the link-integrity rule to `guardrails` (`withLinkIntegrityGuardrail`, added once), so every website-sourced agent can only surface real URLs. Each KB section also carries an `Official page: <url>` line.
+
+Returns `{ text, pages_crawled, pages_found, sites_crawled, urls, official_links, links_directory, link_integrity_guardrail }`. Verified end-to-end by `scripts/_verify_deep_crawl_links.mts` (untracked) — a fresh crawl of a live site asserting link preservation, a non-empty directory, no invented directory hosts, and that sampled directory URLs return 200.
 
 ### `POST /api/bots/fetch-url`
 Single URL fetch. Returns `{ url, title, text }`.

@@ -6,78 +6,43 @@
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
-import { safeFetch, SafeFetchError } from '@/lib/safeFetch'
+import { safeFetch } from '@/lib/safeFetch'
+import { htmlToText, extractLinks, parseSitemapUrls, stripBoilerplate } from '@/lib/crawlText'
+import { buildLinksDirectory, LINK_INTEGRITY_GUARDRAIL, type OfficialLink } from '@/lib/agentLinks'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120   // 2 min — crawling multiple pages
 
 const MAX_PAGES = 30             // max pages to crawl
-const MAX_TEXT_PER_PAGE = 30000  // 30KB per page (full detail, not compressed)
 const CRAWL_TIMEOUT = 10000      // 10s per page fetch
+const MAX_CHILD_SITEMAPS = 3     // D4(b): cap sitemap-index fan-out
 
-// Extract text from HTML, preserving structure as markdown-ish headings
-function htmlToText(html: string, url: string): string {
-  var text = html
-    // Remove script, style, nav blocks
-    .replace(/<(script|style|noscript)[^>]*>[\s\S]*?<\/\1>/gi, '')
-    // Convert headings to markdown
-    .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '\n# $1\n')
-    .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '\n## $1\n')
-    .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '\n### $1\n')
-    .replace(/<h4[^>]*>(.*?)<\/h4>/gi, '\n#### $1\n')
-    // Convert list items to bullets
-    .replace(/<li[^>]*>/gi, '\n- ')
-    // Convert br and p to newlines
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<\/div>/gi, '\n')
-    .replace(/<\/tr>/gi, '\n')
-    .replace(/<td[^>]*>/gi, ' | ')
-    // Remove remaining tags
-    .replace(/<[^>]+>/g, ' ')
-    // Decode entities
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
-    .replace(/&#\d+;/g, '')
-    // Collapse whitespace (but keep newlines)
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n /g, '\n')
-    .replace(/\n{4,}/g, '\n\n\n')
-    .trim()
-
-  if (text.length > MAX_TEXT_PER_PAGE) {
-    text = text.slice(0, MAX_TEXT_PER_PAGE)
-  }
-
-  return text
-}
-
-// Extract internal links from HTML
-function extractLinks(html: string, baseUrl: URL): string[] {
-  var links: string[] = []
-  var seen = new Set<string>()
-  var re = /href=["']([^"'#]+)/gi
-  var match: RegExpExecArray | null
-
-  while ((match = re.exec(html)) !== null) {
-    var href = match[1]
+// D4(b): seed the crawl queue from sitemap.xml (falls back to BFS when absent).
+// A sitemap gives the site's OWN list of real pages, so we don't depend on the
+// homepage happening to link to everything.
+async function sitemapSeeds(baseUrl: URL): Promise<string[]> {
+  const fetchXml = async (u: string): Promise<string | null> => {
     try {
-      var resolved = new URL(href, baseUrl.origin)
-      // Only follow same-host links
-      if (resolved.hostname !== baseUrl.hostname) continue
-      // Skip non-HTML resources
-      if (/\.(pdf|jpg|jpeg|png|gif|svg|css|js|zip|mp4|mp3|doc|xls|pptx?)$/i.test(resolved.pathname)) continue
-      // Skip anchors, mailto, tel
-      if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') continue
-      // Normalize: strip query params and trailing slash for dedup
-      var normalized = resolved.origin + resolved.pathname.replace(/\/+$/, '')
-      if (!seen.has(normalized)) {
-        seen.add(normalized)
-        links.push(normalized)
-      }
-    } catch {}
+      const res = await safeFetch(u, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Datanautix Deep Crawler/1.0)', 'Accept': 'application/xml,text/xml' },
+        signal: AbortSignal.timeout(CRAWL_TIMEOUT),
+      })
+      if (!res.ok) return null
+      return await res.text()
+    } catch { return null }
   }
-  return links
+  const rootXml = await fetchXml(baseUrl.origin + '/sitemap.xml')
+  if (!rootXml) return []
+  const { pages, childSitemaps } = parseSitemapUrls(rootXml, baseUrl.hostname)
+  if (pages.length > 0) return pages
+  // sitemap index → fetch a bounded number of child sitemaps
+  const collected: string[] = []
+  for (const child of childSitemaps.slice(0, MAX_CHILD_SITEMAPS)) {
+    const childXml = await fetchXml(child)
+    if (childXml) collected.push(...parseSitemapUrls(childXml, baseUrl.hostname).pages)
+    if (collected.length >= MAX_PAGES * 2) break
+  }
+  return collected
 }
 
 export async function POST(req: NextRequest) {
@@ -111,7 +76,10 @@ export async function POST(req: NextRequest) {
 
   for (var b = 0; b < baseUrls.length && pages.length < MAX_PAGES; b++) {
     var baseUrl = baseUrls[b]
-    var queue: string[] = [baseUrl.origin + baseUrl.pathname.replace(/\/+$/, '')]
+    // D4(b): sitemap-seeded queue (the entry URL first, then the site's own
+    // page list), falling back to pure BFS when there is no sitemap.
+    var seeds = await sitemapSeeds(baseUrl)
+    var queue: string[] = [baseUrl.origin + baseUrl.pathname.replace(/\/+$/, ''), ...seeds]
 
     while (queue.length > 0 && pages.length < MAX_PAGES) {
       var currentUrl = queue.shift()!
@@ -165,15 +133,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No content found — this site may require JavaScript to render. Try using Research instead (enter the site name as a search query).' }, { status: 502 })
   }
 
+  // D4(c): strip repeated nav/header/footer chrome (a line on >⅓ of pages).
+  var cleanedTexts = stripBoilerplate(pages.map(function(p) { return p.text }))
+
   // Build structured knowledge base — full text per page, with markdown headings
-  var sections = pages.map(function(p) {
+  var officialLinks: OfficialLink[] = []
+  var sections = pages.map(function(p, idx) {
     // Use page title as section heading, clean it up
     var heading = p.title
       .replace(/\s*[\|–—]\s*.+$/, '')  // strip "| Site Name" suffixes
       .replace(/\s*-\s*$/, '')
       .trim() || 'Page'
-    return '## ' + heading + '\nSource: ' + p.url + '\n\n' + p.text
+    officialLinks.push({ label: heading, url: p.url })
+    // Each chunk carries its own real URL (the Spacy "Official page:" pattern).
+    return '## ' + heading + '\nOfficial page: ' + p.url + '\n\n' + cleanedTexts[idx]
   })
+
+  // D4(d): a generated Official Links Directory + the standing link-integrity
+  // guardrail — returned so the agent editor attaches them at build time to
+  // system_prompt / guardrails, making every website-sourced agent immune to
+  // URL hallucination by default.
+  var linksDirectory = buildLinksDirectory(officialLinks)
 
   var fullText = '# Deep Crawl Knowledge Base\n\n' + sections.join('\n\n---\n\n')
 
@@ -183,5 +163,8 @@ export async function POST(req: NextRequest) {
     pages_found: visited.size,
     sites_crawled: baseUrls.length,
     urls: pages.map(function(p) { return p.url }),
+    official_links: officialLinks,
+    links_directory: linksDirectory,
+    link_integrity_guardrail: LINK_INTEGRITY_GUARDRAIL,
   })
 }

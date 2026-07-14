@@ -46,6 +46,7 @@ tests/
 │   ├── brandMatch.test.ts
 │   ├── knowledgeChunkReembed.test.ts  # D2 (AGENT_TIERS §2) — PATCH /knowledge/[chunkId] re-embeds the merged new title+content on edit (tsv trigger keeps FTS current but embedding is not trigger-maintained → stale vectors); embedding failure clears the vector (NULL) rather than leaving it stale, text edit still applies
 │   ├── knowledgeReplaceUpsert.test.ts  # D3 (AGENT_TIERS §2) — POST /knowledge replace=true is a content diff-upsert: inserts only changed chunks (unchanged ones not re-embedded), prunes only removed chunks (even when nothing new), append (no replace) never prunes, and a failed insert leaves the old KB intact (no zero-knowledge window)
+│   ├── deepCrawlLinks.test.ts  # D4 (AGENT_TIERS §2) — crawl-quality helpers: htmlToText preserves in-body links as [label](url) / drops mailto·tel·anchors (a); stripBoilerplate removes >⅓-of-pages chrome, no-op under 3 pages (c); parseSitemapUrls same-host locs vs sitemapindex children (b); agentLinks buildLinksDirectory/attachLinksDirectory (idempotent replace) + withLinkIntegrityGuardrail (added once) (d). Fresh-crawl e2e in untracked scripts/_verify_deep_crawl_links.mts
 │   ├── classifyPendingRows.test.ts  # auto-classify-on-sync safety net — pending-row loop drain, maxRows cap/hasMore, real keyword assertions
 │   ├── commentaryReport.test.ts # shared Commentary renderer (Town Hall + Agent Study) — topic clustering/ordering, sentiment dot, escaping, empty-state
 │   ├── deflectionRouter.test.ts

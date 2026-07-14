@@ -10,6 +10,7 @@ import LottieLoader from '@/components/ui/LottieLoader'
 import TransferOrg from '@/components/ui/TransferOrg'
 import EmojiPickerPopover from '@/components/creator/EmojiPickerPopover'
 import { SUPPORTED_LANGUAGES } from '@/lib/types'
+import { attachLinksDirectory, withLinkIntegrityGuardrail } from '@/lib/agentLinks'
 import ContentSafetyEditor, { type ContentSafetyConfigValue } from '@/components/agent/ContentSafetyEditor'
 
 const HERMES = '#E8632A'
@@ -322,6 +323,14 @@ function BotCreatorInner() {
       setKnowledgeBase(function(prev) {
         return (prev ? prev + '\n\n' : '') + data.text
       })
+      // D4(d): auto-attach the Official Links Directory to the system prompt and
+      // the standing link-integrity guardrail, so the agent can only surface the
+      // real crawled URLs and never invents one. Both are idempotent — re-crawls
+      // replace the directory block and never duplicate the rule.
+      if (Array.isArray(data.official_links) && data.official_links.length > 0) {
+        setSystemPrompt(function(prev) { return attachLinksDirectory(prev, data.official_links) })
+        setGuardrails(function(prev) { return withLinkIntegrityGuardrail(prev) })
+      }
       setCrawlResult({ pages: data.pages_crawled, sites: data.sites_crawled || 1 })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Deep crawl failed')
