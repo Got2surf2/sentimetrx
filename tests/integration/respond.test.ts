@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { NextRequest } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 
@@ -157,7 +157,10 @@ describe('POST /api/respond (public survey-response endpoint)', () => {
 // (one IP, many sessions) must not cross-throttle, while a per-IP backstop
 // still stops abuse.
 describe('POST /api/respond — rate-limit keying (Brief D)', () => {
-  const rl = checkRateLimit as unknown as ReturnType<typeof vi.fn>
+  // Typed with the real async signature so mockImplementation knows the
+  // callback returns a Promise (untyped vi.fn() infers a void return, which
+  // trips @typescript-eslint/no-misused-promises on the per-key impl below).
+  const rl = checkRateLimit as unknown as Mock<(key: string, limit?: number, windowMs?: number) => Promise<{ limited: boolean; remaining: number }>>
   beforeEach(() => { rl.mockClear(); rl.mockResolvedValue({ limited: false, remaining: 100 }) })
 
   it('keys the per-session bucket by (ip, session_id) + a per-IP backstop', async () => {
