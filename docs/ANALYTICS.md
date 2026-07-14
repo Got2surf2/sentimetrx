@@ -305,6 +305,14 @@ stages). `projectCompare` (the multi-source project-report matrix) is NOT flippe
 assembled upstream per source; a denominator-only flip would inflate, and threading substantive
 per-source counts through the project-report pipeline is deferred.
 
+**Prominent "Sampled view" banner (2026-07-14).** `DatasetShell` (the wrapper around every
+analyze tab) renders a blue/informational banner directly under the header whenever the active
+dataset exceeds the 50K cap (`RowsContext.sampled && totalRows > sampledCount`): "Analyzing a
+representative N of M rows (P%). Charts, statistics and theme counts are estimates scaled to the
+full dataset." It's distinct from the orange "Filtered:" bar and persists across tabs so a sample
+is never mistaken for the full dataset. (The scattered per-surface "≈ sampled" chips and the
+TextMine tile's sample-rate bar remain; this is the always-on top-level indicator.)
+
 **Substantive lens across insight surfaces (2026-07-14).** The stored flag is the DEFAULT scope
 for text insights, always shown never silently dropped:
 - **Mining** ✅ — `prepareCorpus` filters to substantive.

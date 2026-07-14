@@ -274,3 +274,11 @@ VERIFY: fresh tsc clean, 1517 tests green (+1 themeSignals substantive-exclusion
 OPEN QUESTIONS resolved (owner, AskUserQuestion): (a) "signals" stays dropped from the strip/overview; (b) decks use substantive for insight numbers, full denominator for raw dumps/ratings.
 
 DEPLOY (on push): `npm run migrate sql/178` `179` `180` `181` in order, then push; after deploy run `scripts/_backfill-substantive.mts --prod`.
+
+---
+
+## 2026-07-14 — Prominent "Sampled view" banner across analyze tabs
+
+WHY (owner): "we should also have a prominent indicator when a dataset being viewed is sampled not full." A >50K dataset loads a deterministic 50K sample client-side; the only cues were scattered per-surface chips, easy to miss — a sample could be mistaken for the whole dataset.
+
+WHAT: `DatasetShell` (wraps every analyze tab, already reads RowsContext sampled/sampledCount/totalRows) renders a blue/informational banner under the header when `sampled && totalRows > sampledCount`: "Analyzing a representative N of M rows (P%). Charts, statistics and theme counts are estimates scaled to the full dataset." Distinct from the orange Filtered bar; persists on all tabs. fresh tsc clean, DatasetShell lint 0 delta. (Not browser-verified — trivial conditional JSX mirroring the existing filter-chips bar.)
