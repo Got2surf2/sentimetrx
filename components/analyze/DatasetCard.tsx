@@ -15,6 +15,7 @@ import LottieLoader from '@/components/ui/LottieLoader'
 import { FavoriteStar } from '@/components/ui/FavoriteStar'
 import type { DatasetWithState, FieldSummary, OpenEndedSummary, SchemaFieldConfig } from '@/lib/analyzeTypes'
 import ReportsMenu from '@/components/analyze/ReportsMenu'
+import DatasetAboutPopover from '@/components/analyze/DatasetAboutPopover'
 import AdHocReportModal from '@/components/analyze/AdHocReportModal'
 import { hasAnyReport } from '@/lib/reportCatalog'
 import type { ReportContext, ReportType, ReportFormat } from '@/lib/reportCatalog'
@@ -89,6 +90,8 @@ function Badge({ label, color, bg, border }: { label: string, color: string, bg:
 export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisibility, onToggleArchive, isAdmin = false, allOrgs = [], onTransfer, onDrillIn, onManageMembers, initialFavorited = false }: Props) {
   const router = useRouter()
   const [menuOpen,      setMenuOpen]      = useState(false)
+  const [aboutOpen,     setAboutOpen]     = useState(false)
+  const [aboutRect,     setAboutRect]     = useState<DOMRect | null>(null)
   const [renaming,      setRenaming]      = useState(false)
   const [renameVal,     setRenameVal]     = useState(dataset.name)
   const [confirmDel,    setConfirmDel]    = useState(false)
@@ -456,6 +459,17 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
           )}
         </div>
 
+        {/* About (i) — opens the shared dataset summary popover */}
+        <div style={{ flexShrink: 0 }}>
+          <button
+            aria-label="About this dataset"
+            title="About this dataset"
+            onClick={function(e) { e.stopPropagation(); setAboutRect((e.currentTarget as HTMLElement).getBoundingClientRect()); setAboutOpen(true) }}
+            style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: '1px solid #e5e7eb', borderRadius: '50%', cursor: 'pointer', fontSize: 12, color: '#6b7280', fontWeight: 700, fontStyle: 'italic', lineHeight: 1, fontFamily: 'Georgia, serif' }}>
+            i
+          </button>
+        </div>
+
         {/* Favorite star */}
         <div style={{ flexShrink: 0 }}>
           <FavoriteStar resourceType="dataset" resourceId={dataset.id} initialFavorited={initialFavorited} size={16} />
@@ -599,6 +613,14 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
           )
         ) : null}
       </div>
+
+      <DatasetAboutPopover
+        datasetId={dataset.id}
+        datasetName={dataset.name}
+        open={aboutOpen}
+        anchorRect={aboutRect}
+        onClose={function() { setAboutOpen(false) }}
+      />
 
       {/* Transfer panel — admin only */}
       {adHocOpen && (

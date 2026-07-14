@@ -254,6 +254,15 @@ The analyze **header** carries a filter-aware **"N% substantive"** next to the r
 share of answered rows (any open-ended field filled) whose text is real feedback, computed
 client-side over the loaded rows (`DatasetShell`). CARVE-OUTS keep the full denominator: rating
 averages, numeric/categorical stats, raw counts, exports.
+
+**Dataset "About" popover (2026-07-14).** ONE shared component
+(`components/analyze/DatasetAboutPopover.tsx`) with two triggers: an `(i)` on each `/analyze`
+listing card, and a hover on the row-count cluster in the analyze banner. It reads
+`GET /api/datasets/[id]/about` (org-gated, read-only): rows, source, field count by type, date
+range, last synced, per open-ended field its fill-rate AND **% substantive**, and rating fields
+with n. The per-field fill/substantive counts come from ONE `sampled_signal_counts` pass with no
+themes (exact ≤50K, deterministic sample above), so it never full-scans; everything else is read
+straight from the stored `schema_config` + `analytics.fieldSummaries`.
 **Listing cards carry data facts only** (rows, fields/members, last-updated) — the per-card
 records/signals/theme-fit line and its signal-stats-batch fetch were removed as a confusion
 source (the numbers described one question's set without saying which); analysis metrics live

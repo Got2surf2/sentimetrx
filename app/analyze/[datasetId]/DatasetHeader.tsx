@@ -10,6 +10,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import ExportModal from '@/components/analyze/ExportModal'
+import DatasetAboutPopover from '@/components/analyze/DatasetAboutPopover'
 import ShareAnalyticsModal from '@/components/analyze/ShareAnalyticsModal'
 import SearchPanel from '@/components/analyze/textmine/SearchPanel'
 import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
@@ -58,6 +59,8 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   var pathname = usePathname()
 
   var [apiKey,      setApiKey]      = useState('')
+  var [aboutOpen,   setAboutOpen]   = useState(false)
+  var [aboutRect,   setAboutRect]   = useState<DOMRect | null>(null)
   var [showExport,  setShowExport]  = useState(false)
   var [reportMenuOpen, setReportMenuOpen] = useState(false)
   var [reportMenuPos, setReportMenuPos] = useState<{ top: number; left: number } | null>(null)
@@ -181,6 +184,13 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
 
   return (
     <div>
+      <DatasetAboutPopover
+        datasetId={dataset.id}
+        datasetName={dataset.name}
+        open={aboutOpen}
+        anchorRect={aboutRect}
+        onClose={function() { setAboutOpen(false) }}
+      />
       {showExport && (
         <ExportModal
           datasetId={dataset.id}
@@ -388,8 +398,11 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             </span>
           </div>
 
-          {/* Row count + Sync + Last synced */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0 }}>
+          {/* Row count + Sync + Last synced. Hovering the count cluster opens the
+              shared "About this dataset" popover — the banner home for dataset stats. */}
+          <div
+            onMouseEnter={function(e) { setAboutRect((e.currentTarget as HTMLElement).getBoundingClientRect()); setAboutOpen(true) }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', borderRight: '1px solid rgba(255,255,255,.15)', flexShrink: 0, cursor: 'help' }}>
             <span style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', whiteSpace: 'nowrap' }}
               title={filteredRowCountIsEstimate ? 'Estimated from a 50K-row sample, scaled to the full dataset' : ''}>
               {filteredRowCount != null
