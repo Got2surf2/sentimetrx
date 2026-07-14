@@ -13,6 +13,7 @@
 // changelog (Gap #5).
 
 import { NextResponse } from 'next/server'
+import { stampRowSubstantive } from '@/lib/usefulness'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { buildTownHallSchema } from '@/lib/datasetUtils'
@@ -304,7 +305,7 @@ async function runPhase3Analyze(
     .order('row_index', { ascending: false })
     .limit(1)
   const startIndex = maxRowResp && maxRowResp.length > 0 ? maxRowResp[0].row_index + 1 : 0
-  const flatRows = rows.map((r, i) => ({ dataset_id: datasetId, row_index: startIndex + i, data: r }))
+  const flatRows = rows.map((r, i) => stampRowSubstantive({ dataset_id: datasetId, row_index: startIndex + i, data: r }))
   const { error: flatErr } = await service.from('dataset_rows_flat').insert(flatRows)
   if (flatErr) return serverError(flatErr, 'townhall.analyze.insertRows', { orgId })
 

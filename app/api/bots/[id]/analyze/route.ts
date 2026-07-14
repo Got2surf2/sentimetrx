@@ -9,6 +9,7 @@
 // only points at studies — same pattern as TH datasets which use 'th:<id>'.
 
 import { NextResponse } from 'next/server'
+import { stampRowSubstantive } from '@/lib/usefulness'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { buildBotSchema, mergeSchemaStats } from '@/lib/datasetUtils'
@@ -282,7 +283,7 @@ export async function POST(_req: Request, props: Params) {
   const startIndex = maxRowResp && maxRowResp.length > 0 ? maxRowResp[0].row_index + 1 : 0
 
   const flatRows = rows.map(function(r, i) {
-    return { dataset_id: datasetId, row_index: startIndex + i, data: r }
+    return stampRowSubstantive({ dataset_id: datasetId, row_index: startIndex + i, data: r })
   })
   const { error: flatErr } = await service.from('dataset_rows_flat').insert(flatRows)
   if (flatErr) return serverError(flatErr, 'bots.analyze.insertRows', { orgId: bot.org_id })

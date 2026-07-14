@@ -2,6 +2,7 @@
 // POST — download comments for a single Substack post and insert into dataset rows
 
 import { NextResponse } from 'next/server'
+import { stampRowSubstantive } from '@/lib/usefulness'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { fetchPostComments, commentToRow as substackCommentToRow } from '@/lib/substack'
 import { serverError } from '@/lib/apiError'
@@ -58,7 +59,7 @@ export async function POST(req: Request) {
     for (var i = 0; i < rows.length; i += CHUNK_SIZE) {
       var chunk = rows.slice(i, i + CHUNK_SIZE)
       var flatRows = chunk.map(function(r, j) {
-        return { dataset_id: dataset_id, row_index: nextRowIndex + j, data: r }
+        return stampRowSubstantive({ dataset_id: dataset_id, row_index: nextRowIndex + j, data: r })
       })
       await service.from('dataset_rows_flat').insert(flatRows)
       currentTotal += chunk.length

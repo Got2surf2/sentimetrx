@@ -5,6 +5,7 @@
 // Returns { dataset_id, synced, total, created }
 
 import { NextResponse } from 'next/server'
+import { stampRowSubstantive } from '@/lib/usefulness'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { buildStudySchema, formatResponsesAsRows } from '@/lib/datasetUtils'
@@ -120,7 +121,7 @@ export async function POST(_req: Request, props: Params) {
   const startIndex = maxRowResp && maxRowResp.length > 0 ? maxRowResp[0].row_index + 1 : 0
 
   const flatRows = rows.map(function(r: Record<string, unknown>, i: number) {
-    return { dataset_id: datasetId, row_index: startIndex + i, data: r }
+    return stampRowSubstantive({ dataset_id: datasetId, row_index: startIndex + i, data: r })
   })
   const { error: flatErr } = await service.from('dataset_rows_flat').insert(flatRows)
   if (flatErr) return serverError(flatErr, 'studies.analyze.insertRows', { orgId: study.org_id })

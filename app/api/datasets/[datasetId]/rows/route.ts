@@ -18,6 +18,7 @@
 //                                whole 500K-row dataset even if sampleMax is omitted.
 
 import { NextResponse } from 'next/server'
+import { stampRowSubstantive } from '@/lib/usefulness'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { allocateSampleShares, pageSampledRows } from '@/lib/bulkRowSample'
@@ -351,7 +352,7 @@ export async function POST(req: Request, props: Params) {
   const nextIndex = maxRowIndex < 0 ? 0 : Math.floor(maxRowIndex / ROWS_PER_BATCH) + 1
 
   const flatRows = rows.map(function(r: Record<string, unknown>, i: number) {
-    return { dataset_id: params.datasetId, row_index: nextIndex * ROWS_PER_BATCH + i, data: r }
+    return stampRowSubstantive({ dataset_id: params.datasetId, row_index: nextIndex * ROWS_PER_BATCH + i, data: r })
   })
   const insertResult = await service.from('dataset_rows_flat').insert(flatRows)
   if (insertResult.error) return serverError(insertResult.error, 'datasets.rows.insert', { orgId: auth.orgId })

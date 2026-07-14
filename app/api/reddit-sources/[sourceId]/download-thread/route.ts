@@ -2,6 +2,7 @@
 // POST — download comments for a single thread (called per-thread from UI for progress)
 
 import { NextResponse } from 'next/server'
+import { stampRowSubstantive } from '@/lib/usefulness'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { fetchThreadComments, commentToRow, type RedditComment } from '@/lib/reddit'
 import { buildRedditSchema, enrichSchemaWithStats } from '@/lib/datasetUtils'
@@ -108,7 +109,7 @@ export async function POST(req: Request, props: Params) {
       for (var i = 0; i < rows.length; i += CHUNK_SIZE) {
         var chunk = rows.slice(i, i + CHUNK_SIZE)
         var flatRows = chunk.map(function(r, j) {
-          return { dataset_id: datasetId, row_index: nextRowIndex + j, data: r }
+          return stampRowSubstantive({ dataset_id: datasetId, row_index: nextRowIndex + j, data: r })
         })
         await service.from('dataset_rows_flat').insert(flatRows)
         currentTotal += chunk.length

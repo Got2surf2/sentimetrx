@@ -2,6 +2,7 @@
 // On-demand download of Reddit thread comments into dataset_rows_flat
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { stampRowSubstantive } from './usefulness'
 import { fetchThreadComments, commentToRow, type RedditComment } from './reddit'
 import { buildRedditSchema, enrichSchemaWithStats, mergeSchemaStats } from './datasetUtils'
 import { computeAnalyticsSQL } from './analyticsCompute'
@@ -171,7 +172,7 @@ async function insertRedditRows(service: SupabaseClient, datasetId: string, rows
   for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
     const chunk = rows.slice(i, i + CHUNK_SIZE)
     const flatRows = chunk.map(function(r, j) {
-      return { dataset_id: datasetId, row_index: nextRowIndex + j, data: r }
+      return stampRowSubstantive({ dataset_id: datasetId, row_index: nextRowIndex + j, data: r })
     })
     await service.from('dataset_rows_flat').insert(flatRows)
     nextRowIndex += chunk.length

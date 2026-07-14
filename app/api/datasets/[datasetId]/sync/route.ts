@@ -3,6 +3,7 @@
 // Deduplicates by response_id stored inside each flat row's data field.
 
 import { NextResponse } from 'next/server'
+import { stampRowSubstantive } from '@/lib/usefulness'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { recordAdminCrossOrgAction } from '@/lib/orgTransfer'
 import { formatResponsesAsRows } from '@/lib/datasetUtils'
@@ -127,7 +128,7 @@ export async function POST(req: Request, props: Params) {
     const CHUNK = 500
     for (let i = 0; i < newRows.length; i += CHUNK) {
       const chunk = newRows.slice(i, i + CHUNK).map(function(r: Record<string, unknown>, j: number) {
-        return { dataset_id: dataset.id, row_index: startIndex + i + j, data: r }
+        return stampRowSubstantive({ dataset_id: dataset.id, row_index: startIndex + i + j, data: r })
       })
       await service.from('dataset_rows_flat').insert(chunk)
     }

@@ -3,6 +3,7 @@
 // Two-phase: submit tasks → check results across multiple sync calls
 
 import { createHash } from 'node:crypto'
+import { stampRowSubstantive } from './usefulness'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { submitReviewTask, submitTripadvisorReviewTask, checkReviewTask, type ReviewTaskRef, type DfsReview } from './dataforseo'
 import { buildGoogleReviewsSchema, enrichSchemaWithStats, mergeSchemaStats } from './datasetUtils'
@@ -574,7 +575,7 @@ async function insertReviewRows(service: SupabaseClient, datasetId: string, rows
     for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
       const chunk = toInsert.slice(i, i + CHUNK_SIZE)
       const flatRows = chunk.map(function(k, j) {
-        return { dataset_id: datasetId, row_index: nextRowIndex + j, data: k.data, dedup_key: k.dedup_key }
+        return stampRowSubstantive({ dataset_id: datasetId, row_index: nextRowIndex + j, data: k.data, dedup_key: k.dedup_key })
       })
       // Upsert with ON CONFLICT DO NOTHING against the unique (dataset_id,
       // dedup_key) index (sql/132) — the hard backstop. The app-level probe

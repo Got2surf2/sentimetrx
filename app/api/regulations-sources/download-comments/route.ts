@@ -1,5 +1,6 @@
 // POST — download a batch of comments from regulations.gov into a dataset
 import type { NextRequest} from 'next/server';
+import { stampRowSubstantive } from '@/lib/usefulness'
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { listComments, fetchCommentsBatch, commentToRow } from '@/lib/regulations'
@@ -110,7 +111,7 @@ export async function POST(req: NextRequest) {
     for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
       const chunk = rows.slice(i, i + CHUNK_SIZE)
       const flatRows = chunk.map(function(r, j) {
-        return { dataset_id, row_index: nextRowIndex + j, data: r }
+        return stampRowSubstantive({ dataset_id, row_index: nextRowIndex + j, data: r })
       })
       await service.from('dataset_rows_flat').insert(flatRows)
       currentTotal += chunk.length

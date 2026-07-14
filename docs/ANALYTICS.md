@@ -86,8 +86,20 @@ TextMine is **four peer sections** in a persistent **two-row bar** — the share
   sample and the sample-fit denominator — a Liked-Least field read "Diffuse 30%" when 45%
   of its answers were non-substantive; over real feedback the same themes cover ~48%. The
   "usefulness" scorer is versioned/swappable (v2 later = an LLM "actionable feedback?"
-  judgment) and is being moved to a STORED per-comment flag at ingest so mining, the
-  theme-fit denominator, the dataset-level substantive %, and Filters all read one boolean.
+  judgment).
+- **Stored per-comment flag (sql/178, 2026-07-14).** The scorer's verdict is STORED at
+  ingest on `dataset_rows_flat.substantive` (a `{field: true}` map) + `substantive_v` (the
+  scorer version) so every count is a cheap boolean read that agrees everywhere — no
+  JS↔SQL drift. `stampRowSubstantive` (lib/usefulness.ts) stamps every non-`_` field of a
+  new row at all 12 insert paths; `apply_substantive_flags` (sql/178) is the batched
+  backfill/re-score writer (`scripts/_backfill-substantive.mts`). Because the map is a pure
+  function of `data` (scored over ALL fields, only true keys kept), it needs no schema at
+  ingest and survives a field being re-classified open-ended — a count filters one
+  open-ended key at a time (`substantive ? 'LEAST'`), so keys for non-open fields are inert.
+  Substantive is a TEXT-insight lens (mining, theme-fit denominator, word clouds, the
+  dataset-level %, Ask Ana): it always SHOWS the % and never silently drops rows.
+  CARVE-OUTS keep the full denominator — rating averages, numeric/categorical stats, raw
+  counts, exports.
 - API key: **defaults to the server's `ANTHROPIC_API_KEY`** so customer orgs piggyback
   on the platform key; usage is logged per-org in `usage_log`. The body accepts an
   optional `apiKey` override but it is not required — there is no localStorage-only mode.

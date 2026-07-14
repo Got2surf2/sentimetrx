@@ -5,6 +5,7 @@
 // GET — check if a social dataset already exists for this org
 
 import type { NextRequest} from 'next/server';
+import { stampRowSubstantive } from '@/lib/usefulness'
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { serverError } from '@/lib/apiError'
@@ -230,7 +231,7 @@ export async function POST(req: NextRequest) {
         max_severity: maxSeverity || 'none',
       },
     }
-  })
+  }).map(stampRowSubstantive)
 
   // Insert flat rows in batches of 500
   for (var b = 0; b < flatRows.length; b += 500) {

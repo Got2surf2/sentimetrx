@@ -9,6 +9,7 @@
 // appends.
 
 import 'server-only'
+import { stampRowSubstantive } from '../usefulness'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { buildRecordingSchema, emptyThemeModel } from '@/lib/datasetUtils'
 import { logError } from '@/lib/log'
@@ -84,7 +85,7 @@ export async function mirrorExtractionsToDataset(input: MirrorInput): Promise<Mi
   const startIndex = maxRow && maxRow.length > 0 ? maxRow[0].row_index + 1 : 0
 
   // 4. Map each extraction to a dataset_rows_flat row per spec § 2.6.
-  const flatRows = (insertedExtractions || []).map((ex, i) => ({
+  const flatRows = (insertedExtractions || []).map((ex, i) => stampRowSubstantive({
     dataset_id: datasetId,
     row_index: startIndex + i,
     data: flatRowDataFromExtraction(ex as Pick<RecordingExtractionRow, 'id' | 'unit_type' | 'payload' | 'topic' | 'start_sec' | 'source_file' | 'confidence' | 'flagged_for_review' | 'flag_reason'>),

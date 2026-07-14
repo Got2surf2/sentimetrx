@@ -35,3 +35,18 @@ export function substantiveFieldsFor(
   }
   return out
 }
+
+// Ingest/backfill stamp. Scores EVERY non-`_` field in the row (not just the
+// open-ended ones) so the stored flag is a pure function of `data` — no schema
+// is needed at insert time, and a field later re-classified as open-ended
+// already carries its key. Only true keys are kept, so the map stays tiny.
+// Returns a shallow copy carrying `substantive` (jsonb map) + `substantive_v`
+// (the scorer version) — the exact shape apply_substantive_flags (sql/178)
+// writes, and the two columns every dataset_rows_flat insert path adds.
+export function stampRowSubstantive<T extends { data: object }>(
+  row: T,
+): T & { substantive: Record<string, true>; substantive_v: number } {
+  const data = row.data as Record<string, unknown>
+  const fields = Object.keys(data).filter(function(k) { return !k.startsWith('_') })
+  return { ...row, substantive: substantiveFieldsFor(data, fields), substantive_v: USEFULNESS_VERSION }
+}
