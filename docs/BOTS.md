@@ -344,13 +344,34 @@ standing link-integrity guardrail is attached to the agent (idempotent); each
 crawled chunk already carries its real `Official page:` URL, so no 300-entry
 directory block is needed in the prompt.
 
+**Weekly KB re-crawl cron (Phase 2 P2e, Super only).** `/api/cron/agent-recrawl`
+(Mondays 07:00 UTC) keeps a Super Agent's KB fresh automatically — the paid
+differentiator (AGENT_TIERS §7 #4; standard agents stay manual-refresh). It
+sweeps every `capability='super'` agent that has `training_urls`, re-fetches each
+page, and **hash-diffs**: the extracted page text is sha256-hashed and compared
+to the last stored hash in `agent_kb_page_hashes` (sql/177, one row per
+`(agent_id, url)`). An **unchanged** page is skipped entirely — no re-chunk, no
+re-embed, so a stable site costs one cheap fetch and nothing else. A **changed**
+(or new) page has its chunks replaced: the cron deletes that URL's existing
+chunks (`metadata->>source = <url>`, delete-first so the append-path near-dup
+guard can't reject the fresh chunks against the page's own prior copy), re-ingests
+through the shared `ingestKnowledgeText` (tagged `source=<url>`,
+`source_type='re-crawl'`), and upserts the new hash. The hash is written only on a
+successful ingest, so a transient insert failure leaves the old hash and the page
+retries next week. Bounded per D16c: `MAX_AGENTS_PER_RUN` 25 (oldest-first),
+`MAX_URLS_PER_AGENT` 60, and a wall-clock deadline under `maxDuration` 300 — any
+overflow rides to the next weekly run. Core logic is `lib/botKnowledge/recrawl.ts`
+(`recrawlAgentPages`), verified against a live page by `scripts/_verify_recrawl.mts`
+(untracked).
+
 **Crawl chunks survive editor saves.** Super-crawl / re-crawl-cron chunks are
-tagged `metadata.source_type='deep-crawl'` and live OUTSIDE the editor's
-knowledge textarea. A D3 editor save (`replace:true`) posts only authored
-content, so `ingestKnowledgeText` **never prunes** protected `source_type`
-chunks — otherwise the next Save would wipe a 300-page crawl. (Standard
-`/deep-crawl` + document upload append to the textarea, so their content is in
-the save payload and stays replace-managed as before.)
+tagged `metadata.source_type='deep-crawl'` (super crawl) or `'re-crawl'` (weekly
+cron) and live OUTSIDE the editor's knowledge textarea. A D3 editor save
+(`replace:true`) posts only authored content, so `ingestKnowledgeText` **never
+prunes** either protected `source_type` — otherwise the next Save would wipe a
+300-page crawl or the cron's re-crawled pages. (Standard `/deep-crawl` + document
+upload append to the textarea, so their content is in the save payload and stays
+replace-managed as before.)
 
 ### `sql/025_bot_enhancements.sql` (summary)
 - Adds `content_flags` and `source` columns to `bot_conversation_turns`.

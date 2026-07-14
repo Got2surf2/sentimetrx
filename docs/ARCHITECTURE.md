@@ -326,7 +326,10 @@ slicing** — the handler bails at `TIME_BUDGET_MS` and reports partial
 progress for the caller to continue; (c) **cron sweeps with per-run caps**
 — every 15-min tick processes a bounded batch and the next tick picks up
 the overflow (theme detection, social sync, campaign sends, auto-classify
-safety net).
+safety net, the Super-agent weekly KB re-crawl `/api/cron/agent-recrawl`
+whose per-run caps + wall-clock deadline defer any overflow to the next
+week and whose per-page content-hash `agent_kb_page_hashes`/sql/177 makes
+re-embedding idempotent — an unchanged page is skipped).
 
 **Why:** A queue is a second runtime to operate, monitor, and secure
 (D7: serverless-only, one-owner ops). All three substitutes run inside

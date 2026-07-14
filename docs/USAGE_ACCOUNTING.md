@@ -510,6 +510,7 @@ Every site below writes to `usage_logs`. Use this as the inventory of what the d
 | `/api/bots/[id]/conversations/report` | bot | `report` | fast / standard |
 | `/api/bots/[id]/conversations/insights-deck` | bot | `insights_deck` | standard |
 | `/api/cron/bot-conversation-review` | bot | `review` | fast |
+| `/api/cron/agent-recrawl` (Super-only weekly KB re-crawl, AGENT_TIERS Phase 2 P2e — delegates to `lib/botKnowledge/recrawl.ingestKnowledgeText`) | bot | `knowledge_classify` (only for pages whose content **changed** — hash-diff skips unchanged pages, so a stable site logs nothing) | fast |
 | `/api/townhall/chat` (legacy path — `townhall_sessions`) | townhall | `chat` (single ctx for the request) | fast |
 | `/api/townhall/chat` (phase-3 delegation path, active when `TOWNHALL_VIA_AGENT_HANDLER=true` and `session_id` resolves to a `pulseiq_sessions` row — delegates to `lib/chatCore.handleChatTurn`) | **bot** | `chat`, `summary`, `deflect`, `intent`, `focus_classify` | fast | <!-- Note attribution shift: phase-3 town hall conversations log usage under resource_type='bot' + resource_id=agent.id (chatCore is bot-centric). When NOWOCATS launches and the flag flips on, attribute town-hall AI cost via the underlying agent rather than the town hall slug. See docs/CONVERGENCE.md § 4 Phase 4 + § 10 (Phase 4 commit 2). -->
 | `/api/townhall/join/[sessionId]` | townhall | `translate` | fast |

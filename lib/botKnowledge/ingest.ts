@@ -57,7 +57,7 @@ const NEAR_DUP_SIM = 0.95
 // any chunk tagged with a protected source_type. (The standard /deep-crawl and
 // document upload append to the textarea, so their content IS in the save
 // payload and is correctly managed by replace.)
-const REPLACE_PROTECTED_SOURCE_TYPES = new Set(['deep-crawl'])
+const REPLACE_PROTECTED_SOURCE_TYPES = new Set(['deep-crawl', 're-crawl'])
 
 function isProtectedFromReplace(metadata: unknown): boolean {
   const st = (metadata as { source_type?: string } | null)?.source_type
