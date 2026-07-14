@@ -433,12 +433,15 @@ function BotCreatorInner() {
       var data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to save')
 
-      // Auto-chunk knowledge base + FAQ + facts for RAG search (replaces old chunks)
+      // Auto-chunk knowledge base + FAQ + facts + opponent research for RAG.
+      // D3: send ONE atomic replace POST instead of DELETE-then-POST. The server
+      // diff-upserts — inserts only new/changed chunks, deletes only the chunks
+      // whose content is gone, and leaves unchanged chunks untouched (so they
+      // aren't needlessly re-embedded) — and removes old chunks only AFTER the
+      // new ones land, so a mid-save failure never leaves a zero-knowledge agent.
       var botId = editId || data.id
       if (botId) {
         try {
-          await fetch('/api/bots/' + botId + '/knowledge', { method: 'DELETE' })
-          // Build combined text: knowledge base + FAQ pairs + facts
           var chunkParts: string[] = []
           if (knowledgeBase.trim().length > 20) chunkParts.push(knowledgeBase)
           if (cleanFaq.length > 0) {
@@ -453,24 +456,25 @@ function BotCreatorInner() {
             }).join('\n\n')
             chunkParts.push(factsText)
           }
-          if (chunkParts.length > 0) {
-            await fetch('/api/bots/' + botId + '/knowledge', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ text: chunkParts.join('\n\n') }),
-            })
-          }
-          // Chunk opponent research separately (so it gets tagged with opponent metadata)
+          // Opponent research rides in the same payload — its "### Name (Opponent)"
+          // headings still get opponent/sentiment metadata from the server's
+          // classify pass (which is fed the configured opponent names).
           var cleanOpponents = opponents.filter(function(o) { return o.name.trim() && o.details.trim() })
           if (cleanOpponents.length > 0) {
             var oppoText = '## Opponent Research\n\n' + cleanOpponents.map(function(o) {
               return '### ' + o.name.trim() + ' (Opponent)\n' + o.details
             }).join('\n\n')
+            chunkParts.push(oppoText)
+          }
+          if (chunkParts.length > 0) {
             await fetch('/api/bots/' + botId + '/knowledge', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ text: oppoText }),
+              body: JSON.stringify({ text: chunkParts.join('\n\n'), replace: true }),
             })
+          } else {
+            // Editor emptied of all knowledge → explicitly clear the chunk index.
+            await fetch('/api/bots/' + botId + '/knowledge', { method: 'DELETE' })
           }
         } catch {} // non-fatal — bot still works with full-text fallback
       }

@@ -287,6 +287,19 @@ this, fallback chunks read `confidence = 0`, fell below the 0.05 injection floor
 and the **entire** KB (chunks and the free-text fallback) was silently
 suppressed. Semantic chunks already carrying a confidence are left untouched.
 
+**Editor save = atomic diff-upsert (D3).** `POST /api/bots/[id]/knowledge`
+accepts `replace: true`. The agent editor sends its whole knowledge payload
+(KB + FAQ + facts + opponent research, one call) with this flag; the route
+inserts only new/changed chunks (content-deduped against what's already
+stored), then — **after** the inserts commit — deletes only the chunks whose
+content is no longer present. Chunks that survive unchanged are never touched,
+so they aren't re-embedded, and a failed insert leaves the previous KB fully
+intact. This replaced the old DELETE-all-then-re-POST save, which left a
+zero-knowledge window on any mid-save failure and re-embedded every chunk each
+save. Without the flag, POST keeps plain append semantics (research / fetch-url
+/ manual-add callers are unchanged). An editor save that empties all knowledge
+still issues a `DELETE` to clear the index.
+
 ### `sql/025_bot_enhancements.sql` (summary)
 - Adds `content_flags` and `source` columns to `bot_conversation_turns`.
 - Adds `sensitive_topics`, `focus_topics`, `deflection_enabled`, `deflection_message`, `ask_profile`, `profile_question`, `intents` columns to `bots`.

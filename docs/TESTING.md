@@ -45,6 +45,7 @@ tests/
 │   ├── botProbeGuards.test.ts
 │   ├── brandMatch.test.ts
 │   ├── knowledgeChunkReembed.test.ts  # D2 (AGENT_TIERS §2) — PATCH /knowledge/[chunkId] re-embeds the merged new title+content on edit (tsv trigger keeps FTS current but embedding is not trigger-maintained → stale vectors); embedding failure clears the vector (NULL) rather than leaving it stale, text edit still applies
+│   ├── knowledgeReplaceUpsert.test.ts  # D3 (AGENT_TIERS §2) — POST /knowledge replace=true is a content diff-upsert: inserts only changed chunks (unchanged ones not re-embedded), prunes only removed chunks (even when nothing new), append (no replace) never prunes, and a failed insert leaves the old KB intact (no zero-knowledge window)
 │   ├── classifyPendingRows.test.ts  # auto-classify-on-sync safety net — pending-row loop drain, maxRows cap/hasMore, real keyword assertions
 │   ├── commentaryReport.test.ts # shared Commentary renderer (Town Hall + Agent Study) — topic clustering/ordering, sentiment dot, escaping, empty-state
 │   ├── deflectionRouter.test.ts

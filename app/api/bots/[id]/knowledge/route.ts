@@ -59,7 +59,7 @@ export async function POST(req: Request, props: Params) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { text, source, source_type } = body as { text: string; source?: string; source_type?: string }
+  const { text, source, source_type, replace } = body as { text: string; source?: string; source_type?: string; replace?: boolean }
   if (!text || text.trim().length < 10) {
     return NextResponse.json({ error: 'text is required (min 10 chars)' }, { status: 400 })
   }
@@ -90,14 +90,35 @@ export async function POST(req: Request, props: Params) {
   // Dedup: fetch existing chunk contents for this bot to avoid duplicates
   const { data: existingChunks } = await service
     .from('agent_knowledge_chunks')
-    .select('content')
+    .select('id, content')
     .eq('bot_id', params.id)
 
   const existingSet = new Set((existingChunks || []).map(function(c: { content: string }) { return c.content.trim() }))
   const deduped = chunks.filter(function(c) { return !existingSet.has(c.content.trim()) })
 
+  // D3: replace = diff-based upsert of the WHOLE KB. The editor save used to
+  // DELETE all chunks then re-POST, which left a zero-knowledge window on any
+  // mid-save failure and re-embedded every chunk each save. With replace we
+  // insert only new/changed chunks (below) and delete only the chunks whose
+  // content is gone — chunks that survive unchanged are never touched (no
+  // re-embed), and old chunks are removed AFTER the new ones land (never a
+  // zero-knowledge window; a failed insert leaves the old KB fully intact).
+  const incomingSet = new Set(chunks.map(function(c) { return c.content.trim() }))
+  const staleIds = replace
+    ? (existingChunks || []).filter(function(c: { id: string; content: string }) { return !incomingSet.has(c.content.trim()) }).map(function(c: { id: string }) { return c.id })
+    : []
+
+  async function pruneStale() {
+    if (staleIds.length === 0) return
+    const { error: delErr } = await service.from('agent_knowledge_chunks').delete().in('id', staleIds).eq('bot_id', params.id)
+    if (delErr) console.error({ at: 'knowledge', msg: 'replace prune failed (new chunks already stored)', err: delErr.message })
+  }
+
   if (deduped.length === 0) {
-    return NextResponse.json({ stored: 0, skipped: chunks.length, message: 'All content already exists' })
+    // Nothing new to insert. In replace mode we still prune chunks the editor
+    // dropped; otherwise this is a plain append no-op.
+    await pruneStale()
+    return NextResponse.json({ stored: 0, skipped: chunks.length, removed: staleIds.length, message: staleIds.length ? 'Removed ' + staleIds.length + ' stale chunk(s); rest unchanged' : 'All content already exists' })
   }
 
   // Insert chunks (tsvector is auto-populated by trigger)
@@ -112,8 +133,13 @@ export async function POST(req: Request, props: Params) {
 
   const { data: inserted, error } = await service.from('agent_knowledge_chunks').insert(rows).select('id, title, content')
   if (error) {
+    // D3: insert failed — do NOT prune. The old KB is left fully intact.
     return serverError(error, 'bots.knowledge.store')
   }
+
+  // New chunks are committed; now it's safe to remove the chunks the editor
+  // dropped (replace mode only). Never a zero-knowledge window.
+  await pruneStale()
 
   // Generate and store embeddings (non-blocking — chunks work without them via full-text fallback)
   if (inserted && inserted.length > 0) {
@@ -203,7 +229,7 @@ export async function POST(req: Request, props: Params) {
     metadata: { source, source_type, chunks_added: rows.length, chunks_skipped: chunks.length - rows.length },
   })
 
-  return NextResponse.json({ stored: rows.length, chunks: chunks.map(function(c) { return { title: c.title, chars: c.content.length } }) })
+  return NextResponse.json({ stored: rows.length, removed: staleIds.length, chunks: chunks.map(function(c) { return { title: c.title, chars: c.content.length } }) })
 }
 
 // ── DELETE: clear chunks (all, or by source_type) ────────────
