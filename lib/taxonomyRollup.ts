@@ -380,6 +380,12 @@ export interface StoredTaxonomyField {
    *  (classify completion / drift nudge), so it stays as fresh as the rollup
    *  it reconciles. */
   rowsWithText?: number
+  /** Substantive-feedback denominator (sql/178/180): rows carrying usable
+   *  feedback in any selected field. Drives the Dimensions "% tagged" so the
+   *  rate isn't diluted by "N/A"/"Nothing" non-answers. Stored + refreshed with
+   *  the rollup; absent on pre-2026-07-14 entries → the GET falls back to the
+   *  live count. */
+  rowsSubstantive?: number
 }
 
 export interface StoredTaxonomy { fields: Record<string, StoredTaxonomyField> }
@@ -415,6 +421,11 @@ export async function updateStoredTaxonomyRollup(opts: {
   const { data: rwt, error: rwtErr } = await service
     .rpc('dataset_rows_with_text_count', { p_dataset_id: datasetId, p_fields: selFields })
   if (!rwtErr && rwt != null && Number.isFinite(Number(rwt))) rowsWithText = Number(rwt)
+  // Substantive denominator (sql/180) — same stored-once posture as rowsWithText.
+  let rowsSubstantive: number | undefined
+  const { data: rws, error: rwsErr } = await service
+    .rpc('dataset_rows_with_substantive_count', { p_dataset_id: datasetId, p_fields: selFields })
+  if (!rwsErr && rws != null && Number.isFinite(Number(rws))) rowsSubstantive = Number(rws)
   const next: StoredTaxonomy = { fields: { ...(cur?.fields ?? {}) } }
   next.fields[field] = {
     selFields,
@@ -422,6 +433,7 @@ export async function updateStoredTaxonomyRollup(opts: {
     updatedAt: new Date().toISOString(),
     version: TAXONOMY_VERSION,
     ...(rowsWithText != null ? { rowsWithText } : {}),
+    ...(rowsSubstantive != null ? { rowsSubstantive } : {}),
   }
   await mergeDatasetAnalytics(service, datasetId, { taxonomy: next })
   return rollup

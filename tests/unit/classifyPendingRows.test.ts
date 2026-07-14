@@ -43,8 +43,9 @@ function mockService(pages: Array<Array<{ id: number; data: Record<string, unkno
         }
       }
       if (name === 'numeric_field_stats') return { data: [], error: null }
-      // rowsWithText denominator counted once at rollup-write time
+      // rowsWithText + rowsSubstantive denominators counted once at rollup-write time
       if (name === 'dataset_rows_with_text_count') return { data: 5, error: null }
+      if (name === 'dataset_rows_with_substantive_count') return { data: 4, error: null }
       if (name === 'merge_dataset_analytics') { merged.push(args.p_patch!); return { data: null, error: null } }
       throw new Error(`unexpected rpc ${name}`)
     },

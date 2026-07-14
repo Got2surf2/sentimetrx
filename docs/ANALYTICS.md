@@ -273,13 +273,18 @@ for text insights, always shown never silently dropped:
 - **Ask Ana** ✅ — `loadAnaSample` prioritizes substantive comments when the sample truncates
   (partition substantive-first, then shuffle/slice) so the model reasons over real feedback;
   a context note records how many carried real feedback.
-- **Entities · Dimensions — SCOPED, not yet built.** Both read server-side CACHED/PRECOMPUTED
-  aggregates (entity `mention_count` cached on `entity_catalog` keyed by row total; the taxonomy
-  rollup stored at classify time). A substantive lens there needs a migration gating
+- **Dimensions** ✅ (sql/180, DENOMINATOR-only) — the "% tagged" header (`withSignal /
+  rowsWithText`) now divides by `rowsSubstantive` (rows carrying usable feedback in any selected
+  field, `dataset_rows_with_substantive_count`) so the tag rate isn't diluted by non-answers. The
+  dimension COUNTS are left untouched (a non-answer doesn't classify, so they're already clean) —
+  which is why no rollup re-classify was needed. `rowsSubstantive` is stored beside `rowsWithText`
+  at classify time (live-RPC fallback for pre-fix entries). The rate is capped at 100% (a rare
+  one-word answer can carry a signal yet not be substantive), labeled "% of substantive tagged".
+- **Entities — SCOPED, not yet built.** Entity `mention_count` is cached on `entity_catalog`
+  keyed by row total and the raw mention tiles (the main output) are already clean, so the lens
+  there is lower-value: it only matters for entity *prevalence %*, and needs a migration gating
   `count_entity_terms`/`sampled_count_entity_terms` on the substantive map + a `mention_count`
-  cache-bust (entities), or a re-classify/re-store backfill of the rollup across all datasets
-  (dimensions) — each changes stored counts platform-wide, so they warrant a focused pass with
-  owner QC rather than being folded into the client-side lens work.
+  cache-bust. Deferred to a focused pass with owner QC.
 **Listing cards carry data facts only** (rows, fields/members, last-updated) — the per-card
 records/signals/theme-fit line and its signal-stats-batch fetch were removed as a confusion
 source (the numbers described one question's set without saying which); analysis metrics live

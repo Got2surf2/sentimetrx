@@ -25,6 +25,7 @@ interface Rollup {
   defaultField: string | null
   totalRows: number | null     // dataset row count
   rowsWithText: number         // rows with text in the analyzed field — the reconciling denominator
+  rowsSubstantive?: number     // rows carrying usable feedback (sql/180) — the "% tagged" denominator
   field: string                // the field this rollup was computed for
 }
 
@@ -319,7 +320,22 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
         <div style={{ fontSize: 12, color: '#64748b', margin: '3px 0 0' }}>
           {fieldLabel && <>Field: <strong style={{ color: NAVY }}>{fieldLabel}</strong> · </>}
           <strong style={{ color: NAVY }}>{(data.rowsWithText || data.classifiedRows).toLocaleString()}</strong> rows with text
-          {' · '}{Math.round(100 * data.withSignal / Math.max(1, data.rowsWithText || data.classifiedRows))}% tagged
+          {(() => {
+            // "% tagged" over SUBSTANTIVE comments (sql/180) — the honest rate,
+            // not diluted by "N/A"/"Nothing" non-answers. Capped at 100 (a rare
+            // one-word answer can carry a signal yet not be substantive). Falls
+            // back to the rows-with-text denominator on pre-fix stored entries.
+            const hasSubst = typeof data.rowsSubstantive === 'number' && data.rowsSubstantive > 0
+            const denom = hasSubst ? data.rowsSubstantive! : (data.rowsWithText || data.classifiedRows)
+            const pct = Math.min(100, Math.round(100 * data.withSignal / Math.max(1, denom)))
+            return (
+              <span title={hasSubst
+                ? `${data.withSignal.toLocaleString()} of ${denom.toLocaleString()} substantive comments (real feedback — "N/A"/"Nothing" non-answers excluded from the denominator) carry a dimension signal.`
+                : `${data.withSignal.toLocaleString()} of ${denom.toLocaleString()} rows with text carry a dimension signal.`}>
+                {' · '}{pct}% {hasSubst ? 'of substantive tagged' : 'tagged'}
+              </span>
+            )
+          })()}
           {data.overallAvgRating != null && <> · <span style={{ color: ratingColor(data.overallAvgRating) || NAVY, fontWeight: 700 }}>★ {data.overallAvgRating.toFixed(1)}</span> avg rating</>}
           {data.alertRows > 0 && <> · <span style={{ color: RED, fontWeight: 700 }}>{data.alertRows.toLocaleString()} flagged</span></>}
         </div>

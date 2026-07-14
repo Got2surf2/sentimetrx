@@ -362,10 +362,18 @@ gating).
   never runs).
   **Reconciled denominator**: the GET returns `rowsWithText` (rows with text in this field —
   served from the stored rollup entry since 2026-07-11, live `dataset_rows_with_text_count`
-  RPC only for pre-store entries) and the header reads "**N rows with text · X% tagged**"
-  (X = `withSignal/rowsWithText`) — so it lines up with the metric strip's "records" instead
+  RPC only for pre-store entries) — so it lines up with the metric strip's "records" instead
   of the old misleading "N reviews classified · 50% with a signal" (which counted blank rows).
   `detectTextFields` still runs server-side but the UI no longer renders a picker.
+
+  **Substantive "% tagged"** (sql/180, 2026-07-14): the header reads "**N rows with text · X% of
+  substantive tagged**" where X = `withSignal / rowsSubstantive` — `rowsSubstantive` (rows carrying
+  usable feedback in any selected field, `dataset_rows_with_substantive_count`, stored beside
+  `rowsWithText` at classify time; live-RPC fallback for pre-fix entries) drops the ~45% "N/A"/
+  "Nothing" non-answers from the denominator so a survey field's real tag rate isn't halved. This
+  is a DENOMINATOR-only fix — dimension COUNTS are untouched (a non-answer doesn't classify, so the
+  numerator is already clean; no rollup re-store needed). The rate is capped at 100% (a rare
+  one-word answer can carry a signal yet not be substantive).
   **No prominent Re-classify** (removed 2026-06-06): re-classification overwrites saved tags
   and is expensive, so it is *not* a header button. Keeping new data tagged belongs at the
   dataset level — auto-classify-on-sync already does this for previously-classified Google

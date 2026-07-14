@@ -162,7 +162,14 @@ export async function GET(req: Request, props: Params) {
     const rwt = await service.rpc('dataset_rows_with_text_count', { p_dataset_id: datasetId, p_fields: selFields })
     rowsWithText = Number(rwt.data ?? 0)
   }
-  return NextResponse.json({ ...rollup, ...fields, totalRows, rowsWithText, field: fieldKey })
+  // Substantive denominator for "% tagged" (sql/180) — stored alongside the
+  // rollup, live RPC only for pre-2026-07-14 entries. Same self-heal as above.
+  let rowsSubstantive = storedField?.rowsSubstantive
+  if (rowsSubstantive == null) {
+    const rws = await service.rpc('dataset_rows_with_substantive_count', { p_dataset_id: datasetId, p_fields: selFields })
+    rowsSubstantive = Number(rws.data ?? 0)
+  }
+  return NextResponse.json({ ...rollup, ...fields, totalRows, rowsWithText, rowsSubstantive, field: fieldKey })
 }
 
 export async function POST(req: Request, props: Params) {
