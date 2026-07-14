@@ -282,3 +282,11 @@ DEPLOY (on push): `npm run migrate sql/178` `179` `180` `181` in order, then pus
 WHY (owner): "we should also have a prominent indicator when a dataset being viewed is sampled not full." A >50K dataset loads a deterministic 50K sample client-side; the only cues were scattered per-surface chips, easy to miss — a sample could be mistaken for the whole dataset.
 
 WHAT: `DatasetShell` (wraps every analyze tab, already reads RowsContext sampled/sampledCount/totalRows) renders a blue/informational banner under the header when `sampled && totalRows > sampledCount`: "Analyzing a representative N of M rows (P%). Charts, statistics and theme counts are estimates scaled to the full dataset." Distinct from the orange Filtered bar; persists on all tabs. fresh tsc clean, DatasetShell lint 0 delta. (Not browser-verified — trivial conditional JSX mirroring the existing filter-chips bar.)
+
+---
+
+## 2026-07-14 — Substantive: banner label + About popover shows the rate %
+
+WHY (owner, viewing the mined banner): "should this reference substantive? where do we show the rate of substantive as a % of total comments?" The banner's count was already substantive (totalResp flipped in pt7) but labeled "open-ended"; and the two-count model had dropped the substantive % everywhere, so the "46% non-answers" signal was invisible.
+
+WHAT: (1) TextMine AI-mined banner: "AI analysis of N **substantive** comments" (+ rule tooltip). (2) About popover per open-ended field now shows the substantive count AND "(N% of answered)" — substantive/filled — restoring the rate in the designated rich-stats home without adding a third headline number to the strip. fresh tsc clean, lint 0 delta.

@@ -287,8 +287,11 @@ would overstate each theme. Surfaces:
 - **Statistics** — NO prevalence denominator to flip: StatsModule uses themes/dimensions only as
   GROUPING variables for chi-square/t-test/ANOVA (group totals = classified counts, not an
   all-non-empty base), and dimension counts are already clean. Left untouched.
-- **About popover per-field** — shows the substantive **comment count** (the two-count base), not
-  a "% substantive".
+- **About popover per-field** — shows the substantive **comment count** (the two-count base) AND
+  its rate as a **"(N% of answered)"** — the designated rich-stats home for the substantive share
+  (the strip/main chrome stays two counts; this is where the "% real feedback vs non-answers" signal
+  lives). The TextMine AI-mined banner reads "AI analysis of N **substantive** comments" (was
+  "open-ended"), rule in the hover.
 - Verified on Carrabba's GSS (56K, both paths): 35.6K non-empty → 19.1K substantive (46%
   non-answers); Service & Staff Issues reads its true **12%** vs a diluted 7%, Food Quality 10% vs
   6% — numerator ⊆ denominator throughout (`scripts/_verify_deck_substantive.mts` full-scan +
