@@ -136,11 +136,35 @@ interface AgentIntent {
 }
 interface Guardrail { rule?: string; text?: string }
 interface Opponent { name?: string }
-interface RagChunk {
+export interface RagChunk {
   title?: string
   content?: string
+  rank?: number | null
   confidence?: number | null
   metadata?: { sentiment?: string; opponent?: unknown } | null
+}
+
+/**
+ * D1 — normalize a rank-derived confidence onto chunks that lack one.
+ *
+ * The semantic RPC (`search_knowledge_semantic`) returns a `confidence`
+ * column (`LEAST(rank/8.5, 1)`); the keyword-fallback RPC
+ * (`search_knowledge_chunks`, sql/023) returns only `rank`. When semantic
+ * search errors and the code falls back to keyword search, every chunk
+ * arrives with `confidence === undefined`, so `chunks[0].confidence ?? 0`
+ * reads 0, drops below the 0.05 injection floor, and the ENTIRE knowledge
+ * base is silently suppressed — including the free-text KB fallback. Derive
+ * the missing confidence from the chunk's own `rank` using the same scale
+ * the semantic RPC uses, so a real keyword match still injects knowledge.
+ * Pure + in-place; semantic chunks (confidence already present) are untouched.
+ */
+export function normalizeChunkConfidence(chunks: RagChunk[] | null | undefined): void {
+  if (!chunks) return
+  for (const c of chunks) {
+    if ((c.confidence === undefined || c.confidence === null) && typeof c.rank === 'number') {
+      c.confidence = Math.min(Math.max(c.rank, 0) / 8.5, 1)
+    }
+  }
 }
 interface TurnRow {
   role?: string
@@ -830,6 +854,10 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
         rpcErr = fallback.error
       }
       if (rpcErr) console.error({ at: 'bot-chat', msg: "RAG search error", err: rpcErr.message })
+
+      // D1: the keyword-fallback RPC returns `rank` but no `confidence`, which
+      // would read as 0 and suppress the entire KB. Derive it before scoring.
+      normalizeChunkConfidence(chunks as RagChunk[] | null)
 
       if (chunks && chunks.length > 0) {
         const negMode = bot.negative_content_mode || 'deflect'

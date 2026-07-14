@@ -59,6 +59,7 @@ tests/
 │   ├── projectReport.test.ts # project (brand) report aggregation — by-topic pooling case-insensitive, reconciling totals, deterministic 1:1 theme fallback, entity merge across sources, sentiment sum, source-attributed commentary
 │   ├── probeFocusClassifier.test.ts # user-turn topic classifier — gating + comma/bracket parsing + dedup + catalog validation
 │   ├── promotion.test.ts     # promotion manifests (lib/promotion) — parseManifest version gates, -copy[N] slug ladder, imports land dormant (draft/paused), allow-list stripping, fresh survey guid + null client_id, PulseIQ dedicated-agent rollback on failed session insert
+│   ├── ragConfidence.test.ts  # D1 (AGENT_TIERS §2) — chatCore.normalizeChunkConfidence derives confidence=LEAST(rank/8.5,1) onto keyword-fallback chunks that lack it, so a semantic-RPC error no longer suppresses the whole KB; cap-at-1/floor-at-0, semantic chunks untouched, null/empty no-op
 │   ├── rateLimit.test.ts
 │   ├── sentiment-slang.test.ts
 │   ├── serviceAlerts.test.ts  # credit-limit alert emails (lib/serviceAlerts) — pickAlertWorthy per-status re-alert windows (low ≈3d "close to the limit", critical/error ≈daily), maybeAlertCreditError claim-then-send (atomic last_alerted_at claim: concurrent 402 burst → one email; loser skips), no-recipients no-op (no DB write)

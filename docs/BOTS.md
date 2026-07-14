@@ -272,6 +272,15 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 ```
 
+**Fallback confidence normalization (D1).** Only `search_knowledge_semantic`
+returns a `confidence` column; the lexical `search_knowledge_chunks` returns
+`rank` alone. When semantic search errors and chatCore falls back to the lexical
+RPC, `chatCore.normalizeChunkConfidence` derives `confidence = LEAST(rank/8.5,1)`
+onto every chunk that lacks one — the same scale the semantic RPC uses. Without
+this, fallback chunks read `confidence = 0`, fell below the 0.05 injection floor,
+and the **entire** KB (chunks and the free-text fallback) was silently
+suppressed. Semantic chunks already carrying a confidence are left untouched.
+
 ### `sql/025_bot_enhancements.sql` (summary)
 - Adds `content_flags` and `source` columns to `bot_conversation_turns`.
 - Adds `sensitive_topics`, `focus_topics`, `deflection_enabled`, `deflection_message`, `ask_profile`, `profile_question`, `intents` columns to `bots`.
