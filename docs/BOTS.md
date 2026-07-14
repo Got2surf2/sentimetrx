@@ -622,9 +622,15 @@ agent editor's Conversation Controls; POST/PATCH `/api/bots` validate via
 
 > **Phantom feature note:** The `bot_conversation_turns.content_en` column exists for future translation work but is **not populated** today. The chat route propagates `botLang` only to inject a "respond in <language>" instruction into the system prompt; no actual translation step runs.
 
-### Live-data context injection — `config.liveContext` (2026-07-11)
+### Live-data context injection — the adapter registry (2026-07-11; generalized 2026-07-14, AGENT_TIERS P2f)
 
-Per-turn deterministic injection of LIVE external data into the system prompt, generalizing the MCO pattern (`lib/mcoLiveContext.ts`, which stays bot-id-gated) behind a **config flag** so the same agent definition works across TEST/prod ids. Placed at the TOP of the system prompt (same placement + rationale as the MCO block: anti-fabrication rules further down otherwise make the model ignore injected live data).
+Per-turn deterministic injection of LIVE external data into the system prompt. Both hand-wired injections now resolve through a **typed adapter registry** (`lib/liveContext/registry.ts`): `resolveLiveContextBlocks(input)` returns the ordered blocks for a turn, and chatCore pushes them at the TOP of the system prompt (anti-fabrication rules further down otherwise make the model ignore injected live data). Adapter names + the super-knob validator are the client-safe `lib/liveContext/types.ts`. Selection:
+
+- **Legacy gates (tier-agnostic — the two live deployments, behavior preserved exactly):** MCO (`lib/mcoLiveContext.buildMcoLiveContext`) is activated for the AskAna bot id (the builder also self-gates); wildfire is activated by the `config.liveContext === 'wildfire'` flag. Order = MCO, then wildfire.
+- **Generalized super-only knob:** a Super Agent's `capability_config.liveContext: [{source, params}]` opts into any registered adapter (validated by `sanitizeLiveContextRefs` — unknown sources dropped, deduped, super-tier only). A source already active via a legacy gate is not run twice. `params` is forward-looking plumbing (wildfire/MCO ignore it today).
+- Each adapter is isolated — a throw becomes a per-source `error` (logged in debug mode), never a failed turn. Verified end-to-end (a real live wildfire turn through the registry) by `scripts/_verify_live_context.mts` (untracked); unit coverage `tests/unit/liveContextRegistry.test.ts` + `liveContextTypes.test.ts`.
+
+Adapters:
 
 - **`config.liveContext === 'wildfire'`** → `lib/wildfireLiveContext.buildWildfireLiveContext(userMessage, recentUserMessages)`. Regex intent + location detection (no AI call): a live-fire question with a ZIP / "City, ST" / "near <place>" in the current or recent user messages (location carries forward across turns) triggers, in parallel and fail-soft:
   - **Geocode** — ZIP via `api.zippopotam.us`, city via Nominatim (OpenStreetMap). Both free/keyless.

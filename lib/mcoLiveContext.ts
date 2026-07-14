@@ -21,7 +21,10 @@ import { fetchSecurityWaits, type CheckpointWait } from '@/lib/securityWait'
 import { fetchParkingAvailability, type ParkingLot } from '@/lib/parking'
 import { walkLegsForGate, formatMinutes } from '@/lib/walkingTime'
 
-const ASKANA_BOT_ID = '920c571b-5a09-4d3a-a20e-904a417d20b3'
+// Exported so the live-context adapter registry (lib/liveContext/registry.ts,
+// AGENT_TIERS P2f) can activate the MCO adapter for exactly this bot — the same
+// gate buildMcoLiveContext enforces internally (kept as defense in depth).
+export const ASKANA_BOT_ID = '920c571b-5a09-4d3a-a20e-904a417d20b3'
 
 // Common destination keywords → IATA airport codes. Not exhaustive but
 // covers the major ones MCO connects to. The bot's prose will use these

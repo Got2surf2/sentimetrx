@@ -5,10 +5,10 @@
 > + `capability_config` (sql/175, TEST-applied), `lib/agentCapability.ts` knob
 > resolver wired into chatCore, editor toggle + super-model dropdown, super-turn
 > abuse-backstop quota. All local/unpushed. Phase 2 (super KB/retrieval) is in
-> flight — P2a (multi-query retrieval), P2b (near-dup + chunk budget), P2c
+> COMPLETE — P2a (multi-query retrieval), P2b (near-dup + chunk budget), P2c
 > (PDF/DOCX ingestion), P2d (resumable 300-page crawl, sql/176), P2e (weekly
-> hash-diff re-crawl cron, sql/177) SHIPPED; P2f (liveContext adapter registry)
-> is the last unit. Phase 3 (§3.2) stays gated.**
+> hash-diff re-crawl cron, sql/177), P2f (liveContext adapter registry) all
+> SHIPPED. Phase 3 (§3.2) stays gated.**
 > Written 2026-07-14 (Fable review session) on the owner mandate: *"we are
 > running into situations where a much more sophisticated and informed bot is
 > necessary — should we have regular agents and then super agents (more
@@ -169,7 +169,7 @@ scattered literals. User-facing name (owner, 2026-07-14): **"Super Agents"**
 | Retrieval | single-query | multi-query: embed the raw query + one Haiku query-rewrite; union, re-rank by score, take top-12 | biggest quality lever after D4 |
 | KB size | ~30 pages, no docs | sitemap-driven resumable crawl (300+ pages), PDF/DOCX ingestion via the existing `readDocument` vision pipeline, per-agent chunk budget (e.g. 5,000) | crawl runs as a D16a browser-driven loop (the taxonomy-classify pattern) — serverless 120s cannot do 300 pages in one shot |
 | KB freshness | manual only | weekly re-crawl cron of `training_urls` with content-hash diffing (only changed pages re-chunk/re-embed) — **SHIPPED P2e**: `/api/cron/agent-recrawl` (Mon 07:00 UTC), per-page sha256 in `agent_kb_page_hashes` (sql/177), `lib/botKnowledge/recrawl.ts` | **super-tier only** (owner, 2026-07-14): auto-refresh is a paid differentiator; standard agents stay manual-refresh |
-| Live data | hand-wired (`config.liveContext==='wildfire'`, MCO bot-id gate) | small adapter registry: `liveContext: [{source, params}]` resolved from a typed adapter map; wildfire + MCO become the first two adapters | super-only knob |
+| Live data | hand-wired (`config.liveContext==='wildfire'`, MCO bot-id gate) | small adapter registry: `liveContext: [{source, params}]` resolved from a typed adapter map; wildfire + MCO become the first two adapters — **SHIPPED P2f**: `lib/liveContext/registry.ts` (`resolveLiveContextBlocks`) + client-safe `types.ts`; legacy gates preserved exactly, super knob = `capability_config.liveContext` | super-only knob |
 | Turn metering | none (rate-limit only) | `org_features` monthly quota on super-turn count | billing hook |
 
 ### 3.2 Explicitly deferred (Phase 3, gated on demand)

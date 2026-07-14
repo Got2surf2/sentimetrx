@@ -95,7 +95,7 @@ export interface ChatAgent {
   probe_focus_enabled?: boolean | null
   research_probes?: unknown
   capability?: string | null
-  capability_config?: { model?: string } | null
+  capability_config?: { model?: string; liveContext?: unknown } | null
 }
 
 export interface ChatCoreContext {
@@ -748,40 +748,34 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
   // calmly, acknowledge the frustration, do not mirror the tone.
   if (toneNudge) systemParts.push('NOTE: The participant\'s last message reads as heated or frustrated. Stay calm and warm, briefly acknowledge the frustration, and de-escalate — do not mirror the tone or lecture them.')
 
-  // MCO-specific live data injection. Placed AT THE TOP of the system prompt
+  // Live-context adapters (AGENT_TIERS Phase 2 P2f). The two hand-wired
+  // injections — MCO (gated by the AskAna bot id) and wildfire (gated by the
+  // legacy config.liveContext flag) — are now the first two entries in a typed
+  // adapter registry; Super Agents can additionally opt in via the
+  // capability_config.liveContext knob. Placed AT THE TOP of the system prompt
   // (before personality, system_prompt, factual-accuracy, and guardrails)
-  // because conservative anti-fabrication rules further down were causing
-  // the model to ignore the block when placed below. The block itself
-  // contains an explicit "supersedes the never-speculate rule for this
-  // turn" instruction. No-op for non-AskAna bots (gated by bot id).
-  try {
-    const { buildMcoLiveContext } = await import('@/lib/mcoLiveContext')
+  // because each block carries an explicit "supersedes the never-speculate rule
+  // for this turn" instruction that conservative rules below would otherwise
+  // cause the model to ignore. Order preserved: MCO, then wildfire.
+  {
+    const { resolveLiveContextBlocks } = await import('@/lib/liveContext/registry')
     let priorAssistant = ''
     for (let i = messages.length - 2; i >= 0; i--) {
       if (messages[i].role === 'assistant') { priorAssistant = String(messages[i].content || ''); break }
     }
-    const liveBlock = await buildMcoLiveContext(bot.id, lastUserMsg?.content || '', priorAssistant)
-    if (liveBlock) systemParts.push(liveBlock)
-  } catch (e) {
-    if (debugMode) _debug.push('mco-live-context: ' + ((e as Error)?.message || String(e)))
-  }
-
-  // Wildfire live-data injection — same top-of-prompt placement and
-  // rationale as the MCO block above. Gated by a config flag (not a bot
-  // id) so the same agent definition works across TEST and prod:
-  // config.liveContext === 'wildfire'. Recent user messages are passed so
-  // a ZIP/city shared earlier in the conversation carries forward.
-  if (bot.config?.liveContext === 'wildfire') {
-    try {
-      const { buildWildfireLiveContext } = await import('@/lib/wildfireLiveContext')
-      const recentUser = messages
-        .filter(function (m: ChatMessage) { return m.role === 'user' })
-        .slice(-8, -1)
-        .map(function (m: ChatMessage) { return String(m.content || '') })
-      const fireBlock = await buildWildfireLiveContext(lastUserMsg?.content || '', recentUser)
-      if (fireBlock) systemParts.push(fireBlock)
-    } catch (e) {
-      if (debugMode) _debug.push('wildfire-live-context: ' + ((e as Error)?.message || String(e)))
+    const recentUser = messages
+      .filter(function (m: ChatMessage) { return m.role === 'user' })
+      .slice(-8, -1)
+      .map(function (m: ChatMessage) { return String(m.content || '') })
+    const liveResults = await resolveLiveContextBlocks({
+      bot,
+      userMessage: lastUserMsg?.content || '',
+      priorAssistant,
+      recentUserMessages: recentUser,
+    })
+    for (const r of liveResults) {
+      if (r.block) systemParts.push(r.block)
+      else if (r.error && debugMode) _debug.push(r.source + '-live-context: ' + r.error)
     }
   }
 

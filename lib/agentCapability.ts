@@ -10,10 +10,13 @@
 // with a per-agent editor dropdown (Sonnet 4.6 available); pricing is a flat
 // monthly fee (the quota is an abuse backstop, see lib/featureFlags).
 
+import { sanitizeLiveContextRefs, type LiveContextRef } from '@/lib/liveContext/types'
+
 export type Capability = 'standard' | 'super'
 
 export interface CapabilityConfig {
-  model?: string   // super only: per-agent model override (editor dropdown)
+  model?: string                    // super only: per-agent model override (editor dropdown)
+  liveContext?: LiveContextRef[]    // super only: opt-in live-data adapters (P2f)
 }
 
 export interface CapabilityKnobs {
@@ -57,7 +60,7 @@ export function normalizeCapability(value: unknown): Capability {
  * return no override, so callAI uses the tier default (Sonnet 4.6) unchanged.
  */
 export function resolveCapability(
-  agent: { capability?: string | null; capability_config?: CapabilityConfig | null } | null | undefined,
+  agent: { capability?: string | null; capability_config?: { model?: string } | null } | null | undefined,
 ): CapabilityKnobs {
   const capability = normalizeCapability(agent?.capability)
   const base = DEFAULTS[capability]
@@ -76,6 +79,10 @@ export function resolveCapability(
  */
 export function sanitizeCapabilityConfig(raw: unknown): CapabilityConfig {
   if (!raw || typeof raw !== 'object') return {}
+  const out: CapabilityConfig = {}
   const model = (raw as CapabilityConfig).model
-  return model && VALID_SUPER_MODELS.has(model) ? { model } : {}
+  if (model && VALID_SUPER_MODELS.has(model)) out.model = model
+  const liveContext = sanitizeLiveContextRefs((raw as { liveContext?: unknown }).liveContext)
+  if (liveContext.length > 0) out.liveContext = liveContext
+  return out
 }
