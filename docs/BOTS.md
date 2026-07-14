@@ -463,6 +463,34 @@ Every bot rendered through the shared `components/ui/ChatBot.tsx` shell shows a 
 
 The heart of the module. **No auth.** Rate-limited 30 req/60s per IP.
 
+### Agent capability tier — Standard vs Super Agents (AGENT_TIERS Phase 1)
+
+One engine, capability by config. `agents.capability` (`standard | super`, CHECK;
+sql/175) + `agents.capability_config` jsonb select a knob set resolved once per
+turn by `lib/agentCapability.resolveCapability` — the single source of truth, so
+chatCore carries no scattered per-tier literals. **Standard values are identical
+to the previous hardcoded ones**, so existing agents are unchanged.
+
+| Knob | Standard | Super |
+|---|---|---|
+| Main model | Sonnet 4.6 (tier default, no override) | `capability_config.model` — Opus 4.8 default, Sonnet 4.6 selectable (editor dropdown) |
+| `maxTokens` | 400 | 1,200 |
+| RAG chunks / turn | 5 | 12 |
+| History window (verbatim) | 8 | 24 |
+| Input cap (chars) | 1,200 | 4,000 |
+| Verbosity | word-cap ladder ×1, "HARD LIMIT" framing | ladder ×2.5, soft "aim for" framing |
+
+The super model flows through `callAI.modelOverride`; super turns log as
+`event_type='chat_super'` (vs `chat`) so their Opus-tier cost is visible in
+`/admin/usage` and countable by the backstop. **Pricing = flat per-agent monthly
+fee** (§7), so super turns are UNLIMITED by default — `assertSuperTurnAllowed`
+(`lib/featureFlags`) blocks a turn only when an `org_features`
+`super_agent_turn` row sets an explicit monthly ceiling that this month's
+`chat_super` count has reached (fails OPEN on a count error; the chat route
+returns 429 with a friendly message). Editor toggle + model dropdown live in the
+agent editor's Conversation Controls; POST/PATCH `/api/bots` validate via
+`normalizeCapability`/`sanitizeCapabilityConfig` (raw values are never stored).
+
 ### Request
 
 ```ts

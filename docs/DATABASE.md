@@ -54,7 +54,7 @@ complete empty schema. Data restore comes from the nightly org snapshots
 
 | Table | Purpose |
 |---|---|
-| `agents` | Agent definition: persona, system prompt, knowledge base, intents, focuses/topics, guardrail + content-safety config, encrypted BYOK `ai_api_key`. Public widget at `/b/[slug]`. |
+| `agents` | Agent definition: persona, system prompt, knowledge base, intents, focuses/topics, guardrail + content-safety config, encrypted BYOK `ai_api_key`. Public widget at `/b/[slug]`. `capability` (`standard`\|`super`, CHECK; sql/175) + `capability_config` jsonb select the AGENT_TIERS Phase 1 knob set (see BOTS.md §6 / `lib/agentCapability.ts`). |
 | `agent_knowledge_chunks` | RAG chunks + embeddings for an agent's knowledge base (via `bot_id`). |
 | `bot_conversation_turns` | The engine's synchronous turn store (user + assistant rows per session). Written by `lib/chatCore` on every turn; the async mirror (below) is the analytics store. |
 | `agent_session_personas` | Per-session extracted participant persona (name, traits, demographics). |

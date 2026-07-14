@@ -34,6 +34,7 @@ import { isInfoOnlyMessage } from '@/lib/botProbeGuards'
 import { pickNextTopic, type NextTopic } from '@/lib/pickNextTopic'
 import { detectThemesForTownHall } from '@/lib/cohortThemeAggregator'
 import { logQuestion, replyLooksUncertain } from '@/lib/logQuestion'
+import { resolveCapability } from '@/lib/agentCapability'
 import { detectEntityMentions } from '@/lib/entityMentionDetector'
 import { logError } from '@/lib/log'
 
@@ -92,6 +93,8 @@ export interface ChatAgent {
   focuses?: AgentFocus[] | null
   probe_focus_enabled?: boolean | null
   research_probes?: unknown
+  capability?: string | null
+  capability_config?: { model?: string } | null
 }
 
 export interface ChatCoreContext {
@@ -198,6 +201,9 @@ interface CohortConfig {
 
 export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, unknown>): Promise<ChatCoreResult> {
   const bot = ctx.agent
+  // AGENT_TIERS Phase 1 — resolve the capability knob set once per turn. For a
+  // standard agent every value equals today's hardcoded constant (no change).
+  const capKnobs = resolveCapability(bot)
   const service = ctx.service
   const ip = ctx.ip
 
@@ -306,12 +312,15 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
   // Demo signals — lightweight labels for client-facing demo mode
   const _signals: Array<{ label: string; type: string; color: string }> = []
 
-  // Conversation compression: if history is long, summarize older turns
-  // Keep the last 8 messages verbatim, compress earlier ones into a summary
+  // Conversation compression: if history is long, summarize older turns.
+  // Keep the last `historyWindow` messages verbatim (8 standard / 24 super),
+  // compress earlier ones into a summary. Threshold + reuse bounds scale with
+  // the window so standard behavior is unchanged (window 8 → trigger >12).
+  const histWindow = capKnobs.historyWindow
   let recentMessages: ChatMessage[]
-  if (messages.length > 12) {
-    const olderMessages = messages.slice(0, -8)
-    const recentRaw = messages.slice(-8)
+  if (messages.length > histWindow + 4) {
+    const olderMessages = messages.slice(0, -histWindow)
+    const recentRaw = messages.slice(-histWindow)
 
     // Summary reuse — a fresh AI summary on EVERY turn past 12 messages is
     // wasted spend/latency when the covered prefix barely changed. Stash the
@@ -343,7 +352,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
     }
 
     const cacheGap = cachedSummary ? messages.length - cachedSummary.upToCount : -1
-    if (cachedSummary && cacheGap >= 8 && cacheGap <= 14) {
+    if (cachedSummary && cacheGap >= histWindow && cacheGap <= histWindow + 6) {
       recentMessages = [
         { role: 'user' as const, content: '[Earlier in this conversation: ' + cachedSummary.summary + ']' },
         ...messages.slice(cachedSummary.upToCount),
@@ -422,7 +431,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
     const strikeKey = ctx.townHallContext
       ? 'th_' + ctx.townHallContext.townHallId + ':' + (ctx.townHallContext.participantId || ip)
       : 'cbot_' + ip
-    const check = checkMessage(strikeKey, lastUserMsg.content, { safetyConfig: safetyConfig as ContentSafetyConfig, maxLength: 1200 })
+    const check = checkMessage(strikeKey, lastUserMsg.content, { safetyConfig: safetyConfig as ContentSafetyConfig, maxLength: capKnobs.inputCap })
     if (check.nudge) toneNudge = true
     if (!check.safe) {
       // Over-length input is NOT a conduct violation: no [filtered] audit
@@ -836,7 +845,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
       // Generate query embedding for semantic search
       const queryEmbedding = await generateEmbedding(userQuery, bot.org_id)
 
-      const rpcParams: Record<string, unknown> = { p_bot_id: bot.id, p_query: userQuery, p_limit: 5 }
+      const rpcParams: Record<string, unknown> = { p_bot_id: bot.id, p_query: userQuery, p_limit: capKnobs.ragChunks }
       let rpcName = 'search_knowledge_chunks'
 
       // Try semantic search first, fall back to basic search
@@ -849,7 +858,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
       // If semantic search fails (RPC not available), fall back to basic search
       if (rpcErr && rpcName === 'search_knowledge_semantic') {
         console.error({ at: 'bot-chat', msg: "Semantic search failed, falling back", err: rpcErr.message })
-        var fallback = await service.rpc('search_knowledge_chunks', { p_bot_id: bot.id, p_query: userQuery, p_limit: 5 })
+        var fallback = await service.rpc('search_knowledge_chunks', { p_bot_id: bot.id, p_query: userQuery, p_limit: capKnobs.ragChunks })
         chunks = fallback.data
         rpcErr = fallback.error
       }
@@ -1381,19 +1390,23 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
     }
   }
 
-  if (userWords <= 5) {
-    maxWords = 40
-    verbosityGuide = 'HARD LIMIT: Your reply MUST be under 40 words (1-2 sentences). The user sent a very brief message — match that energy. Do NOT write paragraphs.' + shortcodeHint
-  } else if (userWords <= 20) {
-    maxWords = 75
-    verbosityGuide = 'HARD LIMIT: Your reply MUST be under 75 words (2-3 sentences). Keep it tight and conversational.'
-  } else if (userWords <= 50) {
-    maxWords = 120
-    verbosityGuide = 'HARD LIMIT: Your reply MUST be under 120 words (3-5 sentences). Be thorough but focused.'
+  // Word-cap ladder by user message length. Standard (verbosityScale 1,
+  // hardLimit true) reproduces the original four caps byte-for-byte; super
+  // scales the caps (×2.5) and softens the framing so answers can go deeper.
+  const VERBOSITY_LADDER = [
+    { le: 5,        base: 40,  sent: '1-2 sentences', note: 'The user sent a very brief message — match that energy. Do NOT write paragraphs.' },
+    { le: 20,       base: 75,  sent: '2-3 sentences', note: 'Keep it tight and conversational.' },
+    { le: 50,       base: 120, sent: '3-5 sentences', note: 'Be thorough but focused.' },
+    { le: Infinity, base: 160, sent: '5-6 sentences', note: 'Stay focused even on detailed topics.' },
+  ]
+  const rung = VERBOSITY_LADDER.find(function(r) { return userWords <= r.le })!
+  maxWords = Math.round(rung.base * capKnobs.verbosityScale)
+  if (capKnobs.hardLimit) {
+    verbosityGuide = 'HARD LIMIT: Your reply MUST be under ' + maxWords + ' words (' + rung.sent + '). ' + rung.note
   } else {
-    maxWords = 160
-    verbosityGuide = 'HARD LIMIT: Your reply MUST be under 160 words (5-6 sentences). Stay focused even on detailed topics.'
+    verbosityGuide = 'Aim to keep your reply under ' + maxWords + ' words. ' + rung.note + ' Prioritize a complete, well-supported answer over brevity.'
   }
+  if (userWords <= 5) verbosityGuide += shortcodeHint
   var verbosityLabel = 'user ' + userWords + ' words → max ' + maxWords + ' words'
   if (debugMode) _debug.push('Verbosity: ' + verbosityLabel)
   systemParts.push('\n\nRESPONSE LENGTH: ' + verbosityGuide + ' If a topic has multiple angles, give a brief summary and ask which to explore. Never dump everything you know — it\'s a conversation, not a speech.')
@@ -1703,10 +1716,12 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
 
   try {
     // @ts-ignore — recentMessages roles are always 'user' | 'assistant' from client
-    // TUESDAY DEMO 2026-05-19: bumped main response tier to Sonnet 4.6 for the
-    // Vindman demo. Auxiliary calls (summary/deflection/intent/persona) stay on
-    // Haiku since they don't need it. Revert to 'fast' after the demo to save
-    // ~3x on per-turn cost.
+    // Main reply model/budget come from the capability knobs (AGENT_TIERS
+    // Phase 1): standard agents run tier:'advanced' (Sonnet 4.6) with no
+    // modelOverride and maxTokens 400 — identical to before; super agents carry
+    // a modelOverride (Opus 4.8 default, or the per-agent editor choice) and a
+    // larger maxTokens. Auxiliary calls (summary/deflection/intent/persona)
+    // stay on Haiku regardless — they don't need the upgrade.
     // System prompt goes as two blocks with cache_control on the stable
     // prefix — repeated turns read the prefix from the Anthropic prompt
     // cache instead of re-billing it (and cache reads don't count against
@@ -1716,7 +1731,8 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
     const volatileSystem = systemParts.slice(stableSystemPartCount).join('\n')
     const result = await callAI({
       tier: 'advanced',
-      maxTokens: 400,
+      modelOverride: capKnobs.modelOverride,
+      maxTokens: capKnobs.maxTokens,
       timeoutMs: 30000,
       messages: recentMessages,
       system: volatileSystem
@@ -1724,8 +1740,9 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
         : [{ type: 'text' as const, text: stableSystem, cache: true }],
     })
 
-    // Log usage
-    logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'chat' }, result.usage)
+    // Log usage. Super turns log as 'chat_super' so their (Opus-tier) cost is
+    // visible in /admin/usage and countable by the abuse-backstop quota.
+    logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: capKnobs.capability === 'super' ? 'chat_super' : 'chat' }, result.usage)
 
     // Update last_session_at (fire-and-forget). Conversation count is computed live from turns.
     service.from('agents').update({ last_session_at: new Date().toISOString() }).eq('id', bot.id).then(function() {})

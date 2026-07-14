@@ -11,6 +11,7 @@ import TransferOrg from '@/components/ui/TransferOrg'
 import EmojiPickerPopover from '@/components/creator/EmojiPickerPopover'
 import { SUPPORTED_LANGUAGES } from '@/lib/types'
 import { attachLinksDirectory, withLinkIntegrityGuardrail } from '@/lib/agentLinks'
+import { SUPER_MODEL_OPTIONS, SUPER_DEFAULT_MODEL } from '@/lib/agentCapability'
 import ContentSafetyEditor, { type ContentSafetyConfigValue } from '@/components/agent/ContentSafetyEditor'
 
 const HERMES = '#E8632A'
@@ -172,6 +173,8 @@ function BotCreatorInner() {
   const [faq, setFaq] = useState<{ question: string; answer: string }[]>([])
   const [facts, setFacts] = useState<string[]>([])
   const [guardrails, setGuardrails] = useState<string[]>([])
+  const [capability, setCapability] = useState<'standard' | 'super'>('standard')
+  const [capabilityModel, setCapabilityModel] = useState<string>(SUPER_DEFAULT_MODEL)
   const [subject, setSubject] = useState('')
   const [negativeContentMode, setNegativeContentMode] = useState('deflect')
   const [opponents, setOpponents] = useState<{ name: string; details: string }[]>([])
@@ -232,6 +235,8 @@ function BotCreatorInner() {
       if (Array.isArray(bot.faq)) setFaq(bot.faq)
       if (Array.isArray(bot.facts)) setFacts(bot.facts.map(function(f: string | { text?: string }) { return typeof f === 'string' ? f : f.text || '' }))
       if (Array.isArray(bot.guardrails)) setGuardrails(bot.guardrails.map(function(g: string | { rule?: string; text?: string }) { return typeof g === 'string' ? g : g.rule || g.text || '' }))
+      setCapability(bot.capability === 'super' ? 'super' : 'standard')
+      setCapabilityModel((bot.capability_config?.model as string) || SUPER_DEFAULT_MODEL)
       if (Array.isArray(bot.sensitive_topics)) setSensitiveTopics(bot.sensitive_topics)
       if (Array.isArray(bot.focus_topics)) setFocusTopics(bot.focus_topics)
       if (bot.deflection_enabled === false) setDeflectionEnabled(false)
@@ -272,7 +277,7 @@ function BotCreatorInner() {
     if (dirtyInitRef.current) { dirtyInitRef.current = false; return }
     setDirty(true)
   }, [name, slug, systemPrompt, personality, knowledgeBase, trainingUrls, suggestions, config,
-      reviewInterval, faq, facts, guardrails, subject, negativeContentMode, opponents,
+      reviewInterval, faq, facts, guardrails, capability, capabilityModel, subject, negativeContentMode, opponents,
       contrastMode, sensitiveTopics, focusTopics, deflectionEnabled, deflectionMessage,
       askProfile, profileQuestion, intents, focuses, demographicInference])
 
@@ -397,6 +402,8 @@ function BotCreatorInner() {
       faq: cleanFaq,
       facts: cleanFacts,
       guardrails: cleanGuardrails,
+      capability: capability,
+      capability_config: capability === 'super' ? { model: capabilityModel } : {},
       subject: subject.trim(),
       negative_content_mode: negativeContentMode,
       opponents: opponents.filter(function(o) { return o.name.trim() }),
@@ -1197,6 +1204,31 @@ function BotCreatorInner() {
             })}
             <button onClick={function() { setResearchProbes(function(prev) { return [...prev, { raw: {}, id: '', question: '', origQuestion: '', mode: 'verbatim' as const, construct: '', answerSchema: 'open', followUp: false, samplePct: 25, targetN: 0, minTurns: 3, enabled: true }] }) }}
               style={{ padding: '5px 14px', borderRadius: 14, border: '1px dashed #99f6e4', background: '#ECFEFF', color: '#0E7B7B', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>+ Add research probe</button>
+          </Section>
+
+          <Section title="Agent Capability">
+            <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>Super Agents use a stronger model, inject more knowledge per turn, remember more of the conversation, and give longer, deeper answers — at a higher per-reply cost. Standard Agents stay a fast, concise Q&amp;A concierge.</p>
+            <div style={{ display: 'flex', gap: 8, marginBottom: capability === 'super' ? 10 : 0 }}>
+              {(['standard', 'super'] as const).map(function(c) {
+                var active = capability === c
+                return (
+                  <button key={c} type="button" onClick={function() { setCapability(c) }}
+                    style={{ flex: 1, padding: '10px 12px', borderRadius: 8, border: active ? '2px solid #0E7B7B' : '1px solid #d1d5db', background: active ? '#ECFEFF' : 'white', cursor: 'pointer', textAlign: 'left' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: active ? '#0E7B7B' : '#374151' }}>{c === 'standard' ? 'Standard Agent' : 'Super Agent'}</div>
+                    <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{c === 'standard' ? 'Fast, concise (default).' : 'Deeper answers, bigger knowledge, longer memory.'}</div>
+                  </button>
+                )
+              })}
+            </div>
+            {capability === 'super' && (
+              <label style={{ display: 'block' }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: '#374151' }}>Model</span>
+                <select value={capabilityModel} onChange={function(e) { setCapabilityModel(e.target.value) }}
+                  style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 14 }}>
+                  {SUPER_MODEL_OPTIONS.map(function(o) { return <option key={o.value} value={o.value}>{o.label}</option> })}
+                </select>
+              </label>
+            )}
           </Section>
 
           <Section title="Hard Rules">

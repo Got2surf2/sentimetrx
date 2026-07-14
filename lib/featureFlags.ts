@@ -74,6 +74,48 @@ export async function assertFeatureAllowed(
   return { allowed: true, quotaPerMonth, used }
 }
 
+// ── Super Agent turn abuse backstop (AGENT_TIERS Phase 1) ──────────────────
+// Pricing is a flat monthly fee, so super turns are UNLIMITED by default. This
+// is NOT the disabled-by-default assertFeatureAllowed path — a super agent runs
+// freely unless an org_features row (feature='super_agent_turn') sets an
+// explicit monthly ceiling to cap runaway Opus spend from one org. Only then do
+// we count this month's 'chat_super' usage rows and block at the ceiling.
+const SUPER_TURN_FEATURE = 'super_agent_turn'
+
+export type SuperTurnCheck =
+  | { allowed: true; quota: number | null; used?: number }
+  | { allowed: false; reason: 'quota_exceeded'; quota: number; used: number }
+
+export async function assertSuperTurnAllowed(orgId: string): Promise<SuperTurnCheck> {
+  const service = createServiceRoleClient()
+  const { data: orgRow } = await service
+    .from('org_features')
+    .select('quota_per_month')
+    .eq('org_id', orgId)
+    .eq('feature', SUPER_TURN_FEATURE)
+    .maybeSingle()
+  const quota = (orgRow?.quota_per_month as number | null | undefined) ?? null
+  if (quota === null) return { allowed: true, quota: null }  // default: unlimited
+
+  const startOfMonth = new Date()
+  startOfMonth.setUTCDate(1)
+  startOfMonth.setUTCHours(0, 0, 0, 0)
+  const { count, error } = await service
+    .from('usage_logs')
+    .select('id', { count: 'exact', head: true })
+    .eq('org_id', orgId)
+    .eq('event_type', 'chat_super')
+    .gte('created_at', startOfMonth.toISOString())
+  if (error) {
+    // Fail OPEN — a counting error must never take a paying super agent offline.
+    void logError('featureFlags.assertSuperTurnAllowed', error, { orgId })
+    return { allowed: true, quota }
+  }
+  const used = count ?? 0
+  if (used >= quota) return { allowed: false, reason: 'quota_exceeded', quota, used }
+  return { allowed: true, quota, used }
+}
+
 async function countFeatureUsageThisMonth(feature: FeatureName, orgId: string): Promise<number> {
   const service = createServiceRoleClient()
   const startOfMonth = new Date()

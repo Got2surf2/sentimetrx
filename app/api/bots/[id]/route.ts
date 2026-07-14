@@ -9,6 +9,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
 import { logBotChange, snapshotForDiff, diffSnapshots } from '@/lib/auditLog'
 import { rollupAgentEntitiesToBrand } from '@/lib/correction/rollup'
+import { normalizeCapability, sanitizeCapabilityConfig } from '@/lib/agentCapability'
 import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
@@ -71,6 +72,11 @@ export async function PATCH(req: NextRequest, props: Params) {
   for (const key of allowed) {
     if (body[key] !== undefined) updates[key] = body[key]
   }
+  // AGENT_TIERS Phase 1 — capability is validated/sanitized, never raw-passed:
+  // normalizeCapability coerces to standard|super (CHECK-safe) and
+  // sanitizeCapabilityConfig keeps only a valid super-model choice.
+  if (body.capability !== undefined) updates.capability = normalizeCapability(body.capability)
+  if (body.capability_config !== undefined) updates.capability_config = sanitizeCapabilityConfig(body.capability_config)
 
   // Admin-only: allow changing org_id (transfer agent to another org)
   // Validates target is an active org, then logs to org_transfers.

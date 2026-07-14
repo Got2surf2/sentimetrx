@@ -1,9 +1,11 @@
 # Agents — Capability Review & Super-Agent Tier Spec
 
-> **Status (2026-07-14): Phase 0 (§2 D1–D4 quality floor) SHIPPED — commits
-> `5f9ac6e5` / `1d3492fd` / `31066ba6` / `42189e55` (local/unpushed). §7 owner
-> decisions RESOLVED. §3–§5 tier design (Phases 1–2) is spec'd but NOT built —
-> Phase 1 is now unblocked. Phase 3 (§3.2) stays gated.**
+> **Status (2026-07-14): Phase 0 (§2 D1–D4 quality floor) SHIPPED. §7 owner
+> decisions RESOLVED. Phase 1 (tier-split MVP — §5) SHIPPED: `agents.capability`
+> + `capability_config` (sql/175, TEST-applied), `lib/agentCapability.ts` knob
+> resolver wired into chatCore, editor toggle + super-model dropdown, super-turn
+> abuse-backstop quota. All local/unpushed. Phase 2 (super KB/retrieval) is next;
+> Phase 3 (§3.2) stays gated.**
 > Written 2026-07-14 (Fable review session) on the owner mandate: *"we are
 > running into situations where a much more sophisticated and informed bot is
 > necessary — should we have regular agents and then super agents (more
@@ -208,12 +210,18 @@ the reference case — read-only), no push without the owner's word.
   columns. Verification: re-run the Spacy-style link-integrity check
   (`scripts/_spacy_kb_verify.mts` pattern) against a freshly crawled test
   agent; D1 unit test = semantic RPC error → knowledge still injected.
-- **Phase 1 — tier split MVP.** `capability` column + `CAPABILITY_DEFAULTS`
-  resolution in chatCore (model/maxTokens/verbosity/chunks/history/input
-  knobs only); admin toggle in the agent editor; `org_features` quota wiring;
-  per-agent cost visible in `/admin/usage` (already works via resource_id —
-  just surface it). Verification: same prompt on a standard vs super twin of
-  one agent; usage_logs rows carry the right model/tier.
+- **Phase 1 — tier split MVP. ✅ SHIPPED 2026-07-14.** `agents.capability`
+  (`standard|super`, CHECK) + `capability_config` jsonb (sql/175, TEST-applied)
+  → `CAPABILITY_DEFAULTS`/`resolveCapability` in `lib/agentCapability.ts`, wired
+  into chatCore (model/maxTokens/verbosity/chunks/history/input knobs; standard
+  values are byte-identical to the old hardcoded ones). Editor toggle + a
+  per-agent super-model dropdown (`capability_config.model`, Opus 4.8 default /
+  Sonnet 4.6). Abuse-backstop quota = `assertSuperTurnAllowed` in
+  `lib/featureFlags` (default unlimited; blocks only when an `org_features`
+  `super_agent_turn` ceiling is set); super turns log as `event_type='chat_super'`
+  so their cost is visible in `/admin/usage`. Verified: `agentCapability`/
+  `superTurnBackstop` unit tests + live-TEST `scripts/_verify_super_agent.mts`
+  (CHECK constraint, round-trip, twin knobs). Per §7 owner decisions.
 - **Phase 2 — super KB + retrieval.** Sitemap-seeded resumable crawl
   (browser-driven loop, D16a), `[label](url)` preservation + boilerplate
   strip (shared with Phase 0 D4), PDF/DOCX ingestion, chunk budget +

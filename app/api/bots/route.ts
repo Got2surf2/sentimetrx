@@ -9,6 +9,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { validateOrgFilter } from '@/lib/orgValidate'
 import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
 import { logBotChange } from '@/lib/auditLog'
+import { normalizeCapability, sanitizeCapabilityConfig } from '@/lib/agentCapability'
 import { serverError } from '@/lib/apiError'
 import { logError } from '@/lib/log'
 
@@ -123,7 +124,7 @@ export async function POST(req: NextRequest) {
   if (!ctx?.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { name, slug, config, system_prompt, knowledge_base, training_urls, personality, faq, facts, guardrails, subject, negative_content_mode, opponents, contrast_mode } = body
+  const { name, slug, config, system_prompt, knowledge_base, training_urls, personality, faq, facts, guardrails, subject, negative_content_mode, opponents, contrast_mode, capability, capability_config } = body
 
   if (!name || !slug) {
     return NextResponse.json({ error: 'Name and slug are required' }, { status: 400 })
@@ -157,6 +158,8 @@ export async function POST(req: NextRequest) {
     negative_content_mode: negative_content_mode || 'deflect',
     opponents: opponents || [],
     contrast_mode: contrast_mode || 'user_triggered',
+    capability: normalizeCapability(capability),
+    capability_config: sanitizeCapabilityConfig(capability_config),
     status: 'draft',
     created_by: ctx.userId,
   }).select('id, name, slug, status').single()

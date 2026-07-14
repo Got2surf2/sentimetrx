@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { handleChatTurn } from '@/lib/chatCore'
+import { assertSuperTurnAllowed } from '@/lib/featureFlags'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest, props: Params) {
   // read; knowledge_base stays (RAG fallback context injection).
   const { data: agent, error } = await service
     .from('agents')
-    .select('id, org_id, name, status, config, system_prompt, knowledge_base, personality, guardrails, opponents, contrast_mode, subject, negative_content_mode, sensitive_topics, focus_topics, deflection_enabled, deflection_message, ask_profile, profile_question, intents, demographic_inference, focuses, probe_focus_enabled, research_probes')
+    .select('id, org_id, name, status, config, system_prompt, knowledge_base, personality, guardrails, opponents, contrast_mode, subject, negative_content_mode, sensitive_topics, focus_topics, deflection_enabled, deflection_message, ask_profile, profile_question, intents, demographic_inference, focuses, probe_focus_enabled, research_probes, capability, capability_config')
     .eq('id', params.id)
     .single()
 
@@ -90,6 +91,15 @@ export async function POST(req: NextRequest, props: Params) {
   const allowedOrigins: string[] = Array.isArray(agent.config?.allowedOrigins) ? agent.config.allowedOrigins : []
   if (!originAllowed(req.headers.get('origin') || '', allowedOrigins)) {
     return NextResponse.json({ error: 'This agent is not authorized for this site.' }, { status: 403, headers: cors })
+  }
+
+  // AGENT_TIERS Phase 1 — super-turn abuse backstop. Unlimited by default;
+  // only an org that has an explicit monthly ceiling configured can be blocked.
+  if (agent.capability === 'super' && agent.org_id) {
+    const gate = await assertSuperTurnAllowed(agent.org_id)
+    if (!gate.allowed) {
+      return NextResponse.json({ error: 'This Super Agent has reached its monthly usage limit. Please try again next month or contact the site owner.' }, { status: 429, headers: cors })
+    }
   }
 
   const result = await handleChatTurn({ agent, service, ip }, body)
