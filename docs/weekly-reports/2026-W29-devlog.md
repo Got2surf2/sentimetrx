@@ -328,3 +328,11 @@ NEXT (owner asked): decks/PDFs should use the same approach. The deck already co
 WHY (owner): "when we generate the ppt and pdfs etc. make sure we use this new approach as well." The deck already counted exactly over its loaded rows (no scaling), but above 50K it loaded the FIRST 50K by row_index — a different sample than the app's deterministic hash 50K — so deck numbers wouldn't match what the user saw.
 
 WHAT: export/pptx row loader now draws the SAME deterministic sample via pageSampledRows (lib/bulkRowSample, sql/160 idx_drf_sample hash order) for >50K datasets — proportional per-member shares for collections, sequential first-N fallback if the RPC is absent. ≤50K still loads every row. Verified on Carrabba's: deck deterministic sample = exactly 17,048 substantive on Liked Least, identical to the app strip/mined banner. fresh tsc clean, lint 0 delta. Untracked KEEP: scripts/_verify_deck_sample_match.mts.
+
+---
+
+## 2026-07-14 — HTML export + signals deck also use the app's deterministic sample
+
+WHY (owner): "so the pdf will be exactly the same sample?" — the PPTX matched, but the HTML export (the HTML→PDF path) loaded only the first 10K/30K rows by row_index, and the reddit/substack signals deck the first 10K — different, smaller samples that disagreed with the app.
+
+WHAT: export/html and export/signals-pptx now load the SAME deterministic 50K sample via pageSampledRows (sql/160), matching export/pptx and the app view — ≤50K loads every row, >50K the hash sample (proportional per-member shares for collections, sequential fallback). So every export format (and PDFs made from them) reports the identical numbers. The Ask-Ana ad-hoc report PDF stays on its own substantive-first loadAnaSample mechanism (narrative, not code-computed counts). fresh tsc clean, lint 0 delta.

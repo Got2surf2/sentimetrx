@@ -8,6 +8,7 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { injectSignalTier, SIGNAL_TIER_ORDER_REDDIT, SIGNAL_TIER_ORDER_SUBSTACK } from '@/lib/signalTier'
+import { pageSampledRows, allocateSampleShares } from '@/lib/bulkRowSample'
 import { buildKwRegex } from '@/lib/themeUtils'
 import { renderDeck, type DeckSpec, type SlideSpec } from '@/lib/pptx/slideRenderer'
 
@@ -64,9 +65,22 @@ export async function POST(req: Request, props: Params) {
     }
   }
 
+  // Model A (owner 2026-07-14): draw the SAME deterministic 50K sample the app
+  // view uses (idx_drf_sample, sql/160) so this deck's tier counts match the
+  // app — ≤50K loads every row, >50K the hash sample (proportional per-member
+  // shares for collections; sequential first-N fallback). Was: first 10K by
+  // row_index.
+  const SIG_MAX_ROWS = 50_000
+  const sigCounts = new Map<string, number>()
+  let sigFlatCount = 0
   for (const dsId of flatDatasetIds) {
+    const { count } = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', dsId)
+    sigCounts.set(dsId, count || 0)
+    sigFlatCount += count || 0
+  }
+  async function loadSigSequential(dsId: string, cap: number) {
     let offset = 0
-    while (allRows.length < 10000) {
+    while (allRows.length < cap) {
       const { data: flatRows } = await service
         .from('dataset_rows_flat').select('data')
         .eq('dataset_id', dsId)
@@ -77,7 +91,25 @@ export async function POST(req: Request, props: Params) {
       if (flatRows.length < FLAT_PAGE) break
       offset += FLAT_PAGE
     }
-    if (allRows.length >= 10000) break
+  }
+  if (sigFlatCount > SIG_MAX_ROWS) {
+    const shares = flatDatasetIds.length > 1
+      ? allocateSampleShares(sigCounts, SIG_MAX_ROWS)
+      : new Map([[flatDatasetIds[0], SIG_MAX_ROWS]])
+    for (const dsId of flatDatasetIds) {
+      const capShare = shares.get(dsId) || 0
+      if (capShare <= 0) continue
+      try {
+        await pageSampledRows(service, dsId, capShare, (r) => { allRows.push(r.data as Record<string, unknown>) })
+      } catch {
+        await loadSigSequential(dsId, allRows.length + capShare)
+      }
+    }
+  } else {
+    for (const dsId of flatDatasetIds) {
+      await loadSigSequential(dsId, SIG_MAX_ROWS)
+      if (allRows.length >= SIG_MAX_ROWS) break
+    }
   }
 
   if (allRows.length === 0) {

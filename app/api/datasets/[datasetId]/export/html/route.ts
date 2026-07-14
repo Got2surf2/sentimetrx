@@ -11,6 +11,7 @@ import { smartOrder, isOrdinalScale } from '@/lib/scaleUtils'
 import { aliasedCounts } from '@/lib/aliasUtils'
 import { buildKwRegex, themeSetsForExport, themeModelKey, themeFieldKey, type ThemeModel } from '@/lib/themeUtils'
 import { deserializeFilters, applyFilters, type SerializedFilters } from '@/lib/filterUtils'
+import { pageSampledRows } from '@/lib/bulkRowSample'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -947,25 +948,44 @@ export async function POST(req: Request, props: Params) {
 
   // Fetch rows from dataset_rows_flat (the sole source of truth). The legacy
   // dataset_rows batch fallback was removed 2026-07-02.
+  //
+  // Model A (owner 2026-07-14): load the SAME deterministic 50K sample the app
+  // view (and the PPTX deck) analyze, so this HTML report — and any PDF made
+  // from it — reports the identical numbers. ≤50K → every row (exact-full);
+  // >50K → the idx_drf_sample hash sample (sql/160) via pageSampledRows, with a
+  // sequential first-N fallback if the RPC is absent. (Was: first 10K/30K by
+  // row_index — a smaller, different sample that disagreed with the app.)
   const allRows: Record<string,unknown>[] = []
-  const MAX_ROWS = hasFilters ? 30_000 : 10_000
-
+  const MAX_ROWS = 50_000
   const FLAT_PAGE = 1000
-  let flatOffset = 0
-  while (allRows.length < MAX_ROWS) {
-    const { data: flatRows, error: flatErr } = await service
-      .from('dataset_rows_flat')
-      .select('data')
-      .eq('dataset_id', params.datasetId)
-      .order('row_index', { ascending: true })
-      .range(flatOffset, flatOffset + FLAT_PAGE - 1)
-    if (flatErr || !flatRows || flatRows.length === 0) break
-    for (const fr of flatRows) {
-      allRows.push((fr as { data?: Record<string, unknown> }).data || fr)
-      if (allRows.length >= MAX_ROWS) break
+  const { count: htmlFlatCount } = await service
+    .from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', params.datasetId)
+  async function loadHtmlSequential(cap: number) {
+    let flatOffset = 0
+    while (allRows.length < cap) {
+      const { data: flatRows, error: flatErr } = await service
+        .from('dataset_rows_flat')
+        .select('data')
+        .eq('dataset_id', params.datasetId)
+        .order('row_index', { ascending: true })
+        .range(flatOffset, flatOffset + FLAT_PAGE - 1)
+      if (flatErr || !flatRows || flatRows.length === 0) break
+      for (const fr of flatRows) {
+        allRows.push((fr as { data?: Record<string, unknown> }).data || fr)
+        if (allRows.length >= cap) break
+      }
+      if (flatRows.length < FLAT_PAGE) break
+      flatOffset += FLAT_PAGE
     }
-    if (flatRows.length < FLAT_PAGE) break
-    flatOffset += FLAT_PAGE
+  }
+  if ((htmlFlatCount || 0) > MAX_ROWS) {
+    try {
+      await pageSampledRows(service, params.datasetId, MAX_ROWS, (r) => { allRows.push(r.data as Record<string, unknown>) })
+    } catch {
+      await loadHtmlSequential(MAX_ROWS)
+    }
+  } else {
+    await loadHtmlSequential(MAX_ROWS)
   }
 
   const rowKeyMap: Record<string,string> = {}
