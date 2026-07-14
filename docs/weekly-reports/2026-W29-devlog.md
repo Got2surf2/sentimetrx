@@ -300,3 +300,13 @@ WHY (owner, screen real estate): the full-width "Sampled view" banner + the AI-m
 WHAT: (1) Sampled indicator is now a compact "◱ Sampled P% · N/M" chip leading the shared metric-strip row (was a full-width blue banner) — one fewer row on every tab, same signal + tooltip. (2) AI-mined banner slimmed to a single line and now reads "Themes AI-mined from N substantive comments (P% of answered · K sampled)". fresh tsc clean, lint 0 delta.
 
 NOTE (flagged to owner, NOT yet fixed): the metric strip can lag the TEXT pill — screenshot showed strip "~30,308 comments" (= Liked Most's 27,004 scaled) while the pill/banner were on Liked Least (17,048). The strip follows 'dataset-active-field-changed'; suspect the per-field-swap effect early-returns before dispatching on some transitions. Needs a repro + fix before the strip's comment count can be treated as authoritative for the active question.
+
+---
+
+## 2026-07-14 — Fix strip-lag (wrong question's counts); mined banner = exact sample counts
+
+WHY (owner): saw the strip at "~30,308 comments" (Liked Most's 27,004 scaled) while the pill/banner were on Liked Least (17,048), and objected to the "~" ("it is a real number on a sample"). Two root causes: (1) the strip wasn't following the pill; (2) the mined banner didn't show the total/% and its number felt approximate.
+
+WHAT: (1) BUG FIX — TextMine dispatches 'dataset-active-field-changed' at the TOP of the per-field-swap effect now, before its early returns (`!k` / no-binding model / already-shown), so the strip can't get stuck on the previous question. Pure event emit, no setState. (2) Mined banner now reads "Themes AI-mined from N substantive (P%) of M comments · K-row sample" — EXACT sample counts (totalResp/answeredResp/substPct), no "~", tooltip notes they're exact-within-sample not extrapolated. fresh tsc clean, lint 0 delta.
+
+STILL OPEN: the metric STRIP still shows the scaled full-dataset estimate with "~" (that's a different number from the banner's exact-sample count — deliberately, for the "dataset scale" framing on listing cards etc.). Switching the strip to exact-sample would need signalStats to expose raw sample counts (additive, but touches cached shape + tests + listing-card framing) — flagged to owner as a framing decision. Perf: cold Liked-Least load is slow because the non-active per-field signal-stats + the sampled theme-counts (10× 5K-row RPC pages over the 50K sample) compute fresh; both cache client-side after.

@@ -313,8 +313,18 @@ cap (`RowsContext.sampled && totalRows > sampledCount`), `DatasetShell` leads th
 row (the one carrying comments · Theme fit · themes) with a compact blue chip "◱ Sampled P% ·
 N/M" (tooltip: estimates scaled to the full dataset). It rides the existing strip row rather than
 its own banner — one signal, no extra vertical row — and persists across tabs so a sample is never
-mistaken for the full dataset. The AI-mined banner on the Themes tab is a slim single line that
-carries the substantive count + "(P% of answered)".
+mistaken for the full dataset. The AI-mined banner on the Themes tab is a slim single line reading
+"Themes AI-mined from **N substantive (P%) of M comments · K-row sample**" — these are EXACT counts
+within the sample (not extrapolated, so no "~"; the strip's "~" numbers are the scaled full-dataset
+estimate, a different thing).
+
+**Metric-strip follows the active TEXT pill — dispatch moved before the swap-effect early returns
+(2026-07-14).** The strip (`DatasetMetricStrip`) listens for `dataset-active-field-changed` to show
+the active question's counts. That event was dispatched at the END of TextMine's per-field-swap
+effect, AFTER three early returns (`!k`, a themes model with no field binding, or the set already
+shown) — so on those transitions the strip never heard the change and kept showing the PREVIOUS
+question's counts (e.g. Liked Most's scaled ~30,308 while Liked Least was selected). The dispatch now
+fires at the TOP of the effect, unconditionally, before any bail-out (pure event emit, no setState).
 
 **Substantive lens across insight surfaces (2026-07-14).** The stored flag is the DEFAULT scope
 for text insights, always shown never silently dropped:

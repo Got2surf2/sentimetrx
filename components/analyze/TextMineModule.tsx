@@ -1664,6 +1664,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // field). Models with no field binding (legacy blobs) stay shown as-is.
   useEffect(function() {
     var k = themeFieldKey(effectiveFields)
+    // Tell the metric strip which question is active FIRST — before any of the
+    // swap-logic early returns below. If it fired only at the end, transitions
+    // that bail (no field key, a themes model with no binding, or the target set
+    // already shown) would leave the strip stuck on the PREVIOUS question's
+    // counts (e.g. Liked Most's numbers while Liked Least is selected). Pure
+    // event emit, no setState → no render-loop risk.
+    try { window.dispatchEvent(new CustomEvent('dataset-active-field-changed', { detail: { fieldKey: k || '' } })) } catch { /* SSR-safe */ }
     if (!k) return
     var currentK = themes ? themeModelKey(themes) : ''
     if (themes && !currentK) return
@@ -1683,9 +1690,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       void fetchServerThemeCounts(next, effectiveFields)
       void enrichSearchInterest(next)
     }
-    // The header metric strip (comments · signals · theme fit) follows the
-    // active question — tell it which set is on screen now.
-    try { window.dispatchEvent(new CustomEvent('dataset-active-field-changed', { detail: { fieldKey: k } })) } catch { /* SSR-safe */ }
+    // (strip-follow event is dispatched at the TOP of this effect, before the
+    // early returns, so it can't be skipped on a bail-out transition)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveFields.join('\u001F')])
 
@@ -2664,10 +2670,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       {viewBy === 'theme' && themeSource === 'ai' && (
                         <div style={{ background: 'linear-gradient(135deg, #fff3ee, #ffe8db)', border: '1px solid #fed7aa', borderRadius: 10, padding: '6px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontSize: 14 }}>{'\u2728'}</span>
-                          <span title={SUBSTANTIVE_RULE_NOTE} style={{ fontSize: 12, fontWeight: 600, color: '#9a3412', cursor: 'help' }}>
-                            Themes AI-mined from {totalResp.toLocaleString()} substantive comments
-                            {substPctResp != null ? ' (' + substPctResp + '% of answered' + (samplingInfo && samplingInfo.sampled < samplingInfo.total ? ' \u00b7 ' + samplingInfo.sampled.toLocaleString() + ' sampled' : '') + ')'
-                              : (samplingInfo && samplingInfo.sampled < samplingInfo.total ? ' (' + samplingInfo.sampled.toLocaleString() + ' sampled)' : '')}
+                          <span title={SUBSTANTIVE_RULE_NOTE + (samplingInfo && samplingInfo.sampled < samplingInfo.total ? ' These are exact counts within the ' + samplingInfo.sampled.toLocaleString() + '-row sample (not extrapolated).' : '')} style={{ fontSize: 12, fontWeight: 600, color: '#9a3412', cursor: 'help' }}>
+                            Themes AI-mined from <strong>{totalResp.toLocaleString()}</strong> substantive{substPctResp != null ? ' (' + substPctResp + '%)' : ''} of {answeredResp.toLocaleString()} comments
+                            {samplingInfo && samplingInfo.sampled < samplingInfo.total ? ' \u00b7 ' + samplingInfo.sampled.toLocaleString() + '-row sample' : ''}
                           </span>
                         </div>
                       )}
