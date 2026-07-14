@@ -203,30 +203,23 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
       <div style={{ marginRight: askAnaOpen ? 420 : 0, transition: 'margin-right .25s ease', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} outletCount={outletCount} filterCount={fCount} inViewFilters={Object.keys(serializedFilters).length ? serializedFilters : undefined} filteredRowCount={filteredRowCount} filteredRowCountIsEstimate={ctxSampled && ctxSampledCount > 0 && ctxTotalRows > ctxSampledCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} onAskAna={function() { setAskAnaOpen(function(v) { return !v }) }} askAnaOpen={askAnaOpen} />
 
-      {/* Prominent SAMPLED indicator — visible on every tab whenever the active
-          dataset exceeds the 50K sampling cap, so no one mistakes a sample for
-          the full dataset. Blue/informational so it reads distinctly from the
-          orange "Filtered:" bar below. Charts/Stats/theme counts are estimates
-          scaled from this deterministic sample (ARCHITECTURE.md D6). */}
-      {ctxSampled && ctxSampledCount > 0 && ctxTotalRows > ctxSampledCount && (
-        <div style={{ background: '#eff6ff', borderBottom: '1px solid #bfdbfe', padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap', position: 'relative', zIndex: 29 }}>
-          <span style={{ fontSize: 10, fontWeight: 800, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '.07em', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ fontSize: 12 }}>{'◱'}</span> Sampled view
-          </span>
-          <span style={{ fontSize: 11.5, color: '#1e3a5f', fontWeight: 600 }}>
-            Analyzing a representative <strong>{ctxSampledCount.toLocaleString()}</strong> of <strong>{ctxTotalRows.toLocaleString()}</strong> rows
-            {' '}({Math.round(ctxSampledCount / ctxTotalRows * 100)}%).
-            <span style={{ color: '#4b6584', fontWeight: 500 }}> Charts, statistics and theme counts are estimates scaled to the full dataset.</span>
-          </span>
-        </div>
-      )}
-
-      {/* Metric strip (records / signals / theme-fit) + Saved Views switcher
-          share ONE row to save vertical space — visible on every tab. Metrics
-          flex left, the view/period/save controls sit right (both wrap on
-          narrow widths). docs/SAVED_VIEWS.md */}
+      {/* Metric strip (comments / theme-fit / themes) + Saved Views switcher
+          share ONE row to save vertical space — visible on every tab. A compact
+          "Sampled" chip leads the row when the dataset exceeds the 50K cap (no
+          longer a full-width banner — same signal, one fewer row). Metrics flex
+          left, the view/period/save controls sit right (both wrap on narrow
+          widths). docs/SAVED_VIEWS.md */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', background: '#fff', borderBottom: '1px solid #e8e8ec', padding: '6px 20px', flexShrink: 0, position: 'relative', zIndex: 30 }}>
-        <DatasetMetricStrip datasetId={dataset.id} embedded />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', minWidth: 0 }}>
+          {ctxSampled && ctxSampledCount > 0 && ctxTotalRows > ctxSampledCount && (
+            <span title={'Sampled view — analyzing a representative ' + ctxSampledCount.toLocaleString() + ' of ' + ctxTotalRows.toLocaleString() + ' rows. Charts, statistics and theme counts are estimates scaled to the full dataset (deterministic 50K sample, ARCHITECTURE.md D6).'}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, cursor: 'help', fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 10, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
+              <span style={{ fontSize: 12 }}>{'◱'}</span> Sampled {Math.round(ctxSampledCount / ctxTotalRows * 100)}%
+              <span style={{ color: '#4b6584', fontWeight: 600 }}>· {ctxSampledCount.toLocaleString()}/{ctxTotalRows.toLocaleString()}</span>
+            </span>
+          )}
+          <DatasetMetricStrip datasetId={dataset.id} embedded />
+        </div>
         <ViewsBar datasetId={datasetId} primaryDateField={primaryDateField} schemaFields={schemaFields} embedded />
       </div>
 

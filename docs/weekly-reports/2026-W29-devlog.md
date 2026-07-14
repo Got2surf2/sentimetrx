@@ -290,3 +290,13 @@ WHAT: `DatasetShell` (wraps every analyze tab, already reads RowsContext sampled
 WHY (owner, viewing the mined banner): "should this reference substantive? where do we show the rate of substantive as a % of total comments?" The banner's count was already substantive (totalResp flipped in pt7) but labeled "open-ended"; and the two-count model had dropped the substantive % everywhere, so the "46% non-answers" signal was invisible.
 
 WHAT: (1) TextMine AI-mined banner: "AI analysis of N **substantive** comments" (+ rule tooltip). (2) About popover per open-ended field now shows the substantive count AND "(N% of answered)" — substantive/filled — restoring the rate in the designated rich-stats home without adding a third headline number to the strip. fresh tsc clean, lint 0 delta.
+
+---
+
+## 2026-07-14 — Consolidate sampled/mined chrome; %-substantive in mined banner
+
+WHY (owner, screen real estate): the full-width "Sampled view" banner + the AI-mined banner stacked two extra rows above the Themes overview. "Collapse the sample banner into the strip below it… more efficient screen real estate." Also asked to show the substantive % in the mined banner.
+
+WHAT: (1) Sampled indicator is now a compact "◱ Sampled P% · N/M" chip leading the shared metric-strip row (was a full-width blue banner) — one fewer row on every tab, same signal + tooltip. (2) AI-mined banner slimmed to a single line and now reads "Themes AI-mined from N substantive comments (P% of answered · K sampled)". fresh tsc clean, lint 0 delta.
+
+NOTE (flagged to owner, NOT yet fixed): the metric strip can lag the TEXT pill — screenshot showed strip "~30,308 comments" (= Liked Most's 27,004 scaled) while the pill/banner were on Liked Least (17,048). The strip follows 'dataset-active-field-changed'; suspect the per-field-swap effect early-returns before dispatching on some transitions. Needs a repro + fix before the strip's comment count can be treated as authoritative for the active question.
