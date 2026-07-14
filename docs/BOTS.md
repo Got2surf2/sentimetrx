@@ -310,6 +310,22 @@ drop a real edit), and a **per-agent chunk budget** (`capability_config` knob:
 2,000 standard / 5,000 super) that caps how many new chunks land. The response
 carries `near_dup_skipped` + `budget_skipped` counts.
 
+**Document ingestion — PDF / DOCX / text (Phase 2 P2c).** `POST /api/bots/knowledge-document`
+(multipart `file`, auth-only + bot-agnostic like `/deep-crawl`, so it works
+before a new agent is saved) extracts a file's text and **returns it** — the
+editor appends the text to the knowledge base, and the normal `save()` runs it
+through the same chunk→embed→dedup→budget ingest above (no ingestion logic is
+duplicated). Extraction is **text-first**: PDF via `unpdf`, DOCX via `mammoth`
+(`lib/botKnowledge/documentText.ts`, pure/unit-tested — one `## Page N` /
+`## heading` section per page so `chunkText` titles the chunks). A PDF that
+comes back with almost no text is **scanned/image-only** and falls back to the
+**vision pipeline** (`lib/botKnowledge/documentVision.ts` → `renderDoc` PDF→PNG
+in a Vercel Sandbox + `visionReadPages`, the reuse `readDocument.ts` documents;
+the source PDF is parked in the recordings bucket under a `bot-kb-tmp/` prefix,
+rendered, read, then cleaned up). Limits: 25 MB/file; `MAX_DOC_CHARS` 400K per
+document (the chunk budget still caps what lands). Vision reads log
+`event_type='knowledge_doc_vision'` (see USAGE_ACCOUNTING).
+
 ### `sql/025_bot_enhancements.sql` (summary)
 - Adds `content_flags` and `source` columns to `bot_conversation_turns`.
 - Adds `sensitive_topics`, `focus_topics`, `deflection_enabled`, `deflection_message`, `ask_profile`, `profile_question`, `intents` columns to `bots`.

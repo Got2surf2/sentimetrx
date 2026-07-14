@@ -170,6 +170,8 @@ function BotCreatorInner() {
   const [crawlUrl, setCrawlUrl] = useState('')
   const [crawling, setCrawling] = useState(false)
   const [crawlResult, setCrawlResult] = useState<{ pages: number; sites: number } | null>(null)
+  const [uploadingDoc, setUploadingDoc] = useState(false)
+  const [docResult, setDocResult] = useState<{ filename: string; pages: number } | null>(null)
   const [faq, setFaq] = useState<{ question: string; answer: string }[]>([])
   const [facts, setFacts] = useState<string[]>([])
   const [guardrails, setGuardrails] = useState<string[]>([])
@@ -341,6 +343,27 @@ function BotCreatorInner() {
       setError(err instanceof Error ? err.message : 'Deep crawl failed')
     }
     setCrawling(false)
+  }
+
+  // P2c — upload a PDF/DOCX/text file, extract its text server-side, and append
+  // it to the knowledge base (same flow as crawl/research: text accumulates,
+  // save() chunks+ingests). Bot-agnostic route so it works before first save.
+  async function uploadDocument(file: File) {
+    setUploadingDoc(true)
+    setError('')
+    setDocResult(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/bots/knowledge-document', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Document upload failed')
+      setKnowledgeBase(function(prev) { return (prev ? prev + '\n\n' : '') + data.text })
+      setDocResult({ filename: data.filename, pages: data.pages })
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Document upload failed')
+    }
+    setUploadingDoc(false)
   }
 
   async function fetchTrainingContent() {
@@ -811,6 +834,27 @@ function BotCreatorInner() {
                 </button>
                 {researchSources.length > 0 && <p style={{ fontSize: 10, color: '#059669', marginTop: 4, marginBottom: 0 }}>{researchSources.length} source{researchSources.length !== 1 ? 's' : ''} added</p>}
               </div>
+            </div>
+
+            {/* Document Upload (P2c) */}
+            <div style={{ padding: '14px', background: '#f9fafb', borderRadius: 10, border: '1px solid #e5e7eb', marginBottom: 16 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Upload Document</span>
+              <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 8px' }}>Add a PDF, DOCX, or text file to the knowledge base. Scanned PDFs are read with vision. Max 25 MB.</p>
+              <label style={{ display: 'inline-block', padding: '5px 14px', borderRadius: 14, border: '1px solid #d1d5db', background: uploadingDoc ? '#f3f4f6' : 'white', color: '#374151', fontSize: 11, fontWeight: 500, cursor: uploadingDoc ? 'not-allowed' : 'pointer' }}>
+                {uploadingDoc ? 'Extracting…' : 'Choose file'}
+                <input
+                  type="file"
+                  accept=".pdf,.docx,.doc,.txt,.md,.markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
+                  disabled={uploadingDoc}
+                  style={{ display: 'none' }}
+                  onChange={function(e) {
+                    const f = e.target.files && e.target.files[0]
+                    if (f) void uploadDocument(f)
+                    e.target.value = ''
+                  }}
+                />
+              </label>
+              {docResult && <p style={{ fontSize: 10, color: '#059669', marginTop: 4, marginBottom: 0 }}>Added {docResult.filename} ({docResult.pages} page{docResult.pages !== 1 ? 's' : ''})</p>}
             </div>
 
             {/* Training URLs */}
