@@ -1,6 +1,9 @@
 # Agents — Capability Review & Super-Agent Tier Spec
 
-> **Status: PROPOSED — owner review pending. Nothing in §3–§5 is built.**
+> **Status (2026-07-14): Phase 0 (§2 D1–D4 quality floor) SHIPPED — commits
+> `5f9ac6e5` / `1d3492fd` / `31066ba6` / `42189e55` (local/unpushed). §7 owner
+> decisions RESOLVED. §3–§5 tier design (Phases 1–2) is spec'd but NOT built —
+> Phase 1 is now unblocked. Phase 3 (§3.2) stays gated.**
 > Written 2026-07-14 (Fable review session) on the owner mandate: *"we are
 > running into situations where a much more sophisticated and informed bot is
 > necessary — should we have regular agents and then super agents (more
@@ -145,14 +148,14 @@ Add `agents.capability text NOT NULL DEFAULT 'standard'`
 (`standard | super`; CHECK constraint), plus a `capability_config` JSONB for
 per-knob overrides. `chatCore` resolves knobs from a single
 `CAPABILITY_DEFAULTS` table so every value below is one constant, not
-scattered literals. (User-facing tier naming is an owner decision — `<TBD:
-"Super Agents" vs "Expert Agents" vs "Pro Agents">`.)
+scattered literals. User-facing name (owner, 2026-07-14): **"Super Agents"**
+(the internal `capability` value is `super` regardless).
 
 ### 3.1 Knob table
 
 | Knob | Standard (today) | Super | Notes |
 |---|---|---|---|
-| Main model | Sonnet 4.6 | **Opus 4.8** via existing `modelOverride` (rates already present); optionally Sonnet for cost-sensitive super agents | one line per `usageRates.ts` doctrine |
+| Main model | Sonnet 4.6 | **Per-agent choice** (owner, 2026-07-14): an editor dropdown writes `capability_config.model`; default is Opus 4.8, Sonnet 4.6 available for cost-sensitive super agents. Resolved through the existing `modelOverride` (rates already present). | one line per `usageRates.ts` doctrine; Phase 1 adds the dropdown + `capability_config.model` override |
 | `maxTokens` | 400 | 1,200 | |
 | Verbosity rule | 40–160 words | 120–400 words, and drop the "HARD LIMIT" framing | Chat UX still wants turns, not essays — length is NOT the main lever; knowledge depth is |
 | RAG chunks/turn | 5 | 12 | ~4.5K tokens of KB context; volatile-block cost, see §4 |
@@ -160,7 +163,7 @@ scattered literals. (User-facing tier naming is an owner decision — `<TBD:
 | Input cap | 1,200 chars | 4,000 chars | super users paste documents/questions |
 | Retrieval | single-query | multi-query: embed the raw query + one Haiku query-rewrite; union, re-rank by score, take top-12 | biggest quality lever after D4 |
 | KB size | ~30 pages, no docs | sitemap-driven resumable crawl (300+ pages), PDF/DOCX ingestion via the existing `readDocument` vision pipeline, per-agent chunk budget (e.g. 5,000) | crawl runs as a D16a browser-driven loop (the taxonomy-classify pattern) — serverless 120s cannot do 300 pages in one shot |
-| KB freshness | manual only | weekly re-crawl cron of `training_urls` with content-hash diffing (only changed pages re-chunk/re-embed) | fixes silent staleness for standard tier too if cheap |
+| KB freshness | manual only | weekly re-crawl cron of `training_urls` with content-hash diffing (only changed pages re-chunk/re-embed) | **super-tier only** (owner, 2026-07-14): auto-refresh is a paid differentiator; standard agents stay manual-refresh |
 | Live data | hand-wired (`config.liveContext==='wildfire'`, MCO bot-id gate) | small adapter registry: `liveContext: [{source, params}]` resolved from a typed adapter map; wildfire + MCO become the first two adapters | super-only knob |
 | Turn metering | none (rate-limit only) | `org_features` monthly quota on super-turn count | billing hook |
 
@@ -188,10 +191,11 @@ Per-turn marginal cost, main call (auxiliary Haiku calls add ~$0.001–0.002):
 So a super turn is roughly **3–5× a standard turn** — meaningful but not
 prohibitive; prompt caching keeps the bigger stable prefix cheap. One-time
 costs: a 300-page crawl ≈ 300 embeddings ≈ cents; weekly re-crawl with
-hash-diffing keeps refresh near-zero. Pricing the tier (per-agent monthly
-fee vs usage-metered vs bundled) is an owner/business decision — `<TBD:
-super-agent pricing model>`; the metering mechanism (`usage_logs` per
-resource + `org_features` quota) is already in place either way.
+hash-diffing keeps refresh near-zero. Pricing (owner, 2026-07-14):
+**per-agent monthly fee** — a flat fee per super agent with unlimited turns.
+The `org_features` quota is wired as an **abuse backstop** (a high per-org
+super-turn ceiling), not a hard per-turn meter; `usage_logs` per resource
+still records true cost for margin visibility.
 
 ## 5. Build plan
 
@@ -234,15 +238,24 @@ the reference case — read-only), no push without the owner's word.
 - This spec itself was the Fable deliverable; no further Fable session is
   needed to start Phase 0.
 
-## 7. Open decisions for the owner
+## 7. Owner decisions (resolved 2026-07-14)
 
-1. User-facing tier naming (`<TBD>` in §3).
-2. Super-tier default model: Opus 4.8 (~$0.08–0.10/turn) vs Sonnet
-   (~$0.05/turn) — or per-agent choice in the editor.
-3. Pricing model for the tier (§4 `<TBD>`).
-4. Whether the weekly KB re-crawl ships to ALL agents (staleness is a
-   standard-tier problem too) or stays a super-tier perk.
-5. Phase 3 gate: what customer scenario justifies the tool-loop build.
+1. **User-facing tier name → "Super Agents"** (internal `capability='super'`).
+2. **Super-tier model → per-agent choice** — an editor dropdown writing
+   `capability_config.model`; default Opus 4.8, Sonnet 4.6 available.
+3. **Pricing → per-agent monthly flat fee**, unlimited turns; the
+   `org_features` quota is an abuse backstop only (not a per-turn meter).
+4. **Weekly KB re-crawl → super-tier only** (paid differentiator; standard
+   agents stay manual-refresh).
+
+These four unblock **Phase 1** (tier-split MVP) and **Phase 2** (super KB +
+retrieval), both on Opus per §6.
+
+**Still open (does NOT block Phases 1–2):**
+
+5. **Phase 3 gate** — the in-turn tool-loop + streaming build stays deferred
+   until a concrete customer scenario demands live fetch / mid-turn lookup
+   (§3.2). Revisit when such a need is named; it's the one Fable-tier item.
 
 ## Cross-references
 
