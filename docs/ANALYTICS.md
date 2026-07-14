@@ -280,11 +280,11 @@ for text insights, always shown never silently dropped:
   which is why no rollup re-classify was needed. `rowsSubstantive` is stored beside `rowsWithText`
   at classify time (live-RPC fallback for pre-fix entries). The rate is capped at 100% (a rare
   one-word answer can carry a signal yet not be substantive), labeled "% of substantive tagged".
-- **Entities — SCOPED, not yet built.** Entity `mention_count` is cached on `entity_catalog`
-  keyed by row total and the raw mention tiles (the main output) are already clean, so the lens
-  there is lower-value: it only matters for entity *prevalence %*, and needs a migration gating
-  `count_entity_terms`/`sampled_count_entity_terms` on the substantive map + a `mention_count`
-  cache-bust. Deferred to a focused pass with owner QC.
+- **Entities — WON'T BUILD (owner, 2026-07-14).** The lens is a denominator fix, and entity
+  mention rates are already low single digits, so swapping non-empty → substantive in the
+  denominator barely moves the number; entities lead with raw "X mentions" tiles (already clean),
+  not a prevalence %. Not worth the `count_entity_terms`/`sampled_count_entity_terms` gate +
+  `mention_count` cache-bust. Deliberately not a lens surface.
 **Listing cards carry data facts only** (rows, fields/members, last-updated) — the per-card
 records/signals/theme-fit line and its signal-stats-batch fetch were removed as a confusion
 source (the numbers described one question's set without saying which); analysis metrics live
