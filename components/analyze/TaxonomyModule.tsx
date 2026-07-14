@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useState, type ReactElement } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
+import { SUBSTANTIVE_RULE_NOTE } from '@/lib/usefulness'
 import { AXIS_COLOR, DIM_AXIS_LABEL, dimSubLabel, type Axis } from '@/lib/dimensionFields'
 
 interface SubStat { axis: string; sub: string; count: number; rate: number; pos: number; neg: number; posPct: number | null; avgRating: number | null }
@@ -330,7 +331,7 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
             const pct = Math.min(100, Math.round(100 * data.withSignal / Math.max(1, denom)))
             return (
               <span title={hasSubst
-                ? `${data.withSignal.toLocaleString()} of ${denom.toLocaleString()} substantive comments (real feedback — "N/A"/"Nothing" non-answers excluded from the denominator) carry a dimension signal.`
+                ? `${data.withSignal.toLocaleString()} of ${denom.toLocaleString()} substantive comments carry a dimension signal. ${SUBSTANTIVE_RULE_NOTE}`
                 : `${data.withSignal.toLocaleString()} of ${denom.toLocaleString()} rows with text carry a dimension signal.`}>
                 {' · '}{pct}% {hasSubst ? 'of substantive tagged' : 'tagged'}
               </span>

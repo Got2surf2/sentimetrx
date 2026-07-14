@@ -15,6 +15,7 @@
 
 import { useEffect, useState, type CSSProperties } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
+import { SUBSTANTIVE_RULE_NOTE } from '@/lib/usefulness'
 
 interface SignalStats {
   records: number
@@ -167,7 +168,7 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
           (hasSubstantive
             ? stats.themeFitPctSubstantive + '% of SUBSTANTIVE comments (' + approx + stats.inThemesSubstantive!.toLocaleString() +
               ' of ' + approx + stats.substantiveRecords!.toLocaleString() + ') match at least one of the ' + stats.themeCount + ' themes' +
-              ' — the lead number, since it drops "N/A"/"Nothing" non-answers. ' +
+              ' — the lead number. ' + SUBSTANTIVE_RULE_NOTE + ' ' +
               stats.themeFitPct + '% of ALL comments (' + approx + stats.inThemes.toLocaleString() +
               ' of ' + approx + stats.records.toLocaleString() + ') including the non-substantive ones.'
             : stats.themeFitPct + '% of comments (' + approx + stats.inThemes.toLocaleString() +
@@ -186,7 +187,7 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
         </span>
         <strong style={{ color: '#111827' }}>{leadFitPct}%</strong>
         {hasSubstantive && (
-          <span style={{ color: '#9ca3af', fontSize: 11 }}>of substantive</span>
+          <span style={{ color: '#9ca3af', fontSize: 11 }} title={SUBSTANTIVE_RULE_NOTE}>of substantive</span>
         )}
         <span aria-hidden style={{ display: 'inline-block', height: 8, width: 80, background: '#e5e7eb', borderRadius: 4, overflow: 'hidden' }}>
           <span style={{ display: 'block', height: '100%', width: barFill + '%', background: band.fg }} />

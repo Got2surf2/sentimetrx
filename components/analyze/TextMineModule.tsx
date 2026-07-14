@@ -22,6 +22,7 @@ import { computeThemeEntities, themeKey } from '@/lib/themeEntities'
 import { DIM_AXIS_LABEL, dimSubLabel, AXIS_COLOR, type Axis } from '@/lib/dimensionFields'
 import { cachedRequest } from '@/lib/clientRequestCache'
 import { isSubstantiveText } from '@/lib/datasetUtils'
+import { SUBSTANTIVE_RULE_NOTE } from '@/lib/usefulness'
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
 import { sigTest, welchTTest } from '@/lib/statsUtils'
@@ -2712,7 +2713,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                   <div style={{ fontSize: 22, fontWeight: 800, color: T.accent, lineHeight: 1 }}>{totalResp.toLocaleString()}</div>
                                   <div style={{ fontSize: 10, color: T.textMute, marginTop: 3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Comments</div>
                                   {substantiveShare != null && (
-                                    <div title="Comments with real feedback: 5+ words, or 4+ words of natural sentence text. One-word and \u201cNothing / N/A\u201d answers don\u2019t count."
+                                    <div title={SUBSTANTIVE_RULE_NOTE}
                                       style={{ fontSize: 11, color: T.textMid, marginTop: 5 }}>
                                       <strong>{substantiveShare}%</strong> substantive
                                     </div>

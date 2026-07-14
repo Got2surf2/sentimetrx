@@ -11,6 +11,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import ExportModal from '@/components/analyze/ExportModal'
 import DatasetAboutPopover from '@/components/analyze/DatasetAboutPopover'
+import { SUBSTANTIVE_RULE_NOTE } from '@/lib/usefulness'
 import ShareAnalyticsModal from '@/components/analyze/ShareAnalyticsModal'
 import SearchPanel from '@/components/analyze/textmine/SearchPanel'
 import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
@@ -411,7 +412,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             </span>
             {substantivePct != null && (
               <span style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', whiteSpace: 'nowrap' }}
-                title={'Share of answered rows (any open-ended field filled in) whose text carries usable feedback — "N/A"/"Nothing"/one-word non-answers are excluded. Updates with the active filter. This is a text-insight lens; rating averages, counts and exports still use every row.'}>
+                title={'Share of answered rows (any open-ended field filled in) whose text carries usable feedback. ' + SUBSTANTIVE_RULE_NOTE + ' Updates with the active filter. This is a text-insight lens; rating averages, counts and exports still use every row.'}>
                 <span style={{ color: 'rgba(255,255,255,.35)' }}>· </span>
                 <strong style={{ color: 'rgba(255,255,255,.85)', fontWeight: 700 }}>{substantivePct}%</strong> substantive
               </span>

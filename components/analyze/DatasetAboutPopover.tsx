@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
+import { SUBSTANTIVE_RULE_NOTE } from '@/lib/usefulness'
 
 interface AboutData {
   rows: number
@@ -141,7 +142,7 @@ export default function DatasetAboutPopover({ datasetId, datasetName, open, anch
                       <div style={{ color: '#6b7280', fontSize: 11 }}>
                         {(data.sampled ? '≈' : '') + f.fill.toLocaleString()} filled ({fillPct}%)
                         {substPct != null && (
-                          <span title="Share of answers carrying usable feedback — drops N/A / one-word non-answers">
+                          <span title={'Share of answers carrying usable feedback. ' + SUBSTANTIVE_RULE_NOTE}>
                             {' · '}<strong style={{ color: '#047857' }}>{substPct}%</strong> substantive
                           </span>
                         )}

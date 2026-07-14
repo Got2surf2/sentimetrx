@@ -14,6 +14,14 @@ import { isSubstantiveText } from './datasetUtils'
 // Bump when scoreUsefulness changes so stored rows can be identified as stale.
 export const USEFULNESS_VERSION = 1
 
+// Canonical plain-language explanation of the v1 rule, for tooltips/notes on
+// every surface that shows a substantive-scoped count. ONE source of truth so
+// the word threshold is stated consistently (not just "N/A"/"Nothing" examples).
+// Keep in sync with scoreUsefulness/isSubstantiveText if the rule changes.
+export const SUBSTANTIVE_RULE_NOTE =
+  'Substantive = real feedback: 5+ words, or 4+ words of natural sentence text. ' +
+  'Shorter one-word and “Nothing” / “N/A” answers are treated as non-substantive and excluded.'
+
 // v1 — the deterministic word rule (owner ask 2026-07-11): >=5 words, or >=4
 // words containing an everyday function word. "Nothing" / "N/A" fail.
 export function scoreUsefulness(text: string): boolean {

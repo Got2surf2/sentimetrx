@@ -8,6 +8,7 @@ import LottieLoader from '@/components/ui/LottieLoader'
 import type { Theme} from '@/lib/themeUtils';
 import { THEME_PALETTE, getRowText } from '@/lib/themeUtils'
 import { isSubstantiveText } from '@/lib/datasetUtils'
+import { SUBSTANTIVE_RULE_NOTE } from '@/lib/usefulness'
 import { computeThemeEntities, themeKey } from '@/lib/themeEntities'
 import type { EntityRow } from '@/components/analyze/EntitiesCard'
 import { extractOpinions } from '@/lib/opinionMining'
@@ -348,7 +349,7 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
           Theme Clouds
           {total > 0 && (
             <span style={{ fontSize: 10, fontWeight: 500, color: T.textFaint, marginLeft: 8 }}
-              title={'Terms and their percentages are over comments carrying usable feedback — ' + (nonEmpty - total).toLocaleString() + ' non-substantive answers ("N/A"/"Nothing"/one-word) are excluded so they don’t dilute the cloud.'}>
+              title={'Terms and their percentages are over comments carrying usable feedback — ' + (nonEmpty - total).toLocaleString() + ' non-substantive answers are excluded so they don’t dilute the cloud. ' + SUBSTANTIVE_RULE_NOTE}>
               over {total.toLocaleString()} substantive{nonEmpty > total ? ' of ' + nonEmpty.toLocaleString() + ' answered' : ''}
             </span>
           )}
