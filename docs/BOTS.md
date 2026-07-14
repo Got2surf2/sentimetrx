@@ -300,6 +300,16 @@ save. Without the flag, POST keeps plain append semantics (research / fetch-url
 / manual-add callers are unchanged). An editor save that empties all knowledge
 still issues a `DELETE` to clear the index.
 
+**Ingest guards (Phase 2 P2b).** POST embeds candidate chunks *before* insert
+(stored in the same INSERT — no separate update pass), which enables two guards:
+a **near-duplicate filter** (append path only — cosine ≥ 0.95 vs an existing
+chunk via `match_agent_knowledge_embedding`, sql/135 — so re-crawls/research
+runs don't pile up drift copies; skipped in replace mode where the diff-upsert
+already handles edits and a near-dup match on an about-to-be-pruned chunk would
+drop a real edit), and a **per-agent chunk budget** (`capability_config` knob:
+2,000 standard / 5,000 super) that caps how many new chunks land. The response
+carries `near_dup_skipped` + `budget_skipped` counts.
+
 ### `sql/025_bot_enhancements.sql` (summary)
 - Adds `content_flags` and `source` columns to `bot_conversation_turns`.
 - Adds `sensitive_topics`, `focus_topics`, `deflection_enabled`, `deflection_message`, `ask_profile`, `profile_question`, `intents` columns to `bots`.

@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { generateEmbeddings } from '@/lib/embeddings'
+import { resolveCapability } from '@/lib/agentCapability'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { logBotChange } from '@/lib/auditLog'
@@ -75,7 +76,7 @@ export async function POST(req: Request, props: Params) {
   const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
 
   const service = createServiceRoleClient()
-  const { data: bot } = await service.from('agents').select('id, org_id, subject, opponents').eq('id', params.id).single()
+  const { data: bot } = await service.from('agents').select('id, org_id, subject, opponents, capability, capability_config').eq('id', params.id).single()
   if (!bot || (!isAdmin && bot.org_id !== userData.org_id)) {
     return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
   }
@@ -121,13 +122,61 @@ export async function POST(req: Request, props: Params) {
     return NextResponse.json({ stored: 0, skipped: chunks.length, removed: staleIds.length, message: staleIds.length ? 'Removed ' + staleIds.length + ' stale chunk(s); rest unchanged' : 'All content already exists' })
   }
 
-  // Insert chunks (tsvector is auto-populated by trigger)
-  const rows = deduped.map(function(c) {
+  // Phase 2: embed the candidate chunks BEFORE inserting so we can store the
+  // vector in the same insert (no separate update loop), drop near-duplicates
+  // of existing chunks, and enforce the per-agent chunk budget. Embedding
+  // failures fall back to lexical-only chunks (embedding = null).
+  const capKnobs = resolveCapability(bot)
+  let candEmbeddings: (number[] | null)[]
+  try {
+    candEmbeddings = await generateEmbeddings(deduped.map(function(c) { return c.title + '\n' + c.content }), bot.org_id)
+  } catch (e: unknown) {
+    console.error({ at: 'knowledge', msg: 'candidate embedding failed (proceeding lexical-only)', err: e instanceof Error ? e.message : undefined })
+    candEmbeddings = deduped.map(function() { return null })
+  }
+
+  // Near-dup guard — APPEND path only. Re-crawls / research runs accumulate
+  // drift copies of the same content; drop a candidate when an existing chunk
+  // is ~identical (cosine ≥ 0.95, sql/135). NOT run in replace mode: there the
+  // diff-upsert already handles unchanged/edited/removed, and a near-dup match
+  // against an about-to-be-pruned old chunk would silently drop a real edit.
+  const NEAR_DUP_SIM = 0.95
+  let nearDupSkipped = 0
+  let survivorIdx = deduped.map(function(_c, j) { return j })
+  if (!replace) {
+    const sims = await Promise.all(deduped.map(async function(_c, j): Promise<number> {
+      const emb = candEmbeddings[j]
+      if (!emb) return 0
+      try {
+        const r = await service.rpc('match_agent_knowledge_embedding', { p_bot_id: params.id, p_embedding: JSON.stringify(emb), p_exclude_id: null, p_limit: 1 }) as { data: Array<{ similarity: number }> | null }
+        return Array.isArray(r.data) && r.data[0] ? r.data[0].similarity : 0
+      } catch { return 0 }
+    }))
+    survivorIdx = survivorIdx.filter(function(j) { return sims[j] < NEAR_DUP_SIM })
+    nearDupSkipped = deduped.length - survivorIdx.length
+  }
+
+  // Chunk budget: cap new chunks so the agent's total stays under its budget
+  // (2,000 standard / 5,000 super). In replace mode the stale prune frees room.
+  const remainingExisting = (existingChunks?.length || 0) - staleIds.length
+  const budgetRoom = Math.max(0, capKnobs.chunkBudget - remainingExisting)
+  const budgetSkipped = Math.max(0, survivorIdx.length - budgetRoom)
+  survivorIdx = survivorIdx.slice(0, budgetRoom)
+
+  if (survivorIdx.length === 0) {
+    await pruneStale()
+    return NextResponse.json({ stored: 0, skipped: chunks.length, removed: staleIds.length, near_dup_skipped: nearDupSkipped, budget_skipped: budgetSkipped, message: 'No new chunks stored (duplicates or chunk budget reached)' })
+  }
+
+  // Insert survivors WITH their embeddings in one shot.
+  const rows = survivorIdx.map(function(j) {
+    const c = deduped[j]
     return {
       bot_id: params.id,
       title: c.title,
       content: c.content,
       metadata: c.metadata,
+      embedding: candEmbeddings[j] ? JSON.stringify(candEmbeddings[j]) : null,
     }
   })
 
@@ -141,21 +190,7 @@ export async function POST(req: Request, props: Params) {
   // dropped (replace mode only). Never a zero-knowledge window.
   await pruneStale()
 
-  // Generate and store embeddings (non-blocking — chunks work without them via full-text fallback)
   if (inserted && inserted.length > 0) {
-    try {
-      const texts = inserted.map(function(c: InsertedChunk) { return c.title + '\n' + c.content })
-      const embeddings = await generateEmbeddings(texts, bot.org_id)
-      for (var i = 0; i < inserted.length; i++) {
-        if (embeddings[i]) {
-          await service.from('agent_knowledge_chunks')
-            .update({ embedding: JSON.stringify(embeddings[i]) })
-            .eq('id', (inserted[i] as InsertedChunk).id)
-        }
-      }
-    } catch (e: unknown) {
-      console.error({ at: 'knowledge', msg: "Embedding generation failed (chunks still usable)", err: e instanceof Error ? e.message : undefined })
-    }
 
     // Sentiment + opponent classification
     const subject = (bot as { subject?: string | null }).subject
@@ -229,7 +264,7 @@ export async function POST(req: Request, props: Params) {
     metadata: { source, source_type, chunks_added: rows.length, chunks_skipped: chunks.length - rows.length },
   })
 
-  return NextResponse.json({ stored: rows.length, removed: staleIds.length, chunks: chunks.map(function(c) { return { title: c.title, chars: c.content.length } }) })
+  return NextResponse.json({ stored: rows.length, removed: staleIds.length, near_dup_skipped: nearDupSkipped, budget_skipped: budgetSkipped, chunks: chunks.map(function(c) { return { title: c.title, chars: c.content.length } }) })
 }
 
 // ── DELETE: clear chunks (all, or by source_type) ────────────
