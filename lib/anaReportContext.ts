@@ -11,6 +11,7 @@ import { DEFAULT_SIGNAL_CUTOFFS } from '@/lib/signalTier'
 import { formatRowsForContext } from '@/lib/anaContext'
 import { logError } from '@/lib/log'
 import { applyFilters, deserializeFilters } from '@/lib/filterUtils'
+import { isSubstantiveText } from '@/lib/datasetUtils'
 import type { SerializedFilters } from '@/lib/filterUtils'
 import { SIGNAL_SAMPLE_CAP } from '@/lib/sampledSignalCounts'
 
@@ -314,11 +315,28 @@ export async function loadAnaSample(opts: {
   // larger (or larger-than-scanned) population.
   let sampled = !allExhausted || totalDatasetRows > scannedSum
   if (filteredRows.length > sampleSize) {
-    for (let i = filteredRows.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      const tmp = filteredRows[i]; filteredRows[i] = filteredRows[j]; filteredRows[j] = tmp
+    const shuffle = function(arr: Record<string, unknown>[]) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp
+      }
+      return arr
     }
-    filteredRows = filteredRows.slice(0, sampleSize)
+    // Substantive lens: prefer comments carrying usable feedback so Ana reasons
+    // over real answers, not "N/A"/"Nothing". Mirrors the stored per-comment flag
+    // (isSubstantiveText over the row's fields). Non-substantive rows are a tail,
+    // not dropped — a sparse-feedback dataset still fills the sample.
+    const isSubstantiveRow = function(r: Record<string, unknown>) {
+      for (const k in r) { if (!k.startsWith('_') && isSubstantiveText(String(r[k] ?? ''))) return true }
+      return false
+    }
+    const substantive: Record<string, unknown>[] = []
+    const other: Record<string, unknown>[] = []
+    for (const r of filteredRows) (isSubstantiveRow(r) ? substantive : other).push(r)
+    filteredRows = [...shuffle(substantive), ...shuffle(other)].slice(0, sampleSize)
+    if (other.length > 0) {
+      signalNote += '\n\nNote: the sample prioritizes substantive comments — ' + substantive.length.toLocaleString() + ' of the ' + afterSignalCount.toLocaleString() + ' matching rows carry real feedback; "N/A"/"Nothing"/one-word non-answers fill in only if space remains.'
+    }
     sampled = true
   }
 

@@ -7,6 +7,7 @@ import { useState, useMemo, useTransition } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
 import type { Theme} from '@/lib/themeUtils';
 import { THEME_PALETTE, getRowText } from '@/lib/themeUtils'
+import { isSubstantiveText } from '@/lib/datasetUtils'
 import { computeThemeEntities, themeKey } from '@/lib/themeEntities'
 import type { EntityRow } from '@/components/analyze/EntitiesCard'
 import { extractOpinions } from '@/lib/opinionMining'
@@ -143,9 +144,16 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
   // toggling no longer touches this — just re-runs the cheap filter below.
   const cloudData = useMemo(function() {
     if (!themes || !themes.length || !fields.length) {
-      return { perRowText: [] as string[], wordThemeMap: {} as Record<string, { themeIdx: number; freq: number }>, freqMap: {} as Record<string, number>, allWords: [] as WordEntry[], maxFreq: 1, total: 0 }
+      return { perRowText: [] as string[], wordThemeMap: {} as Record<string, { themeIdx: number; freq: number }>, freqMap: {} as Record<string, number>, allWords: [] as WordEntry[], maxFreq: 1, total: 0, nonEmpty: 0 }
     }
-    const perRowText: string[] = parsedData.map(function(r) { return getRowText(r, fields).toLowerCase() })
+    // Substantive lens (the default insight scope): the cloud reads real
+    // feedback only — "N/A"/"Nothing"/one-word non-answers carry no term signal
+    // and dilute both the frequencies and their denominator. Same scorer stored
+    // at ingest (isSubstantiveText). `total` below = substantive rows.
+    const perRowText: string[] = parsedData
+      .map(function(r) { return getRowText(r, fields) })
+      .filter(function(txt) { return isSubstantiveText(txt) })
+      .map(function(txt) { return txt.toLowerCase() })
 
     const wordThemeMap: Record<string, { themeIdx: number; freq: number }> = {}
     themes.forEach(function(t, idx) {
@@ -189,11 +197,14 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
     })
 
     const maxFreq = Math.max.apply(Math, allWords.map(function(w) { return w.freq }).concat([1]))
-    const total = parsedData.filter(function(r) {
+    // Denominator = substantive rows (perRowText is already filtered to them),
+    // plus the non-empty count so the UI can show how many answers were dropped.
+    const total = perRowText.length
+    const nonEmpty = parsedData.filter(function(r) {
       return fields.some(function(f) { return String(r[f] || '').trim().length > 0 })
     }).length
 
-    return { perRowText, wordThemeMap, freqMap, allWords, maxFreq, total }
+    return { perRowText, wordThemeMap, freqMap, allWords, maxFreq, total, nonEmpty }
   }, [parsedData, themes, fields])
 
   // ── Theme × entity cross-tab ("Items mentioned" per theme) ──────────────
@@ -267,7 +278,7 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
 
   if (!themes || !themes.length || !fields.length) return null
 
-  const { perRowText, wordThemeMap, freqMap, allWords, maxFreq, total } = cloudData
+  const { perRowText, wordThemeMap, freqMap, allWords, maxFreq, total, nonEmpty } = cloudData
 
   if (!allWords.length) return null
 
@@ -333,7 +344,15 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         flexWrap: 'wrap', gap: 8,
       }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: T.textMid }}>Theme Clouds</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: T.textMid }}>
+          Theme Clouds
+          {total > 0 && (
+            <span style={{ fontSize: 10, fontWeight: 500, color: T.textFaint, marginLeft: 8 }}
+              title={'Terms and their percentages are over comments carrying usable feedback — ' + (nonEmpty - total).toLocaleString() + ' non-substantive answers ("N/A"/"Nothing"/one-word) are excluded so they don’t dilute the cloud.'}>
+              over {total.toLocaleString()} substantive{nonEmpty > total ? ' of ' + nonEmpty.toLocaleString() + ' answered' : ''}
+            </span>
+          )}
+        </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
             <input type="checkbox" checked={showAll}

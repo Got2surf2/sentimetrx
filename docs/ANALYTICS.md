@@ -263,6 +263,23 @@ range, last synced, per open-ended field its fill-rate AND **% substantive**, an
 with n. The per-field fill/substantive counts come from ONE `sampled_signal_counts` pass with no
 themes (exact ≤50K, deterministic sample above), so it never full-scans; everything else is read
 straight from the stored `schema_config` + `analytics.fieldSummaries`.
+
+**Substantive lens across insight surfaces (2026-07-14).** The stored flag is the DEFAULT scope
+for text insights, always shown never silently dropped:
+- **Mining** ✅ — `prepareCorpus` filters to substantive.
+- **Theme-fit strip + header %** ✅ — sql/179 substantive twin.
+- **Word clouds** ✅ — `WordCloud` builds `perRowText` + the denominator from substantive rows
+  only (client-side `isSubstantiveText`); the header notes "over N substantive of M answered".
+- **Ask Ana** ✅ — `loadAnaSample` prioritizes substantive comments when the sample truncates
+  (partition substantive-first, then shuffle/slice) so the model reasons over real feedback;
+  a context note records how many carried real feedback.
+- **Entities · Dimensions — SCOPED, not yet built.** Both read server-side CACHED/PRECOMPUTED
+  aggregates (entity `mention_count` cached on `entity_catalog` keyed by row total; the taxonomy
+  rollup stored at classify time). A substantive lens there needs a migration gating
+  `count_entity_terms`/`sampled_count_entity_terms` on the substantive map + a `mention_count`
+  cache-bust (entities), or a re-classify/re-store backfill of the rollup across all datasets
+  (dimensions) — each changes stored counts platform-wide, so they warrant a focused pass with
+  owner QC rather than being folded into the client-side lens work.
 **Listing cards carry data facts only** (rows, fields/members, last-updated) — the per-card
 records/signals/theme-fit line and its signal-stats-batch fetch were removed as a confusion
 source (the numbers described one question's set without saying which); analysis metrics live
