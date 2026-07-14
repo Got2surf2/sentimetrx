@@ -24,6 +24,7 @@ answers).
 | **Respondent-visible chrome audit** | 2026-06 (banked as standing rule) | Every respondent-visible string on public widgets | Feedback memory `audit_respondent_visible_chrome` (rule, not point-in-time findings) | Any new respondent-facing surface — apply the rule, not a re-sweep |
 | **Admin page breadcrumb/nav inventory** | 2026-07-12 | All 98 pages: dead-end check → 27 fixed | W29 devlog + queue memory | New top-level pages ship without SubHeader |
 | **Audio→Q&A failure-mode review** | 2026-05-28 | Town Hall extraction failure modes (panel-as-audience, over-extraction, invented taxonomy) | Memory `project_audio_qa_failure_modes` + `docs/TOWNHALL.md` mitigations | Before productizing recordings ingestion further |
+| **Agent capability review** (KB build + chat engine) | 2026-07-14 | Full KB ingestion→retrieval→context-assembly pipeline + every engine cap, mapped file:line; 4 quality defects (D1–D4 incl. a KB-suppressing fallback bug); super-agent tier design | `docs/AGENT_TIERS.md` (§1–§2 audit, §3–§6 proposed spec) | chatCore context assembly or the knowledge ingest path changes materially; re-verify §1 caps table then |
 
 Not listed: one-off dataset QCs, deck number reconciliations, and incident
 diagnoses — those live in the weekly devlog as point-in-time records.

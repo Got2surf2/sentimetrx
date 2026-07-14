@@ -1432,6 +1432,7 @@ End-to-end verification with both flags on: sent two messages to a fresh Sarina 
 - **`callAI` (`lib/ai.ts`)** — every bot AI call passes `usage: { resource_type: 'bot', resource_id: botId, event_type: 'chat' | 'summary' | 'deflect' | 'intent' | 'persona' | 'demographics' | 'report' | 'review' | 'insights_deck' | 'knowledge_classify' }`. Visible in `/admin/usage` filtered to Agents.
 - **`logUsage` (`lib/usageLog.ts`)** — token + cost capture for everything above.
 - **Embeddings (`lib/embeddings.ts`)** — only used by bots today.
+- **`docs/AGENT_TIERS.md`** — 2026-07-14 capability review (every engine cap + KB-pipeline defect, file:line) and the PROPOSED super-agent tier spec. Read it before changing chat context assembly, RAG limits, or the knowledge ingest path.
 
 ---
 
