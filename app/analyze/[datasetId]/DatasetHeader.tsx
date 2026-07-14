@@ -11,7 +11,6 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import ExportModal from '@/components/analyze/ExportModal'
 import DatasetAboutPopover from '@/components/analyze/DatasetAboutPopover'
-import { SUBSTANTIVE_RULE_NOTE } from '@/lib/usefulness'
 import ShareAnalyticsModal from '@/components/analyze/ShareAnalyticsModal'
 import SearchPanel from '@/components/analyze/textmine/SearchPanel'
 import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
@@ -31,7 +30,6 @@ interface Props {
   filterCount?: number
   filteredRowCount?: number | null
   filteredRowCountIsEstimate?: boolean
-  substantivePct?: number | null   // share of answered rows with usable feedback (filter-aware)
   onFilterClick?: () => void
   onSaveSession?: () => void
   sessionSaving?: boolean
@@ -55,7 +53,7 @@ var TABS: { key: string; label: string; icon: string; collapse: number; sources?
 ]
 // Filters collapse: 5, Ask Ana collapse: 6, actions collapse: 7/8/9
 
-export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, filteredRowCount, filteredRowCountIsEstimate, substantivePct, onFilterClick, onSaveSession, sessionSaving, sessionSaved, onAskAna, askAnaOpen, outletCount = 0, inViewFilters }: Props) {
+export default function DatasetHeader({ dataset, userName, orgName, filterCount = 0, filteredRowCount, filteredRowCountIsEstimate, onFilterClick, onSaveSession, sessionSaving, sessionSaved, onAskAna, askAnaOpen, outletCount = 0, inViewFilters }: Props) {
   var router = useRouter()
   var pathname = usePathname()
 
@@ -410,13 +408,8 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
                 ? (filteredRowCountIsEstimate ? '≈' : '') + filteredRowCount.toLocaleString() + ' of ' + dataset.row_count.toLocaleString()
                 : dataset.row_count.toLocaleString()} rows
             </span>
-            {substantivePct != null && (
-              <span style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', whiteSpace: 'nowrap' }}
-                title={'Share of answered rows (any open-ended field filled in) whose text carries usable feedback. ' + SUBSTANTIVE_RULE_NOTE + ' Updates with the active filter. This is a text-insight lens; rating averages, counts and exports still use every row.'}>
-                <span style={{ color: 'rgba(255,255,255,.35)' }}>· </span>
-                <strong style={{ color: 'rgba(255,255,255,.85)', fontWeight: 700 }}>{substantivePct}%</strong> substantive
-              </span>
-            )}
+            {/* "Comments" (= substantive) live on the metric strip below; the
+                header carries the other of the two reference counts — rows. */}
             {(dataset.source === 'study' || dataset.source === 'townhall') && (
               <button onClick={() => { void handleResync() }} disabled={syncing}
                 title={dataset.last_synced_at ? 'Last synced: ' + new Date(dataset.last_synced_at).toLocaleString() : 'Sync new data from source'}

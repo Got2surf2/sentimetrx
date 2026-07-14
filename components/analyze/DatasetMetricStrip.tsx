@@ -129,16 +129,18 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
     return null
   }
 
-  // Lead with the SUBSTANTIVE fit (fraction of real-feedback comments that hit a
-  // theme) — the all-based number counted "N/A" / "Nothing" answers in the
-  // denominator and read artificially Diffuse. Both show on hover; no toggle.
-  // A cache written before sql/179 lacks the substantive fields → fall back to
-  // the all-based number so the strip never blanks during rollout.
+  // A "comment" IS a substantive answer — non-substantive ("N/A"/"Nothing"/
+  // one-word) answers are ignored exactly like blanks. So the strip shows ONE
+  // comment count (substantive) and the theme fit divides by it. A cache written
+  // before sql/179 lacks the substantive fields → fall back to the all-based
+  // numbers so the strip never blanks during rollout.
   const hasSubstantive = typeof stats.themeFitPctSubstantive === 'number' && typeof stats.substantiveRecords === 'number'
-  const leadFitPct = hasSubstantive ? stats.themeFitPctSubstantive! : stats.themeFitPct
-  const leadBand = (hasSubstantive ? stats.themeFitBandSubstantive : stats.themeFitBand) || stats.themeFitBand
-  const band = BAND_STYLES[leadBand]
-  const barFill = Math.max(0, Math.min(100, leadFitPct))
+  const commentCount = hasSubstantive ? stats.substantiveRecords! : stats.records
+  const inThemes = hasSubstantive ? stats.inThemesSubstantive! : stats.inThemes
+  const fitPct = hasSubstantive ? stats.themeFitPctSubstantive! : stats.themeFitPct
+  const fitBand = (hasSubstantive ? stats.themeFitBandSubstantive : stats.themeFitBand) || stats.themeFitBand
+  const band = BAND_STYLES[fitBand]
+  const barFill = Math.max(0, Math.min(100, fitPct))
   const outerStyle: CSSProperties = embedded
     ? { display: 'flex', alignItems: 'center', gap: 14, fontSize: 12, color: '#374151', flexWrap: 'wrap', minWidth: 0 }
     : { background: '#fafafa', borderBottom: '1px solid #e8e8ec', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, fontSize: 12, color: '#374151', flexWrap: 'wrap' }
@@ -152,43 +154,29 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
 
   return (
     <div style={outerStyle}>
-      <span title={stats.sampled ? sampledNote.trim() : undefined}>
-        <strong style={{ color: '#111827' }}>{approx}{stats.records.toLocaleString()}</strong>{' '}
+      <span title={'Comments carrying usable feedback. ' + SUBSTANTIVE_RULE_NOTE + sampledNote}>
+        <strong style={{ color: '#111827' }}>{approx}{commentCount.toLocaleString()}</strong>{' '}
         <span style={{ color: '#6b7280' }}>comments</span>
-      </span>
-      <span style={{ color: '#d1d5db' }}>·</span>
-      <span title={'Sum of per-theme comment matches. A comment mentioning multiple themes contributes to multiple counts.' + sampledNote}>
-        <strong style={{ color: '#111827' }}>{approx}{stats.signals.toLocaleString()}</strong>{' '}
-        <span style={{ color: '#6b7280' }}>signals</span>
       </span>
       <span style={{ color: '#d1d5db' }}>·</span>
       <span
         style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
         title={
-          (hasSubstantive
-            ? stats.themeFitPctSubstantive + '% of SUBSTANTIVE comments (' + approx + stats.inThemesSubstantive!.toLocaleString() +
-              ' of ' + approx + stats.substantiveRecords!.toLocaleString() + ') match at least one of the ' + stats.themeCount + ' themes' +
-              ' — the lead number. ' + SUBSTANTIVE_RULE_NOTE + ' ' +
-              stats.themeFitPct + '% of ALL comments (' + approx + stats.inThemes.toLocaleString() +
-              ' of ' + approx + stats.records.toLocaleString() + ') including the non-substantive ones.'
-            : stats.themeFitPct + '% of comments (' + approx + stats.inThemes.toLocaleString() +
-              ' of ' + approx + stats.records.toLocaleString() + ') match at least one of the ' + stats.themeCount + ' themes.'
-          ) + sampledNote + ' ' +
-          (leadBand === 'Tight'
+          fitPct + '% of comments (' + approx + inThemes.toLocaleString() +
+          ' of ' + approx + commentCount.toLocaleString() + ') match at least one of the ' +
+          stats.themeCount + ' themes. ' + SUBSTANTIVE_RULE_NOTE + sampledNote + ' ' +
+          (fitBand === 'Tight'
             ? 'Tight: themes capture most of the signal — ready to action.'
-            : leadBand === 'Mixed'
+            : fitBand === 'Mixed'
               ? 'Mixed: multi-topic dataset, partial theme coverage.'
               : 'Diffuse: lots of unstructured content; consider adding themes or segmenting by source.')
         }
       >
         <span style={{ color: '#6b7280' }}>Theme fit</span>
         <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: band.bg, color: band.fg, border: '1px solid ' + band.border }}>
-          {leadBand}
+          {fitBand}
         </span>
-        <strong style={{ color: '#111827' }}>{leadFitPct}%</strong>
-        {hasSubstantive && (
-          <span style={{ color: '#9ca3af', fontSize: 11 }} title={SUBSTANTIVE_RULE_NOTE}>of substantive</span>
-        )}
+        <strong style={{ color: '#111827' }}>{fitPct}%</strong>
         <span aria-hidden style={{ display: 'inline-block', height: 8, width: 80, background: '#e5e7eb', borderRadius: 4, overflow: 'hidden' }}>
           <span style={{ display: 'block', height: '100%', width: barFill + '%', background: band.fg }} />
         </span>
