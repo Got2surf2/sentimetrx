@@ -35,6 +35,7 @@ import { pickNextTopic, type NextTopic } from '@/lib/pickNextTopic'
 import { detectThemesForTownHall } from '@/lib/cohortThemeAggregator'
 import { logQuestion, replyLooksUncertain } from '@/lib/logQuestion'
 import { resolveCapability } from '@/lib/agentCapability'
+import { mergeRankedChunks } from '@/lib/multiQueryRetrieval'
 import { detectEntityMentions } from '@/lib/entityMentionDetector'
 import { logError } from '@/lib/log'
 
@@ -140,6 +141,7 @@ interface AgentIntent {
 interface Guardrail { rule?: string; text?: string }
 interface Opponent { name?: string }
 export interface RagChunk {
+  id?: string | null
   title?: string
   content?: string
   rank?: number | null
@@ -842,31 +844,48 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
     if (debugMode) _debug.push('RAG: skipped (intent with action URL detected)')
   } else if (userQuery) {
     try {
-      // Generate query embedding for semantic search
-      const queryEmbedding = await generateEmbedding(userQuery, bot.org_id)
-
-      const rpcParams: Record<string, unknown> = { p_bot_id: bot.id, p_query: userQuery, p_limit: capKnobs.ragChunks }
-      let rpcName = 'search_knowledge_chunks'
-
-      // Try semantic search first, fall back to basic search
-      if (queryEmbedding) {
-        rpcParams.p_embedding = JSON.stringify(queryEmbedding)
-        rpcName = 'search_knowledge_semantic'
+      // One retrieval pass for a given query string: embed → semantic RPC with
+      // keyword fallback → D1 confidence normalization. Returns scored chunks.
+      const runRetrieval = async function(q: string): Promise<RagChunk[] | null> {
+        const emb = await generateEmbedding(q, bot.org_id)
+        const params: Record<string, unknown> = { p_bot_id: bot.id, p_query: q, p_limit: capKnobs.ragChunks }
+        let name = 'search_knowledge_chunks'
+        if (emb) { params.p_embedding = JSON.stringify(emb); name = 'search_knowledge_semantic' }
+        let { data, error } = await service.rpc(name, params)
+        if (error && name === 'search_knowledge_semantic') {
+          console.error({ at: 'bot-chat', msg: "Semantic search failed, falling back", err: error.message })
+          const fb = await service.rpc('search_knowledge_chunks', { p_bot_id: bot.id, p_query: q, p_limit: capKnobs.ragChunks })
+          data = fb.data; error = fb.error
+        }
+        if (error) console.error({ at: 'bot-chat', msg: "RAG search error", err: error.message })
+        // D1: the keyword-fallback RPC returns `rank` but no `confidence`, which
+        // would read as 0 and suppress the entire KB. Derive it before scoring.
+        normalizeChunkConfidence(data as RagChunk[] | null)
+        return data as RagChunk[] | null
       }
 
-      var { data: chunks, error: rpcErr } = await service.rpc(rpcName, rpcParams)
-      // If semantic search fails (RPC not available), fall back to basic search
-      if (rpcErr && rpcName === 'search_knowledge_semantic') {
-        console.error({ at: 'bot-chat', msg: "Semantic search failed, falling back", err: rpcErr.message })
-        var fallback = await service.rpc('search_knowledge_chunks', { p_bot_id: bot.id, p_query: userQuery, p_limit: capKnobs.ragChunks })
-        chunks = fallback.data
-        rpcErr = fallback.error
+      // Phase 2: super agents run MULTI-QUERY retrieval — the raw question plus
+      // one Haiku rewrite, unioned/re-ranked to the top-K. Standard agents keep
+      // the single-query path unchanged.
+      var chunks: RagChunk[] | null
+      if (capKnobs.capability === 'super') {
+        let rewrite: string | null = null
+        try {
+          const rw = await callAI({
+            tier: 'fast', maxTokens: 60, timeoutMs: 4000,
+            system: 'Rewrite the user\'s latest question as a single alternative search query that surfaces the same information phrased differently (synonyms, expanded terms). Reply with ONLY the rewritten query, no quotes or preamble.',
+            messages: [{ role: 'user', content: userQuery }],
+          })
+          const t = (rw.text || '').trim().replace(/^["']|["']$/g, '')
+          if (t && t.toLowerCase() !== userQuery.toLowerCase() && t.length <= 300) rewrite = t
+          logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: 'query_rewrite' }, rw.usage)
+        } catch (e) { void logError('chatCore.queryRewrite', e, { orgId: bot.org_id }) }
+        const sets = await Promise.all([runRetrieval(userQuery), rewrite ? runRetrieval(rewrite) : Promise.resolve(null)])
+        chunks = mergeRankedChunks(sets, capKnobs.ragChunks)
+        if (debugMode) _debug.push('RAG multi-query: raw + ' + (rewrite ? '"' + rewrite + '"' : '(no rewrite)') + ' → ' + chunks.length + ' merged chunks')
+      } else {
+        chunks = await runRetrieval(userQuery)
       }
-      if (rpcErr) console.error({ at: 'bot-chat', msg: "RAG search error", err: rpcErr.message })
-
-      // D1: the keyword-fallback RPC returns `rank` but no `confidence`, which
-      // would read as 0 and suppress the entire KB. Derive it before scoring.
-      normalizeChunkConfidence(chunks as RagChunk[] | null)
 
       if (chunks && chunks.length > 0) {
         const negMode = bot.negative_content_mode || 'deflect'

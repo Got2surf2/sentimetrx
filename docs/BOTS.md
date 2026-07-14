@@ -479,6 +479,7 @@ to the previous hardcoded ones**, so existing agents are unchanged.
 | History window (verbatim) | 8 | 24 |
 | Input cap (chars) | 1,200 | 4,000 |
 | Verbosity | word-cap ladder ×1, "HARD LIMIT" framing | ladder ×2.5, soft "aim for" framing |
+| Retrieval (Phase 2) | single-query | multi-query — raw question + one Haiku rewrite, unioned/re-ranked to top-K (`lib/multiQueryRetrieval.mergeRankedChunks`; rewrite logs `event_type='query_rewrite'`) |
 
 The super model flows through `callAI.modelOverride`; super turns log as
 `event_type='chat_super'` (vs `chat`) so their Opus-tier cost is visible in
