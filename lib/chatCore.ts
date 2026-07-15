@@ -10,7 +10,8 @@
 // consumed — that wiring happens in Phase 4 commit 2.
 
 import type { createServiceRoleClient } from '@/lib/supabase/server'
-import { callAI, callAIStream, type AIToolDefinition, type AIResponse, type MessageContent } from '@/lib/ai'
+import { callAI, callAIStream, type AIToolDefinition, type AIProviderConfig, type AIResponse, type MessageContent } from '@/lib/ai'
+import { resolveOrgAiConfig } from '@/lib/aiKey'
 import { buildAgentTools, makeToolExecutor, runAgentToolLoop, type ChatStreamEvent } from '@/lib/agentTools'
 import { checkMessage, auditContent, scoreSentiment, scoreSentimentFull, type ContentSafetyConfig } from '@/lib/contentGuard'
 import { cleanDeflectResponse, sanitizeBotReply } from '@/lib/guardrails'
@@ -320,6 +321,22 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
     return { reply: probeText, _silence: true }
   }
 
+  // Per-org AI gate (same rule as ask-ana): 'off' refuses the turn before any
+  // vendor call; 'byo' + anthropic rides the customer key on every AI call
+  // this turn; 'byo' + openai falls back to the platform key — the chat
+  // engine is Anthropic-only (streaming, tool loop, prompt caching, the
+  // super-agent model choice). The key travels as providerConfig rather than
+  // usage.org_id because chatCore logs usage manually per call (chat_tool vs
+  // chat_super rounds) — usage.org_id would double-log via callAI's auto-log.
+  const orgAi = await resolveOrgAiConfig(bot.org_id)
+  if (orgAi.mode === 'off') {
+    return { reply: 'This assistant is currently unavailable. Please try again later.', _aiDisabled: true }
+  }
+  const byoProviderConfig: AIProviderConfig | undefined =
+    orgAi.mode === 'byo' && orgAi.provider === 'anthropic' && orgAi.key
+      ? { provider: 'anthropic', apiKey: orgAi.key }
+      : undefined
+
   // Debug trace — collects pipeline info when verbose mode is on
   const _debug: string[] = []
   // Demo signals — lightweight labels for client-facing demo mode
@@ -384,6 +401,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
         tier: 'fast',
         maxTokens: 220,
         timeoutMs: 5000,
+        providerConfig: byoProviderConfig,
         // Budget bump from 150 → 220 tokens so the must-preserve fields can fit
         // without the topical summary getting clipped. The hard ANSWERED ASKS
         // line at the end is what stops downstream bots (Sarina especially) from
@@ -524,7 +542,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
       try {
         var topicContext = focusTopics.length > 0 ? focusTopics.join(', ') : (bot.subject || bot.name)
         var deflectResult = await callAI({
-          tier: 'fast', maxTokens: 150, timeoutMs: 5000,
+          tier: 'fast', maxTokens: 150, timeoutMs: 5000, providerConfig: byoProviderConfig,
           messages: [{ role: 'user', content: 'Decide if redirection is needed.' }],
           system: 'You are a conversational agent assistant. Decide if the user\'s message needs redirection.\n\n' +
             'Agent focus: "' + topicContext + '"\n' +
@@ -620,7 +638,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
           .map(function(i: AgentIntent, idx: number) { return (idx + 1) + '. ' + i.label + ': ' + i.description })
           .join('\n')
         var intentCheck = await callAI({
-          tier: 'fast', maxTokens: 50, timeoutMs: 3000,
+          tier: 'fast', maxTokens: 50, timeoutMs: 3000, providerConfig: byoProviderConfig,
           messages: [{ role: 'user', content: 'Check this message.' }],
           system: 'Does this user message match any of these intents?\n\n' + intentDescriptions +
             '\n\nUser said: "' + lastUserMsg.content + '"\n\nRespond with ONLY the matching intent numbers (comma-separated) or "NONE". Look for subtle signals — the user doesn\'t have to say the exact words, just express the underlying interest.',
@@ -902,7 +920,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
         let rewrite: string | null = null
         try {
           const rw = await callAI({
-            tier: 'fast', maxTokens: 60, timeoutMs: 4000,
+            tier: 'fast', maxTokens: 60, timeoutMs: 4000, providerConfig: byoProviderConfig,
             system: 'Rewrite the user\'s latest question as a single alternative search query that surfaces the same information phrased differently (synonyms, expanded terms). Reply with ONLY the rewritten query, no quotes or preamble.',
             messages: [{ role: 'user', content: userQuery }],
           })
@@ -1261,7 +1279,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
           try {
             const topicList = pickerTopics.map((t, i) => (i + 1) + '. "' + t.label + '" — ' + (t.description || t.question || '')).join('\n')
             const cls = await callAI({
-              tier: 'fast', maxTokens: 60, timeoutMs: 3000,
+              tier: 'fast', maxTokens: 60, timeoutMs: 3000, providerConfig: byoProviderConfig,
               system: 'You classify a participant\'s opening response in a facilitated discussion against a list of topics.\n\nTOPICS:\n' + topicList + '\n\nReturn ONLY a JSON object: {"topic_number": <1-based index of the best-matching topic, or 0 if none clearly match>}. When in doubt, return 0.',
               messages: [{ role: 'user', content: 'The participant was asked a broad opening question and responded:\n\n"' + lastUserMsg.content + '"' }],
             })
@@ -1754,7 +1772,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
   const translationPromise: Promise<string | null> | null =
     (session_id && lastUserMsg?.content && botLang && botLang !== 'en')
       ? callAI({
-          tier: 'fast', maxTokens: 500, timeoutMs: 3000,
+          tier: 'fast', maxTokens: 500, timeoutMs: 3000, providerConfig: byoProviderConfig,
           system: 'You are a translator. Translate the following text to English. Return ONLY the translation, nothing else.',
           messages: [{ role: 'user', content: lastUserMsg.content }],
         }).then(function(tr) {
@@ -1798,6 +1816,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
         messages: loopMessages,
         callOnce: (msgs, toolChoice) => callAIStream({
           tier: 'advanced',
+          providerConfig: byoProviderConfig,
           modelOverride: capKnobs.modelOverride,
           maxTokens: capKnobs.maxTokens,
           timeoutMs: 60000,
@@ -1821,6 +1840,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
       // @ts-ignore — recentMessages roles are always 'user' | 'assistant' from client
       result = await callAI({
         tier: 'advanced',
+        providerConfig: byoProviderConfig,
         modelOverride: capKnobs.modelOverride,
         maxTokens: capKnobs.maxTokens,
         timeoutMs: 30000,

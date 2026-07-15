@@ -211,11 +211,15 @@ When `opts.usage?.org_id` is set, `callAI` consults `resolveOrgAiConfig(orgId)` 
 
 The gate fires unconditionally when `org_id` is present, even if the caller passed an explicit `apiKey`.
 
+**Agent chat (2026-07-15).** `lib/chatCore.handleChatTurn` logs usage manually per call (to keep `chat_tool` vs `chat`/`chat_super` round semantics), so its calls carry no `usage.org_id` and would bypass this gate. It therefore runs the gate itself, once per turn: `off` → the turn refuses before any vendor call ("This assistant is currently unavailable…"); `byo` + **anthropic** → the customer key rides `providerConfig` on every AI call in the turn (main reply, tool-loop rounds, summary/deflection/intent/rewrite/translate); `byo` + **openai** → falls back to the platform key (same rule as ask-ana and embeddings — the chat engine is Anthropic-only: streaming, tool loop, prompt caching, the Super Agent model choice).
+
 ### Provider resolution (in order)
 
 1. `opts.providerConfig` if given (explicit override, or set by the BYOK gate above).
 2. `opts.apiKey` + `process.env.AI_PROVIDER` (default `'anthropic'`) — used when a customer brings their own key.
 3. Default: provider from `AI_PROVIDER` env, key from the matching `*_API_KEY` env.
+
+**Model-override provider guard (2026-07-15).** `modelOverride` values are written for the platform provider (Anthropic ids like `claude-opus-4-8` — Super Agent model choice, recordings analysis, vision). When resolution lands on OpenAI/Azure instead (BYO redirect or explicit `providerConfig`), a `claude-*` override is ignored and the provider's tier default from `MODEL_MAP` is used — an Anthropic id must never reach another vendor's API.
 
 ### Response parsing
 

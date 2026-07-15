@@ -164,6 +164,16 @@ interface ResolvedProvider {
   model: string
 }
 
+// Callers write modelOverride for the platform provider — Anthropic ids like
+// 'claude-opus-4-8'. When provider resolution lands on OpenAI/Azure instead
+// (BYO redirect or explicit providerConfig), that id must never reach the
+// other vendor's API (instant 400 / unknown deployment) — fall back to the
+// provider's tier default from MODEL_MAP.
+function effectiveModelOverride(provider: AIProvider, modelOverride: string | undefined): string | undefined {
+  if (modelOverride && provider !== 'anthropic' && modelOverride.startsWith('claude-')) return undefined
+  return modelOverride
+}
+
 function resolveProvider(opts: AIRequestOptions): ResolvedProvider {
   // Priority 1: explicit providerConfig
   if (opts.providerConfig) {
@@ -173,7 +183,7 @@ function resolveProvider(opts: AIRequestOptions): ResolvedProvider {
       apiKey: p.apiKey || getEnvKey(p.provider),
       azureEndpoint: p.azureEndpoint || process.env.AZURE_OPENAI_ENDPOINT,
       azureApiVersion: p.azureApiVersion || process.env.AZURE_OPENAI_API_VERSION || '2024-02-01',
-      model: opts.modelOverride || MODEL_MAP[p.provider][opts.tier],
+      model: effectiveModelOverride(p.provider, opts.modelOverride) || MODEL_MAP[p.provider][opts.tier],
     }
   }
 
@@ -186,7 +196,7 @@ function resolveProvider(opts: AIRequestOptions): ResolvedProvider {
     apiKey: key,
     azureEndpoint: process.env.AZURE_OPENAI_ENDPOINT,
     azureApiVersion: process.env.AZURE_OPENAI_API_VERSION || '2024-02-01',
-    model: opts.modelOverride || MODEL_MAP[envProvider][opts.tier],
+    model: effectiveModelOverride(envProvider, opts.modelOverride) || MODEL_MAP[envProvider][opts.tier],
   }
 }
 
