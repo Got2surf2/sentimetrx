@@ -949,8 +949,6 @@ function RegressionPanel({ numFields, data, aliases, datasetId }: { numFields: S
     return map
   }, [outcomes, predictorFields, data])
 
-  if (numFields.length < 2) return <StatsEmpty icon={'\u27CB'} msg="Need at least 2 numeric fields" sub="Activate more numeric fields or map categorical values to numbers." />
-
   return (
     <div>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
@@ -974,6 +972,9 @@ function RegressionPanel({ numFields, data, aliases, datasetId }: { numFields: S
         </div>
       </div>
 
+      {numFields.length < 2 ? (
+        <StatsEmpty icon={'\u27CB'} msg="Need at least 2 numeric fields" sub="Activate more numeric fields or map categorical values to numbers." />
+      ) : (<>
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20, marginBottom: 20 }}>
         {/* ── Variable selector ── */}
         <Card style={{ padding: 16 }}>
@@ -1250,6 +1251,7 @@ function RegressionPanel({ numFields, data, aliases, datasetId }: { numFields: S
           </Card>
         </div>
       )}
+      </>)}
     </div>
   )
 }
@@ -1899,7 +1901,7 @@ var ANALYSIS_TYPES = [
   { id: 'descriptives', label: 'Descriptives', icon: '\u2211', color: '#e8622a', tip: 'Summary statistics and distributions.' },
   { id: 'correlations', label: 'Correlations', icon: '\u2295', color: '#2563eb', tip: 'Relationships between numeric variables.' },
   { id: 'grouptests', label: 'Group Tests', icon: '\u2297', color: '#16a34a', tip: 't-test, ANOVA, Mann-Whitney, Chi-square.' },
-  { id: 'regression', label: 'Regression', icon: '\u27CB', color: '#7c3aed', tip: 'OLS linear regression modeling.' },
+  { id: 'regression', label: 'Regression', icon: '\u27CB', color: '#7c3aed', tip: 'Linear (OLS) & logistic regression.' },
   { id: 'insights', label: '\u2726 Auto-Insights', icon: '\u2726', color: '#e8622a', tip: 'Auto-scan for significant correlations, group effects, and distribution flags.' },
   { id: 'outliers', label: 'Outlier Analysis', icon: '\u25CE', color: '#0891b2', tip: 'Flag groups that are statistically above or below the overall mean.' },
 ]

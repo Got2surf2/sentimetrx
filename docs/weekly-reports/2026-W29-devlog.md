@@ -418,3 +418,5 @@ lib/statsUtils: logisticRegression(y 0/1, X, names) via IRLS/Newton (reuses inve
 StatsModule RegressionPanel: Linear/Logistic toggle (persisted). Logistic binarizes the outcome (auto if 2-valued, else adjustable cutoff defaulting to median; both classes need >=3), runs pruneCollinear then logisticRegression, renders odds-ratio coefficients + pseudo-R2/LR/AIC fit card + dropped-collinear note + plain-language BottomLine; OLS residual plots hidden in logistic mode.
 
 Verified: 8 unit tests (intercept=logit(mean y), effect sign+convergence, separation flag, no-effect OR~1, VIF=1/(1-r2), pruning). End-to-end pipeline on synthetic data with a collinear twin: VIF-4890 twin auto-dropped, true driver recovered (OR 2.34, beta 0.85 vs true 0.9, p<1e-4), noise non-sig (p=0.79). typecheck + 1534 tests green; StatsModule react-hooks warnings 33->33 (no new); lint ceiling unchanged (252).
+
+Follow-up: the Linear/Logistic toggle sat after the "need 2 numeric fields" early-return, so it was hidden on datasets with <2 numeric fields. Moved the guard into the body so the toggle + mode always render; sidebar tip updated to "Linear (OLS) & logistic regression."
