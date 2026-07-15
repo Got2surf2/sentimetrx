@@ -55,7 +55,9 @@ function DistributionRow({ b }: { b: RatingBucket }) {
         </div>
         {/* Network range for this star bucket: ▶ lowest outlet · ◀ highest outlet · │ average. */}
         <div className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: at(b.net.min) }} title={`Lowest outlet: ${pct0(b.net.min)}`}>
-          <span className="block h-0 w-0 border-y-[3px] border-l-[5px] border-y-transparent border-l-gray-400" />
+          {/* White so it stays visible sitting on the coloured bar; drop-shadow
+              gives it a faint edge on the light track (and in the legend). */}
+          <span className="block h-0 w-0 border-y-[3px] border-l-[5px] border-y-transparent border-l-white" style={{ filter: 'drop-shadow(0 0 0.5px rgba(0,0,0,0.55))' }} />
         </div>
         <div className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: at(b.net.max) }} title={`Highest outlet: ${pct0(b.net.max)}`}>
           <span className="block h-0 w-0 border-y-[3px] border-r-[5px] border-y-transparent border-r-gray-400" />

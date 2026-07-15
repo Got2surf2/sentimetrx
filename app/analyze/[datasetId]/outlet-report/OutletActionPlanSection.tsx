@@ -15,6 +15,13 @@ const ORANGE = '#E85A1A'
 const pct0 = (n: number) => `${Math.round(n * 100)}%`
 const starCls = (avg: number) => (avg < 4.0 ? 'text-rose-600' : avg < 4.35 ? 'text-amber-600' : 'text-emerald-600')
 const negCls = (p: number) => (p >= 0.35 ? 'text-rose-600' : p >= 0.18 ? 'text-amber-600' : 'text-gray-500')
+// Theme pill tint by READ verdict (matches the snapshot table's pills).
+const PILL: Record<string, string> = {
+  FIX: 'bg-rose-100 text-rose-700',
+  WATCH: 'bg-amber-100 text-amber-700',
+  SOLID: 'bg-slate-100 text-slate-600',
+  STRENGTH: 'bg-emerald-100 text-emerald-700',
+}
 
 function Datanautix() {
   return (
@@ -106,19 +113,20 @@ export function ActionPlanBody({ plan, reviews, themeTable = [] }: { plan: Actio
                 <span className="text-base font-bold text-gray-900">{p.title}</span>
               </div>
               {/* Anchor the card to its theme row in the snapshot table above. */}
-              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs">
-                <span className="font-semibold text-gray-700">{p.theme}</span>
-                {(() => { const r = themeRow.get(p.theme); return r ? (
-                  <>
-                    <span className="text-gray-300">·</span>
-                    <span className={`font-semibold tabular-nums ${starCls(r.avgStar)}`}>{r.avgStar.toFixed(2)}★</span>
-                    <span className="text-gray-300">·</span>
-                    <span className={`font-semibold tabular-nums ${negCls(r.pctNegative)}`}>{pct0(r.pctNegative)} negative</span>
-                    <span className="text-gray-300">·</span>
-                    <span className="tabular-nums text-gray-400">{r.mentions.toLocaleString()} mentions</span>
-                  </>
-                ) : null })()}
-              </div>
+              {(() => { const r = themeRow.get(p.theme); return (
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                  <span className={`rounded-full px-2 py-0.5 font-semibold ${PILL[r?.read ?? ''] ?? 'bg-gray-100 text-gray-700'}`}>{p.theme}</span>
+                  {r && (
+                    <span className="flex items-center gap-x-1.5 text-gray-400">
+                      <span className={`font-semibold tabular-nums ${starCls(r.avgStar)}`}>{r.avgStar.toFixed(2)}★</span>
+                      <span className="text-gray-300">·</span>
+                      <span className={`font-semibold tabular-nums ${negCls(r.pctNegative)}`}>{pct0(r.pctNegative)} negative</span>
+                      <span className="text-gray-300">·</span>
+                      <span className="tabular-nums">{r.mentions.toLocaleString()} mentions</span>
+                    </span>
+                  )}
+                </div>
+              ) })()}
               <p className="mt-2 text-sm leading-relaxed text-gray-600">{p.diagnosis}</p>
               {p.verbatims.map((v, j) => (
                 <p key={j} className="mt-2 border-l-2 border-gray-300 pl-2.5 text-xs italic text-gray-500">
