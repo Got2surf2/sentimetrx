@@ -44,7 +44,10 @@ export default function OutletActionPlanSection({ datasetId, outlet, outletName,
   }, [datasetId, outlet])
 
   return (
-    <section className="outlet-print-page mt-6 rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:mt-0 print:shadow-none print:ring-0">
+    // Break to a fresh page for the export; until the plan loads, drop out of
+    // print entirely so an early Ctrl-P yields a clean 1-page snapshot, not a
+    // near-blank page 2.
+    <section className={`outlet-print-page mt-6 rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:p-6 print:mt-0 print:shadow-none print:ring-0 print:break-before-page ${plan ? '' : 'print:hidden'}`}>
       {/* Brand bar */}
       <div className="flex items-center justify-between border-b border-gray-200 pb-3">
         <Datanautix />

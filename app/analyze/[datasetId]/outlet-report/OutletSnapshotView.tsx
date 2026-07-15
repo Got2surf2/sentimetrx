@@ -91,7 +91,7 @@ export default function OutletSnapshotView({
       </div>
 
       {/* KPI tiles */}
-      <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4 print:break-inside-avoid">
         <Kpi
           label="Overall Rating" value={rating.toFixed(2)} unit="★"
           sub={s.recent ? <>Last {s.recent.count.toLocaleString()} reviews: <span className="font-semibold text-gray-700">{s.recent.avg.toFixed(2)}</span> <span className={arrowColor}>{arrow}</span></> : undefined}
@@ -112,16 +112,16 @@ export default function OutletSnapshotView({
       </div>
 
       {/* Rating distribution */}
-      <div className="mt-6">
+      <div className="mt-6 print:mt-4 print:break-inside-avoid">
         <h2 className="mb-2.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Rating Distribution</h2>
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 print:space-y-1">
           {s.distribution.map((b) => <DistributionRow key={b.star} b={b} />)}
         </div>
       </div>
 
       {/* Theme table */}
       {s.themeTable.length > 0 && (
-        <div className="mt-6">
+        <div className="mt-6 print:mt-4 print:break-inside-avoid">
           <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-400">What guests talk about — and how it scores</h2>
           <table className="w-full text-sm">
             <thead>
@@ -136,11 +136,11 @@ export default function OutletSnapshotView({
             <tbody>
               {s.themeTable.map((t) => (
                 <tr key={t.theme} className="border-b border-gray-100 last:border-0">
-                  <td className="py-2 pr-2 font-medium text-gray-800">{t.theme}</td>
-                  <td className="py-2 text-right tabular-nums text-gray-500">{t.mentions.toLocaleString()}</td>
-                  <td className={`py-2 text-right font-bold tabular-nums ${starColor(t.avgStar)}`}>{t.avgStar.toFixed(2)}</td>
-                  <td className={`py-2 text-right font-semibold tabular-nums ${negColor(t.pctNegative)}`}>{pct0(t.pctNegative)}</td>
-                  <td className="py-2 text-right">
+                  <td className="py-2 pr-2 font-medium text-gray-800 print:py-1">{t.theme}</td>
+                  <td className="py-2 text-right tabular-nums text-gray-500 print:py-1">{t.mentions.toLocaleString()}</td>
+                  <td className={`py-2 text-right font-bold tabular-nums print:py-1 ${starColor(t.avgStar)}`}>{t.avgStar.toFixed(2)}</td>
+                  <td className={`py-2 text-right font-semibold tabular-nums print:py-1 ${negColor(t.pctNegative)}`}>{pct0(t.pctNegative)}</td>
+                  <td className="py-2 text-right print:py-1">
                     <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${READ_STYLE[t.read]}`}>{t.read}</span>
                   </td>
                 </tr>
@@ -152,7 +152,7 @@ export default function OutletSnapshotView({
 
       {/* Praise */}
       {(s.praiseChips.length > 0 || s.praiseVerbatims.length > 0) && (
-        <div className="mt-6">
+        <div className="mt-6 print:mt-4 print:break-inside-avoid">
           <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-400">What guests consistently praise</h2>
           <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4">
             <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">Keep doing this</div>

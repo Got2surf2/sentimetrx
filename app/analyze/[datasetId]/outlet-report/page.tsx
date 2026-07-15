@@ -13,6 +13,7 @@ import OutletPicker from './OutletPicker'
 import OutletReportTabs from './OutletReportTabs'
 import OutletSnapshotView from './OutletSnapshotView'
 import OutletActionPlanSection from './OutletActionPlanSection'
+import PrintButton from './PrintButton'
 import AnalyticsNav from '../AnalyticsNav'
 
 export const dynamic = 'force-dynamic'
@@ -65,12 +66,19 @@ export default async function OutletReportPage(props: {
 
   return (
     <div className="min-h-screen bg-gray-100 py-8 print:bg-white print:py-0">
-      <div className="mx-auto max-w-4xl px-4">
-        <AnalyticsNav datasetId={datasetId} active="outlet" outlet={s?.placeId} action={
-          s ? <a href={`/api/datasets/${datasetId}/outlet-plan-deck?outlet=${s.placeId}`} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-700">Export GM plan</a> : undefined
-        } />
-        <div className="mb-4 flex items-center justify-between print:hidden">
-          <OutletPicker outlets={report.outlets} selected={s?.placeId || ''} />
+      <div className="mx-auto max-w-4xl px-4 print:max-w-none print:px-0">
+        <div className="print:hidden">
+          <AnalyticsNav datasetId={datasetId} active="outlet" outlet={s?.placeId} action={
+            s ? (
+              <div className="flex items-center gap-2">
+                <a href={`/api/datasets/${datasetId}/outlet-plan-deck?outlet=${s.placeId}`} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50">GM deck (PPTX)</a>
+                <PrintButton />
+              </div>
+            ) : undefined
+          } />
+          <div className="mb-4 mt-2 flex items-center justify-between">
+            <OutletPicker outlets={report.outlets} selected={s?.placeId || ''} />
+          </div>
         </div>
 
         {!s ? (
@@ -80,7 +88,7 @@ export default async function OutletReportPage(props: {
         ) : (
           <>
             {/* Printable snapshot (page 1 of the export) */}
-            <div className="rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:shadow-none print:ring-0">
+            <div className="rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:p-6 print:shadow-none print:ring-0">
               <OutletSnapshotView
                 brand={report.brand} name={s.name} address={s.address}
                 reviews={s.reviews} rating={s.rating} rank={s.rank} outletCount={s.outletCount}
