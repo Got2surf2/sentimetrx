@@ -356,7 +356,13 @@ for text insights, always shown never silently dropped:
   only (client-side `isSubstantiveText`); the header notes "over N substantive of M answered".
 - **Ask Ana** ✅ — `loadAnaSample` prioritizes substantive comments when the sample truncates
   (partition substantive-first, then shuffle/slice) so the model reasons over real feedback;
-  a context note records how many carried real feedback.
+  a context note records how many carried real feedback. Its rows already come from the SAME
+  deterministic idx_drf_sample population (sql/167). **Model A denominators (2026-07-14):** the
+  reported "N of M matching rows" is now over the ≤50K sample, never scaled to the full dataset
+  (`sampleBase = min(rowCount, 50K)`; `totalDatasetRows` kept as context). The one-shot **ad-hoc
+  report** passes `exactSampleCounts` → scans the whole 50K sample for EXACT sample counts (no "~");
+  the interactive chat keeps its fast budget scan but still reports sample-based numbers. Verified on
+  Carrabba's: unfiltered report totalFiltered = 50,000 (exact), dataset context 56,117.
 - **Dimensions** ✅ (sql/180, DENOMINATOR-only) — the "% tagged" header (`withSignal /
   rowsWithText`) now divides by `rowsSubstantive` (rows carrying usable feedback in any selected
   field, `dataset_rows_with_substantive_count`) so the tag rate isn't diluted by non-answers. The

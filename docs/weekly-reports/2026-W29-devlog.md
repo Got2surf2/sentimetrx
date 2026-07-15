@@ -336,3 +336,11 @@ WHAT: export/pptx row loader now draws the SAME deterministic sample via pageSam
 WHY (owner): "so the pdf will be exactly the same sample?" — the PPTX matched, but the HTML export (the HTML→PDF path) loaded only the first 10K/30K rows by row_index, and the reddit/substack signals deck the first 10K — different, smaller samples that disagreed with the app.
 
 WHAT: export/html and export/signals-pptx now load the SAME deterministic 50K sample via pageSampledRows (sql/160), matching export/pptx and the app view — ≤50K loads every row, >50K the hash sample (proportional per-member shares for collections, sequential fallback). So every export format (and PDFs made from them) reports the identical numbers. The Ask-Ana ad-hoc report PDF stays on its own substantive-first loadAnaSample mechanism (narrative, not code-computed counts). fresh tsc clean, lint 0 delta.
+
+---
+
+## 2026-07-14 — Ask-Ana ad-hoc report on the same 50K sample (Model A denominators)
+
+WHY (owner): "put the ana ad-hoc report on the same 50K sample too." Its rows already came from the deterministic idx_drf_sample population (sql/167), but its denominators were scaled to the full dataset (× totalDatasetRows, with "~").
+
+WHAT: loadAnaSample now reports counts over the ≤50K sample (sampleBase = min(rowCount, 50K)), never scaled to full — totalDatasetRows stays as context. New exactSampleCounts option (ad-hoc report sets it) scans the WHOLE 50K sample so the report's counts are EXACT over the sample (no "~"); the interactive chat keeps its fast budget scan but also reports sample-based numbers (ask-ana note wording updated to say "in the analyzed 50K sample"). Verified on Carrabba's: unfiltered report totalFiltered = 50,000 exact, 200 rows drawn, 56,117 shown as context. Tests updated (2 expectations → sample base) + 1 new exactSampleCounts test; 1518 green, tsc clean, lint 0. Untracked KEEP: scripts/_verify_ana_modelA.mts.

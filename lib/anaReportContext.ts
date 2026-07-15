@@ -30,13 +30,16 @@ export interface AnaSample {
   dataContext:      string                       // formatted for the system prompt
   collectionMembers: CollectionMember[]
   totalDatasetRows: number
-  /** Rows matching the active filters across the WHOLE dataset/collection —
-   *  exact when every row was examined, else scaled from the deterministic
-   *  sample (see totalFilteredIsEstimate). Equals totalDatasetRows when no
-   *  filters are active. */
+  /** Rows matching the active filters WITHIN the deterministic ≤50K sample (Model
+   *  A — the sample is the view; NOT scaled to the full dataset). Exact when the
+   *  whole sample/dataset was scanned; a budget-limited filtered chat scan
+   *  estimates the rate over the sample (see totalFilteredIsEstimate). With no
+   *  filters, equals the sample size (min of the full row count and the 50K cap). */
   totalFiltered:    number
-  /** True when totalFiltered is a sample-scaled estimate (dataset larger than
-   *  the D6 scan cap) — callers prefix the number with "~". */
+  /** True when totalFiltered is a rate estimate over the sample (a filtered scan
+   *  that stopped at the row budget rather than covering the whole sample) —
+   *  callers prefix the number with "~". Always false for the ad-hoc report,
+   *  which scans the whole sample (exactSampleCounts). */
   totalFilteredIsEstimate: boolean
   afterSignalCount: number
   sampled:          boolean
@@ -133,6 +136,7 @@ async function fetchFilteredSampledRows(
   budget: number,
   totalRows: number,
   filters: SerializedFilters | undefined,
+  forceScanToEnd = false,
 ): Promise<FilteredFetch> {
   const rows: Record<string, unknown>[] = []
   let scanned = 0
@@ -144,9 +148,11 @@ async function fetchFilteredSampledRows(
   // Datasets at/below the cap: keep scanning (match_limit 0, counts only) even
   // after the row budget fills, so totalFiltered is EXACT — every other surface
   // reports exact numbers under the cap and Ana's denominator must reconcile
-  // with them (deck credibility). Above the cap everything is "~" anyway, so
-  // stop as soon as the budget fills.
-  const countToEnd = totalRows <= SIGNAL_SAMPLE_CAP
+  // with them (deck credibility). Above the cap the chat path stops as soon as
+  // the budget fills (fast); the ad-hoc REPORT passes forceScanToEnd so it scans
+  // the whole 50K sample → EXACT counts OVER THE SAMPLE (Model A — "same 50K
+  // sample as the app/decks", owner 2026-07-14).
+  const countToEnd = forceScanToEnd || totalRows <= SIGNAL_SAMPLE_CAP
   while (scanned < scanCap && (rows.length < budget || countToEnd)) {
     const scanLimit = Math.min(FILTER_SCAN_PAGE, scanCap - scanned)
     const { data, error } = await service.rpc('sampled_filtered_rows', {
@@ -205,8 +211,15 @@ export async function loadAnaSample(opts: {
   samplingStrategy?: 'proportional' | 'equal' | 'floor'
   filters?: SerializedFilters
   collectionMembers?: CollectionMember[]   // pass if already resolved (avoids a re-query)
+  /** Scan the WHOLE 50K sample (not just until the row budget fills) so the
+   *  reported denominators are EXACT counts over the deterministic sample —
+   *  Model A. Costs ~10 RPC pages on a large dataset, so it's for the one-shot
+   *  ad-hoc report, not the interactive chat (which keeps its fast budget scan
+   *  but still reports sample-based numbers). */
+  exactSampleCounts?: boolean
 }): Promise<AnaSample> {
   const { service, dataset, filters } = opts
+  const exactSampleCounts = !!opts.exactSampleCounts
   const sampleSize = Math.max(50, Math.min(opts.sampleSize || ANA_DEFAULT_SAMPLE, ANA_CONTEXT_CAP))
   const samplingStrategy = opts.samplingStrategy || 'proportional'
   const collectionMembers = opts.collectionMembers ?? await resolveCollectionMembers(service, dataset)
@@ -232,7 +245,7 @@ export async function loadAnaSample(opts: {
       return { rows: kept, scanned: all.length, matched: kept.length, exhausted: true }
     }
     try {
-      return await fetchFilteredSampledRows(service, dsId, budget, memberTotal, activeFilters)
+      return await fetchFilteredSampledRows(service, dsId, budget, memberTotal, activeFilters, exactSampleCounts)
     } catch (e) {
       void logError('anaReportContext.filteredSample', e, { datasetId: dsId })
       const fetched = await fetchDatasetRows(service, dsId, budget, memberTotal)
@@ -265,15 +278,21 @@ export async function loadAnaSample(opts: {
     allExhausted = res.exhausted
   }
 
-  // Dataset-wide filtered population, for honest denominators in the prompt:
-  // exact when every row was examined; otherwise scaled from the deterministic
-  // sample (flagged so callers show "~").
+  // Model A (owner 2026-07-14): the deterministic ≤50K sample IS the view — the
+  // report's denominators are counts OVER THAT SAMPLE, never scaled up to the
+  // full dataset. sampleBase = the sample size (min of the full row count and
+  // the 50K cap); totalDatasetRows stays as full-dataset context in the note.
+  // The count is EXACT when the whole sample (or whole small dataset) was
+  // scanned; a filtered chat scan that stopped at the row budget estimates the
+  // match rate over the sample (flagged "~").
+  const sampleBase = totalDatasetRows > 0 ? Math.min(totalDatasetRows, SIGNAL_SAMPLE_CAP) : scannedSum
+  const scannedWholeSample = allExhausted || (sampleBase > 0 && scannedSum >= sampleBase)
   const populationFiltered = !activeFilters
-    ? totalDatasetRows
-    : allExhausted
+    ? sampleBase
+    : scannedWholeSample
       ? matchedSum
-      : scannedSum > 0 ? Math.round((matchedSum / scannedSum) * totalDatasetRows) : 0
-  const totalFilteredIsEstimate = !!activeFilters && !allExhausted
+      : scannedSum > 0 ? Math.round((matchedSum / scannedSum) * sampleBase) : 0
+  const totalFilteredIsEstimate = !!activeFilters && !scannedWholeSample
 
   // Drop URL-only rows for text sources
   if (dataset.source === 'reddit' || dataset.source === 'substack' || dataset.source === 'google_reviews') {

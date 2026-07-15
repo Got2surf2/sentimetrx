@@ -47,9 +47,22 @@ describe('loadAnaSample — filter-aware sampled fetch (sql/167 path)', () => {
     const out = await loadAnaSample({ service, dataset: ds(200000), sampleSize: 200, filters: catFL })
     expect(calls).toBe(1)                          // budget (600) filled on page 1 → no more scanning
     expect(out.rows).toHaveLength(200)
-    expect(out.totalFiltered).toBe(40000)          // 1000/5000 × 200000
+    expect(out.totalFiltered).toBe(10000)          // Model A: 1000/5000 × 50000 sample base (not the full 200000)
     expect(out.totalFilteredIsEstimate).toBe(true)
     expect(out.sampled).toBe(true)
+  })
+
+  it('exactSampleCounts (ad-hoc report): scans the WHOLE 50K sample → exact, unflagged', async () => {
+    // 200K dataset, filtered: with exactSampleCounts the scan continues past the
+    // row budget to the 50K cap, so the denominator is the EXACT match count over
+    // the sample (Model A — no scaling, no "~").
+    const page = { n_scanned: 5000, n_matched: 1000, rows: Array.from({ length: 600 }, () => ({ State: 'FL' })), last_hash: 1, last_id: 1 }
+    let calls = 0
+    const service = mockService(() => { calls++; return { data: { ...page, last_hash: calls, last_id: calls }, error: null } })
+    const out = await loadAnaSample({ service, dataset: ds(200000), sampleSize: 200, filters: catFL, exactSampleCounts: true })
+    expect(calls).toBe(10)                          // 50000 / 5000 = 10 pages scanned to the cap
+    expect(out.totalFiltered).toBe(10000)           // 10 × 1000 matched, EXACT over the 50K sample
+    expect(out.totalFilteredIsEstimate).toBe(false)
   })
 
   it('at/below the cap: keeps counting past the budget for an EXACT denominator', async () => {
@@ -98,13 +111,13 @@ describe('loadAnaSample — filter-aware sampled fetch (sql/167 path)', () => {
     expect(out.totalFilteredIsEstimate).toBe(true) // fallback can't see the population
   })
 
-  it('no filters: totalFiltered equals the dataset total, unflagged', async () => {
+  it('no filters: totalFiltered equals the SAMPLE size (Model A), unflagged', async () => {
     const service = mockService(() => ({
       data: { n_scanned: 5000, n_matched: 5000, rows: Array.from({ length: 600 }, () => ({ a: 1 })), last_hash: 1, last_id: 1 },
       error: null,
     }))
     const out = await loadAnaSample({ service, dataset: ds(200000), sampleSize: 200 })
-    expect(out.totalFiltered).toBe(200000)
+    expect(out.totalFiltered).toBe(50000)   // min(200000, 50K cap) — the sample IS the view
     expect(out.totalFilteredIsEstimate).toBe(false)
   })
 })

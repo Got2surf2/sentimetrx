@@ -319,16 +319,18 @@ Ask the user 1-2 brief questions about what they're looking to learn, then make 
   // it is a sample-scaled estimate), then the sample drawn from it.
   const tfDisplay = (totalFilteredIsEstimate ? '~' : '') + totalFiltered.toLocaleString()
 
+  // Model A: counts are over the deterministic ≤50K sample (the app's view), not
+  // the full dataset — say so, and give the full row count as context.
   const sampleNote = sampled
     ? '\n\nNote: You are seeing a representative sample of ' + filteredRows.length + ' rows drawn from ' +
       (hasFilters
-        ? 'the ' + tfDisplay + ' rows matching the active filters (dataset total: ' + totalDatasetRows.toLocaleString() + ' rows)'
-        : totalDatasetRows.toLocaleString() + ' total rows') +
+        ? 'the ' + tfDisplay + ' rows in the analyzed 50K sample that match the active filters (dataset total: ' + totalDatasetRows.toLocaleString() + ' rows)'
+        : 'the analyzed 50K sample (dataset total: ' + totalDatasetRows.toLocaleString() + ' rows)') +
       '. Base your analysis on patterns in this sample and note that findings are sample-based.'
     : ''
 
   const filterNote = hasFilters
-    ? '\n\nNote: The user has active filters applied. ' + tfDisplay + ' of ' + totalDatasetRows.toLocaleString() + ' total rows match the filters, and the rows you see are drawn only from those matching rows.'
+    ? '\n\nNote: The user has active filters applied. ' + tfDisplay + ' rows in the analyzed sample match the filters (the dataset has ' + totalDatasetRows.toLocaleString() + ' rows total); the rows you see are drawn only from those matching rows.'
     : ''
 
   const redditContext = dataset.source === 'reddit'

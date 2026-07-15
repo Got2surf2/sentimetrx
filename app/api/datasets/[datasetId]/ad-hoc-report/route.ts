@@ -58,18 +58,23 @@ export async function POST(req: Request, props: Props) {
   if (!dataset) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
   if (!isAdmin && dataset.org_id !== orgId) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const sample = await loadAnaSample({ service, dataset, filters: body.filters as SerializedFilters | undefined, sampleSize: body.sampleSize })
+  // exactSampleCounts (Model A): the report reasons over — and reports counts
+  // for — the SAME deterministic ≤50K sample the app view and the PPTX/HTML decks
+  // use, counted exactly over that sample (never scaled to the full dataset).
+  const sample = await loadAnaSample({ service, dataset, filters: body.filters as SerializedFilters | undefined, sampleSize: body.sampleSize, exactSampleCounts: true })
   if (sample.rows.length === 0) return NextResponse.json({ error: 'No analyzable rows in this dataset.' }, { status: 400 })
 
   const sourceLabel = getSourceLabel(dataset.source)
   const hasFilters = !!body.filters && Object.keys(body.filters as object).length > 0
   const tfDisplay = (sample.totalFilteredIsEstimate ? '~' : '') + sample.totalFiltered.toLocaleString()
+  // Model A: when the dataset exceeds 50K the analysis is over the deterministic
+  // 50K sample (the same one shown in the app / used by the decks); denominators
+  // are exact counts of that sample, and the full dataset size is stated as
+  // context. ≤50K → every row is analyzed (exact-full).
   const sampleNote = sample.sampled
-    ? `This is a representative sample of ${sample.rows.length} rows drawn from ` +
-      (hasFilters
-        ? `the ${tfDisplay} rows matching the user's active filters (dataset total: ${sample.totalDatasetRows.toLocaleString()} rows)`
-        : `${sample.totalDatasetRows.toLocaleString()} rows`) +
-      ` — note findings are sample-based.`
+    ? `This report analyzes the same deterministic sample of up to 50,000 rows the app view uses (the dataset has ${sample.totalDatasetRows.toLocaleString()} rows total). Counts below are exact over that sample. It is read from a representative ${sample.rows.length} rows` +
+      (hasFilters ? ` of the ${tfDisplay} sample rows matching the user's active filters` : ``) +
+      ` — findings are sample-based.`
     : hasFilters
       ? `All ${sample.rows.length} rows matching the user's active filters are included (dataset total: ${sample.totalDatasetRows.toLocaleString()} rows).`
       : `All ${sample.rows.length} rows are included.`
