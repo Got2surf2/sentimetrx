@@ -12,7 +12,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { cleanAiOutput, looksLikeAIRefusal } from '@/lib/guardrails'
 import { callAI } from '@/lib/ai'
-import { logUsage, type UsageContext } from '@/lib/usageLog'
+import { type UsageContext } from '@/lib/usageLog'
 import {
   SWITCH_CONFIRM,
   detectLanguageSwitch,
@@ -339,14 +339,17 @@ async function callClaude(
   }
 
   try {
+    // usage rides into callAI so these calls hit the per-org gate (off-mode /
+    // BYOK) like every other gated call site — callAI auto-logs it, replacing
+    // the manual logUsage this helper used to do (same single row).
     const result = await callAI({
       tier: 'fast',
       maxTokens: verbose ? 500 : 200,
       timeoutMs: verbose ? Math.max(timeoutMs, 5000) : timeoutMs,
       system: systemPayload,
       messages: [{ role: 'user', content: user }],
+      usage,
     })
-    if (usage) logUsage(usage, result.usage)
     const raw = result.text?.trim() || ''
     let outText: string
     let thinking: string[] = []

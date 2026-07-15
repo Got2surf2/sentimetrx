@@ -387,6 +387,7 @@ Standalone persona pool that can be mixed into any session to stress-test conten
 - **Translation**: Non-English responses auto-translated to English; stored in `user_message_en` for analysis
 - **Bot output**: Returned in participant's conversation language
 - **Skip/Done labels**: Translate on language switch (table in `TH_LABELS`)
+- **Per-org AI gate (2026-07-15)**: the route's language-switch/translate `callClaude` calls pass their `usage` ctx (org_id) into `callAI`, so they honor the org's off-mode/BYOK gate and auto-log (previously logged manually and bypassed the gate). Off-mode orgs fail soft on the classifier; the main turn refuses via `chatCore`'s per-turn gate.
 
 > **Known gap (Open TBD):** the simulator's `Creole-speaking elder from Immokalee` persona targets `switch_language: 'ht'` (Haitian Creole), but `ht` is **not in `LANG_CODES`**, so the chat engine's AI classifier will reject the switch. Either add `ht` to `LANG_CODES` + `TH_LABELS` + `SWITCH_CONFIRM`, or drop `ht` from the simulator persona.
 
