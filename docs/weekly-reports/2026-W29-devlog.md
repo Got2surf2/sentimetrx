@@ -494,3 +494,7 @@ WHY: Rapid owner QC of the rebuilt outlet report surfaced fixes: (1) rating-dist
 ## Outlet Report: theme pill + white lowest-marker (Jul 15)
 
 WHY: Owner QC polish — the action-plan theme name now renders as a severity-tinted pill (READ colour) to stand out, and the distribution bars' lowest (leftmost) marker is white with a drop-shadow edge so it stays visible sitting on the coloured bar instead of a low-contrast grey. Cosmetic; tsc clean.
+
+## Outlet Report: theme pill -> Sarina teal (Jul 15)
+
+WHY: Owner — a red/severity-tinted theme pill wrongly reads as an alarm. Switched the action-plan theme pill to neutral Sarina teal (#0F7173) with white text; severity stays conveyed by the coloured avg-star/%-negative next to it. Cosmetic.

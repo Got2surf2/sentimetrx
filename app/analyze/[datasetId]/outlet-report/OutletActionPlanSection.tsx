@@ -15,13 +15,9 @@ const ORANGE = '#E85A1A'
 const pct0 = (n: number) => `${Math.round(n * 100)}%`
 const starCls = (avg: number) => (avg < 4.0 ? 'text-rose-600' : avg < 4.35 ? 'text-amber-600' : 'text-emerald-600')
 const negCls = (p: number) => (p >= 0.35 ? 'text-rose-600' : p >= 0.18 ? 'text-amber-600' : 'text-gray-500')
-// Theme pill tint by READ verdict (matches the snapshot table's pills).
-const PILL: Record<string, string> = {
-  FIX: 'bg-rose-100 text-rose-700',
-  WATCH: 'bg-amber-100 text-amber-700',
-  SOLID: 'bg-slate-100 text-slate-600',
-  STRENGTH: 'bg-emerald-100 text-emerald-700',
-}
+// Neutral Sarina-teal theme pill (a red/severity tint would wrongly read as an alarm;
+// severity is already carried by the coloured avg★/%-negative next to it).
+const SARINA = '#0F7173'
 
 function Datanautix() {
   return (
@@ -115,7 +111,7 @@ export function ActionPlanBody({ plan, reviews, themeTable = [] }: { plan: Actio
               {/* Anchor the card to its theme row in the snapshot table above. */}
               {(() => { const r = themeRow.get(p.theme); return (
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                  <span className={`rounded-full px-2 py-0.5 font-semibold ${PILL[r?.read ?? ''] ?? 'bg-gray-100 text-gray-700'}`}>{p.theme}</span>
+                  <span className="rounded-full px-2 py-0.5 font-semibold text-white" style={{ background: SARINA }}>{p.theme}</span>
                   {r && (
                     <span className="flex items-center gap-x-1.5 text-gray-400">
                       <span className={`font-semibold tabular-nums ${starCls(r.avgStar)}`}>{r.avgStar.toFixed(2)}★</span>
