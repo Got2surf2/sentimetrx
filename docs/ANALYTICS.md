@@ -328,7 +328,20 @@ agrees (the strip's comment count now equals the mined banner's, both ~17,048 on
 because both count the same deterministic sample). `scaleSampledCount` is no longer called on these
 count paths (theme-fit % is a ratio, unaffected). Rating averages keep their own "~" — a
 ties-to-Google carve-out that still averages all rated rows. Rationale: "at this point we're looking
-at the sample as our view, so everything is based on the 50K."
+at the sample as our view, so everything is based on the 50K." The same exact-sample rule extends to
+every export (PPTX / HTML / signals deck) and the Ask-Ana ad-hoc report (see below).
+
+**Model A scope boundary — what still scales (as of 2026-07-14, an OPEN item).** Model A is applied
+to the **theme / comment / substantive** count surfaces (strip, theme prevalence, decks, Ask-Ana
+report). It is NOT yet applied to the **other** `/aggregate` count surfaces, which still scale a 50K
+sample up to the full dataset on large datasets: **categorical field distributions** and
+**numeric-stats counts** (`lib/sampledAggregate`, `scaleSampledCount`), **Dimensions sub-counts**
+(taxonomy rollup / `sampledTaxonomy` twins), and **Entity mention counts** (`sampled_count_entity_terms`,
+shown with "≈"). So on a >50K dataset a "Region" bar or a Dimensions count is still a scaled estimate
+while the comment/theme numbers are exact-sample. Making these fully Model-A-consistent (drop the
+scaling on the COUNT surfaces; means/medians/stddev are inherently unscaled) is tracked as an open
+sweep. `lib/projectCompare` (multi-source project-report matrix) likewise still counts over each
+source's full `rowCount` — deferred (its counts are assembled upstream).
 
 **"Sampled" chip on the metric-strip row (2026-07-14).** When the active dataset exceeds the 50K
 cap (`RowsContext.sampled && totalRows > sampledCount`), `DatasetShell` leads the shared metric-strip

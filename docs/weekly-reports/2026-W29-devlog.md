@@ -352,3 +352,17 @@ WHAT: loadAnaSample now reports counts over the ≤50K sample (sampleBase = min(
 WHY (owner, screenshot): the lower AI-mined banner is unnecessary, and the strip (30,308) disagreed with the banner (27,004 substantive). Root cause of the mismatch: 30,308 = 27,004 × 56117/50000 — the strip served a STALE v1 signal_stats cache (Model A stopped scaling, but the cache keyed on theme-hash+row_count didn't invalidate).
 
 WHAT: (1) signalStats cache gains stats_v (2 = Model A); v1 entries recompute on next read → strip now shows the exact sample substantive count, matching the banner. (2) The strip's comment metric now carries the "% substantive" (substantive ÷ answered) the mined banner had: "N comments · P% of M answered". (3) The AI-mined banner is REMOVED from TextMine (its info folded into the strip; the "AI Mined" pill keeps provenance). signalStats test fixtures get stats_v:2; 1518 green, tsc clean, lint 0 delta.
+
+---
+
+## 2026-07-14 — Model A / substantive-flag: open TODOs recorded
+
+Consolidating the remaining work (owner asked to record it) after the substantive-flag + Model A "the 50K sample is the view" pass (20 commits local, unpushed):
+
+1. PUSH + DEPLOY (owner-gated): migrate sql/178→179→180→181, push, then scripts/_backfill-substantive.mts --prod, then re-run test:rls/test:egress.
+2. Owner browser-QC on a >50K dataset: strip == every other surface (exact sample counts), collapsed layout, theme bars + PPTX + HTML export + Ask-Ana report all agree; strip signal_stats cache self-heals (stats_v=2).
+3. REMAINING (NOT DONE, bigger, owner-gated): non-theme Charts aggregates still scale to full on >50K — categorical field distributions, numeric-stats counts (/aggregate sampled_* + scaleSampledCount), Dimensions sub-counts, Entity mention counts. Full Model-A consistency = drop scaling on those COUNT surfaces. Needs RPC/route edits + tests.
+4. projectCompare (multi-source project-report matrix) deferred — counts assembled upstream per source; denom-only flip inflates.
+5. Statistics tab: no change (grouping vars, not prevalence denominators).
+
+Detail in memory [[project_substantive_usefulness_flag]] "OPEN TODOs".
