@@ -406,3 +406,15 @@ sql/182 numeric-parity fix (prior entry) stays as a real robustness fix for genu
 **Result:** 17 -> 0. Two REAL fixes: (1) PlotlyChart cleanup captures ref.current in the effect body, not the cleanup (285). (2) ScoreDriver regression effect was missing rows/schema/themeModel/hasThemes from its deps — so the regression went STALE under an active filter; added them (safe: all stable/memoized, none set by the effect, so no loop). The regression-under-filter staleness is a genuine bug the warning surfaced. The other 15 are legitimate patterns the aggressive React-19 rule over-flags — external-data-sync setState (fetch -> state), stable string-key dep proxies (cacheKey/filterKey/themesSig/_filterIdSig, where listing the churny object would infinite-loop), session restore/init, and the deliberate module-level _enrichCtx render bridge + _chartDrag drop-handler state — each cleared with a scoped disable + concrete reason (zero runtime change).
 
 lint:ci ceiling 269 -> 252 (exactly the 17 cleared; new files add 0). Verification: new jsdom render test tests/unit/chartsEffectStability.test.tsx mounts ChartsModule with LOADED rows + an ACTIVE FILTER (the paths touched) and asserts it settles with no "Maximum update depth" loop. typecheck + 1526 tests green. (Full in-app Score-Driver QC left to the owner — a dev server was already up on :3000; didn't disrupt it / risk a cookie-mint session reset.)
+
+---
+
+## Statistics: Logistic Regression with auto collinearity pruning (2026-07-15)
+
+**WHY:** Owner asked for logistic regression in the Statistics panel, done intelligently so it discards highly correlated predictors. Regression already lived in two spots (Charts Score Driver = themes->score OLS; Statistics RegressionPanel = numeric multiple-OLS); built logistic into the latter.
+
+lib/statsUtils: logisticRegression(y 0/1, X, names) via IRLS/Newton (reuses invertMatrix) -> odds ratios + 95% CI, Wald z/p, McFadden pseudo-R2, LR chi-sq vs intercept-only, AIC, convergence/separation flags. vif() (=1/(1-R2_j)) + pruneCollinear() iteratively drops the highest-VIF predictor until all <=10.
+
+StatsModule RegressionPanel: Linear/Logistic toggle (persisted). Logistic binarizes the outcome (auto if 2-valued, else adjustable cutoff defaulting to median; both classes need >=3), runs pruneCollinear then logisticRegression, renders odds-ratio coefficients + pseudo-R2/LR/AIC fit card + dropped-collinear note + plain-language BottomLine; OLS residual plots hidden in logistic mode.
+
+Verified: 8 unit tests (intercept=logit(mean y), effect sign+convergence, separation flag, no-effect OR~1, VIF=1/(1-r2), pruning). End-to-end pipeline on synthetic data with a collinear twin: VIF-4890 twin auto-dropped, true driver recovered (OR 2.34, beta 0.85 vs true 0.9, p<1e-4), noise non-sig (p=0.79). typecheck + 1534 tests green; StatsModule react-hooks warnings 33->33 (no new); lint ceiling unchanged (252).

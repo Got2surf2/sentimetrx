@@ -46,6 +46,7 @@ import {
   mean, std, median, quantile, skewness, kurtosis, shapiroWilk,
   pearsonR, spearmanR, welchTTest, mannWhitneyU, oneWayANOVA,
   chiSquareStat, olsRegression, getNum, probit,
+  logisticRegression, pruneCollinear, type LogisticResult,
   welchTTestFromStats, anovaFromStats, chiSquareFromTable,
   fmt2, fmt4, fmtN, fmtP, sigLabel,
   descBL, descBL_naive, corrBL, corrBL_naive,
@@ -786,18 +787,23 @@ function RegressionPanel({ numFields, data, aliases, datasetId }: { numFields: S
   var [predictors, setPredictors] = useState<Set<string>>(function() { return new Set() })
   var [activeOutcome, setActiveOutcome] = useState<string>('')
   var [outcomesOpen, setOutcomesOpen] = useState(true)
+  var [regMode, setRegMode] = useState<'linear' | 'logistic'>('linear')
+  // Per-outcome binarization cutoff for logistic mode (y=1 when outcome >= cut).
+  var [thresholds, setThresholds] = useState<Record<string, number>>({})
   var [regRestored, setRegRestored] = useState(false)
   useEffect(function() {
-    var saved = readSession<{ outcomes?: string[]; predictors?: string[]; activeOutcome?: string }>(_rk)
+    var saved = readSession<{ outcomes?: string[]; predictors?: string[]; activeOutcome?: string; regMode?: 'linear' | 'logistic'; thresholds?: Record<string, number> }>(_rk)
     if (Array.isArray(saved?.outcomes)) setOutcomes(new Set(saved.outcomes))
     if (Array.isArray(saved?.predictors)) setPredictors(new Set(saved.predictors))
     if (saved?.activeOutcome) setActiveOutcome(saved.activeOutcome)
+    if (saved?.regMode) setRegMode(saved.regMode)
+    if (saved?.thresholds) setThresholds(saved.thresholds)
     setRegRestored(true)
   }, [_rk])
   useEffect(function() {
     if (!regRestored) return
-    writeSession(_rk, { outcomes: Array.from(outcomes), predictors: Array.from(predictors), activeOutcome: activeOutcome })
-  }, [regRestored, outcomes, predictors, activeOutcome, _rk])
+    writeSession(_rk, { outcomes: Array.from(outcomes), predictors: Array.from(predictors), activeOutcome: activeOutcome, regMode: regMode, thresholds: thresholds })
+  }, [regRestored, outcomes, predictors, activeOutcome, regMode, thresholds, _rk])
 
   var fl2 = function(f: SchemaFieldConfig) { return aliases[f.field] || f.label || f.field }
 
@@ -845,13 +851,60 @@ function RegressionPanel({ numFields, data, aliases, datasetId }: { numFields: S
     return out
   }, [outcomes, predictors, data])
 
+  // ── Logistic regression per outcome (binary) ──
+  // Binarize the outcome (auto if it has 2 distinct values, else at a cut that
+  // defaults to the median), drop collinear predictors (VIF>10), then fit.
+  interface LogitPacked { result: LogisticResult; dropped: { name: string; vif: number }[]; cut: number; twoValued: boolean; nPos: number; nNeg: number; predUsed: number }
+  var logitResults = useMemo(function() {
+    var out: Record<string, LogitPacked> = {}
+    if (regMode !== 'logistic' || !outcomes.size || !predictors.size) return out
+    outcomes.forEach(function(oc) {
+      var preds = Array.from(predictors).filter(function(p) { return p !== oc })
+      if (!preds.length) return
+      var filtered = data.filter(function(r) {
+        return !isNaN(parseFloat(String(r[oc] || '').replace(/,/g, ''))) &&
+          preds.every(function(p) { return !isNaN(parseFloat(String(r[p] || '').replace(/,/g, ''))) })
+      })
+      if (filtered.length < preds.length + 3) return
+      var rawY = filtered.map(function(r) { return parseFloat(String(r[oc]).replace(/,/g, '')) })
+      var distinct = Array.from(new Set(rawY)).sort(function(a, b) { return a - b })
+      var twoValued = distinct.length === 2
+      var cut = twoValued ? distinct[1] : (thresholds[oc] != null ? thresholds[oc] : median(rawY))
+      var y: number[] = rawY.map(function(v) { return v >= cut ? 1 : 0 })
+      var nPos = y.reduce(function(s, v) { return s + v }, 0)
+      if (nPos < 3 || nPos > y.length - 3) return // need both classes represented
+      var Xfull = filtered.map(function(r) { return preds.map(function(p) { return parseFloat(String(r[p]).replace(/,/g, '')) }) })
+      var prune = pruneCollinear(Xfull, preds, 10)
+      var X = Xfull.map(function(row) { return prune.keptIdx.map(function(i) { return row[i] }) })
+      var res = logisticRegression(y, X, prune.keptNames)
+      if (res) out[oc] = { result: res, dropped: prune.dropped, cut: cut, twoValued: twoValued, nPos: nPos, nNeg: y.length - nPos, predUsed: prune.keptNames.length }
+    })
+    return out
+  }, [regMode, outcomes, predictors, data, thresholds])
+
   // Keep activeOutcome in sync if its result was removed
   useEffect(function() {
-    var keys = Object.keys(results)
-    if (keys.length && (!activeOutcome || !results[activeOutcome])) setActiveOutcome(keys[0])
-  }, [results])
+    var keys = regMode === 'logistic' ? Object.keys(logitResults) : Object.keys(results)
+    if (keys.length && (!activeOutcome || keys.indexOf(activeOutcome) < 0)) setActiveOutcome(keys[0])
+  }, [results, logitResults, regMode])
 
   var activeResult = results[activeOutcome] || null
+  var activeLogit = logitResults[activeOutcome] || null
+
+  // Plain-language read-out for a fitted logistic model.
+  var logitBL = function(pk: LogitPacked, ocLabel: string, naive: boolean): string {
+    var res = pk.result
+    var preds = res.coefs.filter(function(c) { return c.name !== 'Intercept' })
+    if (res.separation) return 'The model could not be estimated reliably (separation) — the coefficients below are not trustworthy. Drop the offending predictor or add more data.'
+    var sig = preds.filter(function(c) { return c.p < 0.05 })
+    var evt = (aliases[activeOutcome] || ocLabel) + ' ≥ ' + fmtN(pk.cut)
+    if (!sig.length) return (naive ? 'Nothing here moves the needle: ' : '') + 'None of the ' + preds.length + ' predictors significantly shifts the odds of ' + evt + ' (all p ≥ 0.05).'
+    var top = sig.slice().sort(function(a, b) { return Math.abs(Math.log(b.or)) - Math.abs(Math.log(a.or)) })[0]
+    var dir = top.or >= 1 ? 'multiplies' : 'cuts'
+    var pct = Math.round(Math.abs((top.or - 1) * 100))
+    var topName = aliases[top.name] || top.name
+    return sig.length + ' of ' + preds.length + ' predictors significantly affect the odds of ' + evt + '. Strongest: each 1-unit rise in ' + topName + ' ' + dir + ' the odds ' + fmt2(top.or) + '× (' + (top.or >= 1 ? '+' : '−') + pct + '%). McFadden pseudo-R² = ' + fmt2(res.pseudoR2) + '.'
+  }
   var outcomeFields = numFields.filter(function(f) { return !predictors.has(f.field) })
   var predictorFields = numFields.filter(function(f) { return !outcomes.has(f.field) })
 
@@ -900,7 +953,26 @@ function RegressionPanel({ numFields, data, aliases, datasetId }: { numFields: S
 
   return (
     <div>
-      <PanelHeader icon={'\u27CB'} title="OLS Linear Regression" desc="Ordinary least squares regression. Select one or more outcome variables and any number of predictors — a separate model is fitted for each outcome." />
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <PanelHeader
+          icon={'\u27CB'}
+          title={regMode === "logistic" ? "Logistic Regression" : "OLS Linear Regression"}
+          desc={regMode === "logistic"
+            ? "Maximum-likelihood logistic regression for a binary outcome. Highly collinear predictors (VIF > 10) are dropped automatically so each effect is attributed cleanly. Coefficients are shown as odds ratios."
+            : "Ordinary least squares regression. Select one or more outcome variables and any number of predictors — a separate model is fitted for each outcome."} />
+        {/* Linear / Logistic mode toggle */}
+        <div style={{ display: "flex", background: T.bg, border: "1px solid " + T.border, borderRadius: 9, padding: 3, flexShrink: 0 }}>
+          {(["linear", "logistic"] as const).map(function(m) {
+            var on = regMode === m
+            return (
+              <button key={m} onClick={function() { setRegMode(m) }}
+                style={{ padding: "5px 14px", fontSize: 12, fontWeight: on ? 700 : 500, borderRadius: 6, border: "none", cursor: "pointer", background: on ? T.bgCard : "transparent", color: on ? T.accent : T.textMute, boxShadow: on ? "0 1px 4px rgba(0,0,0,.08)" : "none" }}>
+                {m === "linear" ? "Linear" : "Logistic"}
+              </button>
+            )
+          })}
+        </div>
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20, marginBottom: 20 }}>
         {/* ── Variable selector ── */}
@@ -980,16 +1052,17 @@ function RegressionPanel({ numFields, data, aliases, datasetId }: { numFields: S
               {outcomes.size > 1 && (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {Array.from(outcomes).map(function(oc) {
-                    var res = results[oc]
                     var isActive = activeOutcome === oc
+                    var lg = logitResults[oc], ln = results[oc]
+                    var badge = regMode === 'logistic'
+                      ? (lg ? { txt: 'R²=' + fmt2(lg.result.pseudoR2), col: lg.result.pseudoR2 > 0.3 ? T.green : lg.result.pseudoR2 > 0.1 ? T.amber : T.textFaint } : null)
+                      : (ln ? { txt: 'R²=' + fmt2(ln.R2), col: ln.R2 > 0.5 ? T.green : ln.R2 > 0.25 ? T.amber : T.textFaint } : null)
                     return (
                       <button key={oc} onClick={function() { setActiveOutcome(oc) }}
                         style={{ padding: '5px 14px', fontSize: 12, fontWeight: isActive ? 700 : 500, borderRadius: 20, cursor: 'pointer', border: '1px solid ' + (isActive ? T.accent : T.border), background: isActive ? T.accentBg : T.bg, color: isActive ? T.accent : T.textMid, display: 'flex', alignItems: 'center', gap: 6 }}>
                         {aliases[oc] || oc}
-                        {res ? (
-                          <span style={{ fontSize: 10, fontWeight: 700, color: res.R2 > 0.5 ? T.green : res.R2 > 0.25 ? T.amber : T.textFaint }}>
-                            R²={fmt2(res.R2)}
-                          </span>
+                        {badge ? (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: badge.col }}>{badge.txt}</span>
                         ) : (
                           <span style={{ fontSize: 10, color: T.red }}>✗</span>
                         )}
@@ -999,7 +1072,7 @@ function RegressionPanel({ numFields, data, aliases, datasetId }: { numFields: S
                 </div>
               )}
 
-              {activeResult ? (
+              {regMode === 'linear' ? (activeResult ? (
                 <>
                   {<BottomLine text={regrBL(activeResult, aliases[activeOutcome] || activeOutcome, aliases)} naiveText={regrBL_naive(activeResult, aliases[activeOutcome] || activeOutcome, aliases)} />}
                   <Card style={{ padding: 0, overflow: 'hidden' }}>
@@ -1052,14 +1125,99 @@ function RegressionPanel({ numFields, data, aliases, datasetId }: { numFields: S
                 <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textFaint, fontSize: 13, padding: 40 }}>
                   Insufficient data for this outcome/predictor combination.
                 </div>
+              )) : activeLogit ? (
+                <>
+                  {/* Binarization control */}
+                  <Card style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, color: T.textMid }}>
+                      Outcome <b style={{ color: T.text }}>{aliases[activeOutcome] || activeOutcome}</b> binarized as <b style={{ color: T.text }}>≥ {fmtN(activeLogit.cut)}</b> = 1{activeLogit.twoValued ? ' (already binary)' : ''}
+                    </span>
+                    {!activeLogit.twoValued && (
+                      <label style={{ fontSize: 11, color: T.textFaint, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        cutoff ≥
+                        <input type="number" defaultValue={activeLogit.cut} step="any" key={activeOutcome + ':' + activeLogit.cut}
+                          onBlur={function(e) { var v = parseFloat(e.target.value); setThresholds(function(prev) { var n = Object.assign({}, prev); if (!isNaN(v)) n[activeOutcome] = v; return n }) }}
+                          style={{ width: 84, fontSize: 16, padding: '3px 6px', border: '1px solid ' + T.border, borderRadius: 6, background: T.bgCard, color: T.text }} />
+                      </label>
+                    )}
+                    <span style={{ fontSize: 11, color: T.textFaint, marginLeft: 'auto', fontFamily: 'monospace' }}>{activeLogit.nPos} pos / {activeLogit.nNeg} neg</span>
+                  </Card>
+
+                  {activeLogit.result.separation && (
+                    <div style={{ fontSize: 12, color: T.amber, background: T.amberBg, border: '1px solid ' + T.amber, borderRadius: 10, padding: '9px 14px' }}>
+                      ⚠ The model shows (quasi-)separation or did not converge — a predictor may perfectly split the outcome, so the coefficients and p-values below are unreliable. Remove that predictor or add more data.
+                    </div>
+                  )}
+
+                  {activeLogit.dropped.length > 0 && (
+                    <div style={{ fontSize: 12, color: T.textMid, background: T.bg, border: '1px solid ' + T.border, borderRadius: 10, padding: '9px 14px' }}>
+                      <b style={{ color: T.text }}>Dropped for collinearity (VIF &gt; 10):</b>{' '}
+                      {activeLogit.dropped.map(function(d) { return (aliases[d.name] || d.name) + ' (VIF ' + (d.vif === Infinity ? '∞' : fmtN(d.vif)) + ')' }).join(', ')}. Their signal is carried by a correlated predictor that was kept, so effects aren't split across redundant twins.
+                    </div>
+                  )}
+
+                  <BottomLine text={logitBL(activeLogit, aliases[activeOutcome] || activeOutcome, false)} naiveText={logitBL(activeLogit, aliases[activeOutcome] || activeOutcome, true)} />
+
+                  <Card style={{ padding: 0, overflow: 'hidden' }}>
+                    <div style={{ padding: '11px 16px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Model Fit — {aliases[activeOutcome] || activeOutcome}</span>
+                      <SigBadge p={activeLogit.result.lrP} />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)' }}>
+                      {[
+                        { l: 'Pseudo R²', v: fmt2(activeLogit.result.pseudoR2), c: activeLogit.result.pseudoR2 > 0.3 ? T.green : activeLogit.result.pseudoR2 > 0.1 ? T.amber : T.textMid },
+                        { l: 'LR χ²', v: fmtN(activeLogit.result.lr), c: T.textMid },
+                        { l: 'p-value', v: fmtP(activeLogit.result.lrP).replace('p = ', '').replace('p < ', '<'), c: activeLogit.result.lrP < 0.001 ? T.green : activeLogit.result.lrP < 0.05 ? T.amber : T.red },
+                        { l: 'AIC', v: fmtN(activeLogit.result.aic), c: T.textMid },
+                        { l: 'n', v: String(activeLogit.result.n), c: T.textMid },
+                      ].map(function(s, i) {
+                        return (
+                          <div key={i} style={{ padding: '14px 12px', borderRight: i < 4 ? '1px solid ' + T.border : 'none', textAlign: 'center' }}>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: s.c || T.textMid, fontFamily: 'monospace' }}>{s.v}</div>
+                            <div style={{ fontSize: 10, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', marginTop: 3 }}>{s.l}</div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </Card>
+
+                  <Card style={{ padding: 0, overflow: 'hidden' }}>
+                    <div style={{ padding: '11px 16px', borderBottom: '1px solid ' + T.border }}><span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Coefficients (odds ratios)</span></div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                      <thead><tr>
+                        {['Variable', 'Odds Ratio', '95% CI', 'β', 'z', 'p', ''].map(function(h) {
+                          return <th key={h} style={{ padding: '7px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: T.textFaint, background: T.bg, borderBottom: '1px solid ' + T.border }}>{h}</th>
+                        })}
+                      </tr></thead>
+                      <tbody>{activeLogit.result.coefs.map(function(c, i) {
+                        var isInt = c.name === 'Intercept'
+                        return (
+                          <tr key={i} style={{ background: !isInt && c.p < 0.05 ? T.greenBg + '80' : 'transparent' }}>
+                            <td style={{ padding: '8px 12px', fontWeight: 600, color: T.text, borderBottom: '1px solid ' + T.border, fontSize: 13 }}>{aliases[c.name] || c.name}</td>
+                            <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: isInt ? T.textFaint : (c.or > 1 ? T.green : T.red), borderBottom: '1px solid ' + T.border }}>{isInt ? '—' : fmt2(c.or) + '×'}</td>
+                            <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 11, color: T.textFaint, borderBottom: '1px solid ' + T.border }}>{isInt ? '—' : '[' + fmt2(c.orCI[0]) + ', ' + fmt2(c.orCI[1]) + ']'}</td>
+                            <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, color: T.textMid, borderBottom: '1px solid ' + T.border }}>{fmtN(c.beta)}</td>
+                            <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, color: T.textMid, borderBottom: '1px solid ' + T.border }}>{fmt2(c.z)}</td>
+                            <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, color: T.textMid, borderBottom: '1px solid ' + T.border }}>{fmtP(c.p).replace('p ', '')}</td>
+                            <td style={{ padding: '8px 10px', borderBottom: '1px solid ' + T.border }}>{isInt ? null : <SigBadge p={c.p} />}</td>
+                          </tr>
+                        )
+                      })}</tbody>
+                    </table>
+                  </Card>
+                </>
+              ) : (
+                <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textFaint, fontSize: 13, padding: 40, textAlign: 'center' }}>
+                  Logistic needs a numeric outcome with both classes present after binarizing (at least 3 in each), and more rows than predictors. Adjust the outcome, the cutoff, or the predictors.
+                </div>
               )}
             </>
           )}
         </div>
       </div>
 
-      {/* Residual diagnostic plots */}
-      {activeResult && (
+      {/* Residual diagnostic plots (OLS only) */}
+      {regMode === 'linear' && activeResult && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 4 }}>
           <Card style={{ padding: '14px 16px' }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>Residuals vs. Fitted</div>

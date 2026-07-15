@@ -292,6 +292,118 @@ export function olsRegression(y: number[], X: number[][], names: string[]): Regr
   return { coefs: coefs, R2: R2, R2adj: R2adj, F: FF, Fp: Fp, n: n, p: q - 1, SSE: SSE, SST: SST, MSE: MSE, yhat: yhat, resid: resid, names: names }
 }
 
+// ─── Logistic regression (binary outcome) ────────────────────────────────
+// Maximum-likelihood via IRLS / Newton–Raphson (reuses invertMatrix). Reports
+// odds ratios (the interpretable effect for a 0/1 outcome), Wald z/p, McFadden
+// pseudo-R², a likelihood-ratio test vs the intercept-only model, and AIC. Flags
+// non-convergence and (quasi-)separation so the UI can warn instead of showing
+// garbage coefficients.
+export interface LogisticCoef { name: string; beta: number; se: number; z: number; p: number; or: number; orCI: [number, number] }
+export interface LogisticResult {
+  coefs: LogisticCoef[]
+  n: number; nPos: number; nNeg: number
+  ll: number; ll0: number; pseudoR2: number
+  lr: number; lrDf: number; lrP: number; aic: number
+  iterations: number; converged: boolean; separation: boolean
+  names: string[]
+}
+
+function sigmoid(z: number): number { return z >= 0 ? 1 / (1 + Math.exp(-z)) : Math.exp(z) / (1 + Math.exp(z)) }
+
+export function logisticRegression(y: number[], X: number[][], names: string[], opts?: { maxIter?: number; tol?: number }): LogisticResult | null {
+  if (y.length !== X.length || X.length === 0) return null
+  var maxIter = opts?.maxIter ?? 50, tol = opts?.tol ?? 1e-8
+  var n = y.length
+  var Xd = X.map(function(r) { return [1].concat(r) }), q = Xd[0].length
+  if (n <= q) return null // need more rows than parameters
+  var beta = new Array(q).fill(0)
+  // Hessian (= XᵀWX, Fisher information) and gradient at the current beta.
+  var infoAt = function(b: number[]): { H: number[][]; g: number[]; ll: number } {
+    var H = Array.from({ length: q }, function() { return new Array(q).fill(0) })
+    var g = new Array(q).fill(0)
+    var ll = 0
+    for (var r = 0; r < n; r++) {
+      var eta = 0; for (var i = 0; i < q; i++) eta += Xd[r][i] * b[i]
+      var pi = sigmoid(eta)
+      var w = Math.max(pi * (1 - pi), 1e-10)
+      var resid = y[r] - pi
+      ll += y[r] * Math.log(Math.max(pi, 1e-12)) + (1 - y[r]) * Math.log(Math.max(1 - pi, 1e-12))
+      for (var a = 0; a < q; a++) {
+        g[a] += Xd[r][a] * resid
+        for (var c = 0; c < q; c++) H[a][c] += Xd[r][a] * Xd[r][c] * w
+      }
+    }
+    return { H: H, g: g, ll: ll }
+  }
+  var ll = -Infinity, converged = false, iter = 0, lastInv: number[][] | null = null
+  for (iter = 1; iter <= maxIter; iter++) {
+    var cur = infoAt(beta)
+    var inv = invertMatrix(cur.H); if (!inv) return null
+    lastInv = inv
+    // Newton step: beta += H⁻¹ g
+    var delta = inv.map(function(row) { return row.reduce(function(s, v, i) { return s + v * cur.g[i] }, 0) })
+    for (var i = 0; i < q; i++) beta[i] += delta[i]
+    var nextLL = infoAt(beta).ll
+    if (Math.abs(nextLL - ll) < tol) { ll = nextLL; converged = true; break }
+    ll = nextLL
+  }
+  // Recompute covariance = H⁻¹ at the final beta for accurate standard errors.
+  var fin = infoAt(beta); var cov = invertMatrix(fin.H) || lastInv; if (!cov) return null
+  ll = fin.ll
+  var se = cov.map(function(row, i) { return Math.sqrt(Math.abs(row[i])) })
+  var separation = beta.some(function(b, i) { return i > 0 && (Math.abs(b) > 15 || se[i] > 25) }) || !converged
+  // Null model (intercept only): p0 = mean(y).
+  var p0 = mean(y)
+  var ll0 = y.reduce(function(s, yi) { return s + (yi * Math.log(Math.max(p0, 1e-12)) + (1 - yi) * Math.log(Math.max(1 - p0, 1e-12))) }, 0)
+  var pseudoR2 = ll0 === 0 ? 0 : 1 - ll / ll0
+  var lr = 2 * (ll - ll0), lrDf = q - 1, lrP = chiSqP(lr, lrDf)
+  var aic = 2 * q - 2 * ll
+  var coefs: LogisticCoef[] = ['Intercept'].concat(names).map(function(nm, i): LogisticCoef {
+    var z = se[i] > 0 ? beta[i] / se[i] : 0
+    var pv = 2 * (1 - normCDF(Math.abs(z)))
+    return { name: nm, beta: beta[i], se: se[i], z: z, p: pv, or: Math.exp(beta[i]), orCI: [Math.exp(beta[i] - 1.96 * se[i]), Math.exp(beta[i] + 1.96 * se[i])] }
+  })
+  var nPos = y.reduce(function(s, v) { return s + (v === 1 ? 1 : 0) }, 0)
+  return { coefs: coefs, n: n, nPos: nPos, nNeg: n - nPos, ll: ll, ll0: ll0, pseudoR2: pseudoR2, lr: lr, lrDf: lrDf, lrP: lrP, aic: aic, iterations: iter, converged: converged, separation: separation, names: names }
+}
+
+// ─── Multicollinearity: VIF + iterative pruning ──────────────────────────
+// VIF_j = 1/(1 − R²_j) where R²_j is from regressing predictor j on the others.
+// >5 is moderate, >10 is severe collinearity (the standard cutoffs).
+export function vif(X: number[][], names: string[]): { name: string; vif: number }[] {
+  var k = names.length
+  if (k < 2) return names.map(function(nm) { return { name: nm, vif: 1 } })
+  return names.map(function(nm, j) {
+    var yj = X.map(function(r) { return r[j] })
+    var Xj = X.map(function(r) { return r.filter(function(_, c) { return c !== j }) })
+    var others = names.filter(function(_, c) { return c !== j })
+    var res = olsRegression(yj, Xj, others)
+    var r2 = res ? res.R2 : 0
+    return { name: nm, vif: r2 >= 0.9999 ? Infinity : 1 / (1 - r2) }
+  })
+}
+
+export interface VIFPruneResult { keptNames: string[]; keptIdx: number[]; dropped: { name: string; vif: number }[] }
+
+// Iteratively drop the single highest-VIF predictor until every remaining VIF is
+// ≤ threshold (default 10) — so the model keeps one representative of each
+// correlated cluster instead of splitting an effect across redundant twins.
+export function pruneCollinear(X: number[][], names: string[], threshold: number = 10): VIFPruneResult {
+  var idx = names.map(function(_, i) { return i })
+  var dropped: { name: string; vif: number }[] = []
+  while (idx.length > 1) {
+    var subX = X.map(function(r) { return idx.map(function(i) { return r[i] }) })
+    var subNames = idx.map(function(i) { return names[i] })
+    var vifs = vif(subX, subNames)
+    var maxV = -Infinity, maxLocal = -1
+    vifs.forEach(function(v, li) { if (v.vif > maxV) { maxV = v.vif; maxLocal = li } })
+    if (maxV <= threshold || maxLocal < 0) break
+    dropped.push({ name: subNames[maxLocal], vif: maxV })
+    idx = idx.filter(function(_, li) { return li !== maxLocal })
+  }
+  return { keptNames: idx.map(function(i) { return names[i] }), keptIdx: idx, dropped: dropped }
+}
+
 export function getNum(field: string, data: Record<string, unknown>[]): number[] {
   return data.map(function(r) { return parseFloat(String(r[field] || '').replace(/,/g, '')) }).filter(function(v) { return !isNaN(v) })
 }

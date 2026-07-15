@@ -383,6 +383,20 @@ against the real Carrabba's GSS dataset (56,117 rows) in the TEST project:
   `totalRows/sampledCount` to match `scaleSampledCount`, means/extents unscaled) and overrides the
   summaries in `enrichedAnalytics` — so the whole tab agrees under a filter.
 
+**Statistics → Regression: Logistic mode (2026-07-15).** The Statistics `RegressionPanel` gained a
+Linear/Logistic toggle. Logistic fits a binary outcome via maximum-likelihood IRLS/Newton
+(`lib/statsUtils.logisticRegression`, reusing `invertMatrix`) and reports **odds ratios** with 95% CI,
+Wald z/p, McFadden pseudo-R², a likelihood-ratio χ² test vs the intercept-only model, and AIC; it flags
+non-convergence / (quasi-)separation instead of showing garbage coefficients. The outcome is binarized
+automatically when it already has two values, else at an adjustable cutoff defaulting to the **median**
+(`y = 1` when `outcome ≥ cut`); both classes need ≥3 rows. **Intelligent collinearity handling** (the
+key requirement): before fitting, `pruneCollinear` computes per-predictor **VIF** and iteratively drops
+the single highest-VIF predictor until all are ≤ 10, so a correlated cluster keeps one representative
+and effects aren't split across redundant twins — the dropped predictors (with their VIF) are surfaced
+in the panel. Above 50K rows this runs over the loaded 50K sample, like the other Stats panels. OLS
+residual/Q-Q diagnostics are hidden in logistic mode. Math verified in `tests/unit/logisticRegression.test.ts`
+(intercept recovery, effect sign, separation detection, VIF = 1/(1−r²), pruning).
+
 **"Sampled" chip on the metric-strip row (2026-07-14).** When the active dataset exceeds the 50K
 cap (`RowsContext.sampled && totalRows > sampledCount`), `DatasetShell` leads the shared metric-strip
 row (the one carrying comments · Theme fit · themes) with a compact blue chip "◱ Sampled P% ·
