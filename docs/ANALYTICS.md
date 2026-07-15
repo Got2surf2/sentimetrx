@@ -343,14 +343,22 @@ scaling on the COUNT surfaces; means/medians/stddev are inherently unscaled) is 
 sweep. `lib/projectCompare` (multi-source project-report matrix) likewise still counts over each
 source's full `rowCount` — deferred (its counts are assembled upstream).
 
-**Charts calculation-correctness sweep (2026-07-14).** A pass over every chart type's math turned up
-and fixed:
-- **Numeric VALUE parity (the "No groups found." bug).** The field-type classifier
+**Charts calculation-correctness sweep (2026-07-14).** A pass over every chart type's math, verified
+against the real Carrabba's GSS dataset (56,117 rows) in the TEST project:
+- **"No groups found." on an Average bar — the real root cause was a virtual VALUE field hitting SQL.**
+  A remapped categorical (a satisfaction question with a `remapping`, `scoreField:true`) is offered in
+  the numeric picker as a virtual `__mapped_<field>__` field computed ONLY client-side by `enrichRows`
+  — it is not a key in the stored JSONB. `BarAggInner` blindly sent `group_stats` with that virtual key
+  to SQL, which read `data ->> '__mapped_…__'` = NULL for every row → zero groups. `BarAggInner` now
+  detects a virtual value/category field (`startsWith('__')`) and routes through the enriched client
+  rows (like `BarStackedInner`), which also makes the Average bar filter-aware. Verified: Visit Type ×
+  Rating now yields Dine-In 4.63 / Carry Out 4.37 / Delivery 4.08 (full-dataset and 50K-sample agree).
+- **Numeric VALUE parity (a separate robustness fix).** The field-type classifier
   (`lib/datasetUtils.ts`) types a field numeric via `!isNaN(Number(v.trim()))`, but the aggregate RPCs
-  filtered values with a stricter, un-trimmed regex `^-?[0-9]+\.?[0-9]*$`. A field the UI accepted into
-  the numeric VALUE slot whose cells carried a stray leading space (or `.5` / `1e3` / `5.`) produced
-  ZERO surviving rows → the Average bar rendered "No groups found." and Statistics/Distribution of the
-  same field went blank. `sql/182` centralizes numeric detection in two IMMUTABLE helpers
+  filtered values with a stricter, un-trimmed regex `^-?[0-9]+\.?[0-9]*$`. A *real* numeric field whose
+  cells carried a stray leading space (or `.5` / `1e3` / `5.`) would likewise produce
+  ZERO surviving rows → the Average bar renders "No groups found." and Statistics/Distribution go
+  blank. `sql/182` centralizes numeric detection in two IMMUTABLE helpers
   (`drf_numeric_ok` / `drf_to_numeric` = btrim + tolerant pattern + cast) and routes every value
   filter/cast in `group_numeric_stats`, `numeric_field_stats`, `date_series_stats` and their sampled
   twins through them. The client rows-fallback paths (collections / virtual fields) use the matching
@@ -364,10 +372,13 @@ and fixed:
   and disagreeing with the TZ-safe SQL `::date` path. Now parses ISO strings as local calendar dates.
 - **Time-series false-dip.** A metric bucket with rows but no numeric value plotted 0 instead of a
   gap; now null (count mode still shows a real 0).
-- **Known-not-fixed:** a plain Count/Percentage bar and no-split Distribution read the whole-dataset
-  precomputed `fieldSummaries` and so ignore active filters, while the stacked/Average bars (which route
-  through the aggregate API with `rowIds`) are filter-aware. Making them consistent needs an async
-  refactor of the instant-render path + a filter-aware histogram op — deferred (owner-facing UX change).
+- **Filter-awareness for summary-driven charts (now fixed).** A plain Count/Percentage bar, no-split
+  Distribution, Treemap, Packed Bubbles and Waterfall read the whole-dataset precomputed
+  `fieldSummaries` and used to ignore active filters, while the stacked/Average bars (aggregate API +
+  `rowIds`) were filter-aware. `recomputeFilteredSummaries` now recounts those fields from the filtered
+  rows when a filter is active (reusing the whole-dataset histogram bin edges; COUNT surfaces scaled by
+  `totalRows/sampledCount` to match `scaleSampledCount`, means/extents unscaled) and overrides the
+  summaries in `enrichedAnalytics` — so the whole tab agrees under a filter.
 
 **"Sampled" chip on the metric-strip row (2026-07-14).** When the active dataset exceeds the 50K
 cap (`RowsContext.sampled && totalRows > sampledCount`), `DatasetShell` leads the shared metric-strip

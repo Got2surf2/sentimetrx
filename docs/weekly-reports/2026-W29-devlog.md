@@ -384,3 +384,15 @@ Detail in memory [[project_substantive_usefulness_flag]] "OPEN TODOs".
 **Deferred (owner-gated):** plain Count/Percentage bar + no-split Distribution read whole-dataset fieldSummaries and ignore active filters (stacked/Average bars are filter-aware via the aggregate API + rowIds). Consistency needs an async refactor of the instant-render path + a filter-aware histogram op -- surfaced, not silently changed.
 
 Tests: tests/unit/numericValue.test.ts, tests/unit/timeBucket.test.ts. typecheck + full suite green.
+
+---
+
+## Charts: REAL root cause of "No groups found" + filter-aware summary charts (2026-07-14, later)
+
+**WHY:** Verified against the REAL Carrabba's GSS dataset (56,117 rows, in TEST). The reported failure was NOT the whitespace/regex issue: "Rating" is a categorical satisfaction question with a remapping (Highly Satisfied=5 ... =1, scoreField:true), surfaced in the numeric picker as a virtual `__mapped_<field>__` field that exists only client-side (enrichRows) — not a key in the stored JSONB. BarAggInner sent group_stats with that virtual key to SQL, which read NULL for every row → zero groups. Proven in SQL: group_numeric_stats with the mapped key = 0 rows; key present in 0 rows.
+
+**Fixed:**
+1. BarAggInner detects a virtual value/category field (startsWith `__`) and routes through the enriched client rows (like BarStackedInner) instead of SQL group_stats — also makes the Average bar filter-aware. Verified over real data: Dine-In 4.63 / Carry Out 4.37 / Delivery 4.08 (full + 50K sample agree to 0.01).
+2. Filter-awareness for summary charts (Count/% bar, no-split Distribution, treemap, bubbles, waterfall): recomputeFilteredSummaries recounts those fields from the filtered rows and overrides enrichedAnalytics.fieldSummaries. Reuses whole-dataset histogram bin edges; COUNT surfaces scaled by totalRows/sampledCount to match scaleSampledCount, means/extents unscaled. Closes the last logic inconsistency — whole tab agrees under a filter.
+
+sql/182 numeric-parity fix (prior entry) stays as a real robustness fix for genuinely messy numeric columns. Test: tests/unit/filteredSummaries.test.ts. typecheck + 1525 tests + lint:ci green. Still LOCAL; sql/182 migrate on push.

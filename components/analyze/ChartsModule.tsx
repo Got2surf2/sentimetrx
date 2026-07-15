@@ -760,6 +760,68 @@ function enrichRows(rows: Record<string, unknown>[]): Record<string, unknown>[] 
   })
 }
 
+// Recompute per-field summaries from the (already filtered + enriched) rows so
+// the summary-driven charts — plain Count/% Bar, no-split Distribution, Treemap,
+// Packed Bubbles, Waterfall — honor active filters, matching the stacked/Average
+// bars (which route through the aggregate API with rowIds). Without this those
+// charts read the whole-dataset precomputed fieldSummaries and disagree with the
+// rest of the tab under a filter. Numeric fields REUSE the whole-dataset histogram
+// bin edges and only recount, so no binning logic is duplicated. Virtual (__*)
+// fields are handled elsewhere and skipped here.
+//
+// `scale` = totalRows/sampledCount (1 when the whole dataset is loaded). Above
+// the 50K cap `rows` is the filtered subset of the 50K sample, so COUNT surfaces
+// (counts, nonNull, histogram bins) scale up to estimate the filtered population
+// — identical to scaleSampledCount on the aggregate path, so the simple bar stays
+// in the same units as its own unfiltered state and as the stacked bar. Means /
+// median / min / max are direct sample estimates and stay UNSCALED.
+export function recomputeFilteredSummaries(
+  rows: Record<string, unknown>[], fields: SchemaField[], base: Record<string, FieldSummary>, scale: number,
+): Record<string, FieldSummary> {
+  var sc = function(n: number) { return scale === 1 ? n : Math.round(n * scale) }
+  var out: Record<string, FieldSummary> = {}
+  ;(fields || []).forEach(function(f) {
+    if (!f.field || f.field.startsWith('__')) return
+    if (f.type === 'numeric') {
+      var vals: number[] = []
+      rows.forEach(function(r) { var v = toNumericOrNull(r[f.field]); if (v !== null) vals.push(v) })
+      if (!vals.length) { out[f.field] = { type: 'numeric', nonNull: 0 }; return }
+      vals.sort(function(a, b) { return a - b })
+      var n = vals.length
+      var sum = vals.reduce(function(a, b) { return a + b }, 0)
+      var mean = sum / n
+      var variance = vals.reduce(function(s, v) { return s + (v - mean) * (v - mean) }, 0) / (n > 1 ? n - 1 : 1)
+      var summary: FieldSummary = {
+        type: 'numeric', nonNull: sc(n), min: vals[0], max: vals[n - 1], avg: mean,
+        median: n % 2 ? vals[(n - 1) / 2] : (vals[n / 2 - 1] + vals[n / 2]) / 2,
+        stddev: Math.sqrt(variance),
+      }
+      var baseHist = base[f.field] && base[f.field].histogram
+      if (baseHist && baseHist.length) {
+        var bins = baseHist.map(function(b) { return { min: b.min, max: b.max, count: 0 } })
+        var last = bins.length - 1
+        vals.forEach(function(v) {
+          for (var i = 0; i < bins.length; i++) {
+            if (v >= bins[i].min && (i === last ? v <= bins[i].max : v < bins[i].max)) { bins[i].count++; break }
+          }
+        })
+        summary.histogram = bins.map(function(b) { return { min: b.min, max: b.max, count: sc(b.count) } })
+      }
+      out[f.field] = summary
+    } else {
+      var counts: Record<string, number> = {}
+      var nn = 0
+      rows.forEach(function(r) {
+        var s = String(r[f.field] == null ? '' : r[f.field]).trim(); if (!s) return
+        counts[s] = (counts[s] || 0) + 1; nn++
+      })
+      if (scale !== 1) Object.keys(counts).forEach(function(k) { counts[k] = sc(counts[k]) })
+      out[f.field] = { type: f.type, nonNull: sc(nn), counts: counts, topN: Object.keys(counts) }
+    }
+  })
+  return out
+}
+
 function BarStackedInner({ analytics, schema, datasetId, catField, colorByField, barMode, barStack, smartAxes, colors, orient }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; colorByField: string; barMode: string; barStack: boolean; smartAxes?: boolean; colors?: string[]; orient?: string }) {
   // Collections have no dataset_rows_flat, so SQL aggregation returns empty — always use rows
   var isCollection = _enrichCtx.datasetSource === 'collection'
@@ -869,17 +931,27 @@ function BarAggInner({ analytics, schema, datasetId, catField, valueField, smart
 }) {
   var isCollection = _enrichCtx.datasetSource === 'collection'
   var aggDimAxis = axisOfDimField(catField)
-  var spec = aggDimAxis
-    ? { op: 'tax_group_stats', axis: aggDimAxis, valueField: valueField }
-    : (!isCollection ? { op: 'group_stats', groupField: catField, valueField: valueField } : null)
+  // __mapped_*/__themes__ are client-only virtual fields (computed by enrichRows) —
+  // they are NOT keys in the stored JSONB, so the SQL group_stats/tax_group_stats
+  // can't read them and return zero groups ("No groups found."). Route those through
+  // the enriched client rows instead — which also makes this path filter-aware. The
+  // common case: a remapped satisfaction question used as the numeric VALUE ("Rating").
+  var catVirtual = catField.startsWith('__') && !aggDimAxis
+  var valVirtual = valueField.startsWith('__')
+  var needsRows = isCollection || catVirtual || valVirtual
+  var spec = needsRows
+    ? null
+    : (aggDimAxis
+        ? { op: 'tax_group_stats', axis: aggDimAxis, valueField: valueField }
+        : { op: 'group_stats', groupField: catField, valueField: valueField })
   var agg = useAggregation(datasetId, spec)
-  var { rows, loaded: rowsLoaded } = useChartRows(datasetId, isCollection && !aggDimAxis ? (_enrichCtx.enrichKey || 0) : -1)
-  var loaded = isCollection ? rowsLoaded : agg.loaded
+  var { rows, loaded: rowsLoaded } = useChartRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
+  var loaded = needsRows ? rowsLoaded : agg.loaded
   if (!loaded) return <div style={{ textAlign: 'center', padding: 40, color: T.textMute, fontSize: 13 }}>Computing averages...</div>
 
-  // Build groups from aggregation API or from rows (collections)
+  // Build groups from the aggregation API or from enriched rows (collections + virtual fields)
   var groupsObj: Record<string, { n: number; mean: number; median: number; min: number; max: number }>
-  if (!isCollection && agg.data && agg.data.groups) {
+  if (!needsRows && agg.data && agg.data.groups) {
     groupsObj = agg.data.groups
   } else {
     var buckets: Record<string, number[]> = {}
@@ -2000,6 +2072,11 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   // dataset). The ids ride into tax_* specs via useAggregation.
   var { effectiveFilters: _effFilters } = useFilters()
   var _anyFilter = Object.keys(_effFilters || {}).length > 0
+  var _sharedRowsMeta = useRows()
+  // Sample→population scale for filtered recounts (1 when the whole dataset is loaded).
+  var _sampleScale = (_sharedRowsMeta.sampled && _sharedRowsMeta.sampledCount > 0)
+    ? _sharedRowsMeta.totalRows / _sharedRowsMeta.sampledCount
+    : 1
   var _topRows = useChartRows(datasetId, _anyFilter ? (enrichKey || 0) : -1)
   var _filteredRowIds: number[] | null = (_anyFilter && _topRows.loaded)
     ? (_topRows.rows.map(function(r) { return r._rowId }).filter(function(v: unknown) { return typeof v === 'number' }) as number[])
@@ -2082,6 +2159,13 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   var _filterIdSig = _filteredRowIds && _filteredRowIds.length
     ? _filteredRowIds.length + ':' + _filteredRowIds[0] + ':' + _filteredRowIds[_filteredRowIds.length - 1]
     : 'none'
+  // Filter-aware real-field summaries, memoized on the filtered-id signature so a
+  // large recount runs only when the filter (not every render) changes.
+  var filteredRealSummaries = useMemo(function() {
+    if (!_anyFilter || !_topRows.loaded || !analytics) return null
+    return recomputeFilteredSummaries(_topRows.rows, fields, analytics.fieldSummaries || {}, _sampleScale)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [_anyFilter, _topRows.loaded, _filterIdSig, fields, analytics, _sampleScale])
   useEffect(function() {
     if (!hasThemes || !themeSourceField) { setLiveThemeCounts(null); setLiveThemeTotal(null); return }
     var cancelled = false
@@ -2182,6 +2266,13 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
         if (!counts || Object.keys(counts).length === 0) return
         extraSummaries['__dim_' + axis + '__'] = { type: 'categorical', nonNull: analytics.totalRows, counts: counts, topN: Object.keys(counts) }
       })
+    }
+    // Filter-aware real-field summaries: when a filter is active, override the
+    // whole-dataset counts/histograms with recounts over the filtered rows so the
+    // summary-driven charts agree with the stacked/Average bars (which filter via
+    // rowIds). Applied last; only touches real (non-__) fields.
+    if (filteredRealSummaries) {
+      Object.assign(extraSummaries, filteredRealSummaries)
     }
     if (Object.keys(extraSummaries).length > 0) {
       enrichedAnalytics = Object.assign({}, analytics, {
