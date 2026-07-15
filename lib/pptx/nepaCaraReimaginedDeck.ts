@@ -103,6 +103,19 @@ const PII = {
   pctFlagged: 12,
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// INTENT SPLIT — the "two sides of CARA", from _nepa_intent_split.ts over the real
+// submitted comments. The formal record is ~all positions; the questions audience
+// is largely absent from it (they never file a comment) — Side A's opportunity.
+// ─────────────────────────────────────────────────────────────────────────────
+const INTENT = {
+  distinct: 565, submitted: 792,
+  pctPosition: 81,   // pure position for the record (Side B)
+  pctBoth: 19,       // states a position AND asks real questions (the visible tip)
+  pctQuestion: 1,    // pure question in the formal record
+  bothVoices: 106,
+}
+
 // Palette — land-management pine + Datanautix brand accents.
 const C = {
   pine: '1B4332', pineMid: '2D6A4F', moss: '52B788', mossDeep: '40916C',
@@ -183,6 +196,78 @@ export function buildNepaCaraReimaginedDeck(pptx: PptxGenJS) {
     x: 0.95, y: 4.92, w: 11.4, h: 1.35, fontSize: 15, fontFace: 'Arial', color: C.ink, italic: true, valign: 'middle', lineSpacing: 22,
   })
   s2.addNotes(`Respectful framing. CARA/PEPC are good at what they were scoped for (intake + record). Sourced: CARA is the Comment Analysis and Response Application, part of the Forest Service eMNEPA solution; ~1.5M comments/yr read+analyzed governmentwide (Forest Service CARA NEPA pilot nomination). PEPC = Planning, Environment and Public Comment (NPS/DOI), which explicitly includes "tools for public comment analysis and response" via a hand-built coding structure. The gap is that analysis is manual and the model predates modern LLMs.`)
+
+  // ═══ SLIDE 2b — TWO SIDES OF CARA (the frame) ═══
+  const sA = pptx.addSlide(); pg++
+  addHeader(sA, 'The public has two jobs — CARA only does one', 'Two sides of the same comment period')
+  addFooter(sA, pg)
+  sA.addText('People come to a comment period for two different reasons. One is served by a conversation; the other by the record. They are not the same job.', {
+    x: 0.6, y: 1.25, w: 12.1, h: 0.6, fontSize: 16, fontFace: 'Arial', color: C.ink, lineSpacing: 21,
+  })
+  const twoSides = [
+    { t: 'Side A — Ask', tag: 'people who want to understand', c: C.dnTeal, body: [
+      'A conversational agent answers their questions in real time, grounded in the plan record.',
+      'Every conversation is captured, summarized, and sliced by topic — intelligence CARA never collects.',
+      'The pre-decisional channel that simply doesn’t exist today.',
+    ] },
+    { t: 'Side B — Record', tag: 'people who want a position on the record', c: C.dnOrange, body: [
+      'Capture every formal comment, collapse the campaigns, code the issues and stance.',
+      'Draft a sourced response to each for human approval — the defensible “hard look” record.',
+      'What CARA does today — by hand, and back-loaded to the deadline.',
+    ] },
+  ]
+  twoSides.forEach((p, i) => {
+    const x = 0.6 + i * 6.16
+    sA.addShape('rect', { x, y: 2.05, w: 5.97, h: 3.35, fill: { color: C.card }, rectRadius: 0.1 })
+    sA.addShape('rect', { x, y: 2.05, w: 5.97, h: 0.78, fill: { color: p.c }, rectRadius: 0.1 })
+    sA.addText(p.t, { x: x + 0.28, y: 2.13, w: 5.5, h: 0.38, fontSize: 18, fontFace: 'Arial', color: C.white, bold: true })
+    sA.addText(p.tag, { x: x + 0.28, y: 2.5, w: 5.5, h: 0.3, fontSize: 12, fontFace: 'Arial', color: C.white, italic: true })
+    p.body.forEach((b, j) => {
+      sA.addShape('ellipse', { x: x + 0.34, y: 3.12 + j * 0.78, w: 0.13, h: 0.13, fill: { color: p.c } })
+      sA.addText(b, { x: x + 0.6, y: 2.98 + j * 0.78, w: 5.15, h: 0.72, fontSize: 12, fontFace: 'Arial', color: C.ink, valign: 'top', lineSpacing: 16 })
+    })
+  })
+  sA.addShape('rect', { x: 0.6, y: 5.7, w: 12.13, h: 0.8, fill: { color: C.pine }, rectRadius: 0.1 })
+  sA.addText([
+    { text: 'CARA was built for Side B and runs it manually — and has no Side A at all. ', options: { color: C.moss, bold: true } },
+    { text: 'Our approach is both, and each makes the other cleaner: answered questions become better comments; the record stops carrying questions it was never meant to answer.', options: { color: C.white } },
+  ], { x: 0.95, y: 5.8, w: 11.4, h: 0.62, fontSize: 12.5, fontFace: 'Arial', valign: 'middle', lineSpacing: 17 })
+  sA.addNotes(`The organizing frame. Two audiences, two jobs. Side A = Ask (real-time agent + conversation record + summarization, the NOWOCATS pattern applied pre-decision). Side B = Record (the comment pipeline). CARA only does B, by hand. Next slide grounds the split in the real Blue Mountains record.`)
+
+  // ═══ SLIDE 2c — THE SPLIT, IN THE REAL RECORD ═══
+  const sB = pptx.addSlide(); pg++
+  addHeader(sB, 'The record proves the split', `What the Blue Mountains comments actually are — ${INTENT.distinct} distinct, of ${INTENT.submitted} submitted`)
+  addFooter(sB, pg)
+  sB.addText('We classified every distinct comment by why the person wrote it. The formal record is almost entirely positions — which is exactly the point.', {
+    x: 0.6, y: 1.25, w: 12.1, h: 0.6, fontSize: 15.5, fontFace: 'Arial', color: C.ink, lineSpacing: 21,
+  })
+  // Stacked intent bar
+  const iseg: [string, number, string][] = [
+    [`Position — ${INTENT.pctPosition}%`, INTENT.pctPosition, C.dnOrange],
+    [`Both — ${INTENT.pctBoth}%`, INTENT.pctBoth, C.gold],
+    [`Question — ${INTENT.pctQuestion}%`, INTENT.pctQuestion, C.dnTeal],
+  ]
+  let ix = 0.6
+  iseg.forEach(([lab, pct, c]) => {
+    const w = (pct / 100) * 12.13
+    sB.addShape('rect', { x: ix, y: 2.05, w, h: 0.8, fill: { color: c } })
+    if (pct >= 6) sB.addText(`${pct}%`, { x: ix, y: 2.05, w, h: 0.8, fontSize: 18, fontFace: 'Arial', color: C.white, bold: true, align: 'center', valign: 'middle' })
+    ix += w
+  })
+  sB.addText('Position — wants a view on the record          Both — asks AND positions          Question', {
+    x: 0.6, y: 2.95, w: 12.13, h: 0.3, fontSize: 10.5, fontFace: 'Arial', color: C.slate,
+  })
+  cardRow(sB, 3.5, 1.75, [
+    { t: `${INTENT.pctPosition}% pure positions`, d: 'The formal channel doing its job. This is Side B — capture, code, respond. Exactly what CARA is for.', c: C.dnOrange },
+    { t: `${INTENT.pctBoth}% ask AND position`, d: `The ${INTENT.bothVoices} committed commenters who still had unanswered questions inside their comment — the visible tip of Side-A demand.`, c: C.gold },
+    { t: `~${INTENT.pctQuestion}% pure questions`, d: 'Almost nobody uses the comment box to ask. Not for lack of demand — there is nowhere to ask.', c: C.dnTeal },
+  ])
+  sB.addShape('rect', { x: 0.6, y: 5.5, w: 12.13, h: 1.0, fill: { color: C.pine }, rectRadius: 0.1 })
+  sB.addText([
+    { text: 'The comment box only captures people who already took a position. ', options: { color: C.moss, bold: true } },
+    { text: 'Everyone still trying to understand is invisible to CARA — they stay silent or file a position with their questions unanswered. Side A serves, and makes visible, that missing audience.', options: { color: C.white } },
+  ], { x: 0.95, y: 5.62, w: 11.4, h: 0.78, fontSize: 13, fontFace: 'Arial', valign: 'middle', lineSpacing: 18 })
+  sB.addNotes(`Honest grounding. Intent split (automated first-pass): 81% pure position, 19% both, ~1% pure question. Reframes Side A from "redirect misfiled questions" to "surface an audience missing from the record entirely." The 19% both is the on-record evidence the demand exists. Do not overclaim the 1% — the point is the comment box isn't where questions go, so the demand is invisible, not absent.`)
 
   // ═══ SLIDE 3 — IF WE BUILT CARA TODAY ═══
   const s3 = pptx.addSlide(); pg++
