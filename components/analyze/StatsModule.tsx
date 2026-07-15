@@ -2296,7 +2296,7 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
     var af = allSchemaFields.slice()
     if (hasThemes) af = af.concat([{ field: '__themes__', type: 'categorical', label: 'Themes' } as SchemaFieldConfig])
     mappedFields.forEach(function(f) {
-      af = af.concat([{ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) } as SchemaFieldConfig])
+      af = af.concat([{ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) + ' (score)' } as SchemaFieldConfig])
     })
     return af
   }, [allSchemaFields, hasThemes, mappedFields])

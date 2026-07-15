@@ -110,10 +110,10 @@ function matchPointFuzzy(value: string, point: { canonical: string; aliases: str
 }
 
 // ── Detect which known scale a set of values matches ──────────────────────
-export function detectScale(values: string[]): string[] | null {
+// Returns the best-matching scale as {ordered values, matched count, total}.
+function bestScaleMatch(values: string[]): { ordered: string[]; matched: number; total: number } | null {
   if (!values || values.length < 2) return null
-
-  var bestScale: string[] | null = null
+  var best: { ordered: string[]; matched: number; total: number } | null = null
   var bestHits = 0
 
   for (var s = 0; s < SCALES.length; s++) {
@@ -127,42 +127,47 @@ export function detectScale(values: string[]): string[] | null {
       if (usedValues.has(v)) return
       for (var p = 0; p < scale.points.length; p++) {
         if (usedIndices.has(p)) continue
-        if (matchPointExact(v, scale.points[p])) {
-          matched.push({ value: v, idx: p })
-          usedIndices.add(p)
-          usedValues.add(v)
-          return
-        }
+        if (matchPointExact(v, scale.points[p])) { matched.push({ value: v, idx: p }); usedIndices.add(p); usedValues.add(v); return }
       }
     })
-
     // Pass 2: fuzzy matches for remaining values
     values.forEach(function(v) {
       if (usedValues.has(v)) return
       for (var p = 0; p < scale.points.length; p++) {
         if (usedIndices.has(p)) continue
-        if (matchPointFuzzy(v, scale.points[p])) {
-          matched.push({ value: v, idx: p })
-          usedIndices.add(p)
-          usedValues.add(v)
-          return
-        }
+        if (matchPointFuzzy(v, scale.points[p])) { matched.push({ value: v, idx: p }); usedIndices.add(p); usedValues.add(v); return }
       }
     })
 
     if (matched.length >= 2 && matched.length > bestHits) {
-      // Sort matched values by their scale position
       matched.sort(function(a, b) { return a.idx - b.idx })
       var ordered = matched.map(function(m) { return m.value })
-      // Add unmatched values at the end
       var matchedValues = new Set(ordered)
       var remaining = values.filter(function(v) { return !matchedValues.has(v) })
-      bestScale = ordered.concat(remaining)
+      best = { ordered: ordered.concat(remaining), matched: matched.length, total: values.length }
       bestHits = matched.length
     }
   }
+  return best
+}
 
-  return bestScale
+export function detectScale(values: string[]): string[] | null {
+  var m = bestScaleMatch(values)
+  return m ? m.ordered : null
+}
+
+// Strict scale detection for SYSTEM-WIDE auto-quant: only accept a field as a
+// ranked Likert when (nearly) ALL its distinct values are genuine scale matches
+// — so a nominal field with one or two coincidental hits ("Good"/"Bad" among
+// product names) is NOT auto-mapped. Returns a value→rank (1..k) map or null.
+export function strictScaleMapping(values: string[]): Record<string, number> | null {
+  var m = bestScaleMatch(values)
+  if (!m) return null
+  // require ≥3 recognized points and coverage of all-but-at-most-one distinct value
+  if (m.matched < 3 || m.matched < m.total - 1) return null
+  var map: Record<string, number> = {}
+  m.ordered.forEach(function(v, i) { map[v] = i + 1 })
+  return map
 }
 
 // ── Order by numeric remapping if available ───────────────────────────────

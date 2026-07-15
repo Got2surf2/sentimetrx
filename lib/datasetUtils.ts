@@ -3,7 +3,7 @@
 
 import type { SchemaConfig, SchemaFieldConfig, AnaFieldType, AnaFieldSqt, DatasetRowBatch, ProcessedRow } from './analyzeTypes'
 import type { SurveyPayload, StudyConfig } from './types'
-import { ratingAliases } from './scaleUtils'
+import { ratingAliases, strictScaleMapping } from './scaleUtils'
 import { isReservedRowKey } from './taxonomyEmbed'
 
 export function sanitizeColumnName(raw: string): string {
@@ -253,7 +253,15 @@ export function computeFieldStats(
       // domain survives the cap. ISO date strings sort lexically.
       return { ...base, values: sorted.slice(0, 500), dateMin: sorted[0], dateMax: sorted[sorted.length - 1] }
     }
-    return { ...base, values: sorted.slice(0, 500) }
+    // Dual-purpose Likert: if the values are a recognized ranked scale
+    // (Very Dissatisfied…Very Satisfied, Poor…Excellent, Strongly Disagree…, etc.)
+    // attach a 1→k remapping so the field is usable QUANTITATIVELY (averages,
+    // regressions, the mapped numeric twin) while STAYING categorical (axes,
+    // distributions, crosstabs render ordered categories). Strict matcher — a
+    // nominal field with a coincidental hit is not mapped; users can edit/remove
+    // the mapping in the Schema tab.
+    const scaleMap = strictScaleMapping(uniqueArr)
+    return { ...base, values: sorted.slice(0, 500), ...(scaleMap ? { remapping: scaleMap } : {}) }
   }
   return base
 }

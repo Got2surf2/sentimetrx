@@ -414,6 +414,18 @@ from the sub-scores + themes recovers sensible odds ratios (mentioning "Service 
 in `tests/unit/regressionDesign.test.ts`; the numeric-only inline logistic (the 2026-07-15 first cut) was
 replaced by this. `LinearRegression` (OLS) is unchanged (numeric outcome + predictors).
 
+**Dual-purpose Likert fields — auto-quant at schema level (2026-07-15).** Schema detection
+(`lib/datasetUtils`) now attaches an ordinal `remapping` to any categorical field whose values are a
+recognized ranked scale, gated by the STRICT matcher `scaleUtils.strictScaleMapping` (≥3 recognized
+scale points AND all-but-≤1 distinct values matched — so a nominal field with a coincidental hit is NOT
+mapped). Such a field stays `type: categorical` (axes / distributions / crosstabs render ordered
+categories) AND gains the existing `__mapped_<field>__` numeric twin in BOTH Charts and Stats pickers
+(labelled `"… (score)"`) for quantitative use (averages, correlations, regression). Fully user-controlled
+in the Schema tab: the "Score Mapping" row has a **Clear** button (disable → purely categorical) and
+per-value number inputs (adjust). Existing datasets are backfilled by
+`scripts/_backfill_scale_remappings.mts` (dry-run by default; `--apply`, `--prod`). The regression
+`ordinalMap` reads the stored remapping first, then falls back to on-the-fly detection.
+
 **Ranked Likert categoricals default to quantitative (2026-07-15).** A categorical whose values are a
 recognized ranked scale (`scaleUtils.suggestMapping`/`isOrdinalScale` — Very Dissatisfied…Very Satisfied,
 Poor…Excellent, Strongly Disagree…Strongly Agree, etc.) is marked `ordinalable` in `buildRegVars` with a

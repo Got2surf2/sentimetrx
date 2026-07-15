@@ -434,3 +434,11 @@ StatsModule: new self-contained LogisticPanel (own picker grouped Numeric/Catego
 Verified end-to-end on the REAL Carrabba GSS (471 complete cases): top-box Rating ~ sub-scores(one-hot) + themes → converged, pseudoR2 0.52, sensible ORs (mentions Service & Staff Issues -> OR 0.05x; Value for Money=Fair -> 0.05x vs Excellent baseline). Design tests tests/unit/regressionDesign.test.ts (6). typecheck + 1540 tests green; StatsModule react-hooks warnings 33->33 (2 new disables); lint ceiling unchanged. Untracked harness scripts/_verify_logit.mts (KEEP).
 
 Follow-up fixes (2026-07-15): (1) logistic outcome dropdown was empty — DSSelect filters options by section key; switched to a native grouped select. (2) Ranked Likert categoricals (Very Dissat..Very Sat, Poor..Excellent) now auto-detected via scaleUtils.suggestMapping and default to ordinal/quant (single column) with a quant<->1-hot toggle; nominal fields stay one-hot. (3) logisticRegression got a ridge fallback: pure MLE first, escalate small L2 ridge only if the Hessian is singular (quasi-separation) so the model returns a regularized fit instead of vanishing; panel warns magnitudes are unreliable. (4) empty states name the concrete reason. Tests +2 (16 total in the two files). typecheck+1540 green, StatsModule warnings 33.
+
+---
+
+## Dual-purpose Likert auto-quant at schema level (2026-07-15)
+
+**WHY:** Owner — ranked Likert categoricals should be available BOTH categorically (axes) and quantitatively (calcs) system-wide without recomputing each time, flagged as dual-purpose; and still manually disable/adjust in Schema.
+
+lib/scaleUtils: refactored detectScale over a shared bestScaleMatch; added strictScaleMapping (>=3 recognized points + all-but-<=1 distinct matched) so nominal fields are NOT auto-mapped. lib/datasetUtils schema detection attaches that remapping to recognized-scale categoricals → field stays categorical AND gets the existing __mapped__ numeric twin in Charts+Stats (labelled "(score)"). SchemaEditor already supports Clear + per-value adjust (confirmed). Backfill scripts/_backfill_scale_remappings.mts (dry-run default; applied to TEST Carrabba - 9 fields). Tests: strictScaleMapping.test.ts (5, incl. reject nominal + coincidental hit). typecheck + 1547 green; Charts 0 / Stats 33 warnings.
