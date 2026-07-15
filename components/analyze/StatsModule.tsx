@@ -65,7 +65,22 @@ import type { SchemaConfig, SchemaFieldConfig } from '@/lib/analyzeTypes'
 import { smartOrder } from '@/lib/scaleUtils'
 
 // Module-level drag tracker — allows dragOver handlers to preview the drop target without dataTransfer
-var _statsDrag: { field: string; type: string; label: string } | null = null
+var _statsDrag: { field: string; type: string; label: string; dual?: boolean } | null = null
+
+// ─── Dual-purpose Likert fields ───────────────────────────────────────────
+// An auto-quant Likert is a categorical field with a numeric `remapping`; it
+// carries a numeric twin id `__mapped_<field>__`. In the sidebar it is shown
+// ONCE (its raw categorical entry, flagged dual-purpose) instead of once per
+// group; a numeric-accepting slot resolves the drop to the twin id, a
+// categorical slot keeps the raw id. Type-scoped dropdowns already list one
+// correct entry each (raw in categorical selects, the "(score)" twin in numeric
+// selects), so the stored ids are unchanged and backward-compatible.
+function isDualPurposeCfg(f: { type: string; remapping?: Record<string, number> }): boolean {
+  return f.type === 'categorical' && !!f.remapping && Object.keys(f.remapping).length > 0
+}
+function mappedIdFor(field: string): string { return '__mapped_' + field + '__' }
+function isMappedId(id: string): boolean { return id.indexOf('__mapped_') === 0 && id.slice(-2) === '__' }
+function rawFieldFromMapped(id: string): string { return id.slice('__mapped_'.length, -2) }
 
 import { T } from '@/lib/analyzeTheme'
 
@@ -158,7 +173,11 @@ function DSSelect({ label, value, onChange, options }: { label: string; value: s
         e.preventDefault(); e.stopPropagation(); setDragOver(false)
         try {
           var payload = JSON.parse(e.dataTransfer.getData('text/field'))
-          if (options.some(function(o) { return o.v === payload.field })) onChange(payload.field)
+          // A dual-purpose Likert resolves to whichever id THIS select lists —
+          // the raw id in a categorical select, its numeric twin in a numeric one.
+          var candidates = payload.dual ? [payload.field, mappedIdFor(payload.field)] : [payload.field]
+          var matchId = candidates.find(function(id) { return options.some(function(o) { return o.v === id }) })
+          if (matchId) onChange(matchId)
         } catch {}
       }}
     >
@@ -1202,7 +1221,7 @@ function RegressionPanel({ numFields, catFields, data, aliases, datasetId, theme
       </div>
 
       {regMode === 'logistic' ? (
-        <LogisticPanel fields={numFields.concat(catFields)} data={data} themeModel={themeModel} themeSourceField={themeSourceField || ''} aliases={aliases} datasetId={datasetId} />
+        <LogisticPanel fields={numFields.concat(catFields).filter(function(f) { return !isMappedId(f.field) })} data={data} themeModel={themeModel} themeSourceField={themeSourceField || ''} aliases={aliases} datasetId={datasetId} />
       ) : numFields.length < 2 ? (
         <StatsEmpty icon={'\u27CB'} msg="Need at least 2 numeric fields" sub="Activate more numeric fields or map categorical values to numbers." />
       ) : (<>
@@ -2186,17 +2205,20 @@ function CollapsibleGroup({ label, icon, color, fields, T, fl: flFn, defaultOpen
       {open && (
         <div style={{ padding: '0 12px 8px' }}>
           {goodFields.map(function(f) {
+            var dual = isDualPurposeCfg(f)
             return (
               <div key={f.field}
                 draggable={true}
                 onDragStart={function(e) {
-                  _statsDrag = { field: f.field, type: f.type, label: flFn(f) }
-                  e.dataTransfer.setData('text/field', JSON.stringify({ field: f.field, type: f.type, label: flFn(f), section: f.section || 'core' }))
+                  _statsDrag = { field: f.field, type: f.type, label: flFn(f), dual: dual }
+                  e.dataTransfer.setData('text/field', JSON.stringify({ field: f.field, type: f.type, label: flFn(f), section: f.section || 'core', dual: dual }))
                   e.dataTransfer.effectAllowed = 'copy'
                 }}
                 onDragEnd={function() { _statsDrag = null }}
-                style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, color: T.textMid, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1, cursor: 'grab', userSelect: 'none' }} title={flFn(f)}>
+                style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, color: T.textMid, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1, cursor: 'grab', userSelect: 'none' }}
+                title={dual ? 'Dual-purpose scale — category, or a numeric score in a numeric slot' : flFn(f)}>
                 {flFn(f)}
+                {dual && <span style={{ marginLeft: 5, fontSize: 8, fontWeight: 700, color: '#7c3aed', border: '1px solid #7c3aed55', borderRadius: 3, padding: '0 3px', letterSpacing: '.03em', verticalAlign: 'middle' }}>{'#/≡'}</span>}
               </div>
             )
           })}
@@ -2524,7 +2546,15 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
           {(function() {
             var needsNum = true
             var needsCat = activePanel === 'grouptests' || activePanel === 'insights' || activePanel === 'outliers'
-            return <FieldSidebarGroups fields={[...(needsNum ? numFields : []), ...(needsCat ? catFields : [])]} T={T} fl={fl} diag={sidebarDiag} />
+            var sidebarFields = [...(needsNum ? numFields : []), ...(needsCat ? catFields : [])]
+            // Dual-purpose Likerts: when BOTH the raw categorical and its numeric
+            // twin would show (a panel that lists both types), drop the twin so
+            // the field appears ONCE (raw, dual-flagged) — a numeric slot resolves
+            // it back to the twin on drop. On numeric-only panels the raw isn't
+            // present, so the twin stays as the field's single numeric entry.
+            var present = new Set(sidebarFields.map(function(f) { return f.field }))
+            var deduped = sidebarFields.filter(function(f) { return !(isMappedId(f.field) && present.has(rawFieldFromMapped(f.field))) })
+            return <FieldSidebarGroups fields={deduped} T={T} fl={fl} diag={sidebarDiag} />
           })()}
 
           {/* Themes section — source picker + toggle chips */}

@@ -419,12 +419,26 @@ replaced by this. `LinearRegression` (OLS) is unchanged (numeric outcome + predi
 recognized ranked scale, gated by the STRICT matcher `scaleUtils.strictScaleMapping` (≥3 recognized
 scale points AND all-but-≤1 distinct values matched — so a nominal field with a coincidental hit is NOT
 mapped). Such a field stays `type: categorical` (axes / distributions / crosstabs render ordered
-categories) AND gains the existing `__mapped_<field>__` numeric twin in BOTH Charts and Stats pickers
-(labelled `"… (score)"`) for quantitative use (averages, correlations, regression). Fully user-controlled
-in the Schema tab: the "Score Mapping" row has a **Clear** button (disable → purely categorical) and
-per-value number inputs (adjust). Existing datasets are backfilled by
-`scripts/_backfill_scale_remappings.mts` (dry-run by default; `--apply`, `--prod`). The regression
-`ordinalMap` reads the stored remapping first, then falls back to on-the-fly detection.
+categories) AND carries a `__mapped_<field>__` numeric twin for quantitative use (averages,
+correlations, regression). Fully user-controlled in the Schema tab: the "Score Mapping" row has a
+**Clear** button (disable → purely categorical) and per-value number inputs (adjust). Existing datasets
+are backfilled by `scripts/_backfill_scale_remappings.mts` (dry-run by default; `--apply`, `--prod`).
+The regression `ordinalMap` reads the stored remapping first, then falls back to on-the-fly detection.
+
+*Single-entry picker (2026-07-15).* Rather than listing such a field TWICE — once as the raw categorical
+and again as its `"… (score)"` numeric twin — the field pickers show it **once**, flagged dual-purpose
+(a small `#/≡` badge), and the **target slot resolves which id to store**: an axis / category / colour
+slot stores the raw categorical id, a value / metric / measure slot (accepts numeric, not categorical)
+stores the numeric-twin id `__mapped_<field>__`. Saved configs keep the RESOLVED id, so this is
+byte-compatible with existing saved charts + server aggregation (a value slot already stored the twin id
+under the old two-entry picker). In **Charts** (`ChartsModule`) the twin is dropped from `pickerFields`;
+`ChartSlot`/`getSmartSlot`/the slot dropdowns resolve per `accepts` (`resolveSlotFieldId` ·
+`fieldMatchesAccepts` · `slotWantsNumericTwin`). In **Stats** (`StatsModule`) the type-scoped selects
+already list one correct entry each (raw in categorical `DSSelect`s, the twin in numeric ones), so only
+the *combined* lists are deduped: the left sidebar drops the twin whenever the raw is also present (it
+stays on numeric-only panels as the field's sole numeric entry), `DSSelect` drop resolves a dropped dual
+field to whichever id that select accepts, and the Logistic predictor list drops the twin entirely (the
+raw remapped categorical already exposes the numeric reading via `buildRegVars`' ordinal toggle).
 
 **Ranked Likert categoricals default to quantitative (2026-07-15).** A categorical whose values are a
 recognized ranked scale (`scaleUtils.suggestMapping`/`isOrdinalScale` — Very Dissatisfied…Very Satisfied,

@@ -123,7 +123,7 @@ function isSmallIntRange(min?: number, max?: number): boolean {
 }
 
 // Module-level drag tracker — stores what's being dragged so dragOver handlers can preview the target
-var _chartDrag: { field: string; type: string; label: string } | null = null
+var _chartDrag: { field: string; type: string; label: string; dual?: boolean } | null = null
 
 // Find the best slot for a dropped field: prefers empty required > empty optional > replace required > replace any
 function getSmartSlot(type: string, slots: SlotDef[], config: Record<string, string>): SlotDef | null {
@@ -133,6 +133,32 @@ function getSmartSlot(type: string, slots: SlotDef[], config: Record<string, str
       || slots.find(function(s) { return s.required && match(s) })
       || slots.find(match)
       || null
+}
+
+// ─── Dual-purpose Likert fields ───────────────────────────────────────────
+// An auto-quant Likert is a categorical field carrying a numeric `remapping`.
+// It is shown ONCE in the pickers — as its raw categorical entry, flagged
+// dual-purpose — instead of twice (raw + a "(score)" numeric twin). The SLOT
+// resolves which id to store: a value/metric slot (accepts numeric, not
+// categorical) stores the numeric twin `__mapped_<field>__`; an axis / category
+// / colour slot stores the raw categorical id. Saved configs keep the RESOLVED
+// id, so aggregation + saved charts key off the right column (the twin id in a
+// value slot is exactly what the old two-entry picker stored, so this is
+// backward-compatible with saved charts).
+function isDualPurpose(f: { type: string; remapping?: Record<string, number> }): boolean {
+  return f.type === 'categorical' && !!f.remapping && Object.keys(f.remapping).length > 0
+}
+function mappedIdFor(field: string): string { return '__mapped_' + field + '__' }
+function isMappedId(id: string): boolean { return id.indexOf('__mapped_') === 0 && id.slice(-2) === '__' }
+// A slot that takes a numeric measure but NOT a category → resolve dual-purpose to its numeric twin.
+function slotWantsNumericTwin(accepts: string[]): boolean {
+  return accepts.indexOf('numeric') !== -1 && accepts.indexOf('categorical') === -1
+}
+// Does a field satisfy a slot's accepted types? Dual-purpose satisfies numeric slots too.
+function fieldMatchesAccepts(f: SchemaField, accepts: string[]): boolean {
+  if (accepts.indexOf('any') !== -1) return true
+  if (accepts.indexOf(f.type) !== -1) return true
+  return isDualPurpose(f) && accepts.indexOf('numeric') !== -1
 }
 
 // ── Collapsible sidebar field group (Charts) ──────────────────
@@ -155,23 +181,27 @@ function ChartCollapsibleGroup({ label, icon, color, fields, currentConfig }: {
       {open && (
         <div style={{ padding: '0 12px 8px' }}>
           {fields.map(function(f) {
-            var isAssigned = Object.values(currentConfig).includes(f.field)
+            var dual = isDualPurpose(f)
+            // Dual-purpose fields store the raw id in a category slot and the
+            // numeric-twin id in a value slot — count either as assigned.
+            var isAssigned = Object.values(currentConfig).includes(f.field) || (dual && Object.values(currentConfig).includes(mappedIdFor(f.field)))
             // Dimension fields show the short label (Touchpoint…) but hover the
             // verbose, customer-facing name (Service — who served you…).
             var dimAx = axisOfDimField(f.field)
-            var hoverTitle = dimAx ? DIM_AXIS_LABEL_LONG[dimAx] : fl(f)
+            var hoverTitle = dual ? 'Dual-purpose scale — drops as a category, or as a numeric score in a value slot' : (dimAx ? DIM_AXIS_LABEL_LONG[dimAx] : fl(f))
             return (
               <div key={f.field}
                 draggable={true}
                 onDragStart={function(e) {
-                  _chartDrag = { field: f.field, type: f.type, label: fl(f) }
-                  e.dataTransfer.setData('text/field', JSON.stringify({ field: f.field, type: f.type, label: fl(f), section: f.section || 'core' }))
+                  _chartDrag = { field: f.field, type: f.type, label: fl(f), dual: dual }
+                  e.dataTransfer.setData('text/field', JSON.stringify({ field: f.field, type: f.type, label: fl(f), section: f.section || 'core', dual: dual }))
                   e.dataTransfer.effectAllowed = 'copy'
                 }}
                 onDragEnd={function() { _chartDrag = null }}
                 style={{ fontSize: 11, padding: '4px 8px', borderRadius: 5, color: isAssigned ? T.accent : T.textMid, fontWeight: isAssigned ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1, background: isAssigned ? T.accentBg : 'transparent', transition: 'all .1s', cursor: 'grab', userSelect: 'none' }}
                 title={hoverTitle}>
                 {isAssigned && '\u2713 '}{fl(f)}
+                {dual && <span style={{ marginLeft: 5, fontSize: 8, fontWeight: 700, color: '#7c3aed', border: '1px solid #7c3aed55', borderRadius: 3, padding: '0 3px', letterSpacing: '.03em', verticalAlign: 'middle' }}>{'#/\u2261'}</span>}
               </div>
             )
           })}
@@ -319,8 +349,13 @@ function ChartSlot({ label, value, onChange, options, required, accepts }: {
         e.preventDefault(); e.stopPropagation(); setDragOver(false)
         try {
           var payload = JSON.parse(e.dataTransfer.getData('text/field'))
-          if (accepts && !accepts.includes(payload.type) && !accepts.includes('any')) return
-          onChange(payload.field)
+          var okType = !accepts || accepts.includes(payload.type) || accepts.includes('any')
+          // A dual-purpose Likert (categorical payload) is also droppable into a
+          // numeric value/metric slot, where it resolves to its numeric twin id.
+          var okDual = !!payload.dual && !!accepts && accepts.indexOf('numeric') !== -1
+          if (!okType && !okDual) return
+          var fieldId = (payload.dual && accepts && slotWantsNumericTwin(accepts)) ? mappedIdFor(payload.field) : payload.field
+          onChange(fieldId)
         } catch {}
       }}
     >
@@ -2401,7 +2436,10 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   // (score-driver is a theme-keyword regression engine — the avg bar covers it).
   var DIM_WIRED_CHARTS = ['bar', 'crosstab', 'treemap', 'bubbles', 'waterfall', 'funnel', 'bullet', 'gantt', 'distribution', 'timeseries']
   var dimWiredChart = DIM_WIRED_CHARTS.indexOf(activeChart) !== -1
-  var pickerFields = dimWiredChart ? allFields : allFields.filter(function(f) { return !isDimField(f.field) })
+  // Dual-purpose Likerts appear ONCE (their raw categorical entry); the
+  // `__mapped_*` numeric twin is resolved per-slot, never listed on its own.
+  var pickerFields = (dimWiredChart ? allFields : allFields.filter(function(f) { return !isDimField(f.field) }))
+    .filter(function(f) { return !isMappedId(f.field) })
 
   // Field type groups
   var catFields = pickerFields.filter(function(f) { return f.type === 'categorical' })
@@ -2419,10 +2457,11 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
       var payload = JSON.parse(e.dataTransfer.getData('text/field'))
       var target = getSmartSlot(payload.type, currentSlots, currentConfig)
       if (!target) return
+      var fieldId = (payload.dual && slotWantsNumericTwin(target.accepts)) ? mappedIdFor(payload.field) : payload.field
       setChartConfigs(function(prev) {
         var u = Object.assign({}, prev)
         var cfg = Object.assign({}, u[activeChart] || {})
-        cfg[target!.key] = payload.field
+        cfg[target!.key] = fieldId
         u[activeChart] = cfg
         return u
       })
@@ -2589,7 +2628,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
             var slots = CHART_SLOTS[activeChart] || []
             if (slots.length === 0) return <ChartFieldGroups fields={pickerFields} currentConfig={currentConfig} />
             var accepted = new Set(slots.flatMap(function(s) { return s.accepts }))
-            var visible = accepted.has('any') ? pickerFields : pickerFields.filter(function(f) { return accepted.has(f.type) })
+            var visible = accepted.has('any') ? pickerFields : pickerFields.filter(function(f) { return accepted.has(f.type) || (isDualPurpose(f) && accepted.has('numeric')) })
             return <ChartFieldGroups fields={visible} currentConfig={currentConfig} />
           })()}
 
@@ -2660,10 +2699,16 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
             <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
               {currentSlots.map(function(slot) {
                 var opts = pickerFields.filter(function(f) {
-                  return slot.accepts.includes(f.type) || slot.accepts.includes('any')
+                  return fieldMatchesAccepts(f, slot.accepts)
                 }).map(function(f) {
+                  // Dual-purpose Likert in a value/metric slot → store & label its
+                  // numeric twin id (the "(score)" reading); elsewhere the raw id.
+                  var usesTwin = isDualPurpose(f) && slotWantsNumericTwin(slot.accepts)
+                  var vId = usesTwin ? mappedIdFor(f.field) : f.field
                   var label = fl(f)
-                  if (f.type === 'categorical') {
+                  if (usesTwin) {
+                    label += '  (score)'
+                  } else if (f.type === 'categorical') {
                     var counts = analytics?.fieldSummaries?.[f.field]?.counts
                     if (counts) {
                       var n = Object.keys(counts).length
@@ -2675,7 +2720,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
                       }
                     }
                   }
-                  return { v: f.field, l: label, section: f.section || 'core' }
+                  return { v: vId, l: label, section: f.section || 'core' }
                 })
                   .sort(function(a, b) { return a.l.localeCompare(b.l) })
                 return <ChartSlot key={slot.key} label={slot.label} value={currentConfig[slot.key] || ''} required={slot.required}
