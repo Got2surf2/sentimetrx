@@ -420,3 +420,15 @@ StatsModule RegressionPanel: Linear/Logistic toggle (persisted). Logistic binari
 Verified: 8 unit tests (intercept=logit(mean y), effect sign+convergence, separation flag, no-effect OR~1, VIF=1/(1-r2), pruning). End-to-end pipeline on synthetic data with a collinear twin: VIF-4890 twin auto-dropped, true driver recovered (OR 2.34, beta 0.85 vs true 0.9, p<1e-4), noise non-sig (p=0.79). typecheck + 1534 tests green; StatsModule react-hooks warnings 33->33 (no new); lint ceiling unchanged (252).
 
 Follow-up: the Linear/Logistic toggle sat after the "need 2 numeric fields" early-return, so it was hidden on datasets with <2 numeric fields. Moved the guard into the body so the toggle + mode always render; sidebar tip updated to "Linear (OLS) & logistic regression."
+
+---
+
+## Logistic on categorical fields + themes (2026-07-15)
+
+**WHY:** Owner: the panel was numeric-only, but this survey has 1 numeric field (mapped Rating) and 15 Likert categoricals + 7 themes — so logistic looked broken ("need 2 numeric fields"). Logistic (and its predictors/outcome) must work on categorical fields AND themes.
+
+lib/regressionDesign.ts (new): buildRegVars (numeric + categorical + theme candidates) + buildDesign (one-hot dummies default w/ modal reference, per-field ordinal opt-in, theme 0/1 keyword-match column via commentMatchesTheme, complete-case rows, outcome binarization: numeric/Likert top-box threshold | category level | theme mention). Extended for a Likert categorical outcome to top-box by remap threshold.
+
+StatsModule: new self-contained LogisticPanel (own picker grouped Numeric/Categorical/Themes + per-cat ordinal toggle + outcome selector w/ binarization) rendered in logistic mode; RegressionPanel reverted to OLS-only + delegates. Wired catFields + effectiveThemeModel + themeSourceField from the parent. Default outcome = a rating/satisfaction field, top-box.
+
+Verified end-to-end on the REAL Carrabba GSS (471 complete cases): top-box Rating ~ sub-scores(one-hot) + themes → converged, pseudoR2 0.52, sensible ORs (mentions Service & Staff Issues -> OR 0.05x; Value for Money=Fair -> 0.05x vs Excellent baseline). Design tests tests/unit/regressionDesign.test.ts (6). typecheck + 1540 tests green; StatsModule react-hooks warnings 33->33 (2 new disables); lint ceiling unchanged. Untracked harness scripts/_verify_logit.mts (KEEP).

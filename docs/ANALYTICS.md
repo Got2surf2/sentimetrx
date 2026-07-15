@@ -397,6 +397,23 @@ in the panel. Above 50K rows this runs over the loaded 50K sample, like the othe
 residual/Q-Q diagnostics are hidden in logistic mode. Math verified in `tests/unit/logisticRegression.test.ts`
 (intercept recovery, effect sign, separation detection, VIF = 1/(1−r²), pruning).
 
+**Logistic on categorical fields + themes (2026-07-15).** Because a survey's real drivers are its
+Likert **categorical** fields and its **themes**, not raw numeric columns, the logistic panel is its
+own `LogisticPanel` component that models a binary outcome from ANY field type via `lib/regressionDesign`:
+numeric passthrough; **categorical → one-hot dummies** (each level vs the modal baseline, so odds ratios
+read "level X vs the most common answer") with a per-field **ordinal** opt-in (uses the field's remapping,
+else its `values` order); **theme → a 0/1 "mentioned it" column** (`commentMatchesTheme` over the theme
+source field, same matcher as the theme bars). Rows are complete-case (outcome defined + every non-theme
+predictor present; a theme's absence is a legitimate 0). The outcome can be a numeric/Likert field
+(**top-box** threshold, default = the field's top level for a remapped Likert, else the median), a chosen
+**category level**, or a **theme mention** (default outcome = a rating/satisfaction field). The design
+matrix feeds the same `pruneCollinear` → `logisticRegression`, and coefficients are labeled by encoded
+column (`Field = Level`, theme name). Verified end-to-end on the real Carrabba's GSS: top-box Rating
+from the sub-scores + themes recovers sensible odds ratios (mentioning "Service & Staff Issues" → OR
+0.05×; "Value for Money = Fair" → OR 0.05× vs the Excellent baseline; pseudo-R² 0.52). Design-layer math
+in `tests/unit/regressionDesign.test.ts`; the numeric-only inline logistic (the 2026-07-15 first cut) was
+replaced by this. `LinearRegression` (OLS) is unchanged (numeric outcome + predictors).
+
 **"Sampled" chip on the metric-strip row (2026-07-14).** When the active dataset exceeds the 50K
 cap (`RowsContext.sampled && totalRows > sampledCount`), `DatasetShell` leads the shared metric-strip
 row (the one carrying comments · Theme fit · themes) with a compact blue chip "◱ Sampled P% ·
