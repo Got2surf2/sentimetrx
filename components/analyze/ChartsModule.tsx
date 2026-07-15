@@ -280,9 +280,12 @@ function PlotlyChart({ traces, layout, style }: { traces: Record<string, unknown
     // and ref.current is null. newPlot(null) throws "DOM element
     // provided is null or undefined" — Sentry caught this in prod
     // 2026-05-12. Null-check inside the .then.
+    // Capture the node in the effect body (not the cleanup) — by cleanup time
+    // ref.current may point elsewhere. newPlot keeps its own late ref.current
+    // read so an unmount mid-async skips the plot (Sentry 2026-05-12).
+    const el = ref.current
     void getPlotly().then(function(Plotly) { if (ref.current) Plotly.newPlot(ref.current, traces, merged, { responsive: true, displayModeBar: false }) })
     return function() {
-      const el = ref.current
       if (!el) return
       void getPlotly().then(function(Plotly) { try { Plotly.purge(el) } catch {} })
     }
@@ -638,10 +641,13 @@ function useChartRows(datasetId: string, enrichKey: number = 0) {
     if (_enrichCtx.datasetSource) enriched = injectSignalTier(enriched, _enrichCtx.datasetSource)
     // Apply global filters
     var filtered = applyFilters(enriched, effectiveFilters)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs the external RowsContext into the enriched/filtered view (external-system sync is what effects are for)
     setRows(filtered)
     setLoaded(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on filterKey (stable stringify of effectiveFilters) + shared.rowsLoaded, not the churny objects
   }, [shared.rowsLoaded, enrichKey, filterKey])
   // Trigger shared fetch on first render
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only fetch trigger; shared.fetchRows guards its own re-entry
   useEffect(function() { shared.fetchRows() }, [])
   return { rows: rows, loaded: loaded, loading: shared.rowsLoading }
 }
@@ -690,6 +696,7 @@ function useAggregation(datasetId: string, spec: Record<string, unknown> | null)
   var cacheKey = datasetId + ':' + JSON.stringify(effSpec)
   useEffect(function() {
     if (!effSpec) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async aggregate fetch → state; effects are the correct place for external data
     if (_aggCache[cacheKey]) { setData(_aggCache[cacheKey]); setLoaded(true); return }
     setLoaded(false)
     fetch('/api/datasets/' + datasetId + '/aggregate', {
@@ -699,6 +706,7 @@ function useAggregation(datasetId: string, spec: Record<string, unknown> | null)
     }).then(function(r) { return r.json() })
       .then(function(d) { _aggCache[cacheKey] = d; setData(d); setLoaded(true) })
       .catch(function() { setLoaded(true) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on cacheKey (= datasetId + stringified effSpec); effSpec is a fresh object each render so listing it would loop
   }, [datasetId, cacheKey])
   return { data: data, loaded: loaded }
 }
@@ -1297,8 +1305,11 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
   var oeFields = schema.filter(function(f) { return f.type === 'open-ended' })
   var [selectedOE, setSelectedOE] = useState<Set<string>>(new Set(oeFields.map(function(f) { return f.field })))
 
-  // Run regression per OE field + combined when mode switches
+  // Run regression per OE field + combined when mode switches. setState is the
+  // output of an expensive regression gated on the inputs below (not derivable
+  // cheaply during render), so it stays in an effect.
   useEffect(function() {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- expensive derived analysis, gated on the deps below
     if (mode !== 'regression' || !loaded || !hasThemes || selectedOE.size === 0) { setRegressionResults([]); setCombinedResult(null); return }
     var { computeThemeImpact } = require('@/lib/themeImpact')
     var themeInput = themeModel!.themes.map(function(t) { return { id: t.id || '', name: t.name || '', keywords: t.keywords || [] } })
@@ -1327,7 +1338,9 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
     } else {
       setCombinedResult(null)
     }
-  }, [mode, loaded, selectedOE, scoreField])
+    // rows/schema/themeModel/hasThemes added so the regression recomputes when
+    // the filtered rows change — without them it went stale under an active filter.
+  }, [mode, loaded, selectedOE, scoreField, rows, schema, themeModel, hasThemes])
 
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
 
@@ -2038,6 +2051,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
 
   useEffect(function() {
     var savedTheme = readSession<{ themeSourceField?: string; activeThemeNames?: string[] | null }>(_themeKey)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- restores persisted UI state from sessionStorage on mount / dataset-key change
     if (savedTheme?.themeSourceField) setThemeSourceField(savedTheme.themeSourceField)
     if (Array.isArray(savedTheme?.activeThemeNames)) setActiveThemeNames(new Set(savedTheme.activeThemeNames))
 
@@ -2096,7 +2110,11 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
       : themeModel
   }, [themeModel, themeSourceField])
 
-  // Set enrichment context for useRows — must be before any inner component renders
+  // Set enrichment context for useRows — must be before any inner component renders.
+  // Deliberate module-level bridge: enrichRows() and the inner chart components read
+  // it synchronously during this same render pass. Proper fix is a React context
+  // (large refactor across every consumer) — out of scope for this warning sweep.
+  // eslint-disable-next-line react-hooks/globals -- intentional render-scoped bridge to enrichRows/child charts; set before children render
   _enrichCtx = { themeModel: effectiveThemeModel, schema: schema, enrichKey: enrichKey, themeSourceOverride: themeSourceField || undefined, dimFieldKey: themeSourceField || undefined, activeThemeNames: activeThemeNames, datasetSource: datasetSource, filteredRowIds: _filteredRowIds }
   var currentColors = COLOR_PALETTES[activePalette]?.colors || CHART_COLORS
   var fields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' && f.hidden !== true })
@@ -2117,6 +2135,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   // fetch, only when dimensions apply.
   var [dimSubCounts, setDimSubCounts] = useState<Record<string, Record<string, number>> | null>(null)
   useEffect(function() {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async taxonomy fetch → state (external data sync)
     if (!hasDimensions) { setDimSubCounts(null); return }
     var cancelled = false
     // Per-question (sql/164 companion): the Dimensions GET is per fieldKey —
@@ -2167,6 +2186,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [_anyFilter, _topRows.loaded, _filterIdSig, fields, analytics, _sampleScale])
   useEffect(function() {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async theme-counts fetch → state (external data sync)
     if (!hasThemes || !themeSourceField) { setLiveThemeCounts(null); setLiveThemeTotal(null); return }
     var cancelled = false
     var body = JSON.stringify({
@@ -2204,6 +2224,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
       })
       .catch(function() { /* fall back to stored counts */ })
     return function() { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on themesSig + _filterIdSig (stable content signatures of effectiveThemeModel + _filteredRowIds), not the churny objects
   }, [datasetId, hasThemes, themeSourceField, themesSig, _filterIdSig])
   var allFields = hasThemes
     ? fields.concat([{ field: '__themes__', type: 'categorical', label: 'Themes' }])
@@ -2286,6 +2307,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   var [chartConfigs, setChartConfigs] = useState<Record<string, Record<string, string>>>({})
   useEffect(function() {
     var saved = readSession<Record<string, Record<string, string>>>(_configKey)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- restores persisted chart configs from sessionStorage on dataset-key change
     if (saved) setChartConfigs(saved)
   }, [_configKey])
   useEffect(function() { if (chartsRestored) writeSession(_configKey, chartConfigs) }, [chartsRestored, chartConfigs, _configKey])
@@ -2320,11 +2342,13 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
       gantt: { category: catFields[0]?.field || '', range: numFields[0]?.field || '' },
       driver: { score: numFields[0]?.field || '' },
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- seeds default chart configs once per schema (merges, doesn't clobber existing)
     setChartConfigs(function(prev) {
       var merged: Record<string, Record<string, string>> = {}
       Object.keys(defaults).forEach(function(k) { merged[k] = prev[k] || defaults[k] })
       return merged
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `fields` derives from schema (a fresh filtered array each render); keying on the stable schema prop avoids a loop
   }, [schema])
 
   var currentConfig = chartConfigs[activeChart] || {}
@@ -2394,6 +2418,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
         return u
       })
     } catch {}
+    // eslint-disable-next-line react-hooks/globals -- module-level drag payload cleared inside the drop event handler (not during render)
     _chartDrag = null
   }
 

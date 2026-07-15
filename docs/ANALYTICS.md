@@ -372,6 +372,9 @@ against the real Carrabba's GSS dataset (56,117 rows) in the TEST project:
   and disagreeing with the TZ-safe SQL `::date` path. Now parses ISO strings as local calendar dates.
 - **Time-series false-dip.** A metric bucket with rows but no numeric value plotted 0 instead of a
   gap; now null (count mode still shows a real 0).
+- **Score Driver regression staleness (fixed).** A react-hooks warning surfaced that the regression
+  effect was missing `rows`/`schema`/`themeModel` from its deps — so it did NOT recompute when the
+  filtered rows changed, leaving stale regression results under an active filter. Deps added.
 - **Filter-awareness for summary-driven charts (now fixed).** A plain Count/Percentage bar, no-split
   Distribution, Treemap, Packed Bubbles and Waterfall read the whole-dataset precomputed
   `fieldSummaries` and used to ignore active filters, while the stacked/Average bars (aggregate API +

@@ -396,3 +396,13 @@ Tests: tests/unit/numericValue.test.ts, tests/unit/timeBucket.test.ts. typecheck
 2. Filter-awareness for summary charts (Count/% bar, no-split Distribution, treemap, bubbles, waterfall): recomputeFilteredSummaries recounts those fields from the filtered rows and overrides enrichedAnalytics.fieldSummaries. Reuses whole-dataset histogram bin edges; COUNT surfaces scaled by totalRows/sampledCount to match scaleSampledCount, means/extents unscaled. Closes the last logic inconsistency — whole tab agrees under a filter.
 
 sql/182 numeric-parity fix (prior entry) stays as a real robustness fix for genuinely messy numeric columns. Test: tests/unit/filteredSummaries.test.ts. typecheck + 1525 tests + lint:ci green. Still LOCAL; sql/182 migrate on push.
+
+---
+
+## ChartsModule react-hooks warnings: 17 -> 0 (deliberate, verified) (2026-07-14, later)
+
+**WHY:** Owner pushed back that touch-it-fix-it (line-scoped) never clears the react-hooks backlog since we touch files, not the stale functions. Agreed: for that class the incremental rule isn't a clearing mechanism (unlike no-explicit-any, which is runtime-invariant and got a mechanical burn-down) — it needs a deliberate, browser-verified pass because a wrong hook "fix" changes runtime (the prior Statistics-tab infinite loop). Did that pass for ChartsModule.
+
+**Result:** 17 -> 0. Two REAL fixes: (1) PlotlyChart cleanup captures ref.current in the effect body, not the cleanup (285). (2) ScoreDriver regression effect was missing rows/schema/themeModel/hasThemes from its deps — so the regression went STALE under an active filter; added them (safe: all stable/memoized, none set by the effect, so no loop). The regression-under-filter staleness is a genuine bug the warning surfaced. The other 15 are legitimate patterns the aggressive React-19 rule over-flags — external-data-sync setState (fetch -> state), stable string-key dep proxies (cacheKey/filterKey/themesSig/_filterIdSig, where listing the churny object would infinite-loop), session restore/init, and the deliberate module-level _enrichCtx render bridge + _chartDrag drop-handler state — each cleared with a scoped disable + concrete reason (zero runtime change).
+
+lint:ci ceiling 269 -> 252 (exactly the 17 cleared; new files add 0). Verification: new jsdom render test tests/unit/chartsEffectStability.test.tsx mounts ChartsModule with LOADED rows + an ACTIVE FILTER (the paths touched) and asserts it settles with no "Maximum update depth" loop. typecheck + 1526 tests green. (Full in-app Score-Driver QC left to the owner — a dev server was already up on :3000; didn't disrupt it / risk a cookie-mint session reset.)
