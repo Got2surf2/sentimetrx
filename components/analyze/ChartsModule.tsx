@@ -3,7 +3,7 @@
 // Charts module with labeled drop zones, click-to-assign from sidebar, chart state caching.
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { smartOrder, isOrdinalScale, scaleDirectionLabel } from '@/lib/scaleUtils'
+import { smartOrder, isOrdinalScale, scaleDirectionLabel, detectScale } from '@/lib/scaleUtils'
 import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
 import { cachedRequest } from '@/lib/clientRequestCache'
 import { themeSetForField } from '@/lib/themeUtils'
@@ -434,21 +434,11 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var hoverTpl = isH
       ? (isPercent ? '%{x:.0f}%<extra>%{y}</extra>' : '%{x}<extra>%{y}</extra>')
       : (isPercent ? '%{y:.0f}%<extra>%{x}</extra>' : '%{y}<extra>%{x}</extra>')
-    // Ordinal fields get a green→grey→red gradient; nominal fields get single color
+    // Ordinal fields get a rating-aware gradient (low=red…high=green); nominal → single color
     var isOrdField = (catRemap && Object.keys(catRemap).length >= 2) || isOrdinalScale(cats)
     var barColors: string | string[] = primaryColor
     if (isOrdField && cats.length >= 3) {
-      // Gradient: green (best) → grey (mid) → red (worst)
-      // smartOrder returns low→high, so reversed orderedKeys = high→low (Excellent first)
-      var ordGrad = ['#059669','#34D399','#94A3B8','#F97316','#DC2626']
-      barColors = cats.map(function(_, i) {
-        var frac = cats.length <= 1 ? 0 : i / (cats.length - 1)
-        if (frac < 0.15) return ordGrad[0]
-        if (frac < 0.38) return ordGrad[1]
-        if (frac < 0.62) return ordGrad[2]
-        if (frac < 0.82) return ordGrad[3]
-        return ordGrad[4]
-      })
+      barColors = ordinalBarColors(cats, catRemap)
     }
     var wrappedCats = wrapLabels(cats, isH ? 28 : 18)
     var trace: Record<string, unknown> = { type: 'bar', marker: { color: barColors, line: { color: typeof barColors === 'string' ? barColors + '40' : barColors.map(function(c) { return c + '40' }), width: 1 } }, text: displayVals.map(function(v) { return String(isPercent ? Math.round(v) + '%' : v) }), textposition: 'outside', textfont: { size: 11 }, cliponaxis: false, hovertemplate: hoverTpl }
@@ -668,6 +658,32 @@ interface AggResult {
   /** true when the server computed this over the deterministic 50K sample and
    *  scaled (dataset above the cap) — the charts carry the "~" affordance. */
   sampled?: boolean
+}
+
+// Colour ordinal/Likert bars by the underlying RATING VALUE — low = red, high =
+// green — regardless of axis order or orientation. Uses the field's remapping
+// when present (Likerts are auto-mapped now), else the recognized scale's rank,
+// else falls back to left→right position. `vals` are the raw category values in
+// display order (NOT wrapped/aliased labels, so remapping/scale keys match).
+var ORD_GRAD = ['#059669', '#34D399', '#94A3B8', '#F97316', '#DC2626'] // best → worst
+function ordinalBarColors(vals: string[], catRemap?: Record<string, number>): string[] {
+  var scaleOrder = detectScale(vals) // ordered worst→best, or null
+  var rank = function(v: string, i: number): number {
+    if (catRemap && catRemap[v] != null) return catRemap[v]
+    if (scaleOrder) { var idx = scaleOrder.indexOf(v); if (idx >= 0) return idx }
+    return i
+  }
+  var rs = vals.map(rank)
+  var lo = Math.min.apply(null, rs), hi = Math.max.apply(null, rs)
+  return vals.map(function(v, i) {
+    var frac = hi > lo ? (rank(v, i) - lo) / (hi - lo) : 0.5 // 1 = best rating
+    var g = 1 - frac // 0 = best (green), 1 = worst (red)
+    if (g < 0.15) return ORD_GRAD[0]
+    if (g < 0.38) return ORD_GRAD[1]
+    if (g < 0.62) return ORD_GRAD[2]
+    if (g < 0.82) return ORD_GRAD[3]
+    return ORD_GRAD[4]
+  })
 }
 
 var _aggCache: Record<string, AggResult> = {}
@@ -1007,15 +1023,8 @@ function BarAggInner({ analytics, schema, datasetId, catField, valueField, smart
   var isOrdField = (catRemap && Object.keys(catRemap).length >= 2) || isOrdinalScale(cats)
   var barColors: string | string[] = primaryColor
   if (isOrdField && cats.length >= 3) {
-    var ordGrad = ['#059669','#34D399','#94A3B8','#F97316','#DC2626']
-    barColors = cats.map(function(_, i) {
-      var frac = cats.length <= 1 ? 0 : i / (cats.length - 1)
-      if (frac < 0.15) return ordGrad[0]
-      if (frac < 0.38) return ordGrad[1]
-      if (frac < 0.62) return ordGrad[2]
-      if (frac < 0.82) return ordGrad[3]
-      return ordGrad[4]
-    })
+    // colour by the raw group value's rating (low=red…high=green), not position
+    barColors = ordinalBarColors(displayGroups.map(function(g) { return g.group }), catRemap)
   }
 
   var hoverTpl = isH ? '%{x:.2f}<extra>%{y}</extra>' : '%{y:.2f}<extra>%{x}</extra>'
