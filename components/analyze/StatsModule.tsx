@@ -1411,6 +1411,112 @@ type AutoFinding = {
   badgeBg: string
 }
 
+// Auto "what drives the rating" analysis: a linear model of a target rating on
+// the other numeric fields (the quantified Likert sub-scores), ranked by
+// STANDARDIZED coefficient (β·σx/σy) so effects are comparable across scales.
+// Linear (not logistic) on the continuous rating → no separation, so predicting
+// overall satisfaction from its sub-scores is well-posed here.
+function KeyDriversCard({ numFields, data, aliases }: { numFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string> }) {
+  var lbl = function(f: SchemaFieldConfig) { return aliases[f.field] || f.label || f.field }
+  var num = function(v: unknown) { return parseFloat(String(v == null ? '' : v).replace(/,/g, '')) }
+  var [target, setTarget] = useState('')
+  useEffect(function() {
+    if (target || !numFields.length) return
+    var score = function(f: SchemaFieldConfig) {
+      var s = (lbl(f) + ' ' + f.field).toLowerCase(); var sc = 0
+      if (/overall/.test(s)) sc += 4
+      if (/rating|satisf|csat/.test(s)) sc += 3
+      if (/recommend|\bnps\b|loyalty|return/.test(s)) sc += 2
+      if (/score/.test(s)) sc += 1
+      return sc
+    }
+    var ranked = numFields.slice().sort(function(a, b) { return score(b) - score(a) })
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time auto-detect of the rating target on mount
+    setTarget(ranked[0] && score(ranked[0]) > 0 ? ranked[0].field : numFields[0].field)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time default target
+  }, [numFields])
+
+  var model = useMemo(function() {
+    if (!target) return null
+    var preds = numFields.filter(function(f) { return f.field !== target })
+    if (!preds.length) return null
+    // Rank by each field's simple correlation with the target — robust to the
+    // heavy multicollinearity among survey sub-scores (a joint OLS would go
+    // singular). Each pair uses its own complete cases, so no single missing
+    // sub-question shrinks the whole sample.
+    var drivers = preds.map(function(p) {
+      var xs: number[] = [], ys: number[] = []
+      data.forEach(function(r) { var x = num(r[p.field]), y = num(r[target]); if (!isNaN(x) && !isNaN(y)) { xs.push(x); ys.push(y) } })
+      if (xs.length < 10) return null
+      var cr = pearsonR(xs, ys)
+      if (isNaN(cr.r)) return null
+      return { field: p.field, r: cr.r, p: cr.p, n: cr.n }
+    }).filter(Boolean) as Array<{ field: string; r: number; p: number; n: number }>
+    if (!drivers.length) return { few: true as const, n: 0, k: preds.length }
+    drivers.sort(function(a, b) { return Math.abs(b.r) - Math.abs(a.r) })
+    return { drivers: drivers, n: Math.max.apply(null, drivers.map(function(d) { return d.n })) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- num is a pure helper over these deps
+  }, [target, numFields, data])
+
+  if (numFields.length < 2) return null
+  var tf = numFields.find(function(f) { return f.field === target })
+  var fit = (model && 'drivers' in model ? model : null) as { drivers: Array<{ field: string; r: number; p: number; n: number }>; n: number } | null
+  var few = (model && 'few' in model ? model : null) as { n: number; k: number } | null
+  var maxR = fit && fit.drivers.length ? Math.max.apply(null, fit.drivers.map(function(d) { return Math.abs(d.r) })) : 1
+  var summary = (function() {
+    if (!fit) return ''
+    var tName = tf ? lbl(tf) : 'the target'
+    var sig = fit.drivers.filter(function(d) { return d.p < 0.05 })
+    if (!sig.length) return 'No field tracks ' + tName + ' significantly in this data.'
+    var pos = sig.filter(function(d) { return d.r > 0 }).slice(0, 2)
+    var neg = sig.filter(function(d) { return d.r < 0 }).slice(0, 1)
+    var parts: string[] = []
+    if (pos.length) parts.push((pos.length > 1 ? 'the strongest are ' : 'the strongest is ') + pos.map(function(d) { return aliases[d.field] || d.field }).join(' and '))
+    if (neg.length) parts.push((aliases[neg[0].field] || neg[0].field) + ' moves opposite (higher there → lower ' + tName + ')')
+    return sig.length + ' of ' + fit.drivers.length + ' fields track ' + tName + ' significantly — ' + parts.join('; ') + '.'
+  })()
+
+  return (
+    <Card style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 14, fontWeight: 800, color: T.text }}>{'🎯'} Key drivers of</span>
+        <select value={target} onChange={function(e) { setTarget(e.target.value) }}
+          style={{ fontSize: 13, fontWeight: 700, padding: '4px 8px', border: '1px solid ' + T.border, borderRadius: 6, background: T.bgCard, color: T.accent, cursor: 'pointer' }}>
+          {numFields.map(function(f) { return <option key={f.field} value={f.field}>{lbl(f)}</option> })}
+        </select>
+        {fit && <span style={{ fontSize: 11, color: T.textFaint, marginLeft: 'auto', fontFamily: 'monospace' }}>n={fit.n}</span>}
+      </div>
+      <div style={{ padding: '14px 16px' }}>
+        {!model ? (
+          <div style={{ fontSize: 13, color: T.textFaint }}>Pick a numeric target with at least one other numeric field.</div>
+        ) : few ? (
+          <div style={{ fontSize: 13, color: T.textFaint }}>Not enough paired data to correlate any field with this target — activate more numeric fields or map Likert scales to numbers in the Schema tab.</div>
+        ) : (
+          <>
+            <div style={{ fontSize: 13, color: T.textMid, marginBottom: 14, lineHeight: 1.6 }}>{summary}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {fit!.drivers.slice(0, 8).map(function(d) {
+                var w = Math.round(Math.abs(d.r) / (maxR || 1) * 100)
+                var pos = d.r >= 0, sig = d.p < 0.05
+                return (
+                  <div key={d.field} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ width: 150, fontSize: 12, fontWeight: sig ? 700 : 400, color: sig ? T.text : T.textFaint, textAlign: 'right', flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={aliases[d.field] || d.field}>{aliases[d.field] || d.field}</span>
+                    <div style={{ flex: 1, height: 16, background: T.bg, borderRadius: 4, position: 'relative', overflow: 'hidden' }}>
+                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: w + '%', background: sig ? (pos ? T.green : T.red) : T.border, opacity: sig ? 1 : 0.5, borderRadius: 4 }} />
+                    </div>
+                    <span style={{ width: 52, fontSize: 11, fontFamily: 'monospace', color: sig ? (pos ? T.green : T.red) : T.textFaint, textAlign: 'right', flexShrink: 0 }}>r{pos ? '+' : ''}{d.r.toFixed(2)}</span>
+                  </div>
+                )
+              })}
+            </div>
+            <div style={{ fontSize: 10, color: T.textFaint, marginTop: 10 }}>Bars = strength of correlation with the target (Pearson r); green tracks together, red moves opposite. Grey = not significant (p {'≥'} 0.05). Correlation shows association, not proof of cause.</div>
+          </>
+        )}
+      </div>
+    </Card>
+  )
+}
+
 function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string> }) {
   var [findings, setFindings] = useState<AutoFinding[] | null>(null)
   var [running, setRunning] = useState(false)
@@ -1628,6 +1734,9 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
           {running ? 'Scanning\u2026' : '\u21BA Re-run'}
         </button>
       </div>
+
+      {/* Key drivers — auto linear model of the rating on the other fields */}
+      <KeyDriversCard numFields={numFields} data={data} aliases={aliases} />
 
       {/* AI status banner — shown at top always */}
       {!aiEnabled && (

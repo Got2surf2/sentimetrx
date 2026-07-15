@@ -442,3 +442,9 @@ Follow-up fixes (2026-07-15): (1) logistic outcome dropdown was empty — DSSele
 **WHY:** Owner — ranked Likert categoricals should be available BOTH categorically (axes) and quantitatively (calcs) system-wide without recomputing each time, flagged as dual-purpose; and still manually disable/adjust in Schema.
 
 lib/scaleUtils: refactored detectScale over a shared bestScaleMatch; added strictScaleMapping (>=3 recognized points + all-but-<=1 distinct matched) so nominal fields are NOT auto-mapped. lib/datasetUtils schema detection attaches that remapping to recognized-scale categoricals → field stays categorical AND gets the existing __mapped__ numeric twin in Charts+Stats (labelled "(score)"). SchemaEditor already supports Clear + per-value adjust (confirmed). Backfill scripts/_backfill_scale_remappings.mts (dry-run default; applied to TEST Carrabba - 9 fields). Tests: strictScaleMapping.test.ts (5, incl. reject nominal + coincidental hit). typecheck + 1547 green; Charts 0 / Stats 33 warnings.
+
+---
+
+## Key-Driver auto-insight (2026-07-15)
+
+**WHY:** Owner — auto-run a regression / auto-insight explaining the biggest drivers of the target rating. Built KeyDriversCard in the Auto-Insights tab: auto-detects the rating target (name heuristic + dropdown override), ranks other numeric fields by Pearson correlation with it, green/red importance bars + plain-language summary. Correlation not joint-OLS on purpose (survey sub-scores are collinear → OLS singular/unstable; correlation robust + pairwise complete-case). Verified on Carrabba GSS (Food Temp/Quality/Taste/Value top). typecheck+1547 green, StatsModule warnings 33.
