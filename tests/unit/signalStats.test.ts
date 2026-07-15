@@ -100,7 +100,7 @@ describe('computeSignalStats — cache freshness', () => {
       records: 67, signals: 115, inThemes: 59, themeFitPct: 88,
       themeFitBand: 'Tight', themeCount: 8,
       substantiveRecords: 50, inThemesSubstantive: 47, themeFitPctSubstantive: 94, themeFitBandSubstantive: 'Tight',
-      theme_model_hash: HASH, row_count: 67, computed_at: '2026-05-13T12:59:36Z',
+      theme_model_hash: HASH, row_count: 67, computed_at: '2026-05-13T12:59:36Z', stats_v: 2,
     }
     const svc = makeService({ cached, flatCount: 67, rpcVal: 0, updateSpy })
 
@@ -118,7 +118,7 @@ describe('computeSignalStats — cache freshness', () => {
       records: 67, signals: 115, inThemes: 59, themeFitPct: 88,
       themeFitBand: 'Tight', themeCount: 8,
       substantiveRecords: 50, inThemesSubstantive: 47, themeFitPctSubstantive: 94, themeFitBandSubstantive: 'Tight',
-      theme_model_hash: HASH, row_count: 67, computed_at: '2026-05-13T12:59:36Z',
+      theme_model_hash: HASH, row_count: 67, computed_at: '2026-05-13T12:59:36Z', stats_v: 2,
     }
     // live DB now has 80 non-empty rows for the field
     const svc = makeService({ cached, flatCount: 80, rpcVal: 10, updateSpy })
@@ -217,7 +217,7 @@ describe('computeSignalStatsForSet — per-field cache slots', () => {
       records: 40, signals: 12, inThemes: 10, themeFitPct: 25,
       themeFitBand: 'Diffuse', themeCount: 1,
       substantiveRecords: 30, inThemesSubstantive: 9, themeFitPctSubstantive: 30, themeFitBandSubstantive: 'Diffuse',
-      theme_model_hash: HASH_B, row_count: 67, computed_at: '2026-07-11T00:00:00Z',
+      theme_model_hash: HASH_B, row_count: 67, computed_at: '2026-07-11T00:00:00Z', stats_v: 2,
     }
     const svc = makeService({
       cached: null, flatCount: 67, rpcVal: 0, updateSpy,
@@ -256,7 +256,7 @@ describe('computeSignalStatsForSet — per-field cache slots', () => {
       records: 67, signals: 115, inThemes: 59, themeFitPct: 88,
       themeFitBand: 'Tight', themeCount: 8,
       substantiveRecords: 50, inThemesSubstantive: 47, themeFitPctSubstantive: 94, themeFitBandSubstantive: 'Tight',
-      theme_model_hash: HASH, row_count: 67, computed_at: '2026-05-13T12:59:36Z',
+      theme_model_hash: HASH, row_count: 67, computed_at: '2026-05-13T12:59:36Z', stats_v: 2,
     }
     const svc = makeService({
       cached, flatCount: 67, rpcVal: 0, updateSpy, themeModel: TM_WITH_FIELDS,

@@ -46,10 +46,17 @@ interface ThemeModel {
   fieldNames?: string[]
 }
 
+// Bump when the COMPUTATION semantics of the cached numbers change (not the
+// theme model) — old cache entries then recompute on next read. v2 = Model A
+// (2026-07-14): sampled counts are the EXACT counts of the 50K sample, no longer
+// scaled to the full dataset, so v1 entries hold stale scaled numbers.
+const STATS_MODEL_VERSION = 2
+
 interface CachedSignalStats extends SignalStats {
   theme_model_hash: string
   row_count: number
   computed_at: string
+  stats_v?: number
 }
 
 function band(pct: number): SignalStats['themeFitBand'] {
@@ -374,11 +381,13 @@ export async function computeSignalStats(
     // Entries cached before the substantive twin (sql/179) lack this field —
     // treat as stale so they recompute once and re-key with the new numbers.
     cached.themeFitPctSubstantive !== undefined &&
+    // Model A (v2): v1 entries hold scaled sampled counts → recompute.
+    cached.stats_v === STATS_MODEL_VERSION &&
     cached.theme_model_hash === currentHash &&
     currentHash !== '' &&
     cached.row_count === currentRowCount
   ) {
-    const { theme_model_hash: _h, row_count: _r, computed_at: _c, ...stats } = cached
+    const { theme_model_hash: _h, row_count: _r, computed_at: _c, stats_v: _v, ...stats } = cached
     return stats
   }
 
@@ -392,6 +401,7 @@ export async function computeSignalStats(
       theme_model_hash: currentHash,
       row_count: currentRowCount,
       computed_at: new Date().toISOString(),
+      stats_v: STATS_MODEL_VERSION,
     } satisfies CachedSignalStats,
   })
 
@@ -440,11 +450,13 @@ export async function computeSignalStatsForSet(
     // Entries cached before the substantive twin (sql/179) lack this field —
     // treat as stale so they recompute once and re-key with the new numbers.
     cached.themeFitPctSubstantive !== undefined &&
+    // Model A (v2): v1 entries hold scaled sampled counts → recompute.
+    cached.stats_v === STATS_MODEL_VERSION &&
     cached.theme_model_hash === currentHash &&
     currentHash !== '' &&
     cached.row_count === currentRowCount
   ) {
-    const { theme_model_hash: _h, row_count: _r, computed_at: _c, ...stats } = cached
+    const { theme_model_hash: _h, row_count: _r, computed_at: _c, stats_v: _v, ...stats } = cached
     return stats
   }
 
@@ -463,6 +475,7 @@ export async function computeSignalStatsForSet(
     theme_model_hash: currentHash,
     row_count: currentRowCount,
     computed_at: new Date().toISOString(),
+    stats_v: STATS_MODEL_VERSION,
   }
   await mergeDatasetAnalytics(service, datasetId, { signal_stats_by_field: nextMap })
 

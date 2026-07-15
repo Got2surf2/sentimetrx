@@ -155,11 +155,19 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
     ? ' These are exact counts over the deterministic 50,000-row sample (the dataset exceeds the exact-count cap, so the sample is the current view).'
     : ''
 
+  // Substantive share of answered comments — the "% substantive" the AI-mined
+  // banner used to carry (now folded here so there's one comment count, not two).
+  const answered = stats.records || 0
+  const substPct = answered > 0 ? Math.round((commentCount / answered) * 100) : null
+
   return (
     <div style={outerStyle}>
-      <span title={'Comments carrying usable feedback. ' + SUBSTANTIVE_RULE_NOTE + sampledNote}>
+      <span title={commentCount.toLocaleString() + ' of ' + answered.toLocaleString() + ' answered comments carry usable feedback. ' + SUBSTANTIVE_RULE_NOTE + sampledNote}>
         <strong style={{ color: '#111827' }}>{approx}{commentCount.toLocaleString()}</strong>{' '}
         <span style={{ color: '#6b7280' }}>comments</span>
+        {substPct != null && (
+          <span style={{ color: '#9ca3af' }}> · {substPct}% of {answered.toLocaleString()} answered</span>
+        )}
       </span>
       <span style={{ color: '#d1d5db' }}>·</span>
       <span

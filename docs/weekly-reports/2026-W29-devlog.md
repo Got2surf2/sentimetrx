@@ -344,3 +344,11 @@ WHAT: export/html and export/signals-pptx now load the SAME deterministic 50K sa
 WHY (owner): "put the ana ad-hoc report on the same 50K sample too." Its rows already came from the deterministic idx_drf_sample population (sql/167), but its denominators were scaled to the full dataset (× totalDatasetRows, with "~").
 
 WHAT: loadAnaSample now reports counts over the ≤50K sample (sampleBase = min(rowCount, 50K)), never scaled to full — totalDatasetRows stays as context. New exactSampleCounts option (ad-hoc report sets it) scans the WHOLE 50K sample so the report's counts are EXACT over the sample (no "~"); the interactive chat keeps its fast budget scan but also reports sample-based numbers (ask-ana note wording updated to say "in the analyzed 50K sample"). Verified on Carrabba's: unfiltered report totalFiltered = 50,000 exact, 200 rows drawn, 56,117 shown as context. Tests updated (2 expectations → sample base) + 1 new exactSampleCounts test; 1518 green, tsc clean, lint 0. Untracked KEEP: scripts/_verify_ana_modelA.mts.
+
+---
+
+## 2026-07-14 — Collapse mined banner into strip; fix stale scaled strip cache
+
+WHY (owner, screenshot): the lower AI-mined banner is unnecessary, and the strip (30,308) disagreed with the banner (27,004 substantive). Root cause of the mismatch: 30,308 = 27,004 × 56117/50000 — the strip served a STALE v1 signal_stats cache (Model A stopped scaling, but the cache keyed on theme-hash+row_count didn't invalidate).
+
+WHAT: (1) signalStats cache gains stats_v (2 = Model A); v1 entries recompute on next read → strip now shows the exact sample substantive count, matching the banner. (2) The strip's comment metric now carries the "% substantive" (substantive ÷ answered) the mined banner had: "N comments · P% of M answered". (3) The AI-mined banner is REMOVED from TextMine (its info folded into the strip; the "AI Mined" pill keeps provenance). signalStats test fixtures get stats_v:2; 1518 green, tsc clean, lint 0 delta.

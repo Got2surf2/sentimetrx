@@ -2654,28 +2654,16 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   // server's substantive numerator (t.count, sql/181). Matches the
                   // SQL substantive map (isSubstantiveText per field, any).
                   var totalResp = filteredRows.filter(function(r) { return effectiveFields.some(function(f) { return isSubstantiveText(String(r[f] || '')) }) }).length
-                  // Answered (any non-empty) — denominator for the "% substantive"
-                  // shown in the AI-mined banner (substantive ÷ answered).
-                  var answeredResp = filteredRows.filter(function(r) { return effectiveFields.some(function(f) { return String(r[f] || '').trim().length > 0 }) }).length
-                  var substPctResp = answeredResp > 0 ? Math.round(totalResp / answeredResp * 100) : null
                   var visibleThemes = showAllThemes ? sortedThemes : sortedThemes.filter(function(t) { return totalResp > 0 && (t.count / totalResp * 100) >= 3 })
                   if (!visibleThemes.length) visibleThemes = sortedThemes.slice(0, 5)
                   var topTone = sortedThemes[0] ? sortedThemes[0].sentiment : '\u2014'
 
                   return (
                     <div>
-                      {/* AI-mined banner \u2014 slim single line; carries the % substantive
-                          (substantive \u00f7 answered) so the "real feedback vs non-answers"
-                          signal lives right where the themes are read. */}
-                      {viewBy === 'theme' && themeSource === 'ai' && (
-                        <div style={{ background: 'linear-gradient(135deg, #fff3ee, #ffe8db)', border: '1px solid #fed7aa', borderRadius: 10, padding: '6px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 14 }}>{'\u2728'}</span>
-                          <span title={SUBSTANTIVE_RULE_NOTE + (samplingInfo && samplingInfo.sampled < samplingInfo.total ? ' These are exact counts within the ' + samplingInfo.sampled.toLocaleString() + '-row sample (not extrapolated).' : '')} style={{ fontSize: 12, fontWeight: 600, color: '#9a3412', cursor: 'help' }}>
-                            Themes AI-mined from <strong>{totalResp.toLocaleString()}</strong> substantive{substPctResp != null ? ' (' + substPctResp + '%)' : ''} of {answeredResp.toLocaleString()} comments
-                            {samplingInfo && samplingInfo.sampled < samplingInfo.total ? ' \u00b7 ' + samplingInfo.sampled.toLocaleString() + '-row sample' : ''}
-                          </span>
-                        </div>
-                      )}
+                      {/* The AI-mined banner was removed 2026-07-14: its comment count +
+                          "% substantive" now live on the metric strip above (one comment
+                          count, not two), and the "AI Mined" pill top-right carries the
+                          provenance. */}
 
                       {/* Header: title + source + view toggle */}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
