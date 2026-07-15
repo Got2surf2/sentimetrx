@@ -29,6 +29,55 @@ const MIN_N_CHAIN = 20    // across all outlets
 const MIN_POLAR_SHARE = 0.3  // item must carry real opinion, not pure mentions
 const DELTA_THRESHOLD = 0.08 // min gap vs peers to count as a strength/weakness
 
+// Fleet position (snapshot KPI) ranks an outlet against only the higher-volume
+// stores, so a tiny-sample location can't claim a flattering rank — matches the
+// PDF's "#12 of 20 stores ≥200 reviews".
+const FLEET_MIN = 200
+// A theme must clear this many of THIS outlet's mentions to appear in the
+// absolute theme table (the "mentions" column shows n, so thin rows stay honest).
+const MIN_THEME_MENTIONS = 10
+
+const MONTHS = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+// "2024-10-17 …" / "2024-10" → "Oct 2024".
+function fmtMonth(iso: string): string {
+  const m = /^(\d{4})-(\d{2})/.exec(iso || '')
+  return m ? `${MONTHS[Number(m[2])] || m[2]} ${m[1]}` : ''
+}
+
+const READ_ORDER: Record<ReadVerdict, number> = { FIX: 0, WATCH: 1, SOLID: 2, STRENGTH: 3 }
+
+// Absolute per-theme verdict from the outlet's own avg★ + %negative on that
+// theme. Thresholds are calibrated to reproduce the Bareburger snapshot PDF
+// (FIX < 4.0★ or ≥35% neg; WATCH < 4.35★ or ≥18% neg; STRENGTH ≥ 4.53★ & ≤12%
+// neg; else SOLID). Absolute, not peer-relative — this is the GM-facing "how
+// does this theme actually score" read.
+function themeRead(avgStar: number, pctNegative: number): ReadVerdict {
+  if (avgStar < 4.0 || pctNegative >= 0.35) return 'FIX'
+  if (avgStar < 4.35 || pctNegative >= 0.18) return 'WATCH'
+  if (avgStar >= 4.53 && pctNegative <= 0.12) return 'STRENGTH'
+  return 'SOLID'
+}
+
+// Qualitative fleet band from an outlet's rank among the ≥200-review stores
+// (rank 1 = best). "#12 of 20" → frac 0.58 → "Lower-mid" (matches the PDF).
+function fleetBand(rank: number, total: number): string {
+  if (total <= 1) return 'Sole high-volume store'
+  const frac = (rank - 1) / (total - 1)
+  if (frac < 0.2) return 'Top tier'
+  if (frac < 0.4) return 'Upper-mid'
+  if (frac < 0.55) return 'Mid'
+  if (frac < 0.8) return 'Lower-mid'
+  return 'Bottom tier'
+}
+
+// Plain-English band for the owner-response KPI.
+function ownerResponseBand(rate: number): string {
+  if (rate >= 0.8) return 'Strong — keep it up'
+  if (rate >= 0.5) return 'Good — keep replying'
+  if (rate >= 0.2) return 'Inconsistent — reply more'
+  return 'Low — start replying'
+}
+
 export type OutletOption = { placeId: string; label: string; sublabel: string; reviews: number }
 
 export type ThemeDelta = {
@@ -54,6 +103,49 @@ export type ComparisonBlock = {
 // Monthly avg-rating point: this outlet vs the whole network.
 export type TrendPoint = { month: string; outletAvg: number | null; networkAvg: number }
 
+// ─── Absolute snapshot types (GM-facing "Location Performance Snapshot") ──────
+
+export type ReadVerdict = 'FIX' | 'WATCH' | 'SOLID' | 'STRENGTH'
+
+// One row of the "what guests talk about — and how it scores" table. Absolute
+// per-theme figures for THIS outlet (not peer-relative).
+export type ThemeTableRow = {
+  theme: string
+  mentions: number      // this outlet's reviews mentioning the theme
+  avgStar: number       // avg rating of those mentions
+  pctNegative: number   // share of mentions rated ≤3★
+  read: ReadVerdict
+}
+
+// One-star bucket of the outlet's rating distribution.
+export type RatingBucket = { star: number; count: number; pct: number }
+
+// A real 4–5★ verbatim used in "what guests consistently praise".
+export type PraiseVerbatim = { theme: string; rating: number; quote: string }
+
+// Fleet position among the higher-volume stores only.
+export type FleetPosition = { rank: number; total: number; band: string }
+
+// Rolling recent-window rating vs the outlet's all-time average.
+export type RecentTrend = { count: number; avg: number; direction: 'up' | 'down' | 'flat' }
+
+// The absolute snapshot block for the selected outlet — everything the PDF's
+// page-1 "Location Performance Snapshot" renders.
+export type OutletSnapshot = {
+  asOf: string                 // report month, e.g. "May 2026" (latest review month)
+  dateRange: string            // "Apr 2021 – May 2026" (this outlet's review span)
+  distribution: RatingBucket[] // 5★ → 1★
+  fiveStarShare: number        // c5 / rated
+  detractorShare: number       // (c1 + c2) / rated  (≤2★)
+  ownerResponseRate: number    // reviews with a non-empty owner reply / reviews
+  ownerResponseBand: string
+  recent: RecentTrend | null   // recent-window avg + direction vs all-time
+  fleet: FleetPosition | null  // rank among ≥200-review stores
+  themeTable: ThemeTableRow[]  // worst READ first
+  praiseChips: string[]        // top SOLID/STRENGTH theme labels (deterministic)
+  praiseVerbatims: PraiseVerbatim[]
+}
+
 export type OutletReport = {
   brand: string
   outlets: OutletOption[]
@@ -67,12 +159,13 @@ export type OutletReport = {
     chainRating: number
     ratingDelta: number
     percentile: number   // 0-100, share of outlets this one beats on rating
-    rank: number         // 1 = best
+    rank: number         // 1 = best (among all rated outlets)
     outletCount: number
     narrative: string
     trend: TrendPoint[]
     themes: ComparisonBlock
     dimensions: ComparisonBlock
+    snapshot: OutletSnapshot   // absolute GM-facing snapshot (PDF page 1)
   } | null
 }
 
@@ -128,6 +221,7 @@ type RowData = {
   rating?: number | string | null
   review_text?: string
   review_date?: string
+  owner_response?: string
   _tx?: { f?: Record<string, { as?: TaxAssertion[] }> }
 }
 type FlatRow = { id: number | string; data: RowData }
@@ -289,11 +383,20 @@ function buildNarrative(opts: {
   return sentences.join(' ')
 }
 
+// Per-theme ABSOLUTE stats for one outlet (drives the snapshot theme table):
+// mentions + avg★ + %≤3★, keyed by rating — distinct from themeSubs, which is
+// net-positive lexicon sentiment for the peer-relative deltas.
+type ThemeAbs = { mentions: number; ratingSum: number; ratingN: number; low: number }
+
 type Outlet = {
   placeId: string; name: string; city: string; state: string; address: string
   reviews: number; ratingSum: number; ratingN: number
   dimClassified: number; themeMatched: number
   dimSubs: Map<string, Acc>; themeSubs: Map<string, Acc>
+  ratingCounts: number[]        // [1★,2★,3★,4★,5★] counts
+  ownerResponded: number        // reviews carrying a non-empty owner reply
+  minDate: string; maxDate: string // this outlet's review-date span (YYYY-MM-DD)
+  themeAbs: Map<string, ThemeAbs>
 }
 
 type Scan = {
@@ -359,6 +462,8 @@ async function scanDataset(datasetId: string): Promise<Scan> {
         city: d.location_city || '', state: d.location_state || '', address: d.location_address || '',
         reviews: 0, ratingSum: 0, ratingN: 0, dimClassified: 0, themeMatched: 0,
         dimSubs: new Map(), themeSubs: new Map(),
+        ratingCounts: [0, 0, 0, 0, 0], ownerResponded: 0, minDate: '', maxDate: '',
+        themeAbs: new Map(),
       }
       outlets.set(placeId, o)
     }
@@ -382,6 +487,14 @@ async function scanDataset(datasetId: string): Promise<Scan> {
     o.reviews++
     const rt = Number(d?.rating)
     if (rt) { o.ratingSum += rt; o.ratingN++ }
+    const star = Math.round(rt)
+    if (star >= 1 && star <= 5) o.ratingCounts[star - 1]++
+    if ((d?.owner_response || '').trim()) o.ownerResponded++
+    const day = String(d?.review_date || '').slice(0, 10)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      if (!o.minDate || day < o.minDate) o.minDate = day
+      if (!o.maxDate || day > o.maxDate) o.maxDate = day
+    }
 
     if (themeMatchers.length) {
       const text = String(d?.review_text || '')
@@ -406,6 +519,10 @@ async function scanDataset(datasetId: string): Promise<Scan> {
           if (!km) continue
           matchedAny = true
           themeFlags[ti] = true
+          // Absolute per-theme figures for the snapshot table (rating-keyed).
+          const ta = o.themeAbs.get(tm.label) || (o.themeAbs.set(tm.label, { mentions: 0, ratingSum: 0, ratingN: 0, low: 0 }), o.themeAbs.get(tm.label)!)
+          ta.mentions++
+          if (rt) { ta.ratingSum += rt; ta.ratingN++; if (rt <= 3) ta.low++ }
           const ev = km[0]
           // Capture one representative quote per (outlet, theme) from a 1–3★
           // review — "what unhappy guests said", for the Action Plan.
@@ -420,7 +537,7 @@ async function scanDataset(datasetId: string): Promise<Scan> {
             const k = `${o.placeId}|${tm.label}`
             if (!highSeen.has(k)) {
               const q = extractSentence({ full: text, ev })
-              if (q) { highSeen.add(k); highExamples.push({ placeId: o.placeId, theme: tm.label, quote: q }) }
+              if (q) { highSeen.add(k); highExamples.push({ placeId: o.placeId, theme: tm.label, quote: q, rating: rt }) }
             }
           }
           const key = tm.label
@@ -475,6 +592,79 @@ async function scanDataset(datasetId: string): Promise<Scan> {
     dimAvailable: tax.length > 0,
     flat, labelFor,
     themeLabels, reviewMatrix, lowExamples, highExamples,
+  }
+}
+
+// Recent-window rating vs all-time for one outlet: the trailing 12 months of
+// its reviews (falling back to its most-recent 30% when a year is too thin),
+// with an up/down/flat arrow vs the outlet's all-time average. One extra pass
+// over the outlet's flat rows — powers the snapshot's "last N: 4.79 ▲" chip.
+function recentTrend(flat: FlatRow[], placeId: string, allTimeAvg: number): RecentTrend | null {
+  const dated: { d: string; r: number }[] = []
+  for (const row of flat) {
+    if (row.data?.place_id !== placeId) continue
+    const r = Number(row.data?.rating); if (!r) continue
+    const d = String(row.data?.review_date || '').slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue
+    dated.push({ d, r })
+  }
+  if (dated.length < 30) return null
+  dated.sort((a, b) => (a.d < b.d ? 1 : -1)) // newest first
+  const YEAR_MS = 365 * 24 * 3600 * 1000
+  const cutoff = Date.parse(dated[0].d) - YEAR_MS
+  let recent = dated.filter((x) => Date.parse(x.d) >= cutoff)
+  if (recent.length < 30) recent = dated.slice(0, Math.max(30, Math.round(dated.length * 0.3)))
+  const avg = recent.reduce((s, x) => s + x.r, 0) / recent.length
+  const direction: RecentTrend['direction'] = avg - allTimeAvg >= 0.05 ? 'up' : avg - allTimeAvg <= -0.05 ? 'down' : 'flat'
+  return { count: recent.length, avg, direction }
+}
+
+// Build the absolute GM-facing snapshot (PDF page 1) for the selected outlet.
+function computeSnapshot(target: Outlet, rated: Outlet[], outletRating: number, flat: FlatRow[], highExamples: PredExample[]): OutletSnapshot {
+  const ratedN = target.ratingN || 1
+  const distribution: RatingBucket[] = [5, 4, 3, 2, 1].map((s) => ({ star: s, count: target.ratingCounts[s - 1], pct: target.ratingCounts[s - 1] / ratedN }))
+  const fiveStarShare = target.ratingCounts[4] / ratedN
+  const detractorShare = (target.ratingCounts[0] + target.ratingCounts[1]) / ratedN
+  const ownerRate = target.reviews ? target.ownerResponded / target.reviews : 0
+
+  const fleetOutlets = rated.filter((o) => o.reviews >= FLEET_MIN)
+  let fleet: FleetPosition | null = null
+  if (target.reviews >= FLEET_MIN && fleetOutlets.length >= 2) {
+    const rank = fleetOutlets.filter((o) => o.ratingSum / o.ratingN > outletRating).length + 1
+    fleet = { rank, total: fleetOutlets.length, band: fleetBand(rank, fleetOutlets.length) }
+  }
+
+  const themeTable: ThemeTableRow[] = [...target.themeAbs.entries()]
+    .filter(([, a]) => a.mentions >= MIN_THEME_MENTIONS && a.ratingN > 0)
+    .map(([theme, a]) => {
+      const avgStar = a.ratingSum / a.ratingN
+      const pctNegative = a.low / a.ratingN
+      return { theme, mentions: a.mentions, avgStar, pctNegative, read: themeRead(avgStar, pctNegative) }
+    })
+    .sort((a, b) => READ_ORDER[a.read] - READ_ORDER[b.read] || a.avgStar - b.avgStar)
+
+  const goodThemes = themeTable.filter((t) => t.read === 'STRENGTH' || t.read === 'SOLID').sort((a, b) => b.avgStar - a.avgStar)
+  const goodSet = new Set(goodThemes.map((t) => t.theme))
+  const praiseChips = goodThemes.slice(0, 4).map((t) => t.theme)
+  // Dedup by quote — a review citing several themes is captured once per theme,
+  // so the same verbatim can surface under multiple themes; keep the first (its
+  // best-verdict theme, since good-theme rows are sorted first).
+  const seenQuote = new Set<string>()
+  const praiseVerbatims: PraiseVerbatim[] = highExamples
+    .filter((e) => e.placeId === target.placeId && e.quote)
+    // Good-theme praise first, then the most enthusiastic (5★ over 4★) — a 4★ can
+    // carry a mild gripe, so lead with the wholehearted quotes.
+    .sort((a, b) => ((goodSet.has(b.theme) ? 1 : 0) - (goodSet.has(a.theme) ? 1 : 0)) || ((b.rating ?? 5) - (a.rating ?? 5)))
+    .filter((e) => { const k = e.quote.trim().toLowerCase(); if (seenQuote.has(k)) return false; seenQuote.add(k); return true })
+    .slice(0, 3)
+    .map((e) => ({ theme: e.theme, rating: e.rating ?? 5, quote: e.quote }))
+
+  return {
+    asOf: fmtMonth(target.maxDate),
+    dateRange: target.minDate && target.maxDate ? `${fmtMonth(target.minDate)} – ${fmtMonth(target.maxDate)}` : '',
+    distribution, fiveStarShare, detractorShare,
+    ownerResponseRate: ownerRate, ownerResponseBand: ownerResponseBand(ownerRate),
+    recent: recentTrend(flat, target.placeId, outletRating), fleet, themeTable, praiseChips, praiseVerbatims,
   }
 }
 
@@ -543,6 +733,7 @@ function buildReport(scan: Scan, selectedPlaceId?: string): OutletReport {
       percentile, rank, outletCount: rated.length,
       themes, dimensions, trend,
       narrative: buildNarrative({ name: locName, rank, outletCount: rated.length, percentile, ratingDelta: outletRating - chainRatingAll, chainRating: chainRatingAll, themes, dimensions }),
+      snapshot: computeSnapshot(target, rated, outletRating, flat, scan.highExamples),
     }
   }
 

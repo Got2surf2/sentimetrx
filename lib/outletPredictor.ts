@@ -24,7 +24,7 @@
 
 export type PredReview = { placeId: string; rating: number; themes: boolean[]; month?: string } // month = YYYY-MM (for trends)
 export type PredOutlet = { placeId: string; label: string; reviews: number; rating: number | null; ratingN?: number } // rating = avg over ALL rated rows; ratingN = that all-rows rated count
-export type PredExample = { placeId: string; theme: string; quote: string }
+export type PredExample = { placeId: string; theme: string; quote: string; rating?: number }
 
 export type PredictorInput = {
   themeLabels: string[]

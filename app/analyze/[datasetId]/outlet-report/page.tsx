@@ -11,15 +11,10 @@ import { getUserContext } from '@/lib/userContext'
 import { computeOutletReportWithPredictor } from '@/lib/outletReport'
 import OutletPicker from './OutletPicker'
 import OutletReportTabs from './OutletReportTabs'
+import OutletSnapshotView from './OutletSnapshotView'
 import AnalyticsNav from '../AnalyticsNav'
 
 export const dynamic = 'force-dynamic'
-
-function ordinal(n: number) {
-  const s = ['th', 'st', 'nd', 'rd']
-  const v = n % 100
-  return n + (s[(v - 20) % 10] || s[v] || s[0])
-}
 
 export default async function OutletReportPage(props: {
   params: Promise<{ datasetId: string }>
@@ -82,47 +77,27 @@ export default async function OutletReportPage(props: {
             No outlet data found for this dataset.
           </div>
         ) : (
-          <div className="rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:shadow-none print:ring-0">
-            {/* Header */}
-            <div className="flex items-start justify-between border-b border-gray-200 pb-4">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-widest text-gray-400">{report.brand}</div>
-                <h1 className="mt-1 text-2xl font-bold text-gray-900">{s.name}</h1>
-                <div className="text-sm text-gray-500">{s.address ? `${s.address} · ` : ''}{s.reviews.toLocaleString()} reviews</div>
-              </div>
-              <div className="text-right">
-                <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Outlet performance vs. peer group</div>
-                <div className="mt-1 text-sm text-gray-500">{s.outletCount} outlets compared</div>
-              </div>
+          <>
+            {/* Printable snapshot (page 1 of the export) */}
+            <div className="rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:shadow-none print:ring-0">
+              <OutletSnapshotView
+                brand={report.brand} name={s.name} address={s.address}
+                reviews={s.reviews} rating={s.rating} rank={s.rank} outletCount={s.outletCount}
+                networkSize={report.outlets.length} snapshot={s.snapshot}
+              />
             </div>
 
-            {/* KPI row */}
-            <div className="mt-5 grid grid-cols-2 gap-4">
-              <div className="rounded-lg bg-gray-50 p-4">
-                <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Star rating</div>
-                <div className="mt-1 flex items-baseline gap-2">
-                  <span className="text-3xl font-bold text-gray-900">{s.rating.toFixed(2)}</span>
-                  <span className={`text-sm font-semibold ${s.ratingDelta >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {s.ratingDelta >= 0 ? '+' : ''}{s.ratingDelta.toFixed(2)} vs peers
-                  </span>
-                </div>
-                <div className="text-xs text-gray-500">peer average {s.chainRating.toFixed(2)}</div>
-              </div>
-              <div className="rounded-lg bg-gray-50 p-4">
-                <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Peer rank</div>
-                <div className="mt-1 text-3xl font-bold text-gray-900">#{s.rank}<span className="text-lg font-medium text-gray-400"> / {s.outletCount}</span></div>
-                <div className="text-xs text-gray-500">{ordinal(s.percentile)} percentile</div>
-              </div>
+            {/* Deeper peer-relative analysis — screen only, not part of the export. */}
+            <div className="mt-6 rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:hidden">
+              <h2 className="text-sm font-bold text-gray-700">Deeper analysis <span className="font-normal text-gray-400">— how this location compares to its peers</span></h2>
+              <OutletReportTabs
+                selected={s} levers={levers} strengths={strengths} summary={summary} model={predictor.model}
+                brandDriver={predictor.brandLevers[0]?.theme || null}
+                outletCount={predictor.outletSummaries.length}
+                whatIf={whatIf}
+              />
             </div>
-
-            {/* Action Plan / Summary / Themes / Dimensions tabs (client) */}
-            <OutletReportTabs
-              selected={s} levers={levers} strengths={strengths} summary={summary} model={predictor.model}
-              brandDriver={predictor.brandLevers[0]?.theme || null}
-              outletCount={predictor.outletSummaries.length}
-              whatIf={whatIf}
-            />
-          </div>
+          </>
         )}
       </div>
     </div>
