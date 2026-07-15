@@ -4,6 +4,7 @@
 // single clean page (the report's print output IS the export).
 
 import type { OutletSnapshot, ReadVerdict, RatingBucket } from '@/lib/outletReport'
+import { starBarColor } from '@/lib/ratingGradient'
 
 const TEAL = '#0F7173'
 const ORANGE = '#E85A1A'
@@ -43,11 +44,27 @@ function Kpi({ label, value, unit, sub, subColor }: { label: string; value: stri
 }
 
 function DistributionRow({ b }: { b: RatingBucket }) {
+  const delta = b.pct - b.net.avg
+  const at = (v: number) => `${Math.min(100, Math.max(0, v * 100))}%`
   return (
     <div className="flex items-center gap-3 text-sm">
       <span className="w-8 shrink-0 tabular-nums text-gray-500">{b.star} ★</span>
-      <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100">
-        <div className="h-full rounded-full bg-gray-300" style={{ width: `${Math.max(1, b.pct * 100)}%` }} />
+      <div className="relative h-2 flex-1">
+        <div className="h-full overflow-hidden rounded-full bg-gray-100">
+          <div className="h-full rounded-full" style={{ width: `${Math.max(1, b.pct * 100)}%`, background: starBarColor(b.star) }} />
+        </div>
+        {/* Network range for this star bucket: ▶ lowest outlet · ◀ highest outlet · │ average. */}
+        <div className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: at(b.net.min) }} title={`Lowest outlet: ${pct0(b.net.min)}`}>
+          <span className="block h-0 w-0 border-y-[3px] border-l-[5px] border-y-transparent border-l-gray-400" />
+        </div>
+        <div className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: at(b.net.max) }} title={`Highest outlet: ${pct0(b.net.max)}`}>
+          <span className="block h-0 w-0 border-y-[3px] border-r-[5px] border-y-transparent border-r-gray-400" />
+        </div>
+        <div
+          className="absolute top-1/2 h-3.5 w-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gray-700"
+          style={{ left: at(b.net.avg) }}
+          title={`Network avg ${b.star}★: ${pct0(b.net.avg)} (this location ${delta >= 0 ? '+' : ''}${Math.round(delta * 100)} pts)`}
+        />
       </div>
       <span className="w-24 shrink-0 text-right tabular-nums text-gray-500">
         <span className="font-semibold text-gray-800">{b.count.toLocaleString()}</span> · {pct0(b.pct)}
@@ -113,7 +130,15 @@ export default function OutletSnapshotView({
 
       {/* Rating distribution */}
       <div className="mt-6 print:mt-4 print:break-inside-avoid">
-        <h2 className="mb-2.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Rating Distribution</h2>
+        <div className="mb-2.5 flex items-baseline justify-between">
+          <h2 className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Rating Distribution</h2>
+          <span className="flex items-center gap-2 text-[10px] text-gray-400">
+            <span className="flex items-center gap-1"><span className="inline-block h-0 w-0 border-y-[3px] border-l-[5px] border-y-transparent border-l-gray-400" /> lowest</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-3 w-[2px] rounded-full bg-gray-700" /> avg</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-0 w-0 border-y-[3px] border-r-[5px] border-y-transparent border-r-gray-400" /> highest</span>
+            <span className="text-gray-300">· network</span>
+          </span>
+        </div>
         <div className="space-y-1.5 print:space-y-1">
           {s.distribution.map((b) => <DistributionRow key={b.star} b={b} />)}
         </div>

@@ -44,7 +44,8 @@ export type ActionPlanInput = {
 // The plan regenerates only when its inputs materially change: the outlet's
 // review count or any theme's READ verdict. Cheap, stable signature.
 export function actionPlanBasis(reviews: number, themeTable: ThemeTableRow[]): string {
-  return `v1|${reviews}|${themeTable.map((t) => `${t.theme}:${t.read}`).join(',')}`
+  // Bump the version prefix to invalidate all cached plans after a prompt change.
+  return `v2|${reviews}|${themeTable.map((t) => `${t.theme}:${t.read}`).join(',')}`
 }
 
 // Themes to work on: FIX first, then WATCH, worst avg★ first — up to 3.
@@ -146,7 +147,7 @@ For EACH priority produce:
 - "tag": a 2–3 word kicker (e.g. "BIGGEST LEVER", "PROTECT OFF-PREMISE", "REFRAME, DON'T DISCOUNT").
 - "title": an imperative headline (e.g. "Get every order right at the pass").
 - "theme": the exact theme name.
-- "diagnosis": 1–2 sentences explaining the problem, grounded in the numbers above and what guests actually say. Distinguish execution errors from skill/recipe issues where relevant. Write as if you read the reviews yourself — never refer to "the candidate quote", "the data", or "the numbers above" as meta-references.
+- "diagnosis": 1–2 sentences explaining the problem. NAME THE THEME explicitly in the first sentence (e.g. "Order accuracy is the store's lowest-scoring theme…" or "Pricing & value drives…") so the reader knows which theme this priority is about, then ground it in the theme's avg★/%-negative and what guests actually say. Distinguish execution errors from skill/recipe issues where relevant. Write as if you read the reviews yourself — never refer to "the candidate quote", "the data", or "the numbers above" as meta-references.
 - "verbatims": 1–2 short guest quotes. You MUST take these from the candidate quote(s) provided for that priority — you may lightly trim, but NEVER invent or paraphrase a quote. If no candidate is provided, use an empty array.
 - "actions": 2–4 concrete, specific operator actions a manager can implement this week, each ONE sentence under 30 words (e.g. "Bag-check rule: nothing leaves the pass without one person reading the ticket against the bag"). No vague advice like "improve quality".
 

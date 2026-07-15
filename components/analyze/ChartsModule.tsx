@@ -18,6 +18,7 @@ import { useRows } from '@/components/analyze/RowsContext'
 import { useFilters } from '@/components/analyze/FilterContext'
 import { applyFilters } from '@/lib/filterUtils'
 import { toNumericOrNull } from '@/lib/numericValue'
+import { RATING_GRADIENT } from '@/lib/ratingGradient'
 import type { SchemaFieldConfig as SchemaField, SchemaConfig } from '@/lib/analyzeTypes'
 import type { ImpactAnalysis, ThemeImpactResult } from '@/lib/themeImpact'
 
@@ -700,7 +701,7 @@ interface AggResult {
 // when present (Likerts are auto-mapped now), else the recognized scale's rank,
 // else falls back to left→right position. `vals` are the raw category values in
 // display order (NOT wrapped/aliased labels, so remapping/scale keys match).
-var ORD_GRAD = ['#059669', '#34D399', '#94A3B8', '#F97316', '#DC2626'] // best → worst
+var ORD_GRAD = RATING_GRADIENT // best → worst (shared with the Outlet snapshot)
 function ordinalBarColors(vals: string[], catRemap?: Record<string, number>): string[] {
   var scaleOrder = detectScale(vals) // ordered worst→best, or null
   var rank = function(v: string, i: number): number {

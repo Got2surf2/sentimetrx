@@ -237,7 +237,7 @@ function TrendChart({ trend }: { trend: TrendPoint[] }) {
   )
 }
 
-type Tab = 'action' | 'summary' | 'themes' | 'dimensions'
+type Tab = 'action' | 'summary' | 'themes'
 
 export default function OutletReportTabs({ selected: s, levers, strengths, summary, model, brandDriver, outletCount, whatIf }: { selected: Sel; levers: OutletLever[]; strengths: OutletLever[]; summary: OutletSummary | undefined; model: PredictorModel; brandDriver: string | null; outletCount: number; whatIf: WhatIfData | null }) {
   const [tab, setTab] = useState<Tab>('action')
@@ -246,7 +246,6 @@ export default function OutletReportTabs({ selected: s, levers, strengths, summa
     { id: 'action', label: 'Action Plan' },
     { id: 'summary', label: 'Summary' },
     { id: 'themes', label: 'Themes' },
-    { id: 'dimensions', label: 'Dimensions' },
   ]
 
   return (
@@ -277,27 +276,6 @@ export default function OutletReportTabs({ selected: s, levers, strengths, summa
           </>
         )}
 
-        {/* DIMENSIONS */}
-        {tab === 'dimensions' && (
-          !s.dimensions.available ? (
-            <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
-              <p className="text-sm font-semibold text-gray-700">Dimensions comparison requires classification</p>
-              <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-gray-500">
-                This dataset hasn’t been classified into the 7-axis service Dimensions yet, so there’s nothing to compare against peers here.
-                Open <span className="font-medium text-gray-700">TextMine → Dimensions</span> and run classification (a quick keyword pass), then reload this report.
-              </p>
-            </div>
-          ) : (
-            <>
-              <Block block={s.dimensions} kind="dimensions" />
-              <p className="mt-6 border-t border-gray-100 pt-3 text-[11px] leading-relaxed text-gray-400">
-                Dimensions ranked by net-positive sentiment gap vs. the brand’s other {peers} outlets, from {s.dimensions.analyzedReviews.toLocaleString()} AI-classified
-                reviews tagged across service dimensions (service, food, experience, atmosphere, loyalty). “pts” = percentage-point difference in net-positive
-                rate between this outlet and the peer-group average for that dimension.
-              </p>
-            </>
-          )
-        )}
 
         {/* SUMMARY */}
         {tab === 'summary' && (

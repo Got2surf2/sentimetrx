@@ -117,8 +117,10 @@ export type ThemeTableRow = {
   read: ReadVerdict
 }
 
-// One-star bucket of the outlet's rating distribution.
-export type RatingBucket = { star: number; count: number; pct: number }
+// One-star bucket of the outlet's rating distribution. `net` = how the rest of
+// the network scores this star bucket (min / avg / max of each outlet's share),
+// drawn as markers so the GM sees this location vs the system on every bar.
+export type RatingBucket = { star: number; count: number; pct: number; net: { min: number; avg: number; max: number } }
 
 // A real 4–5★ verbatim used in "what guests consistently praise".
 export type PraiseVerbatim = { theme: string; rating: number; quote: string }
@@ -357,6 +359,16 @@ function buildDeltas(
     .sort((a, b) => a.delta - b.delta).slice(0, 4)
     .map((d) => ({ ...d, quote: extractSentence(d._exNeg) }))
     .map(({ _exPos, _exNeg, ...w }) => w)
+  // A review matching several themes can be captured as the example for each, so
+  // the same verbatim would surface under multiple cards. Keep each quote on its
+  // first (strongest-delta) card only; later repeats render without a quote.
+  const seenQuote = new Set<string>()
+  for (const d of [...weaknesses, ...strengths]) {
+    if (!d.quote) continue
+    const k = d.quote.trim().toLowerCase()
+    if (seenQuote.has(k)) d.quote = null
+    else seenQuote.add(k)
+  }
   return { strengths, weaknesses }
 }
 
@@ -623,7 +635,20 @@ function recentTrend(flat: FlatRow[], placeId: string, allTimeAvg: number): Rece
 // Build the absolute GM-facing snapshot (PDF page 1) for the selected outlet.
 function computeSnapshot(target: Outlet, rated: Outlet[], outletRating: number, flat: FlatRow[], highExamples: PredExample[]): OutletSnapshot {
   const ratedN = target.ratingN || 1
-  const distribution: RatingBucket[] = [5, 4, 3, 2, 1].map((s) => ({ star: s, count: target.ratingCounts[s - 1], pct: target.ratingCounts[s - 1] / ratedN }))
+  // Per-star network markers = min / avg / max of each outlet's share of that
+  // star bucket, over outlets with a stable sample (≥30 rated; falls back to all
+  // rated if too few qualify) so a tiny outlet at 0%/100% can't skew the range.
+  const NET_MIN_N = 30
+  const statOutlets = (() => {
+    const q = rated.filter((o) => o.ratingN >= NET_MIN_N)
+    return q.length >= 2 ? q : rated.filter((o) => o.ratingN > 0)
+  })()
+  const netStat = (i: number): { min: number; avg: number; max: number } => {
+    const shares = statOutlets.map((o) => o.ratingCounts[i] / o.ratingN)
+    if (!shares.length) return { min: 0, avg: 0, max: 0 }
+    return { min: Math.min(...shares), avg: shares.reduce((a, b) => a + b, 0) / shares.length, max: Math.max(...shares) }
+  }
+  const distribution: RatingBucket[] = [5, 4, 3, 2, 1].map((s) => ({ star: s, count: target.ratingCounts[s - 1], pct: target.ratingCounts[s - 1] / ratedN, net: netStat(s - 1) }))
   const fiveStarShare = target.ratingCounts[4] / ratedN
   const detractorShare = (target.ratingCounts[0] + target.ratingCounts[1]) / ratedN
   const ownerRate = target.reviews ? target.ownerResponded / target.reviews : 0

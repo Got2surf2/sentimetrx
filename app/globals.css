@@ -79,3 +79,16 @@ html, body {
   max-width: 100%;
   width: 100%;
 }
+
+/* Print: release the analyze app-shell's fixed-height + overflow clipping so a
+   printable page (e.g. the Outlet Report "Print / Save PDF") flows across pages
+   instead of being cut to the first viewport. The shell uses inline styles
+   (100vh height + overflow hidden/auto on the scroll <main>), so target those
+   inline styles directly — print-only, so it can't affect on-screen layout. */
+@media print {
+  html, body { height: auto !important; overflow: visible !important; }
+  body [style*="overflow"] { overflow: visible !important; }
+  body [style*="100vh"] { height: auto !important; min-height: 0 !important; }
+  /* The global top nav is position:fixed — it would repeat on every printed page. */
+  nav.fixed { display: none !important; }
+}

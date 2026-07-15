@@ -7,9 +7,14 @@
 import { useEffect, useState } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
 import type { ActionPlan } from '@/lib/outletActionPlan'
+import type { ThemeTableRow } from '@/lib/outletReport'
 
 const TEAL = '#0F7173'
 const ORANGE = '#E85A1A'
+
+const pct0 = (n: number) => `${Math.round(n * 100)}%`
+const starCls = (avg: number) => (avg < 4.0 ? 'text-rose-600' : avg < 4.35 ? 'text-amber-600' : 'text-emerald-600')
+const negCls = (p: number) => (p >= 0.35 ? 'text-rose-600' : p >= 0.18 ? 'text-amber-600' : 'text-gray-500')
 
 function Datanautix() {
   return (
@@ -27,52 +32,62 @@ const ACCENT = [
   { bar: 'border-teal-400', kicker: 'text-teal-700' },
 ]
 
-export default function OutletActionPlanSection({ datasetId, outlet, outletName, reviews }: {
-  datasetId: string; outlet: string; outletName: string; reviews: number
+export default function OutletActionPlanSection({ datasetId, outlet, outletName, reviews, themeTable }: {
+  datasetId: string; outlet: string; outletName: string; reviews: number; themeTable: ThemeTableRow[]
 }) {
   const [plan, setPlan] = useState<ActionPlan | null>(null)
-  const [error, setError] = useState(false)
+  const [status, setStatus] = useState<'loading' | 'error' | 'ok'>('loading')
+  const [retry, setRetry] = useState(0)
 
   useEffect(() => {
+    let cancelled = false
     const ctrl = new AbortController()
-    setPlan(null); setError(false)
+    // The plan is one LLM call (~30s the first time, cached after). Cap the wait
+    // so a slow/failed call surfaces a Retry instead of spinning forever.
+    const timer = setTimeout(() => ctrl.abort(), 90000)
+    setPlan(null); setStatus('loading')
     fetch(`/api/datasets/${datasetId}/outlet-action-plan?outlet=${encodeURIComponent(outlet)}`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((d) => setPlan(d.plan))
-      .catch((e) => { if (e?.name !== 'AbortError') setError(true) })
-    return () => ctrl.abort()
-  }, [datasetId, outlet])
+      .then((d) => { if (!cancelled) { setPlan(d.plan); setStatus('ok') } })
+      .catch(() => { if (!cancelled) setStatus('error') })
+      .finally(() => clearTimeout(timer))
+    return () => { cancelled = true; clearTimeout(timer); ctrl.abort() }
+  }, [datasetId, outlet, retry])
 
   return (
     // Break to a fresh page for the export; until the plan loads, drop out of
     // print entirely so an early Ctrl-P yields a clean 1-page snapshot, not a
     // near-blank page 2.
-    <section className={`outlet-print-page mt-6 rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:p-6 print:mt-0 print:shadow-none print:ring-0 print:break-before-page ${plan ? '' : 'print:hidden'}`}>
+    <section className={`outlet-print-page mt-6 rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:p-6 print:mt-0 print:shadow-none print:ring-0 print:break-before-page ${status === 'ok' ? '' : 'print:hidden'}`}>
       {/* Brand bar */}
       <div className="flex items-center justify-between border-b border-gray-200 pb-3">
         <Datanautix />
         <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400">AI Action Plan · {outletName}</div>
       </div>
 
-      {!plan && !error && (
+      {status === 'loading' && (
         <div className="flex flex-col items-center justify-center py-16 print:hidden">
           <LottieLoader size={110} message="Building this location's action plan…" />
-          <p className="mt-1 text-xs text-gray-400">Reading the guest reviews — this takes a few seconds.</p>
+          <p className="mt-1 text-xs text-gray-400">Reading the guest reviews — up to a minute the first time, then it’s instant.</p>
         </div>
       )}
 
-      {error && (
-        <div className="py-10 text-center text-sm text-gray-400 print:hidden">Couldn’t build the action plan right now. Reload to try again.</div>
+      {status === 'error' && (
+        <div className="flex flex-col items-center gap-3 py-12 text-center print:hidden">
+          <p className="text-sm text-gray-500">Couldn’t build the action plan just now.</p>
+          <button onClick={() => setRetry((r) => r + 1)} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700">Retry</button>
+        </div>
       )}
 
-      {plan && <ActionPlanBody plan={plan} reviews={reviews} />}
+      {plan && <ActionPlanBody plan={plan} reviews={reviews} themeTable={themeTable} />}
     </section>
   )
 }
 
 // Presentational body — data-free of fetching, so it renders on the server and
 // is QC/print-able. Consumed by the client wrapper above.
-export function ActionPlanBody({ plan, reviews }: { plan: ActionPlan; reviews: number }) {
+export function ActionPlanBody({ plan, reviews, themeTable = [] }: { plan: ActionPlan; reviews: number; themeTable?: ThemeTableRow[] }) {
+  const themeRow = new Map(themeTable.map((t) => [t.theme, t]))
   return (
     <div className="mt-4">
       <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-700">
@@ -90,7 +105,21 @@ export function ActionPlanBody({ plan, reviews }: { plan: ActionPlan; reviews: n
                 <span className={`text-[10px] font-bold uppercase tracking-widest ${a.kicker}`}>Priority {i + 1} · {p.tag}</span>
                 <span className="text-base font-bold text-gray-900">{p.title}</span>
               </div>
-              <p className="mt-1.5 text-sm leading-relaxed text-gray-600">{p.diagnosis}</p>
+              {/* Anchor the card to its theme row in the snapshot table above. */}
+              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs">
+                <span className="font-semibold text-gray-700">{p.theme}</span>
+                {(() => { const r = themeRow.get(p.theme); return r ? (
+                  <>
+                    <span className="text-gray-300">·</span>
+                    <span className={`font-semibold tabular-nums ${starCls(r.avgStar)}`}>{r.avgStar.toFixed(2)}★</span>
+                    <span className="text-gray-300">·</span>
+                    <span className={`font-semibold tabular-nums ${negCls(r.pctNegative)}`}>{pct0(r.pctNegative)} negative</span>
+                    <span className="text-gray-300">·</span>
+                    <span className="tabular-nums text-gray-400">{r.mentions.toLocaleString()} mentions</span>
+                  </>
+                ) : null })()}
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-gray-600">{p.diagnosis}</p>
               {p.verbatims.map((v, j) => (
                 <p key={j} className="mt-2 border-l-2 border-gray-300 pl-2.5 text-xs italic text-gray-500">
                   <span className="not-italic font-semibold text-gray-600">{v.rating}★</span> “{v.quote}”
