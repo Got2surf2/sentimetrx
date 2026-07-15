@@ -228,6 +228,21 @@ numerators, not the denominator). Used above the 50K cap where the exact
 scans 57014 (§2); service_role-only; value predicates byte-identical to the
 exact functions.
 
+sql/182 (2026-07-14) fixed the numeric VALUE filter across those functions.
+The field-type classifier (`lib/datasetUtils.ts`) accepts a value as numeric via
+`Number(v.trim())`, but the aggregates filtered with the stricter, un-trimmed
+regex `^-?[0-9]+\.?[0-9]*$` — so a field the UI typed numeric whose cells carried
+a leading space (or `.5`/`1e3`/`5.`) survived zero rows in `group_numeric_stats`,
+rendering the Charts Average bar "No groups found." and blanking that field's
+Statistics/Distribution. Two IMMUTABLE helpers, `drf_numeric_ok(text)` (btrim +
+tolerant pattern) and `drf_to_numeric(text)` (btrim + cast), are now the single
+source of truth; every value filter/cast in `group_numeric_stats`,
+`numeric_field_stats`, `date_series_stats` (metric) and their sampled twins
+(`sampled_group_numeric_stats`, `sampled_date_series_stats`,
+`sampled_numeric_field_values`) routes through them. Signatures unchanged, so
+`CREATE OR REPLACE` preserves the sql/169 grants. The client twin is
+`lib/numericValue.toNumericOrNull`. (Adds 2 helper functions on migrate.)
+
 sql/170 (2026-07-13, perf review §7 Brief C / Brief F escalation #2)
 DROP+re-CREATE'd `count_theme_matches` and `count_nonempty_rows` (sql/161)
 with an appended `p_row_ids bigint[] DEFAULT NULL` (`id = ANY(p_row_ids)`) so

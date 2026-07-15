@@ -39,11 +39,29 @@ export function autoBucket(minDate: Date | string, maxDate: Date | string): Time
 function pad2(n: number): string { return n < 10 ? '0' + n : '' + n }
 
 /**
+ * Parse a value into a Date in LOCAL calendar time.
+ * `new Date("2024-01-01")` (date-only ISO) is spec'd as UTC midnight, so reading
+ * it back with local getters shifts it to the PREVIOUS day in any negative-UTC
+ * timezone (all of the US) — misbucketing every period-boundary date and
+ * disagreeing with the TZ-safe SQL path (which uses `::date`). Parse the ISO
+ * components directly so the calendar date in the string is preserved, matching
+ * Postgres `::date`. Datetime strings without a zone are already local under JS,
+ * so this only corrects the date-only case; non-ISO strings fall back to Date().
+ */
+function toLocalDate(date: Date | string): Date {
+  if (typeof date !== 'string') return date
+  const m = date.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/)
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0, m[6] ? +m[6] : 0)
+  return new Date(date)
+}
+
+/**
  * Bucket a JS Date into a string key for the given granularity.
- * Uses local time so labels match the viewer's timezone.
+ * Uses local calendar time (see toLocalDate) so labels match the viewer's
+ * timezone and agree with the SQL date_series buckets.
  */
 export function bucketKey(date: Date | string, bucket: TimeBucket): string {
-  const d = typeof date === 'string' ? new Date(date) : date
+  const d = toLocalDate(date)
   const yyyy = d.getFullYear()
   const mm = pad2(d.getMonth() + 1)
   const dd = pad2(d.getDate())

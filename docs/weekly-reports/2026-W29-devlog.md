@@ -366,3 +366,21 @@ Consolidating the remaining work (owner asked to record it) after the substantiv
 5. Statistics tab: no change (grouping vars, not prevalence denominators).
 
 Detail in memory [[project_substantive_usefulness_flag]] "OPEN TODOs".
+
+---
+
+## Charts calculation-correctness sweep (2026-07-14)
+
+**WHY:** A live Average-by-category bar (Visit Type x Rating) rendered "No groups found." Root cause: the field-type classifier types a field numeric via Number(v.trim()), but the aggregate RPCs filtered values with a stricter, un-trimmed regex ^-?[0-9]+.?[0-9]*$. A numeric field whose cells carry a stray leading space (or .5/1e3/5.) passes the classifier into the VALUE slot but every value is rejected by SQL -> zero groups (and blank Statistics/Distribution too). A full sweep of all chart types (3 parallel audit agents + verification) found four more real issues; one reported issue was a false alarm.
+
+**Fixed:**
+1. Numeric parity (root cause). sql/182 centralizes numeric detection in drf_numeric_ok/drf_to_numeric (btrim + tolerant pattern + cast) and routes group_numeric_stats / numeric_field_stats / date_series metric + their sampled twins through them. Client rows-fallbacks use matching toNumericOrNull (lib/numericValue.ts) instead of parseFloat (which mis-read 1,000 -> 1). Verified end-to-end on TEST db. Needs sql/182 migrated to prod to fix the live chart.
+2. Percentage bar denominator divided by the shown top-30 sum, not the true total -- inflated every % on clipped charts. Now divides by all categories.
+3. Time-series TZ bucketing (bucketKey) parsed date-only ISO as UTC midnight -> prev-day misbucket in US zones, disagreeing with SQL ::date. Now local calendar parse.
+4. Time-series false-dip: a metric bucket with no numeric value plotted 0 instead of a gap; now null.
+
+**False alarm (verified, no change):** sampled crosstab space-mangling -- the join/split already use a NUL (U+0000) delimiter, which Postgres text cannot contain. The audit agents rendered the invisible NUL as a space and misread it.
+
+**Deferred (owner-gated):** plain Count/Percentage bar + no-split Distribution read whole-dataset fieldSummaries and ignore active filters (stacked/Average bars are filter-aware via the aggregate API + rowIds). Consistency needs an async refactor of the instant-render path + a filter-aware histogram op -- surfaced, not silently changed.
+
+Tests: tests/unit/numericValue.test.ts, tests/unit/timeBucket.test.ts. typecheck + full suite green.

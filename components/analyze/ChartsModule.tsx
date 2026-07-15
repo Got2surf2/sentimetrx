@@ -17,6 +17,7 @@ import { injectSignalTier } from '@/lib/signalTier'
 import { useRows } from '@/components/analyze/RowsContext'
 import { useFilters } from '@/components/analyze/FilterContext'
 import { applyFilters } from '@/lib/filterUtils'
+import { toNumericOrNull } from '@/lib/numericValue'
 import type { SchemaFieldConfig as SchemaField, SchemaConfig } from '@/lib/analyzeTypes'
 import type { ImpactAnalysis, ThemeImpactResult } from '@/lib/themeImpact'
 
@@ -413,7 +414,10 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     if (isH) entries.reverse()
     var cats = entries.map(function(e) { return e[0] })
     var vals = entries.map(function(e) { return e[1] })
-    var totalCount = vals.reduce(function(a, b) { return a + b }, 0)
+    // Percentage denominator = ALL categories, not just the shown top-30 — else
+    // a clipped chart's bars sum to 100% and each % is inflated (the axis title
+    // claims "% of <field>"). clipBadge discloses "showing 30 of N".
+    var totalCount = orderedKeys.reduce(function(s, k) { return s + (summary.counts![k] || 0) }, 0)
     var isPercent = opts?.barMode === 'percent'
     var displayVals = isPercent ? vals.map(function(v) { return totalCount > 0 ? Math.round(v / totalCount * 1000) / 10 : 0 }) : vals
     var catLabel = flByName(catField, schema)
@@ -881,7 +885,7 @@ function BarAggInner({ analytics, schema, datasetId, catField, valueField, smart
     var buckets: Record<string, number[]> = {}
     rows.forEach(function(r) {
       var cat = String(r[catField] || '').trim(); if (!cat) return
-      var v = parseFloat(String(r[valueField] || '')); if (isNaN(v)) return
+      var v = toNumericOrNull(r[valueField]); if (v === null) return
       if (!buckets[cat]) buckets[cat] = []
       buckets[cat].push(v)
     })
@@ -893,7 +897,10 @@ function BarAggInner({ analytics, schema, datasetId, catField, valueField, smart
     })
   }
   var groupKeys = Object.keys(groupsObj)
-  if (groupKeys.length === 0) return <EmptyChart msg="No groups found." />
+  // Empty here means no row had BOTH a category and a numeric value in the
+  // value field — name the value field so the cause is obvious (usually a
+  // non-numeric value field, not a missing category).
+  if (groupKeys.length === 0) return <EmptyChart msg={'No numeric values to average in "' + flByName(valueField, schema) + '" for these categories.'} />
 
   var groups = groupKeys.map(function(k) { return { group: k, ...groupsObj[k] } })
 
@@ -1078,8 +1085,8 @@ function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, 
   var groups: Record<string, number[]> = {}
   rows.forEach(function(r) {
     var grp = String(r[splitByField] || '').trim()
-    var val = parseFloat(String(r[numField] || ''))
-    if (!grp || isNaN(val)) return
+    var val = toNumericOrNull(r[numField])
+    if (!grp || val === null) return
     if (!groups[grp]) groups[grp] = []
     groups[grp].push(val)
   })
@@ -1146,8 +1153,8 @@ function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByF
     var groups: Record<string, number[]> = {}
     rows.forEach(function(r) {
       var grp = String(r[splitByField] || '').trim()
-      var val = parseFloat(String(r[measureField] || ''))
-      if (!grp || grp === '(blank)' || grp === '' || isNaN(val)) return
+      var val = toNumericOrNull(r[measureField])
+      if (!grp || grp === '(blank)' || grp === '' || val === null) return
       if (!groups[grp]) groups[grp] = []
       groups[grp].push(val)
     })
@@ -1625,7 +1632,7 @@ function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { a
   var { rows, loaded } = useChartRows(datasetId, _enrichCtx.enrichKey || 0)
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
   var x: number[] = [], y: number[] = []
-  rows.forEach(function(r) { var xv = parseFloat(String(r[xField] || '')), yv = parseFloat(String(r[yField] || '')); if (!isNaN(xv) && !isNaN(yv)) { x.push(xv); y.push(yv) } })
+  rows.forEach(function(r) { var xv = toNumericOrNull(r[xField]), yv = toNumericOrNull(r[yField]); if (xv !== null && yv !== null) { x.push(xv); y.push(yv) } })
   if (!x.length) return <EmptyChart msg="No numeric pairs found." />
   var xSum = analytics.fieldSummaries?.[xField]
   var ySum = analytics.fieldSummaries?.[yField]
@@ -1720,10 +1727,12 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
 
   // y value for a (category, bucket) — from the dimension date-series when
   // present, else from the raw per-row arrays.
-  var tsBreakdownY = function(cat: string, d: string): number {
-    if (catAgg) { var a = catAgg[cat] && catAgg[cat][d]; return a ? (metricField ? (a.avg || 0) : a.n) : 0 }
+  // Metric mode: a bucket with no numeric value is a GAP (null), not a false 0.
+  // Count mode: a missing bucket is a real 0 (no rows that day).
+  var tsBreakdownY = function(cat: string, d: string): number | null {
+    if (catAgg) { var a = catAgg[cat] && catAgg[cat][d]; return a ? (metricField ? a.avg : a.n) : (metricField ? null : 0) }
     var arr = catGroups[cat] && catGroups[cat][d]
-    if (!arr || arr.length === 0) return 0
+    if (!arr || arr.length === 0) return metricField ? null : 0
     return metricField ? arr.reduce(function(a, b) { return a + b }, 0) / arr.length : arr.length
   }
 
@@ -1746,7 +1755,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
         allDates.add(d)
         if (!catGroups[cat]) catGroups[cat] = {}
         if (!catGroups[cat][d]) catGroups[cat][d] = []
-        if (metricField) { var v = parseFloat(String(r[metricField] || '')); if (!isNaN(v)) catGroups[cat][d].push(v) } else { catGroups[cat][d].push(1) }
+        if (metricField) { var v = toNumericOrNull(r[metricField]); if (v !== null) catGroups[cat][d].push(v) } else { catGroups[cat][d].push(1) }
       })
     }
     sortedDates = Array.from(allDates).sort()
@@ -1760,10 +1769,12 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
     var dates: string[] = []
     var yVals: number[] = []
     if (aggData && aggData.series && aggData.series.length > 0) {
-      aggData.series.forEach(function(s: { date: string; avg: number | null; count: number }) { dates.push(s.date); yVals.push(metricField ? (s.avg || 0) : s.count) })
+      // Metric mode: skip buckets with no numeric value (a null avg) so the line
+      // connects across the gap instead of dropping to a false 0.
+      aggData.series.forEach(function(s: { date: string; avg: number | null; count: number }) { if (metricField && s.avg == null) return; dates.push(s.date); yVals.push(metricField ? (s.avg as number) : s.count) })
     } else {
       var grouped: Record<string, number[]> = {}
-      rows.forEach(function(r) { var raw = String(r[dateField] || ''); if (!raw) return; var d = bucketKey(raw, effectiveBucket); if (!grouped[d]) grouped[d] = []; if (metricField) { var v = parseFloat(String(r[metricField] || '')); if (!isNaN(v)) grouped[d].push(v) } else { grouped[d].push(1) } })
+      rows.forEach(function(r) { var raw = String(r[dateField] || ''); if (!raw) return; var d = bucketKey(raw, effectiveBucket); if (metricField) { var v = toNumericOrNull(r[metricField]); if (v === null) return; (grouped[d] || (grouped[d] = [])).push(v) } else { (grouped[d] || (grouped[d] = [])).push(1) } })
       dates = Object.keys(grouped).sort()
       yVals = dates.map(function(d) { var arr = grouped[d]; return metricField ? arr.reduce(function(a, b) { return a + b }, 0) / arr.length : arr.length })
     }
@@ -1882,7 +1893,7 @@ function GanttInner({ analytics, schema, datasetId, catField, rangeField }: { an
     ranges = catArr.map(function(c) { return g[c].max - g[c].min })
   } else {
     var groups: Record<string, number[]> = {}
-    rows.forEach(function(r) { var c = String(r[catField] || '').trim(); var v = parseFloat(String(r[rangeField] || '')); if (c && !isNaN(v)) { if (!groups[c]) groups[c] = []; groups[c].push(v) } })
+    rows.forEach(function(r) { var c = String(r[catField] || '').trim(); var v = toNumericOrNull(r[rangeField]); if (c && v !== null) { if (!groups[c]) groups[c] = []; groups[c].push(v) } })
     catArr = smartOrder(Object.keys(groups), ganttFieldObj?.remapping); mins = catArr.map(function(c) { return Math.min.apply(null, groups[c]) }); ranges = catArr.map(function(c) { return Math.max.apply(null, groups[c]) - Math.min.apply(null, groups[c]) })
   }
   return <PlotlyChart traces={[{ type: 'bar', orientation: 'h' as const, y: catArr, x: mins, marker: { color: 'rgba(0,0,0,0)' }, showlegend: false, hoverinfo: 'skip' as const }, { type: 'bar', orientation: 'h' as const, y: catArr, x: ranges, marker: { color: CHART_COLORS.slice(0, catArr.length) }, name: 'Range' }]} layout={{ title: flByName(catField, schema), barmode: 'stack', xaxis: { title: flByName(rangeField, schema) }, showlegend: false, margin: { l: 120 } }} />

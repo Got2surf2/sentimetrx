@@ -343,6 +343,32 @@ scaling on the COUNT surfaces; means/medians/stddev are inherently unscaled) is 
 sweep. `lib/projectCompare` (multi-source project-report matrix) likewise still counts over each
 source's full `rowCount` — deferred (its counts are assembled upstream).
 
+**Charts calculation-correctness sweep (2026-07-14).** A pass over every chart type's math turned up
+and fixed:
+- **Numeric VALUE parity (the "No groups found." bug).** The field-type classifier
+  (`lib/datasetUtils.ts`) types a field numeric via `!isNaN(Number(v.trim()))`, but the aggregate RPCs
+  filtered values with a stricter, un-trimmed regex `^-?[0-9]+\.?[0-9]*$`. A field the UI accepted into
+  the numeric VALUE slot whose cells carried a stray leading space (or `.5` / `1e3` / `5.`) produced
+  ZERO surviving rows → the Average bar rendered "No groups found." and Statistics/Distribution of the
+  same field went blank. `sql/182` centralizes numeric detection in two IMMUTABLE helpers
+  (`drf_numeric_ok` / `drf_to_numeric` = btrim + tolerant pattern + cast) and routes every value
+  filter/cast in `group_numeric_stats`, `numeric_field_stats`, `date_series_stats` and their sampled
+  twins through them. The client rows-fallback paths (collections / virtual fields) use the matching
+  `toNumericOrNull` (`lib/numericValue.ts`) instead of `parseFloat`, which mis-read `"1,000"`→1 and
+  `"4.5abc"`→4.5. Genuinely non-numeric values ("4/5", "4 stars") still fail both, so nothing spurious
+  is admitted. **Requires the sql/182 migration on prod to fix the live chart.**
+- **Percentage bar denominator.** A non-stacked Percentage bar divided by the sum of the shown top-30
+  categories, not the true total — inflating every % on a clipped chart. Now divides by all categories.
+- **Time-series timezone bucketing.** `bucketKey` parsed date-only ISO strings as UTC midnight, then
+  read local components → the previous day in negative-UTC zones, misbucketing period-boundary dates
+  and disagreeing with the TZ-safe SQL `::date` path. Now parses ISO strings as local calendar dates.
+- **Time-series false-dip.** A metric bucket with rows but no numeric value plotted 0 instead of a
+  gap; now null (count mode still shows a real 0).
+- **Known-not-fixed:** a plain Count/Percentage bar and no-split Distribution read the whole-dataset
+  precomputed `fieldSummaries` and so ignore active filters, while the stacked/Average bars (which route
+  through the aggregate API with `rowIds`) are filter-aware. Making them consistent needs an async
+  refactor of the instant-render path + a filter-aware histogram op — deferred (owner-facing UX change).
+
 **"Sampled" chip on the metric-strip row (2026-07-14).** When the active dataset exceeds the 50K
 cap (`RowsContext.sampled && totalRows > sampledCount`), `DatasetShell` leads the shared metric-strip
 row (the one carrying comments · Theme fit · themes) with a compact blue chip "◱ Sampled P% ·
