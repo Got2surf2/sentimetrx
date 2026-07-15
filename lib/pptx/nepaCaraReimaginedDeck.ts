@@ -32,18 +32,18 @@ import type PptxGenJS from 'pptxgenjs'
 // ─────────────────────────────────────────────────────────────────────────────
 // REAL DATA — Blue Mountains comment record (snapshot of the live CARA corpus).
 // ─────────────────────────────────────────────────────────────────────────────
-const F = { submitted: 926, held: 194, available: 732, distinct: 505, substantive: 377 }
-const DUP_PCT = Math.round((F.available - F.distinct) / F.available * 100) // 31%
-const STANCE = { oppose: 320, support: 143, mixed: 29, unclear: 13 }
+const F = { submitted: 989, held: 197, available: 792, distinct: 565, substantive: 414 }
+const DUP_PCT = Math.round((F.available - F.distinct) / F.available * 100) // 29%
+const STANCE = { oppose: 366, support: 155, mixed: 33, unclear: 11 }
 const ISSUES: [string, number, number][] = [ // [label, distinct voices, substantive]
-  ['Access & roads', 239, 198],
-  ['Recreation', 215, 182],
-  ['Timber / logging', 198, 163],
-  ['Wildlife', 183, 168],
-  ['Old growth / 21-inch rule', 158, 139],
-  ['Enforceable standards', 140, 129],
-  ['Water & fish', 122, 117],
-  ['Fire & fuels', 112, 107],
+  ['Access & roads', 267, 222],
+  ['Timber / logging', 233, 188],
+  ['Recreation', 223, 190],
+  ['Wildlife', 209, 191],
+  ['Old growth / 21-inch rule', 177, 155],
+  ['Enforceable standards', 145, 134],
+  ['Water & fish', 133, 128],
+  ['Fire & fuels', 133, 128],
 ]
 const CAMPAIGN_COPIES = 172 // biggest single form-letter campaign (access/recreation template)
 
@@ -52,17 +52,17 @@ const CAMPAIGN_COPIES = 172 // biggest single form-letter campaign (access/recre
 // (Populated after the extraction run; see slide-6 note.)
 // ─────────────────────────────────────────────────────────────────────────────
 const Q = {
-  mustRespond: F.substantive,   // 377 — the must-respond set (from slide 5's funnel)
+  mustRespond: F.substantive,   // the must-respond set (from the funnel slide)
   pctAnswerable: 100,           // ~all must-respond comments pose an answerable question
-  totalAsks: 1792,              // answerable question-instances in the record (raw answering workload)
-  top25Pct: 39,                 // share of every ask covered by just the top 25 distinct questions
+  totalAsks: 1809,              // answerable question-instances in the record (raw answering workload)
+  top25Pct: 32,                 // share of every ask covered by just the top 25 distinct questions
   topTypes: [                   // [label, question-instance count]
-    ['What does each alternative do?', 515],
-    ['Science & data', 157],
-    ['Effects & impacts', 156],
-    ['Process & deadlines', 99],
-    ['Wildlife & habitat', 60],
-    ['Access & recreation', 53],
+    ['What does each alternative do?', 561],
+    ['Effects & impacts', 206],
+    ['Science & data', 191],
+    ['Process & deadlines', 107],
+    ['Economics & jobs', 62],
+    ['Wildlife & habitat', 61],
   ] as [string, number][],
 }
 
@@ -94,13 +94,13 @@ const A = {
 // comments (deterministic regex + LLM contextual). Numbers redaction-safe (no PII).
 // ─────────────────────────────────────────────────────────────────────────────
 const PII = {
-  scanned: 755,
+  scanned: 792,
   held: F.held,         // FS comments held pending manual PII review (the backlog)
   structured: 7,        // released comments with an exact email/phone/address (regex)
-  contextual: 83,       // released comments the AI flagged for a name/location/detail
-  flagged: 87,          // union — the reviewer's worklist
-  pctCleared: 88,       // auto-cleared, no reviewer needed
-  pctFlagged: 12,
+  contextual: 82,       // released comments the AI flagged for a name/location/detail
+  flagged: 85,          // union — the reviewer's worklist
+  pctCleared: 89,       // auto-cleared, no reviewer needed
+  pctFlagged: 11,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -109,11 +109,11 @@ const PII = {
 // is largely absent from it (they never file a comment) — Side A's opportunity.
 // ─────────────────────────────────────────────────────────────────────────────
 const INTENT = {
-  distinct: 565, submitted: 792,
+  distinct: 565, analyzed: 792,
   pctPosition: 81,   // pure position for the record (Side B)
-  pctBoth: 19,       // states a position AND asks real questions (the visible tip)
+  pctBoth: 18,       // states a position AND asks real questions (the visible tip)
   pctQuestion: 1,    // pure question in the formal record
-  bothVoices: 106,
+  bothVoices: 103,
 }
 
 // Palette — land-management pine + Datanautix brand accents.
@@ -236,7 +236,7 @@ export function buildNepaCaraReimaginedDeck(pptx: PptxGenJS) {
 
   // ═══ SLIDE 2c — THE SPLIT, IN THE REAL RECORD ═══
   const sB = pptx.addSlide(); pg++
-  addHeader(sB, 'The record proves the split', `What the Blue Mountains comments actually are — ${INTENT.distinct} distinct, of ${INTENT.submitted} submitted`)
+  addHeader(sB, 'The record proves the split', `What the Blue Mountains comments actually are — ${INTENT.distinct} distinct, of ${INTENT.analyzed} analyzed`)
   addFooter(sB, pg)
   sB.addText('We classified every distinct comment by why the person wrote it. The formal record is almost entirely positions — which is exactly the point.', {
     x: 0.6, y: 1.25, w: 12.1, h: 0.6, fontSize: 15.5, fontFace: 'Arial', color: C.ink, lineSpacing: 21,
@@ -529,7 +529,7 @@ export function buildNepaCaraReimaginedDeck(pptx: PptxGenJS) {
   sP.addText(`Run on all ${PII.scanned} released comments: ${PII.pctCleared}% auto-cleared, ${PII.pctFlagged}% to a reviewer`, { x: 0.95, y: 5.13, w: 11.4, h: 0.4, fontSize: 14, fontFace: 'Arial', color: C.moss, bold: true })
   sP.addText([
     { text: `The reviewer never reads all ${PII.scanned} — only the ${PII.flagged} the detector flags (${PII.structured} with an exact email/phone/address, plus others where the text names a third party, a location, or a sensitive detail). `, options: { color: C.white, bold: true } },
-    { text: 'It flags conservatively — even a spouse’s name or a signature — because a missed address published is far worse than a five-second glance that clears. The 88% it clears, it clears with confidence.', options: { color: C.slateLight } },
+    { text: `It flags conservatively — even a spouse’s name or a signature — because a missed address published is far worse than a five-second glance that clears. The ${PII.pctCleared}% it clears, it clears with confidence.`, options: { color: C.slateLight } },
   ], { x: 0.95, y: 5.55, w: 11.5, h: 0.85, fontSize: 12.5, fontFace: 'Arial', valign: 'top', lineSpacing: 18 })
   sP.addNotes(`FILL PII.* from _nepa_pii_scan.ts. Honest framing: the released set is nearly clean (validates both the FS process AND the detector's precision); the value is speed on the ~195 held backlog + a safety net, and "flag for a human, never auto-publish" (the agency keeps custody). No raw PII anywhere — counts and redacted examples only. Ties back to the funnel's "held pending PII" stage.`)
 
