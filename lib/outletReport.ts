@@ -166,6 +166,7 @@ export type OutletReport = {
     themes: ComparisonBlock
     dimensions: ComparisonBlock
     snapshot: OutletSnapshot   // absolute GM-facing snapshot (PDF page 1)
+    lowQuotes: { theme: string; quote: string }[] // one real 1–3★ verbatim per theme (action-plan evidence)
   } | null
 }
 
@@ -734,6 +735,7 @@ function buildReport(scan: Scan, selectedPlaceId?: string): OutletReport {
       themes, dimensions, trend,
       narrative: buildNarrative({ name: locName, rank, outletCount: rated.length, percentile, ratingDelta: outletRating - chainRatingAll, chainRating: chainRatingAll, themes, dimensions }),
       snapshot: computeSnapshot(target, rated, outletRating, flat, scan.highExamples),
+      lowQuotes: scan.lowExamples.filter((e) => e.placeId === target.placeId && e.quote).map((e) => ({ theme: e.theme, quote: e.quote })),
     }
   }
 

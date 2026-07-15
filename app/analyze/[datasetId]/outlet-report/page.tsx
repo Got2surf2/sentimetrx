@@ -12,6 +12,7 @@ import { computeOutletReportWithPredictor } from '@/lib/outletReport'
 import OutletPicker from './OutletPicker'
 import OutletReportTabs from './OutletReportTabs'
 import OutletSnapshotView from './OutletSnapshotView'
+import OutletActionPlanSection from './OutletActionPlanSection'
 import AnalyticsNav from '../AnalyticsNav'
 
 export const dynamic = 'force-dynamic'
@@ -86,6 +87,9 @@ export default async function OutletReportPage(props: {
                 networkSize={report.outlets.length} snapshot={s.snapshot}
               />
             </div>
+
+            {/* AI action plan (page 2 of the export) — lazily generated + cached. */}
+            <OutletActionPlanSection datasetId={datasetId} outlet={s.placeId} outletName={s.name} reviews={s.reviews} />
 
             {/* Deeper peer-relative analysis — screen only, not part of the export. */}
             <div className="mt-6 rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:hidden">
