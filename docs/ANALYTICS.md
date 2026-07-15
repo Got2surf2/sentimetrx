@@ -414,6 +414,20 @@ from the sub-scores + themes recovers sensible odds ratios (mentioning "Service 
 in `tests/unit/regressionDesign.test.ts`; the numeric-only inline logistic (the 2026-07-15 first cut) was
 replaced by this. `LinearRegression` (OLS) is unchanged (numeric outcome + predictors).
 
+**Ranked Likert categoricals default to quantitative (2026-07-15).** A categorical whose values are a
+recognized ranked scale (`scaleUtils.suggestMapping`/`isOrdinalScale` — Very Dissatisfied…Very Satisfied,
+Poor…Excellent, Strongly Disagree…Strongly Agree, etc.) is marked `ordinalable` in `buildRegVars` with a
+resolved 1→k `ordinalMap` **even when the field was never given a remapping**. In the logistic picker those
+fields **default to ordinal (a single quantitative column)** and carry a "quant" toggle to switch to one-hot;
+genuinely nominal fields (Visit Type, Store ID) stay one-hot. This also fixed a bug where the outcome
+dropdown was empty (the shared `DSSelect` filters options by a section key the panel wasn't supplying — the
+picker now uses a native grouped select). **Ridge fallback for separation:** `logisticRegression` fits the
+pure MLE first and, only if the Hessian is singular (quasi-complete separation — common when predicting an
+overall rating from its own sub-scores), escalates a small L2 ridge until it returns a finite fit, flags
+`regularized`, and the panel warns that the magnitudes/p-values are unreliable and the near-deterministic
+predictor should be dropped — so the model no longer silently disappears. Empty states now name the concrete
+reason (too few complete rows for the predictor count, both-classes, all-collinear, or unfittable).
+
 **"Sampled" chip on the metric-strip row (2026-07-14).** When the active dataset exceeds the 50K
 cap (`RowsContext.sampled && totalRows > sampledCount`), `DatasetShell` leads the shared metric-strip
 row (the one carrying comments · Theme fit · themes) with a compact blue chip "◱ Sampled P% ·

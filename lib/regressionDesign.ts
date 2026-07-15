@@ -20,6 +20,7 @@
 import { commentMatchesTheme } from '@/lib/themeUtils'
 import type { Theme, ThemeModel } from '@/lib/themeUtils'
 import { toNumericOrNull } from '@/lib/numericValue'
+import { suggestMapping, isOrdinalScale } from '@/lib/scaleUtils'
 import type { SchemaFieldConfig } from '@/lib/analyzeTypes'
 
 export type RegKind = 'numeric' | 'categorical' | 'theme'
@@ -32,6 +33,8 @@ export interface RegVar {
   field?: string              // data key for numeric/categorical
   values?: string[]           // categorical levels (for ordinal fallback order)
   remapping?: Record<string, number>
+  ordinalable?: boolean       // categorical is a recognized ranked scale (usable as quant)
+  ordinalMap?: Record<string, number> // resolved value→rank for ordinal encoding
   theme?: Theme
   themeSource?: string        // open-text field key used for theme matching
 }
@@ -55,7 +58,13 @@ export function buildRegVars(fields: SchemaFieldConfig[], themeModel: ThemeModel
     if (f.type === 'numeric') {
       out.push({ key: f.field, kind: 'numeric', label: f.label || f.field, field: f.field })
     } else if (f.type === 'categorical') {
-      out.push({ key: f.field, kind: 'categorical', label: f.label || f.field, field: f.field, values: f.values || [], remapping: f.remapping })
+      var vals = f.values || []
+      // A ranked Likert scale (Very Dissatisfied…Very Satisfied, Poor…Excellent,
+      // Strongly Disagree…Strongly Agree, etc.) is usable as a quantitative
+      // predictor: the field's own remapping wins, else scaleUtils recognizes the
+      // scale (suggestMapping) even when the field was never mapped.
+      var oMap = f.remapping || suggestMapping(vals) || undefined
+      out.push({ key: f.field, kind: 'categorical', label: f.label || f.field, field: f.field, values: vals, remapping: f.remapping, ordinalable: !!oMap || isOrdinalScale(vals), ordinalMap: oMap })
     }
   }
   const themes = themeModel?.themes || []
@@ -71,10 +80,12 @@ function catValue(row: Record<string, unknown>, field: string): string {
   return String(row[field] == null ? '' : row[field]).trim()
 }
 
-// Ordinal score for a categorical value: its remapping, else its index in the
-// declared `values` order (best-effort when no remapping exists).
+// Ordinal score for a categorical value: its resolved rank map (field remapping
+// or a recognized Likert scale from scaleUtils), else its index in the declared
+// `values` order (last-resort, when the scale isn't recognized).
 function ordinalScore(v: RegVar, raw: string): number | null {
-  if (v.remapping && v.remapping[raw] != null) return v.remapping[raw]
+  const map = v.ordinalMap || v.remapping
+  if (map && map[raw] != null) return map[raw]
   const idx = (v.values || []).indexOf(raw)
   return idx >= 0 ? idx : null
 }
@@ -103,9 +114,10 @@ function outcomeValue(row: Record<string, unknown>, o: OutcomeSpec): number | nu
   }
   if (v.kind === 'theme') return themeHit(row, v)
   const raw = catValue(row, v.field!); if (!raw) return null
-  // A Likert categorical with a remapping can binarize "top-box" by threshold on
-  // its mapped score; otherwise match a chosen positive level.
-  if (o.cut != null && v.remapping) { const m = v.remapping[raw]; return m != null && m >= o.cut ? 1 : 0 }
+  // A ranked Likert categorical can binarize "top-box" by threshold on its rank
+  // (stored remapping or recognized scale); otherwise match a chosen level.
+  const map = v.ordinalMap || v.remapping
+  if (o.cut != null && map) { const m = map[raw]; return m != null && m >= o.cut ? 1 : 0 }
   return raw === o.level ? 1 : 0
 }
 
@@ -156,7 +168,7 @@ export function buildDesign(rows: Record<string, unknown>[], outcome: OutcomeSpe
     n: y.length, nPos: nPos, nNeg: y.length - nPos,
     outcomeLabel: outcome.v.kind === 'theme' ? 'mentions “' + outcome.v.label + '”'
       : outcome.v.kind === 'categorical'
-        ? (outcome.cut != null && outcome.v.remapping ? outcome.v.label + ' ≥ ' + outcome.cut + ' (top box)' : outcome.v.label + ' = ' + (outcome.level || '?'))
+        ? (outcome.cut != null && (outcome.v.ordinalMap || outcome.v.remapping) ? outcome.v.label + ' ≥ ' + outcome.cut + ' (top box)' : outcome.v.label + ' = ' + (outcome.level || '?'))
         : (outcome.v.label + ' ≥ ' + (outcome.cut ?? 0)),
   }
 }

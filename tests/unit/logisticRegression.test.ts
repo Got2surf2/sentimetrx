@@ -38,6 +38,20 @@ describe('logisticRegression', () => {
     expect(r.separation).toBe(true)
   })
 
+  it('ridge-rescues a separated multi-predictor model instead of returning null', () => {
+    // two predictors that jointly separate the outcome → unpenalized Hessian
+    // goes singular; the ridge fallback returns a finite (regularized) fit
+    const rows = [
+      [1, 1], [1, 2], [2, 1], [2, 2], [4, 4], [4, 5], [5, 4], [5, 5], [1, 1], [5, 5],
+    ]
+    const y = [0, 0, 0, 0, 1, 1, 1, 1, 0, 1]
+    const r = logisticRegression(y, rows, ['a', 'b'])
+    expect(r).not.toBeNull()
+    expect(r!.separation).toBe(true)
+    // direction is still recoverable: higher a/b → higher odds
+    expect(r!.coefs[1].beta).toBeGreaterThan(0)
+  })
+
   it('finds no effect when the predictor is unrelated (OR ≈ 1, high p)', () => {
     // y is symmetric around the middle of x → mean(x|y=1) == mean(x|y=0) → no trend
     const x = [1, 2, 3, 4, 5, 6, 7, 8]

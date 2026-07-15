@@ -88,4 +88,18 @@ describe('buildRegVars', () => {
     expect(vars.map((v) => v.kind)).toEqual(['numeric', 'categorical', 'theme'])
     expect(vars[2].themeSource).toBe('notes')
   })
+
+  it('flags a recognized Likert scale as ordinalable with a rank map (no stored remapping)', () => {
+    const fields = [
+      { field: 'ft', type: 'categorical', label: 'Food Taste', values: ['Highly Dissatisfied', 'Somewhat Dissatisfied', 'Neither Satisfied nor Dissatisfied', 'Somewhat Satisfied', 'Highly Satisfied'] },
+      { field: 'visit', type: 'categorical', label: 'Visit Type', values: ['Dine In', 'Take Out', 'Delivery'] },
+    ] as never
+    const vars = buildRegVars(fields, null, '')
+    const ft = vars.find((v) => v.field === 'ft')!
+    expect(ft.ordinalable).toBe(true)
+    expect(ft.ordinalMap!['Highly Satisfied']).toBe(5)
+    expect(ft.ordinalMap!['Highly Dissatisfied']).toBe(1)
+    // a nominal field is not ordinalable
+    expect(vars.find((v) => v.field === 'visit')!.ordinalable).toBe(false)
+  })
 })

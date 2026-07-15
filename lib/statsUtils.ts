@@ -304,7 +304,7 @@ export interface LogisticResult {
   n: number; nPos: number; nNeg: number
   ll: number; ll0: number; pseudoR2: number
   lr: number; lrDf: number; lrP: number; aic: number
-  iterations: number; converged: boolean; separation: boolean
+  iterations: number; converged: boolean; separation: boolean; regularized: boolean
   names: string[]
 }
 
@@ -316,9 +316,12 @@ export function logisticRegression(y: number[], X: number[][], names: string[], 
   var n = y.length
   var Xd = X.map(function(r) { return [1].concat(r) }), q = Xd[0].length
   if (n <= q) return null // need more rows than parameters
-  var beta = new Array(q).fill(0)
-  // Hessian (= XᵀWX, Fisher information) and gradient at the current beta.
-  var infoAt = function(b: number[]): { H: number[][]; g: number[]; ll: number } {
+
+  // Hessian (= XᵀWX + ridge, Fisher information) and gradient at the current beta.
+  // The ridge λ penalizes non-intercept coefficients (Tikhonov / ridge logistic);
+  // λ=0 is the pure MLE. A small λ finite-izes coefficients under (quasi-)complete
+  // separation, where the unpenalized MLE diverges and the Hessian goes singular.
+  var infoAt = function(b: number[], ridge: number): { H: number[][]; g: number[]; ll: number } {
     var H = Array.from({ length: q }, function() { return new Array(q).fill(0) })
     var g = new Array(q).fill(0)
     var ll = 0
@@ -333,25 +336,33 @@ export function logisticRegression(y: number[], X: number[][], names: string[], 
         for (var c = 0; c < q; c++) H[a][c] += Xd[r][a] * Xd[r][c] * w
       }
     }
+    if (ridge > 0) { for (var k = 1; k < q; k++) { H[k][k] += ridge; g[k] -= ridge * b[k]; ll -= 0.5 * ridge * b[k] * b[k] } }
     return { H: H, g: g, ll: ll }
   }
-  var ll = -Infinity, converged = false, iter = 0, lastInv: number[][] | null = null
-  for (iter = 1; iter <= maxIter; iter++) {
-    var cur = infoAt(beta)
-    var inv = invertMatrix(cur.H); if (!inv) return null
-    lastInv = inv
-    // Newton step: beta += H⁻¹ g
-    var delta = inv.map(function(row) { return row.reduce(function(s, v, i) { return s + v * cur.g[i] }, 0) })
-    for (var i = 0; i < q; i++) beta[i] += delta[i]
-    var nextLL = infoAt(beta).ll
-    if (Math.abs(nextLL - ll) < tol) { ll = nextLL; converged = true; break }
-    ll = nextLL
+  // Fit at a given ridge; returns beta + covariance, or null if still singular.
+  var fitAt = function(ridge: number): { beta: number[]; cov: number[][]; ll: number; converged: boolean; iter: number } | null {
+    var beta = new Array(q).fill(0), ll = -Infinity, converged = false, iter = 0
+    for (iter = 1; iter <= maxIter; iter++) {
+      var cur = infoAt(beta, ridge)
+      var inv = invertMatrix(cur.H); if (!inv) return null
+      var delta = inv.map(function(row) { return row.reduce(function(s, v, i) { return s + v * cur.g[i] }, 0) })
+      for (var i = 0; i < q; i++) beta[i] += delta[i]
+      var nextLL = infoAt(beta, ridge).ll
+      if (Math.abs(nextLL - ll) < tol) { ll = nextLL; converged = true; break }
+      ll = nextLL
+    }
+    var fin = infoAt(beta, ridge); var cov = invertMatrix(fin.H); if (!cov) return null
+    return { beta: beta, cov: cov, ll: fin.ll, converged: converged, iter: iter }
   }
-  // Recompute covariance = H⁻¹ at the final beta for accurate standard errors.
-  var fin = infoAt(beta); var cov = invertMatrix(fin.H) || lastInv; if (!cov) return null
-  ll = fin.ll
-  var se = cov.map(function(row, i) { return Math.sqrt(Math.abs(row[i])) })
-  var separation = beta.some(function(b, i) { return i > 0 && (Math.abs(b) > 15 || se[i] > 25) }) || !converged
+  // Pure MLE first; escalate the ridge only if it can't be fit (separation).
+  var regularized = false, fitR = fitAt(0)
+  if (!fitR) { var ridges = [1e-3, 1e-2, 0.1, 1, 10]; for (var ri = 0; ri < ridges.length && !fitR; ri++) { fitR = fitAt(ridges[ri]); if (fitR) regularized = true } }
+  if (!fitR) return null
+  var beta = fitR.beta, iter = fitR.iter, converged = fitR.converged
+  // Un-penalized log-likelihood at the final beta (for pseudo-R²/LR/AIC).
+  var ll = infoAt(beta, 0).ll
+  var se = fitR.cov.map(function(row, i) { return Math.sqrt(Math.abs(row[i])) })
+  var separation = regularized || beta.some(function(b, i) { return i > 0 && (Math.abs(b) > 15 || se[i] > 25) }) || !converged
   // Null model (intercept only): p0 = mean(y).
   var p0 = mean(y)
   var ll0 = y.reduce(function(s, yi) { return s + (yi * Math.log(Math.max(p0, 1e-12)) + (1 - yi) * Math.log(Math.max(1 - p0, 1e-12))) }, 0)
@@ -364,7 +375,7 @@ export function logisticRegression(y: number[], X: number[][], names: string[], 
     return { name: nm, beta: beta[i], se: se[i], z: z, p: pv, or: Math.exp(beta[i]), orCI: [Math.exp(beta[i] - 1.96 * se[i]), Math.exp(beta[i] + 1.96 * se[i])] }
   })
   var nPos = y.reduce(function(s, v) { return s + (v === 1 ? 1 : 0) }, 0)
-  return { coefs: coefs, n: n, nPos: nPos, nNeg: n - nPos, ll: ll, ll0: ll0, pseudoR2: pseudoR2, lr: lr, lrDf: lrDf, lrP: lrP, aic: aic, iterations: iter, converged: converged, separation: separation, names: names }
+  return { coefs: coefs, n: n, nPos: nPos, nNeg: n - nPos, ll: ll, ll0: ll0, pseudoR2: pseudoR2, lr: lr, lrDf: lrDf, lrP: lrP, aic: aic, iterations: iter, converged: converged, separation: separation, regularized: regularized, names: names }
 }
 
 // ─── Multicollinearity: VIF + iterative pruning ──────────────────────────

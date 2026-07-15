@@ -807,10 +807,14 @@ function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, da
     // eslint-disable-next-line react-hooks/set-state-in-effect -- restores persisted picker state from sessionStorage on mount / dataset-key change
     if (s?.outcomeKey) setOutcomeKey(s.outcomeKey)
     if (Array.isArray(s?.preds)) setPreds(new Set(s.preds))
+    // Recognized ranked Likert scales default to ordinal (quantitative); the user
+    // can flip any to one-hot. Seed only on a fresh session (no saved value).
     if (Array.isArray(s?.ordinal)) setOrdinal(new Set(s.ordinal))
+    else setOrdinal(new Set(regVars.filter(function(v) { return v.ordinalable }).map(function(v) { return v.key })))
     if (s?.cuts) setCuts(s.cuts)
     if (s?.levels) setLevels(s.levels)
     setRestored(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restore + one-time ordinal seed on dataset-key change only; regVars captured intentionally
   }, [_lk])
   useEffect(function() {
     if (!restored) return
@@ -819,7 +823,7 @@ function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, da
   // Default outcome = a rating/satisfaction field (categorical w/ remapping), else first numeric.
   useEffect(function() {
     if (!restored || outcomeKey || !regVars.length) return
-    var pref = regVars.find(function(v) { return v.kind === 'categorical' && !!v.remapping }) || numericVars[0] || regVars[0]
+    var pref = regVars.find(function(v) { return v.kind === 'categorical' && !!(v.ordinalMap || v.remapping) }) || numericVars[0] || regVars[0]
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time default outcome once restore completes
     if (pref) setOutcomeKey(pref.key)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time default; must not re-fire on numericVars identity
@@ -832,14 +836,24 @@ function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, da
   var toggleOrd = function(k: string) { setOrdinal(function(prev) { var n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n }) }
 
   var fl = function(v: RegVar) { return aliases[v.label] || v.label }
+  // A ranked map for a quantitative outcome/threshold: stored remapping or a
+  // scaleUtils-recognized Likert scale.
+  var qmap = function(v: RegVar): Record<string, number> | undefined { return v.ordinalMap || v.remapping }
+  var isQuant = function(v: RegVar): boolean { return v.kind === 'numeric' || !!qmap(v) }
   var defaultCut = function(v: RegVar): number {
-    if (v.remapping) return Math.max.apply(null, Object.values(v.remapping)) // strict top box
+    var m = qmap(v); if (m) return Math.max.apply(null, Object.values(m)) // strict top box
     var nums = getNum(v.field!, data); return nums.length ? median(nums) : 0
   }
   var topLevel = function(v: RegVar): string {
-    if (v.remapping) { var best = '', bv = -Infinity; Object.keys(v.remapping).forEach(function(k) { if (v.remapping![k] > bv) { bv = v.remapping![k]; best = k } }); return best }
     var freq: Record<string, number> = {}; data.forEach(function(r) { var s = String(r[v.field!] || '').trim(); if (s) freq[s] = (freq[s] || 0) + 1 })
     return Object.keys(freq).sort(function(a, b) { return freq[b] - freq[a] })[0] || ''
+  }
+  // A recognized ranked (Likert) categorical defaults to ordinal/quant (it's in
+  // the `ordinal` set, seeded below); the user can flip it to one-hot. A
+  // non-ordinalable categorical is always one-hot.
+  var encodingFor = function(v: RegVar): 'ordinal' | 'onehot' {
+    if (v.kind !== 'categorical' || !v.ordinalable) return 'onehot'
+    return ordinal.has(v.key) ? 'ordinal' : 'onehot'
   }
 
   var fit = useMemo(function() {
@@ -849,9 +863,9 @@ function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, da
     if (!predVars.length) return { empty: 'pick' as const }
     var spec: OutcomeSpec
     if (ov.kind === 'theme') spec = { v: ov }
-    else if (ov.kind === 'numeric' || ov.remapping) spec = { v: ov, cut: cuts[ov.key] != null ? cuts[ov.key] : (ov.remapping ? Math.max.apply(null, Object.values(ov.remapping)) : (function() { var nn = getNum(ov.field!, data); return nn.length ? median(nn) : 0 })()) }
-    else spec = { v: ov, level: levels[ov.key] || (function() { var freq: Record<string, number> = {}; data.forEach(function(r) { var s = String(r[ov.field!] || '').trim(); if (s) freq[s] = (freq[s] || 0) + 1 }); return Object.keys(freq).sort(function(a, b) { return freq[b] - freq[a] })[0] || '' })() }
-    var predSpecs: PredictorSpec[] = predVars.map(function(v) { return { v: v, encoding: (v.kind === 'categorical' && ordinal.has(v.key)) ? 'ordinal' as const : 'onehot' as const } })
+    else if (isQuant(ov)) spec = { v: ov, cut: cuts[ov.key] != null ? cuts[ov.key] : defaultCut(ov) }
+    else spec = { v: ov, level: levels[ov.key] || topLevel(ov) }
+    var predSpecs: PredictorSpec[] = predVars.map(function(v) { return { v: v, encoding: encodingFor(v) } })
     var d = buildDesign(data, spec, predSpecs)
     if (!d) return { empty: 'nodata' as const }
     if (d.nPos < 3 || d.nNeg < 3) return { empty: 'class' as const, d: d }
@@ -862,6 +876,7 @@ function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, da
     var res = logisticRegression(d.y, X, prune.keptNames)
     if (!res) return { empty: 'fit' as const, d: d }
     return { res: res, dropped: prune.dropped, d: d }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the encode/spec helper closures are pure over these state deps; listing them (recreated each render) would recompute the fit every render
   }, [varByKey, outcomeKey, preds, ordinal, cuts, levels, data])
 
   var outcomeVar = varByKey[outcomeKey] || null
@@ -872,7 +887,7 @@ function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, da
     if (!res || !fit || !('d' in fit) || !fit.d) return ''
     var label = fit.d.outcomeLabel
     var ps = res.coefs.filter(function(c) { return c.name !== 'Intercept' })
-    if (res.separation) return 'The model could not be estimated reliably (separation) — coefficients are not trustworthy. Drop a predictor or add data.'
+    if (res.separation && !res.regularized) return 'The model could not be estimated reliably (separation) — coefficients are not trustworthy. Drop a predictor or add data.'
     var sig = ps.filter(function(c) { return c.p < 0.05 })
     if (!sig.length) return (naive ? 'Nothing here moves the needle: ' : '') + 'None of the ' + ps.length + ' terms significantly shifts the odds that a response has ' + label + ' (all p ≥ 0.05).'
     var top = sig.slice().sort(function(a, b) { return Math.abs(Math.log(b.or)) - Math.abs(Math.log(a.or)) })[0]
@@ -896,11 +911,11 @@ function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, da
                   <span style={{ width: 13, height: 13, borderRadius: 3, background: sel ? T.accent : T.border, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'white' }}>{sel ? '✓' : ''}</span>
                   {fl(v)}
                 </button>
-                {withOrd && sel && (
+                {withOrd && sel && v.ordinalable && (
                   <button onClick={function() { toggleOrd(v.key) }}
-                    title={ordinal.has(v.key) ? 'Ordinal: single 1..k column (assumes ordered levels)' : 'One-hot: a dummy per level vs the modal baseline'}
+                    title={ordinal.has(v.key) ? 'Ranked → single quantitative column (this scale is recognized). Click for one-hot dummies instead.' : 'One-hot: a dummy per level vs the modal baseline. Click to treat as a ranked quantitative scale.'}
                     style={{ fontSize: 9, fontWeight: 700, padding: '3px 6px', borderRadius: 5, cursor: 'pointer', border: '1px solid ' + T.border, background: ordinal.has(v.key) ? T.accent : T.bg, color: ordinal.has(v.key) ? 'white' : T.textFaint, flexShrink: 0 }}>
-                    {ordinal.has(v.key) ? 'ORD' : '1-hot'}
+                    {ordinal.has(v.key) ? 'quant' : '1-hot'}
                   </button>
                 )}
               </div>
@@ -918,19 +933,24 @@ function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, da
       {/* Variable selector */}
       <Card style={{ padding: 16, alignSelf: 'start' }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 6 }}>Outcome (predict)</div>
-        <DSSelect label="" value={outcomeKey} onChange={function(v) { setOutcomeKey(v) }} options={regVars.map(function(v) { return { v: v.key, l: fl(v), s: v.kind === 'theme' ? 'Themes' : v.kind === 'numeric' ? 'Numeric' : 'Categorical' } })} />
+        <select value={outcomeKey} onChange={function(e) { setOutcomeKey(e.target.value) }}
+          style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '1.5px solid ' + T.border, borderRadius: 7, background: T.bgCard, color: T.text, outline: 'none', cursor: 'pointer' }}>
+          {numericVars.length > 0 && <optgroup label="Numeric">{numericVars.map(function(v) { return <option key={v.key} value={v.key}>{fl(v)}</option> })}</optgroup>}
+          {catVars.length > 0 && <optgroup label="Categorical">{catVars.map(function(v) { return <option key={v.key} value={v.key}>{fl(v)}{v.ordinalable ? ' (ranked)' : ''}</option> })}</optgroup>}
+          {themeVars.length > 0 && <optgroup label="Themes">{themeVars.map(function(v) { return <option key={v.key} value={v.key}>{fl(v)}</option> })}</optgroup>}
+        </select>
         {outcomeVar && (
           <div style={{ marginTop: 8, marginBottom: 16 }}>
             {outcomeVar.kind === 'theme' ? (
               <div style={{ fontSize: 11, color: T.textFaint }}>= 1 when the response mentions this theme.</div>
-            ) : (outcomeVar.kind === 'numeric' || outcomeVar.remapping) ? (
+            ) : isQuant(outcomeVar) ? (
               <label style={{ fontSize: 11, color: T.textFaint, display: 'flex', alignItems: 'center', gap: 6 }}>
                 = 1 when ≥
                 <input type="number" step="any" key={outcomeKey}
                   defaultValue={cuts[outcomeKey] != null ? cuts[outcomeKey] : defaultCut(outcomeVar)}
                   onBlur={function(e) { var val = parseFloat(e.target.value); setCuts(function(prev) { var n = Object.assign({}, prev); if (!isNaN(val)) n[outcomeKey] = val; return n }) }}
                   style={{ width: 70, fontSize: 16, padding: '3px 6px', border: '1px solid ' + T.border, borderRadius: 6, background: T.bgCard, color: T.text }} />
-                {outcomeVar.remapping ? '(top box)' : ''}
+                {qmap(outcomeVar) ? '(top box)' : ''}
               </label>
             ) : (
               <label style={{ fontSize: 11, color: T.textFaint, display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -952,10 +972,17 @@ function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, da
       {/* Results */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {!res ? (
-          <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textFaint, fontSize: 13, padding: 40, textAlign: 'center' }}>
-            {fit && 'empty' in fit && fit.empty === 'class' ? 'The outcome needs both classes present (at least 3 each) after binarizing — adjust the cutoff or outcome.'
-              : fit && 'empty' in fit && fit.empty === 'few' ? 'Too few complete rows for this many predictors — remove some predictors or widen the data.'
-              : 'Pick an outcome and at least one predictor to fit a logistic model.'}
+          <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: T.textMid, fontSize: 13, padding: 40, textAlign: 'center' }}>
+            {(function() {
+              var e = fit && 'empty' in fit ? fit.empty : 'pick'
+              var nInfo = fit && 'd' in fit && fit.d ? ' (only ' + fit.d.n + ' rows have every selected field answered)' : ''
+              if (e === 'pick') return 'Pick an outcome and at least one predictor to fit a logistic model.'
+              if (e === 'class') return 'The outcome doesn’t split into two groups here — one class has fewer than 3 responses after binarizing. Adjust the cutoff or pick a different outcome.'
+              if (e === 'few') return '⚠ Too many predictors for the data. Each predictor must be answered on the SAME rows, so adding more shrinks the usable sample' + nInfo + '. Remove some predictors, or prefer ranked (quant) encoding over one-hot to use fewer columns.'
+              if (e === 'nocols') return 'Every predictor was dropped as redundant (perfectly collinear). Pick more distinct predictors.'
+              if (e === 'fit') return '⚠ The model couldn’t be estimated with these predictors' + nInfo + ' — usually too many terms for the sample, or a predictor perfectly separates the outcome. Remove a predictor (or switch a one-hot categorical to ranked/quant) and it will fit.'
+              return 'Pick an outcome and at least one predictor.'
+            })()}
           </div>
         ) : (
           <>
@@ -967,7 +994,9 @@ function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, da
             )}
             {res.separation && (
               <div style={{ fontSize: 12, color: T.amber, background: T.amberBg, border: '1px solid ' + T.amber, borderRadius: 10, padding: '9px 14px' }}>
-                ⚠ (Quasi-)separation or non-convergence — a predictor may perfectly split the outcome, so the numbers below are unreliable. Remove that predictor or add data.
+                {res.regularized
+                  ? '⚠ A predictor nearly determines the outcome (quasi-separation), so the model was stabilized with a ridge penalty just to return an estimate — the exact odds ratios and p-values here are NOT reliable. This usually means a predictor is really the outcome in disguise (e.g. predicting overall satisfaction from its own sub-scores). Use the direction/ranking as a hint, and drop the near-deterministic predictor for a trustworthy model.'
+                  : '⚠ (Quasi-)separation or non-convergence — a predictor may perfectly split the outcome, so the numbers below are unreliable. Remove that predictor or add data.'}
               </div>
             )}
             {dropped.length > 0 && (
