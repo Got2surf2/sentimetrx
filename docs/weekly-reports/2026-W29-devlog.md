@@ -498,3 +498,7 @@ WHY: Owner QC polish — the action-plan theme name now renders as a severity-ti
 ## Outlet Report: theme pill -> Sarina teal (Jul 15)
 
 WHY: Owner — a red/severity-tinted theme pill wrongly reads as an alarm. Switched the action-plan theme pill to neutral Sarina teal (#0F7173) with white text; severity stays conveyed by the coloured avg-star/%-negative next to it. Cosmetic.
+
+## Outlet Report: drop the redundant Themes tab from deeper analysis (Jul 15)
+
+WHY: Owner — the deep-dive Themes tab (peer-relative net-positive deltas) is redundant now that the snapshot has an absolute theme table + the AI action plan covers themes. Removed the Themes tab (after Dimensions earlier), leaving Action Plan + Summary; deleted the now-orphaned Block/ThemeCard/pts render path and unused ThemeDelta/ComparisonBlock imports. tsc + eslint clean.

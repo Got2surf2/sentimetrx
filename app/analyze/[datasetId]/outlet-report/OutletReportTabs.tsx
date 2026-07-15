@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { OutletReport, ThemeDelta, ComparisonBlock, TrendPoint } from '@/lib/outletReport'
+import type { OutletReport, TrendPoint } from '@/lib/outletReport'
 import type { OutletLever, OutletSummary, PredictorModel } from '@/lib/outletPredictor'
 import WhatIfPanel, { type WhatIfData } from './WhatIfPanel'
 
@@ -139,59 +139,6 @@ function ActionPlan({ levers, strengths, summary, model, brandDriver, outletCoun
   )
 }
 
-function pts(delta: number) {
-  const v = Math.round(delta * 100)
-  return `${v >= 0 ? '+' : ''}${v} pts`
-}
-
-function ThemeCard({ t, tone }: { t: ThemeDelta; tone: 'good' | 'bad' }) {
-  const good = tone === 'good'
-  return (
-    <div className={`rounded-lg border p-3 ${good ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-200 bg-amber-50/60'}`}>
-      <div className="flex items-baseline justify-between gap-2">
-        <div>
-          <span className={`mr-2 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${good ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-            {t.category}
-          </span>
-          <span className="text-sm font-semibold text-gray-900">{t.label}</span>
-        </div>
-        <span className={`text-sm font-bold ${good ? 'text-emerald-600' : 'text-amber-600'}`}>{pts(t.delta)}</span>
-      </div>
-      <div className="mt-1 text-xs text-gray-500">
-        {Math.round(t.outletNet * 100)}% net-positive here · {Math.round(t.chainNet * 100)}% across peers · {t.n} mentions
-      </div>
-      {t.quote && <p className="mt-2 border-l-2 border-gray-300 pl-2 text-xs italic text-gray-600">“{t.quote}”</p>}
-    </div>
-  )
-}
-
-// Excels / needs-work two-column grid for one comparison axis.
-function Block({ block, kind }: { block: ComparisonBlock; kind: 'themes' | 'dimensions' }) {
-  const noun = kind === 'themes' ? 'themes' : 'dimensions'
-  return (
-    <div className="grid grid-cols-2 gap-5">
-      <div>
-        <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-emerald-700">
-          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" /> What this location excels at
-        </h2>
-        <div className="space-y-2">
-          {block.strengths.length ? block.strengths.map((t) => <ThemeCard key={t.sub + t.axis} t={t} tone="good" />)
-            : <p className="rounded-lg border border-dashed border-gray-200 p-3 text-xs text-gray-400">No {noun} materially ahead of peers.</p>}
-        </div>
-      </div>
-      <div>
-        <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-amber-700">
-          <span className="inline-block h-2 w-2 rounded-full bg-amber-500" /> What needs work
-        </h2>
-        <div className="space-y-2">
-          {block.weaknesses.length ? block.weaknesses.map((t) => <ThemeCard key={t.sub + t.axis} t={t} tone="bad" />)
-            : <p className="rounded-lg border border-dashed border-gray-200 p-3 text-xs text-gray-400">No {noun} materially behind peers.</p>}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // Outlet vs network avg-rating over time (inline SVG dual-line; no chart dep).
 function monthLabel(m: string): string {
   const [y, mo] = m.split('-')
@@ -237,15 +184,13 @@ function TrendChart({ trend }: { trend: TrendPoint[] }) {
   )
 }
 
-type Tab = 'action' | 'summary' | 'themes'
+type Tab = 'action' | 'summary'
 
 export default function OutletReportTabs({ selected: s, levers, strengths, summary, model, brandDriver, outletCount, whatIf }: { selected: Sel; levers: OutletLever[]; strengths: OutletLever[]; summary: OutletSummary | undefined; model: PredictorModel; brandDriver: string | null; outletCount: number; whatIf: WhatIfData | null }) {
   const [tab, setTab] = useState<Tab>('action')
-  const peers = s.outletCount - 1
   const TABS: { id: Tab; label: string }[] = [
     { id: 'action', label: 'Action Plan' },
     { id: 'summary', label: 'Summary' },
-    { id: 'themes', label: 'Themes' },
   ]
 
   return (
@@ -263,19 +208,6 @@ export default function OutletReportTabs({ selected: s, levers, strengths, summa
       <div className="mt-5">
         {/* ACTION PLAN */}
         {tab === 'action' && <ActionPlan levers={levers} strengths={strengths} summary={summary} model={model} brandDriver={brandDriver} outletCount={outletCount} whatIf={whatIf} s={s} />}
-
-        {/* THEMES */}
-        {tab === 'themes' && (
-          <>
-            <Block block={s.themes} kind="themes" />
-            <p className="mt-6 border-t border-gray-100 pt-3 text-[11px] leading-relaxed text-gray-400">
-              Themes ranked by net-positive sentiment gap vs. the brand’s other {peers} outlets, from {s.themes.analyzedReviews.toLocaleString()} of
-              this outlet’s reviews matched to the dataset’s themes (keyword match + lexicon sentiment). “pts” = percentage-point difference in
-              net-positive rate between this outlet and the peer-group average for that theme.
-            </p>
-          </>
-        )}
-
 
         {/* SUMMARY */}
         {tab === 'summary' && (
