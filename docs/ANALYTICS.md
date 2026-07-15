@@ -335,9 +335,13 @@ cap (`RowsContext.sampled && totalRows > sampledCount`), `DatasetShell` leads th
 row (the one carrying comments · Theme fit · themes) with a compact blue chip "◱ Sampled P% ·
 N/M" — the single disclosure that the on-screen counts are over the 50K sample (Model A). It rides
 the existing strip row rather than its own banner — one signal, no extra vertical row — and persists
-across tabs so a sample is never mistaken for the full dataset. The AI-mined banner on the Themes tab
-is a slim single line reading "Themes AI-mined from **N substantive (P%) of M comments · K-row
-sample**" — exact counts of the sample, no "~".
+across tabs so a sample is never mistaken for the full dataset. The strip's comment metric reads
+"**N** comments · **P%** of **M** answered" — the substantive count plus its share of answered
+comments (`substantiveRecords / records`), the "% substantive" the retired AI-mined banner carried.
+The separate AI-mined banner on the Themes tab was REMOVED (its count + rate now live on the strip;
+the top-right "AI Mined" pill keeps the provenance) — one comment count, not two. The strip's cached
+`signal_stats` carries `stats_v` (2 = Model A); v1 entries held scaled counts and recompute on the
+next read (so the strip stops showing a stale scaled number like ~30,308 for a real 27,004).
 
 **Metric-strip follows the active TEXT pill — dispatch moved before the swap-effect early returns
 (2026-07-14).** The strip (`DatasetMetricStrip`) listens for `dataset-active-field-changed` to show
