@@ -5,10 +5,31 @@ signed off by owner 2026-07-16** (every one on the recommended default). Build i
 unblocked — see the build order in §12. Nothing in `app/` or `lib/` has shipped
 yet.
 
-**One-liner:** an always-available "?" assistant that answers "how do I…" and
+**One-liner:** an always-available assistant that answers "how do I…" and
 "what is…" questions about Sentimetrx itself — grounded strictly in curated,
 user-facing help content — so users can navigate a functionally rich, complex
 product without a human.
+
+**Naming & icon (owner, 2026-07-16):** the widget users see is labelled **Help**
+and wears a **lifesaver / life-ring icon (🛟)** — the universal support convention
+*and* on the Datanautix nautical brand. The assistant's persona name is **Guide**
+(chosen over "Guru": Guide fits the navigation metaphor and stays humble, matching
+the honest "here's where to go / I'm not certain" behaviour the anti-hallucination
+design depends on). So: **label = Help, persona = Guide, icon = 🛟.**
+
+**The two assistants are a clean, symmetric split (owner, 2026-07-16).** Sentimetrx
+has two AI helpers that live in different places and refer to each other:
+- **Ask Ana** — embedded *inside a dataset* (Advanced Analytics). Answers about the
+  user's **data** ("what did respondents say about parking?").
+- **Help / Guide (🛟)** — a **global** launcher on every page. Answers about **using
+  the product** ("how do I export a deck?").
+
+The referral is **bidirectional**: ask Help a *data* question → it points you to
+**Ask Ana**; ask Ask Ana a *how-to / navigation* question → it points you to
+**Help**. Each stays strictly in its lane. (Implementation note: the Help side is
+the system-prompt scope in §7; the Ask-Ana side needs a small how-to/navigation
+intent detector that emits the "open Help (🛟)" redirect — a minor addition to the
+Ask-Ana path, tracked in §10.)
 
 ---
 
@@ -256,6 +277,10 @@ it we're guessing at coverage. One small table + one endpoint.
 - [ ] Grounding rules + feature-integrity guardrail + honest fallback (§7)
 - [ ] Per-user/IP rate limit (§8)
 - [ ] Thumbs feedback (§9)
+- [ ] **Ask-Ana → Help redirect** — a how-to/navigation intent detector on the
+      Ask-Ana path that answers "that's a product question — open Help (🛟)" instead
+      of guessing about the data. The reverse (Help → Ask-Ana) is already covered by
+      the Help system-prompt scope (§7). Completes the symmetric split.
 
 **v2 (after MVP proves useful):**
 - "Take me there" — uiHints returns a deep-link/CTA card ("Open Charts") the
