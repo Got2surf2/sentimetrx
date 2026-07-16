@@ -33,20 +33,27 @@ Status: ✅ drafted (awaiting owner review) · ⏳ to draft
 | 2 | `create-a-survey.md` | Build & launch a conversational survey | ✅ |
 | 3 | `textmine-filter-and-themes.md` | Filter results, themes, entities, dimensions | ✅ |
 | 4 | `statistics-tab.md` | Read the Statistics tab (charts, drivers, Likert) | ✅ |
-| 5 | `create-an-agent.md` | Build an agent; what a Super Agent is | ⏳ |
-| 6 | `schema-tab.md` | Configure fields/column types (Schema tab) | ⏳ |
-| 7 | `export-report-or-deck.md` | Export a PPTX deck / PDF / HTML report | ⏳ |
-| 8 | `ask-ana.md` | What Ask Ana is and how to use it | ⏳ |
-| 9 | `pulseiq-vs-townhall.md` | PulseIQ vs Town Hall — which to use | ⏳ |
-| 10 | `add-data-sources.md` | Import CSV, Google reviews, Reddit, Substack | ⏳ |
-| 11 | `campaigns.md` | Send a survey by email/SMS (Campaign Manager) | ⏳ |
-| 12 | `collections-and-brands.md` | Group datasets; brand collections | ⏳ |
-| 13 | `invite-teammates.md` | Invite users, roles, team management | ⏳ |
-| 14 | `org-settings-and-branding.md` | Org settings, theming, logo | ⏳ |
-| 15 | `billing-and-usage.md` | Where to see usage (no fabricated numbers) | ⏳ |
-| 16 | `privacy-and-data.md` | Where data lives; link to the privacy notice | ⏳ |
-| 17 | `search-your-responses.md` | Full-text + AI search in TextMine | ⏳ |
-| 18 | `share-a-survey.md` | Get the survey link / QR, response limits | ⏳ |
-| 19 | `dimensions-and-emotion.md` | Dimensions taxonomy + emotion-language flags | ⏳ |
-| 20 | `getting-started.md` | First-time orientation / where to click first | ⏳ |
-| — | `not-sure-fallback.md` | The honest "I'm not certain" fallback copy | ⏳ |
+| 5 | `create-an-agent.md` | Build an agent; what a Super Agent is | ✅ |
+| 6 | `schema-tab.md` | Configure fields/column types (Schema tab) | ✅ |
+| 7 | `export-report-or-deck.md` | Export a PPTX deck / PDF / HTML report | ✅ |
+| 8 | `ask-ana.md` | What Ask Ana is and how to use it | ✅ |
+| 9 | `pulseiq-vs-townhall.md` | PulseIQ vs Town Hall — which to use | ✅ |
+| 10 | `add-data-sources.md` | Import CSV, Google reviews, Reddit, Substack | ✅ |
+| 11 | `campaigns.md` | Send a survey by email/SMS (Campaign Manager) | ✅ |
+| 12 | `collections-and-brands.md` | Group datasets; brand collections | ✅ |
+| 13 | `invite-teammates.md` | Invite users, roles, team management | ✅ |
+| 14 | `org-settings-and-branding.md` | Org settings, theming, logo | ✅ |
+| 15 | `billing-and-usage.md` | Where to see usage (no fabricated numbers) | ✅ |
+| 16 | `privacy-and-data.md` | Where data lives; link to the privacy notice | ✅ |
+| 17 | `search-your-responses.md` | Full-text + AI search in TextMine | ✅ |
+| 18 | `share-a-survey.md` | Get the survey link / QR, response limits | ✅ |
+| 19 | `dimensions-and-emotion.md` | Dimensions taxonomy + emotion-language flags | ✅ |
+| 20 | `getting-started.md` | First-time orientation / where to click first | ✅ |
+| — | `not-sure-fallback.md` | The honest "I'm not certain" fallback copy | ✅ |
+
+**All 21 drafted 2026-07-16 — awaiting owner review.** A handful of exact UI
+labels the drafting flagged for owner verification against the live app: the
+**Agent Capability / Super Agent** editor labels; the PulseIQ facilitator surface
+name (**Live Console**); the **Team** settings nav label; and that there is **no
+customer-facing billing/usage page** (billing article routes to the account team
+by design). See the per-article notes carried back to the session.
