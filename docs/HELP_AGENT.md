@@ -1,8 +1,9 @@
 # HELP_AGENT.md — In-product AI help agent (design & scope)
 
-**Status:** DESIGN / not built. Scoped 2026-07-16. This doc is the plan the owner
-reacts to *before* any new surface is built. Nothing in `app/` or `lib/` ships
-until the KB strategy + widget placement + MVP cut below are approved.
+**Status:** DESIGN APPROVED / not built. Scoped 2026-07-16; **all §12 decisions
+signed off by owner 2026-07-16** (every one on the recommended default). Build is
+unblocked — see the build order in §12. Nothing in `app/` or `lib/` has shipped
+yet.
 
 **One-liner:** an always-available "?" assistant that answers "how do I…" and
 "what is…" questions about Sentimetrx itself — grounded strictly in curated,
@@ -284,27 +285,26 @@ not engineering.
 
 ---
 
-## 12. Open decisions for the owner (recommended default in **bold**)
+## 12. Decisions of record — **ALL SIGNED OFF 2026-07-16** (owner)
 
-1. **KB strategy:** **B — authored articles only for MVP**, evolve to hybrid via
-   measured gaps. (Alt: A auto-ingest specs — rejected, leaks internals.)
-2. **Article authoring:** **Claude drafts the ~15–25 articles from the specs, owner
-   reviews/edits** before ingest — vs owner writes from scratch. (Draft-then-review
-   is faster and keeps voice/accuracy in owner's hands.)
-3. **Tier / tools:** **`standard` tier, tool loop OFF in MVP** — grounded by
-   always-on RAG injection (Sonnet, cheap, no super quota gate). Promote to `super`
-   (active `search_knowledge` re-query + optional allow-listed `fetch_page`) only
-   if MVP recall proves too static.
-4. **Scope of answers:** **product-how-to only** — explicitly punt data questions
-   ("what did respondents say") to Ask-Ana with a one-line redirect. Confirm we
-   don't want the help agent straddling both.
-5. **Mount gap:** accept that full-screen tabs without TopNav have no widget in
-   MVP, **yes** — or invest in a root-level authed-only mount. Recommend accept.
-6. **v2 "take me there":** confirm it's genuinely wanted before we build the
-   uiHints action layer — it's the biggest v2 cost and the smallest MVP risk to
-   defer.
+Every decision landed on the recommended default. These are settled; build to them.
 
-**Next step when owner is back:** react to §12 (especially #1 and #2). On
-approval, the build order is: seed agent + KB wiring → draft articles → route →
-widget → guardrail → feedback. Do not touch the widget surface until §12 is
-signed off.
+1. ✅ **KB strategy: authored articles only for MVP** — evolve to hybrid only via
+   measured gaps (§9). Auto-ingest specs rejected (leaks internals).
+2. ✅ **Article authoring: Claude drafts the ~15–25 articles from the specs +
+   real UI labels; owner reviews/edits before ingest.**
+3. ✅ **Tier / tools: `standard` tier, tool loop OFF in MVP** — grounded by
+   always-on RAG injection. Promote to `super` (active `search_knowledge` +
+   allow-listed `fetch_page`) only if MVP recall proves too static (v2).
+4. ✅ **Scope: product how-to only** — data questions ("what did respondents say")
+   get a one-line redirect to Ask-Ana / TextMine. No straddling.
+5. ✅ **Mount gap accepted** — mount in TopNav; the few full-screen tabs without
+   TopNav have no widget in MVP; revisit only if it matters.
+6. ✅ **v2 "take me there" deferred** — ship answer-only MVP; revisit the uiHints
+   action layer after MVP proves useful.
+
+**Build order (unblocked):** seed the platform help-agent record + KB wiring →
+Claude drafts articles → owner reviews → ingest → `/api/help/chat` (authed) →
+`HelpWidget` extracted from `ChatBot.tsx`, mounted in `TopNav`, page-context wired
+→ grounding rules + feature-integrity guardrail + honest fallback → thumbs
+feedback. ~3–4 focused days; KB authoring is the long pole.
