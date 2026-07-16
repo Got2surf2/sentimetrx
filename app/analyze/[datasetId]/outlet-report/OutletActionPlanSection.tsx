@@ -47,8 +47,9 @@ export default function OutletActionPlanSection({ datasetId, outlet, outletName,
     const ctrl = new AbortController()
     // The plan is one LLM call (~30s the first time, cached after). Cap the wait
     // so a slow/failed call surfaces a Retry instead of spinning forever.
+    // (Loading state is set on mount / by the Retry handler, not here — the
+    // parent keys this component by outlet so it remounts fresh per outlet.)
     const timer = setTimeout(() => ctrl.abort(), 90000)
-    setPlan(null); setStatus('loading')
     fetch(`/api/datasets/${datasetId}/outlet-action-plan?outlet=${encodeURIComponent(outlet)}`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d) => { if (!cancelled) { setPlan(d.plan); setStatus('ok') } })
@@ -78,7 +79,7 @@ export default function OutletActionPlanSection({ datasetId, outlet, outletName,
       {status === 'error' && (
         <div className="flex flex-col items-center gap-3 py-12 text-center print:hidden">
           <p className="text-sm text-gray-500">Couldn’t build the action plan just now.</p>
-          <button onClick={() => setRetry((r) => r + 1)} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700">Retry</button>
+          <button onClick={() => { setPlan(null); setStatus('loading'); setRetry((r) => r + 1) }} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700">Retry</button>
         </div>
       )}
 

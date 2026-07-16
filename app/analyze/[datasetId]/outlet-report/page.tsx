@@ -97,7 +97,7 @@ export default async function OutletReportPage(props: {
             </div>
 
             {/* AI action plan (page 2 of the export) — lazily generated + cached. */}
-            <OutletActionPlanSection datasetId={datasetId} outlet={s.placeId} outletName={s.name} reviews={s.reviews} themeTable={s.snapshot.themeTable} />
+            <OutletActionPlanSection key={s.placeId} datasetId={datasetId} outlet={s.placeId} outletName={s.name} reviews={s.reviews} themeTable={s.snapshot.themeTable} />
 
             {/* Deeper peer-relative analysis — screen only, not part of the export. */}
             <div className="mt-6 rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:hidden">
