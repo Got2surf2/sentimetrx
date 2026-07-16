@@ -21,6 +21,8 @@
 -- Signatures are unchanged, so CREATE OR REPLACE preserves the service_role
 -- grants installed by sql/169. Date and categorical filters are untouched.
 
+BEGIN;
+
 -- ── helpers: single source of truth for "is this text a number" ──────────────
 CREATE OR REPLACE FUNCTION drf_numeric_ok(t text)
 RETURNS boolean
@@ -292,3 +294,5 @@ $$;
 -- helpers are internal; execute grant to service_role for parity with callers
 GRANT EXECUTE ON FUNCTION drf_numeric_ok(text)  TO service_role;
 GRANT EXECUTE ON FUNCTION drf_to_numeric(text)  TO service_role;
+
+COMMIT;
