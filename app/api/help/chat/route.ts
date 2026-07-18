@@ -14,8 +14,21 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { handleChatTurn, type ChatAgent } from '@/lib/chatCore'
-import { HELP_AGENT_SLUG, formatHelpPageContext, type HelpPageContext } from '@/lib/helpAgent'
+import { HELP_AGENT_SLUG, formatHelpPageContext, scrubHelpReply, type HelpPageContext } from '@/lib/helpAgent'
 import { logError } from '@/lib/log'
+
+// Feature-integrity scrub on the authoritative reply — strips any fabricated
+// link/email before it reaches the user (defense-in-depth over the grounding
+// prompt). Mutates result.reply in place; the streaming client reconciles its
+// streamed text to this final value, so the scrubbed version wins.
+function scrubResult(result: Record<string, unknown>): Record<string, unknown> {
+  if (typeof result?.reply === 'string') {
+    const { text, flagged } = scrubHelpReply(result.reply)
+    if (flagged) void logError('help.chat.scrub', new Error('stripped fabricated link/email from Help reply'))
+    result.reply = text
+  }
+  return result
+}
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -73,7 +86,7 @@ export async function POST(req: NextRequest) {
 
   if (body.stream !== true) {
     const result = await handleChatTurn({ agent, service, ip }, body)
-    return NextResponse.json(result)
+    return NextResponse.json(scrubResult(result))
   }
 
   const encoder = new TextEncoder()
@@ -86,7 +99,7 @@ export async function POST(req: NextRequest) {
       }
       try {
         const result = await handleChatTurn({ agent, service, ip, emit: send }, body)
-        send({ type: 'done', result })
+        send({ type: 'done', result: scrubResult(result) })
       } catch (e) {
         void logError('help.chat.stream', e)
         send({ type: 'error', error: 'chat failed' })

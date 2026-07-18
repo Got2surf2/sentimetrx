@@ -54,6 +54,52 @@ export interface HelpPageContext {
   features?: Record<string, boolean> | null
 }
 
+// ── Feature-integrity scrub (HELP_AGENT §7.4) ─────────────────────────────
+// Post-generation defense-in-depth on top of the system-prompt grounding. The
+// concrete, detectable fabrication class for a help agent is invented links and
+// support emails (the Spacy incident, reference_agent_kb_link_hallucination):
+// Guide should never send the user to a URL or email it made up. We allow only
+// the official Sentimetrx / Datanautix domains; anything else is stripped, and
+// invented emails are softened to "your account team".
+
+const OFFICIAL_HOSTS = ['sentimetrx.ai', 'datanautix.com']
+
+function isOfficialHost(host: string): boolean {
+  const h = host.toLowerCase()
+  return OFFICIAL_HOSTS.some((o) => h === o || h.endsWith('.' + o))
+}
+
+/** Strip fabricated links/emails from a Help reply. Returns the cleaned text
+ *  plus whether anything was removed (for logging). Pure + unit-tested. */
+export function scrubHelpReply(reply: string): { text: string; flagged: boolean } {
+  if (!reply) return { text: reply, flagged: false }
+  let flagged = false
+
+  // 1. Markdown links [label](url) → keep just the label when the host isn't official.
+  let out = reply.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (m, label: string, url: string) => {
+    try { if (isOfficialHost(new URL(url).hostname)) return m } catch { /* fall through */ }
+    flagged = true
+    return label
+  })
+
+  // 2. Bare URLs to non-official hosts → remove.
+  out = out.replace(/https?:\/\/[^\s)]+/g, (url) => {
+    try { if (isOfficialHost(new URL(url).hostname)) return url } catch { /* invalid → drop */ }
+    flagged = true
+    return ''
+  })
+
+  // 3. Email addresses → soften to "your account team" (the KB never gives emails).
+  out = out.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, () => {
+    flagged = true
+    return 'your account team'
+  })
+
+  // Tidy artifacts a strip can leave: doubled spaces, space-before-punct, empty parens.
+  out = out.replace(/\(\s*\)/g, '').replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+([.,;:!?])/g, '$1').trim()
+  return { text: out, flagged }
+}
+
 /** Compose the per-request page-context block appended to the Help agent's
  *  system prompt. Returns '' when there's nothing useful to add. */
 export function formatHelpPageContext(ctx: HelpPageContext | null | undefined): string {
