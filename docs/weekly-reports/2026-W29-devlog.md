@@ -506,3 +506,7 @@ WHY: Owner — the deep-dive Themes tab (peer-relative net-positive deltas) is r
 ## Outlet Report: fix lint ratchet (set-state-in-effect) — Jul 16
 
 WHY: The action-plan section reset loading state synchronously inside its fetch useEffect, tripping the new react-hooks/set-state-in-effect rule (253 warnings vs 252 ceiling, red CI). Reset-on-outlet-change now happens via a React key (parent remounts the section per outlet) and reset-on-retry in the click handler, so the effect only fetches (async setState in callbacks is fine). Behavior-preserving; back to 252 warnings.
+
+## Help agent (Guide, 🛟): seed + KB ingest — Jul 18
+
+WHY: Building the in-product Help assistant (design in docs/HELP_AGENT.md, all §12 decisions signed off). Unit 1 = the platform-owned Help agent + its knowledge base. lib/helpAgent.ts holds the shared constants (slug `help-guide`, persona "Guide") and the strict grounding system prompt (the #1 anti-hallucination defense: answer only from the curated help KB, never invent a feature/URL/price, redirect data questions to Ask Ana, fall back honestly). scripts/seed-help-agent.mts upserts ONE agents row (standard tier, status 'paused' so it's off the public /b surface) in the internal/admin org and wipes + re-ingests the 21 curated articles under docs/help-kb/ via the existing ingestKnowledgeText pipeline. Idempotent. Seeded TEST: 21 articles → 98 chunks.
