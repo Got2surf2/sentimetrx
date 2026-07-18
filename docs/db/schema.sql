@@ -4087,6 +4087,23 @@ COMMENT ON TABLE "public"."entity_catalog_refresh" IS 'Append-only audit log of 
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."help_feedback" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "org_id" "uuid" NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "session_id" "text",
+    "rating" smallint NOT NULL,
+    "question" "text",
+    "answer" "text",
+    "page_route" "text",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "help_feedback_rating_check" CHECK (("rating" = ANY (ARRAY['-1'::integer, 1])))
+);
+
+
+ALTER TABLE "public"."help_feedback" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."invites" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "token" "text" DEFAULT "encode"("extensions"."gen_random_bytes"(24), 'hex'::"text") NOT NULL,
@@ -5451,6 +5468,11 @@ ALTER TABLE ONLY "public"."entity_catalog"
 
 
 
+ALTER TABLE ONLY "public"."help_feedback"
+    ADD CONSTRAINT "help_feedback_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."invites"
     ADD CONSTRAINT "invites_pkey" PRIMARY KEY ("id");
 
@@ -6018,6 +6040,14 @@ CREATE UNIQUE INDEX "idx_email_sequence_campaign" ON "public"."campaign_emails" 
 
 
 CREATE INDEX "idx_entity_catalog_bot_scope" ON "public"."entity_catalog" USING "btree" ("scope_id") WHERE ("scope_type" = 'bot'::"text");
+
+
+
+CREATE INDEX "idx_help_feedback_created" ON "public"."help_feedback" USING "btree" ("created_at" DESC);
+
+
+
+CREATE INDEX "idx_help_feedback_rating" ON "public"."help_feedback" USING "btree" ("rating", "created_at" DESC);
 
 
 
@@ -7434,6 +7464,15 @@ ALTER TABLE "public"."entity_catalog" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."entity_catalog_refresh" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."help_feedback" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "help_feedback_org_read" ON "public"."help_feedback" FOR SELECT USING (("org_id" = ( SELECT "users"."org_id"
+   FROM "public"."users"
+  WHERE ("users"."id" = "auth"."uid"()))));
+
+
+
 ALTER TABLE "public"."invites" ENABLE ROW LEVEL SECURITY;
 
 
@@ -8787,6 +8826,12 @@ GRANT ALL ON TABLE "public"."entity_catalog" TO "service_role";
 GRANT ALL ON TABLE "public"."entity_catalog_refresh" TO "anon";
 GRANT ALL ON TABLE "public"."entity_catalog_refresh" TO "authenticated";
 GRANT ALL ON TABLE "public"."entity_catalog_refresh" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."help_feedback" TO "anon";
+GRANT ALL ON TABLE "public"."help_feedback" TO "authenticated";
+GRANT ALL ON TABLE "public"."help_feedback" TO "service_role";
 
 
 
