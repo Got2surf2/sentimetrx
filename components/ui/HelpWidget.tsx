@@ -58,7 +58,26 @@ export default function HelpWidget({ currentPage, features }: Props) {
   const [input, setInput] = useState('')
   const [streamText, setStreamText] = useState('')
   const [busy, setBusy] = useState(false)
+  const [feedback, setFeedback] = useState<Record<number, 'up' | 'down'>>({})
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  async function sendFeedback(idx: number, rating: 1 | -1) {
+    if (feedback[idx]) return
+    setFeedback(f => ({ ...f, [idx]: rating === 1 ? 'up' : 'down' }))
+    try {
+      await fetch('/api/help/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rating,
+          session_id: getSessionId(),
+          question: messages[idx - 1]?.content ?? null,
+          answer: messages[idx]?.content ?? null,
+          page_route: pathname,
+        }),
+      })
+    } catch { /* best-effort — the local state already thanked them */ }
+  }
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -160,15 +179,30 @@ export default function HelpWidget({ currentPage, features }: Props) {
           {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-3" style={{ background: '#faf9f8' }}>
             {messages.map((m, i) => (
-              <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
+              <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex flex-col items-start'}>
                 <div
                   className="rounded-2xl px-3 py-2 text-sm leading-relaxed"
                   style={m.role === 'user'
-                    ? { background: HERMES, color: 'white', maxWidth: '85%' }
+                    ? { background: HERMES, color: 'white', maxWidth: '85%', alignSelf: 'flex-end' }
                     : { background: 'white', color: '#1f2937', border: '1px solid #eee', maxWidth: '90%' }}
                 >
                   {renderContent(m.content)}
                 </div>
+                {/* Thumbs on real answers (not the greeting) — the KB-gap signal. */}
+                {m.role === 'assistant' && m !== GREETING && (
+                  <div className="flex items-center gap-1 mt-1 pl-1 text-xs text-gray-400">
+                    {feedback[i] ? (
+                      <span>Thanks for the feedback!</span>
+                    ) : (
+                      <>
+                        <button type="button" aria-label="Helpful" title="Helpful"
+                          onClick={() => void sendFeedback(i, 1)} className="hover:text-gray-700">👍</button>
+                        <button type="button" aria-label="Not helpful" title="Not helpful"
+                          onClick={() => void sendFeedback(i, -1)} className="hover:text-gray-700">👎</button>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
             {busy && (

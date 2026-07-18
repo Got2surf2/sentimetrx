@@ -522,3 +522,7 @@ WHY: Unit 3 — the surface. components/ui/HelpWidget.tsx is a floating lifesave
 ## Help agent (Guide, 🛟): feature-integrity scrub — Jul 18
 
 WHY: Unit 4 — defense-in-depth over the system-prompt grounding. scrubHelpReply (lib/helpAgent.ts) strips the concrete, detectable fabrication class for a help agent — invented links and support emails (the Spacy failure mode) — from the authoritative reply before it reaches the user: markdown/bare URLs to non-official hosts are removed (official sentimetrx.ai/datanautix.com preserved), invented emails soften to "your account team". Applied in /api/help/chat for both JSON + streaming (the streaming client reconciles to the scrubbed final). 9 unit tests (helpAgent.test.ts).
+
+## Help agent (Guide, 🛟): thumbs feedback — Jul 18
+
+WHY: Unit 5 — the KB-gap detector (HELP_AGENT §9). sql/184 adds help_feedback (rating ∈ {-1,+1} + the question/answer pair + page_route; RLS org-scoped SELECT, service-role writes stamp org_id from the authed caller). POST /api/help/feedback records a rating (signed-in only, rate-limited). HelpWidget shows 👍/👎 under each real answer (not the greeting); one click posts + shows "Thanks". So repeated thumbs-down/unhelpful answers become the next help-article backlog. Applied sql/184 to TEST (table + policy verified, insert shape sanity-checked). ⏭ ON PUSH: npm run migrate sql/184 (records ledger + refreshes docs/db/schema.sql) then re-run test:rls/test:egress for the new table.
