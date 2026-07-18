@@ -30,6 +30,6 @@ into insight**. Here's the lay of the land and a suggested first path.
 
 ## Stuck on how to do something?
 
-Click the **🛟 Help** button at the top of any page to chat with **Guide**, who
+Click the **🛟 Help** button in the bottom-right corner of any page to chat with **Sherpa**, who
 answers how-to questions about using Sentimetrx anytime. For questions about what
 your data actually says, use **Ask Ana** inside a dataset instead.

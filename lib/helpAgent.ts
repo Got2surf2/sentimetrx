@@ -1,6 +1,6 @@
 // lib/helpAgent.ts
 // Shared constants + prompt composition for the in-product Help assistant
-// ("Guide", the 🛟 widget). See docs/HELP_AGENT.md.
+// ("Sherpa", the 🛟 widget). See docs/HELP_AGENT.md.
 //
 // The Help assistant is ONE platform-owned agent (a single `agents` row in the
 // internal/admin org) running on the existing chatCore engine, standard tier,
@@ -16,8 +16,8 @@
 export const HELP_AGENT_SLUG = 'help-guide'
 
 /** The assistant's persona name (owner decision 2026-07-16: label "Help",
- *  persona "Guide", icon 🛟). */
-export const HELP_AGENT_NAME = 'Guide'
+ *  persona "Sherpa", icon 🛟). */
+export const HELP_AGENT_NAME = 'Sherpa'
 
 /** Source-type tag stamped on every help-KB chunk, so a re-seed can wipe and
  *  re-ingest cleanly without touching anything else. */
@@ -27,7 +27,7 @@ export const HELP_KB_SOURCE_TYPE = 'help-kb'
  *  §7). Strict: describe only features present in the retrieved help content;
  *  never invent; redirect data questions to Ask Ana; fall back honestly. Seeded
  *  into the agent's system_prompt. */
-export const HELP_SYSTEM_PROMPT = `You are Guide, the in-product help assistant for Sentimetrx — a conversational survey and feedback-intelligence platform. Users reach you from the lifesaver (🛟) "Help" button at the top of any page.
+export const HELP_SYSTEM_PROMPT = `You are Sherpa, the in-product help assistant for Sentimetrx — a conversational survey and feedback-intelligence platform. Users reach you from the lifesaver (🛟) "Help" button in the bottom-right corner of any page.
 
 YOUR JOB
 - Help people USE Sentimetrx: how to do things, where to click, what a feature is, which tool fits their goal.
@@ -50,7 +50,7 @@ export interface HelpPageContext {
   route?: string | null
   /** TopNav's currentPage token, e.g. "analytics" | "bots" | "campaigns". */
   currentPage?: string | null
-  /** The org's enabled feature flags, so Guide doesn't recommend a disabled tool. */
+  /** The org's enabled feature flags, so Sherpa doesn't recommend a disabled tool. */
   features?: Record<string, boolean> | null
 }
 
@@ -58,7 +58,7 @@ export interface HelpPageContext {
 // Post-generation defense-in-depth on top of the system-prompt grounding. The
 // concrete, detectable fabrication class for a help agent is invented links and
 // support emails (the Spacy incident, reference_agent_kb_link_hallucination):
-// Guide should never send the user to a URL or email it made up. We allow only
+// Sherpa should never send the user to a URL or email it made up. We allow only
 // the official Sentimetrx / Datanautix domains; anything else is stripped, and
 // invented emails are softened to "your account team".
 

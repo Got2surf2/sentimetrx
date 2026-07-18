@@ -28,10 +28,10 @@ answers into themes, entities, and statistics you can act on.
 
 There are two assistants, and they do different jobs:
 
-- **Help** — click the 🛟 lifesaver at the top of any page to chat with **Guide**,
+- **Help** — click the 🛟 lifesaver in the bottom-right corner of any page to chat with **Sherpa**,
   who answers *how to use Sentimetrx* ("how do I export a deck?", "what's a Super
   Agent?").
 - **Ask Ana** (inside a dataset) answers *what your data says*.
 
-If you ask Guide about your data, it'll point you to Ask Ana. If you ask Ana how to
+If you ask Sherpa about your data, it'll point you to Ask Ana. If you ask Ana how to
 navigate the product, it'll point you back to Help.

@@ -12,16 +12,16 @@ product without a human.
 
 **Naming & icon (owner, 2026-07-16):** the widget users see is labelled **Help**
 and wears a **lifesaver / life-ring icon (🛟)** — the universal support convention
-*and* on the Datanautix nautical brand. The assistant's persona name is **Guide**
-(chosen over "Guru": Guide fits the navigation metaphor and stays humble, matching
+*and* on the Datanautix nautical brand. The assistant's persona name is **Sherpa**
+(chosen over "Guru": Sherpa fits the navigation metaphor and stays humble, matching
 the honest "here's where to go / I'm not certain" behaviour the anti-hallucination
-design depends on). So: **label = Help, persona = Guide, icon = 🛟.**
+design depends on). So: **label = Help, persona = Sherpa, icon = 🛟.**
 
 **The two assistants are a clean, symmetric split (owner, 2026-07-16).** Sentimetrx
 has two AI helpers that live in different places and refer to each other:
 - **Ask Ana** — embedded *inside a dataset* (Advanced Analytics). Answers about the
   user's **data** ("what did respondents say about parking?").
-- **Help / Guide (🛟)** — a **global** launcher on every page. Answers about **using
+- **Help / Sherpa (🛟)** — a **global** launcher on every page. Answers about **using
   the product** ("how do I export a deck?").
 
 The referral is **bidirectional**: ask Help a *data* question → it points you to

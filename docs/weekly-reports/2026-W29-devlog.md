@@ -507,26 +507,30 @@ WHY: Owner — the deep-dive Themes tab (peer-relative net-positive deltas) is r
 
 WHY: The action-plan section reset loading state synchronously inside its fetch useEffect, tripping the new react-hooks/set-state-in-effect rule (253 warnings vs 252 ceiling, red CI). Reset-on-outlet-change now happens via a React key (parent remounts the section per outlet) and reset-on-retry in the click handler, so the effect only fetches (async setState in callbacks is fine). Behavior-preserving; back to 252 warnings.
 
-## Help agent (Guide, 🛟): seed + KB ingest — Jul 18
+## Help agent (Sherpa, 🛟): seed + KB ingest — Jul 18
 
-WHY: Building the in-product Help assistant (design in docs/HELP_AGENT.md, all §12 decisions signed off). Unit 1 = the platform-owned Help agent + its knowledge base. lib/helpAgent.ts holds the shared constants (slug `help-guide`, persona "Guide") and the strict grounding system prompt (the #1 anti-hallucination defense: answer only from the curated help KB, never invent a feature/URL/price, redirect data questions to Ask Ana, fall back honestly). scripts/seed-help-agent.mts upserts ONE agents row (standard tier, status 'paused' so it's off the public /b surface) in the internal/admin org and wipes + re-ingests the 21 curated articles under docs/help-kb/ via the existing ingestKnowledgeText pipeline. Idempotent. Seeded TEST: 21 articles → 98 chunks.
+WHY: Building the in-product Help assistant (design in docs/HELP_AGENT.md, all §12 decisions signed off). Unit 1 = the platform-owned Help agent + its knowledge base. lib/helpAgent.ts holds the shared constants (slug `help-guide`, persona "Sherpa") and the strict grounding system prompt (the #1 anti-hallucination defense: answer only from the curated help KB, never invent a feature/URL/price, redirect data questions to Ask Ana, fall back honestly). scripts/seed-help-agent.mts upserts ONE agents row (standard tier, status 'paused' so it's off the public /b surface) in the internal/admin org and wipes + re-ingests the 21 curated articles under docs/help-kb/ via the existing ingestKnowledgeText pipeline. Idempotent. Seeded TEST: 21 articles → 98 chunks.
 
-## Help agent (Guide, 🛟): authed /api/help/chat route — Jul 18
+## Help agent (Sherpa, 🛟): authed /api/help/chat route — Jul 18
 
 WHY: Unit 2 — the chat endpoint. Deliberately separate from the public CORS-* /api/bots/[id]/chat (which has a security note against cookie auth); the Help widget is signed-in-only + same-origin. Authed via getCallerOrgContext (401 otherwise), two-tier rate limit (per-user 30/min + per-IP 90/min backstop), loads the single platform Help agent by slug (cached, status-agnostic), layers per-request page context onto its grounding prompt on a clone, then reuses handleChatTurn verbatim (streaming + JSON). Verified end-to-end on TEST via scripts/_verify_help_agent.mts: grounded how-tos answered from KB; a data question redirected to Ask Ana; a fabrication bait (nonexistent Slack integration) honestly declined with no invention.
 
-## Help agent (Guide, 🛟): global HelpWidget in TopNav — Jul 18
+## Help agent (Sherpa, 🛟): global HelpWidget in TopNav — Jul 18
 
 WHY: Unit 3 — the surface. components/ui/HelpWidget.tsx is a floating lifesaver (🛟) launcher + streaming chat panel that mounts in TopNav (so it rides every authenticated page and inherits currentPage + resolved features for free — no new plumbing). It streams from the authed /api/help/chat via the same SSE parse the ChatBot uses, sends { route (usePathname), currentPage, features } as pageContext so answers are relevant to the screen, uses the Lottie loader (no CSS spinner) and a 16px textarea (iOS-zoom rule). Not root-layout mounted — that also wraps the public /s /b /pi widgets + login where Help must not appear. Verified locally against TEST: same-origin unauth → 401, cross-origin/tokenless → 403 (CSRF proxy), TopNav routes compile, tsc + 1554 tests green, 0 new lint warnings.
 
-## Help agent (Guide, 🛟): feature-integrity scrub — Jul 18
+## Help agent (Sherpa, 🛟): feature-integrity scrub — Jul 18
 
 WHY: Unit 4 — defense-in-depth over the system-prompt grounding. scrubHelpReply (lib/helpAgent.ts) strips the concrete, detectable fabrication class for a help agent — invented links and support emails (the Spacy failure mode) — from the authoritative reply before it reaches the user: markdown/bare URLs to non-official hosts are removed (official sentimetrx.ai/datanautix.com preserved), invented emails soften to "your account team". Applied in /api/help/chat for both JSON + streaming (the streaming client reconciles to the scrubbed final). 9 unit tests (helpAgent.test.ts).
 
-## Help agent (Guide, 🛟): thumbs feedback — Jul 18
+## Help agent (Sherpa, 🛟): thumbs feedback — Jul 18
 
 WHY: Unit 5 — the KB-gap detector (HELP_AGENT §9). sql/184 adds help_feedback (rating ∈ {-1,+1} + the question/answer pair + page_route; RLS org-scoped SELECT, service-role writes stamp org_id from the authed caller). POST /api/help/feedback records a rating (signed-in only, rate-limited). HelpWidget shows 👍/👎 under each real answer (not the greeting); one click posts + shows "Thanks". So repeated thumbs-down/unhelpful answers become the next help-article backlog. Applied sql/184 to TEST (table + policy verified, insert shape sanity-checked). ⏭ ON PUSH: npm run migrate sql/184 (records ledger + refreshes docs/db/schema.sql) then re-run test:rls/test:egress for the new table.
 
-## Help agent (Guide, 🛟): Ask Ana → Help redirect — Jul 18
+## Help agent (Sherpa, 🛟): Ask Ana → Help redirect — Jul 18
 
-WHY: Unit 6 — completes the symmetric two-assistant split. The Help side already redirects data questions to Ask Ana (system-prompt scope). This adds the reverse on the Ask Ana side (app/api/ask-ana/route.ts): a product how-to / navigation question ("how do I export this?", "where's the Schema tab?") is a question about the software, not the data, so Ana no longer tries to answer it from the dataset — she points the user to the 🛟 Help button (Guide) at the top of the page. Prompt-scope change, mirroring the Help side (no new logic).
+WHY: Unit 6 — completes the symmetric two-assistant split. The Help side already redirects data questions to Ask Ana (system-prompt scope). This adds the reverse on the Ask Ana side (app/api/ask-ana/route.ts): a product how-to / navigation question ("how do I export this?", "where's the Schema tab?") is a question about the software, not the data, so Ana no longer tries to answer it from the dataset — she points the user to the 🛟 Help button (Sherpa) in the bottom-right corner of the page. Prompt-scope change, mirroring the Help side (no new logic).
+
+## Help agent: rename Guide→Sherpa + fix button location — Jul 18
+
+WHY: Owner — (1) renamed the assistant persona Guide→Sherpa across the grounding prompt, widget greeting/header, Ask Ana redirect, KB articles, and docs (proper-noun only; internal slug help-guide unchanged). (2) The 🛟 widget is bottom-right but every reference said "top of the page" (Ask Ana literally told users to look top-right) — corrected all guidance to "bottom-right corner". Re-seeded TEST (name + prompt propagate to the agent row); grounding re-verified (Sherpa identity, data-Q→Ask Ana, fabrication declined). 9 unit tests + tsc green.

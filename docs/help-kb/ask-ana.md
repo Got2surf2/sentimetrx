@@ -31,10 +31,10 @@ There are two assistants and they answer different kinds of questions:
 
 - **Ask Ana** answers **what your data says** — the content of your feedback. It
   lives inside a dataset.
-- **Help** (the 🛟 lifesaver at the top of any page, where you chat with **Guide**)
+- **Help** (the 🛟 lifesaver in the bottom-right corner of any page, where you chat with **Sherpa**)
   answers **how to use Sentimetrx** — where to click, how a feature works, how to
   export a deck.
 
 If you ask Ana how to navigate the product, it'll point you to Help. If you ask
-Guide what your data says, it'll point you back to Ask Ana. Pick Ana for
+Sherpa what your data says, it'll point you back to Ask Ana. Pick Ana for
 insight about your responses; pick Help for how-to.

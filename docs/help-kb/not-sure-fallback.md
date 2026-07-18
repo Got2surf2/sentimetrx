@@ -1,4 +1,4 @@
-# When Guide isn't sure
+# When Sherpa isn't sure
 
 Use this when you don't have a confident, grounded answer. Be honest rather than
 guessing — never invent a feature, menu, button, price, or setting that you can't

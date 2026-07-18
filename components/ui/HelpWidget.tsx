@@ -2,7 +2,7 @@
 
 // components/ui/HelpWidget.tsx
 // The in-product Help launcher — a floating lifesaver (🛟) button on every
-// authenticated page that opens a chat panel with "Guide", the help assistant.
+// authenticated page that opens a chat panel with "Sherpa", the help assistant.
 // Streams from the authed /api/help/chat route (SSE), sending the current page
 // as context so answers are relevant to where the user is. See docs/HELP_AGENT.md.
 //
@@ -24,7 +24,7 @@ interface Msg { role: 'user' | 'assistant'; content: string }
 
 const GREETING: Msg = {
   role: 'assistant',
-  content: "Hi, I'm Guide 🛟 — I can help you find your way around Sentimetrx. Ask me how to do something, like \"how do I export a deck?\" (For questions about what your data says, use Ask Ana inside a dataset.)",
+  content: "Hi, I'm Sherpa 🛟 — I can help you find your way around Sentimetrx. Ask me how to do something, like \"how do I export a deck?\" (For questions about what your data says, use Ask Ana inside a dataset.)",
 }
 
 // Minimal inline formatter: **bold** + line breaks. Avoids pulling a markdown
@@ -170,7 +170,7 @@ export default function HelpWidget({ currentPage, features }: Props) {
             <div className="flex items-center gap-2 text-white font-semibold">
               <span aria-hidden style={{ fontSize: 20 }}>🛟</span>
               <span>Help</span>
-              <span className="text-white/70 text-sm font-normal">· Guide</span>
+              <span className="text-white/70 text-sm font-normal">· Sherpa</span>
             </div>
             <button type="button" onClick={() => setOpen(false)} aria-label="Close Help"
               className="text-white/90 hover:text-white" style={{ fontSize: 20, lineHeight: 1 }}>×</button>

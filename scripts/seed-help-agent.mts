@@ -1,5 +1,5 @@
 // scripts/seed-help-agent.mts
-// Seed / refresh the single platform "Help" agent (Guide, 🛟) and ingest the
+// Seed / refresh the single platform "Help" agent (Sherpa, 🛟) and ingest the
 // curated help articles under docs/help-kb/ into its knowledge base.
 //
 // The Help agent is ONE platform-owned `agents` row (slug HELP_AGENT_SLUG) in
