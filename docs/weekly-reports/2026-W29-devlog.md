@@ -526,3 +526,7 @@ WHY: Unit 4 — defense-in-depth over the system-prompt grounding. scrubHelpRepl
 ## Help agent (Guide, 🛟): thumbs feedback — Jul 18
 
 WHY: Unit 5 — the KB-gap detector (HELP_AGENT §9). sql/184 adds help_feedback (rating ∈ {-1,+1} + the question/answer pair + page_route; RLS org-scoped SELECT, service-role writes stamp org_id from the authed caller). POST /api/help/feedback records a rating (signed-in only, rate-limited). HelpWidget shows 👍/👎 under each real answer (not the greeting); one click posts + shows "Thanks". So repeated thumbs-down/unhelpful answers become the next help-article backlog. Applied sql/184 to TEST (table + policy verified, insert shape sanity-checked). ⏭ ON PUSH: npm run migrate sql/184 (records ledger + refreshes docs/db/schema.sql) then re-run test:rls/test:egress for the new table.
+
+## Help agent (Guide, 🛟): Ask Ana → Help redirect — Jul 18
+
+WHY: Unit 6 — completes the symmetric two-assistant split. The Help side already redirects data questions to Ask Ana (system-prompt scope). This adds the reverse on the Ask Ana side (app/api/ask-ana/route.ts): a product how-to / navigation question ("how do I export this?", "where's the Schema tab?") is a question about the software, not the data, so Ana no longer tries to answer it from the dataset — she points the user to the 🛟 Help button (Guide) at the top of the page. Prompt-scope change, mirroring the Help side (no new logic).
