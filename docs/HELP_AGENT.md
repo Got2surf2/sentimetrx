@@ -1,9 +1,9 @@
 # HELP_AGENT.md — In-product AI help agent (design & scope)
 
-**Status:** DESIGN APPROVED / not built. Scoped 2026-07-16; **all §12 decisions
-signed off by owner 2026-07-16** (every one on the recommended default). Build is
-unblocked — see the build order in §12. Nothing in `app/` or `lib/` has shipped
-yet.
+**Status:** MVP BUILT (local, unpushed) 2026-07-18. All §12 decisions signed off
+2026-07-16; all seven MVP items in §10 implemented and verified against the TEST
+project. Not yet deployed — the Help agent must be seeded on prod and sql/184
+migrated on push (see §13). Owner browser-QC of the widget is the remaining check.
 
 **One-liner:** an always-available assistant that answers "how do I…" and
 "what is…" questions about Sentimetrx itself — grounded strictly in curated,
@@ -269,18 +269,20 @@ it we're guessing at coverage. One small table + one endpoint.
 
 ## 10. MVP vs v2
 
-**MVP (ship this):**
-- [ ] One platform help-agent `agents` record + curated help KB (§3, §4, ~15–25 articles)
-- [ ] `/api/help/chat` route reusing `handleChatTurn` (§6)
-- [ ] `HelpWidget.tsx` global "?" mounted in TopNav (§6)
-- [ ] Page-context injection (§5)
-- [ ] Grounding rules + feature-integrity guardrail + honest fallback (§7)
-- [ ] Per-user/IP rate limit (§8)
-- [ ] Thumbs feedback (§9)
-- [ ] **Ask-Ana → Help redirect** — a how-to/navigation intent detector on the
-      Ask-Ana path that answers "that's a product question — open Help (🛟)" instead
-      of guessing about the data. The reverse (Help → Ask-Ana) is already covered by
-      the Help system-prompt scope (§7). Completes the symmetric split.
+**MVP — BUILT 2026-07-18 (local, verified on TEST):**
+- [x] One platform help-agent `agents` record + curated help KB (21 articles) —
+      `lib/helpAgent.ts` + `scripts/seed-help-agent.mts` (seeded TEST, 98 chunks)
+- [x] `/api/help/chat` route reusing `handleChatTurn` (§6) — authed, same-origin
+- [x] `HelpWidget.tsx` global 🛟 launcher mounted in TopNav (§6)
+- [x] Page-context injection (§5) — `formatHelpPageContext` (route + section + features)
+- [x] Grounding rules (seeded system prompt) + feature-integrity scrub
+      (`scrubHelpReply`) + honest fallback (§7) — verified: fabrication bait declined
+- [x] Per-user/IP rate limit (§8)
+- [x] Thumbs feedback (§9) — `sql/184 help_feedback` + `/api/help/feedback` + widget UI
+- [x] **Ask-Ana → Help redirect** — prompt-scope on `app/api/ask-ana`: a product
+      how-to question points the user to the 🛟 Help button instead of answering from
+      data. The reverse (Help → Ask-Ana) is the Help system-prompt scope (§7).
+      Symmetric split complete.
 
 **v2 (after MVP proves useful):**
 - "Take me there" — uiHints returns a deep-link/CTA card ("Open Charts") the
@@ -333,3 +335,24 @@ Claude drafts articles → owner reviews → ingest → `/api/help/chat` (authed
 `HelpWidget` extracted from `ChatBot.tsx`, mounted in `TopNav`, page-context wired
 → grounding rules + feature-integrity guardrail + honest fallback → thumbs
 feedback. ~3–4 focused days; KB authoring is the long pole.
+
+---
+
+## 13. Go-live steps (on push / deploy)
+
+Everything is verified on TEST. To ship to production:
+
+1. **Migrate the feedback table:** `npm run migrate sql/184_help_feedback.sql`
+   (records the ledger + refreshes `docs/db/schema.sql` — commit the refreshed
+   snapshot with the push).
+2. **Seed the prod Help agent + KB:**
+   `node --conditions=react-server --import tsx scripts/seed-help-agent.mts --prod`
+   (idempotent; creates the `help-guide` agent in the prod admin org and ingests
+   the 21 articles). Re-run any time the articles or grounding prompt change.
+3. **Confirm the home org's AI is on** — the Help agent's org must be `ai_key_mode`
+   `platform` (not `off`), or every turn returns "unavailable" (chatCore gate).
+4. **Post-deploy:** re-run `npm run test:rls` + `npm run test:egress` (new
+   `help_feedback` table) and browser-QC the 🛟 widget on `www.sentimetrx.ai`.
+
+Note: the Help agent is a **data-only seed**, not code — a deploy alone won't
+create it; step 2 must run against prod once (and again whenever the KB changes).
