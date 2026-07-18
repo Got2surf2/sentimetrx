@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import DatanautixAttribution from '@/components/ui/DatanautixAttribution'
+import HelpWidget from '@/components/ui/HelpWidget'
 
 interface Crumb { label: string; href?: string }
 
@@ -118,6 +119,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
     : userEmail || ''
 
   return (
+    <>
     <nav className="px-5 flex items-center justify-between h-14 fixed top-0 left-0 right-0 z-50 shadow-md"
       style={{ background: HERMES }}>
 
@@ -230,5 +232,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
         </>
       )}
     </nav>
+    <HelpWidget currentPage={currentPage} features={f} />
+    </>
   )
 }
