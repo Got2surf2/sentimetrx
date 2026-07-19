@@ -284,10 +284,24 @@ it we're guessing at coverage. One small table + one endpoint.
       data. The reverse (Help → Ask-Ana) is the Help system-prompt scope (§7).
       Symmetric split complete.
 
-**v2 (after MVP proves useful):**
-- "Take me there" — uiHints returns a deep-link/CTA card ("Open Charts") the
+**Post-MVP follow-ups — SHIPPED 2026-07-19 (owner asks):**
+- ✅ **In-app deep-linking ("take me there", lightweight).** Sherpa links to a
+  **curated navigation map** of top-level destinations (`HELP_NAV_MAP` in
+  `lib/helpAgent.ts`) as markdown links, e.g. `[Advanced Analytics](/analyze)`.
+  The widget renders them clickable and navigates **client-side** (Next router).
+  Feature-integrity: `scrubHelpReply` strips any in-app link outside the allow-list
+  (blocks invented routes / guessed ids), keeping external-link + email scrubbing.
+  This is the pragmatic version of the uiHints "take me there" below — no action
+  cards yet, just grounded links.
+- ✅ **Conversation continuity across navigation.** The chat + open state persist
+  in `sessionStorage` (`help_widget_state_v1`), so navigating between pages (which
+  remounts TopNav and would otherwise reset the widget) keeps Sherpa's conversation
+  intact — following a link no longer loses context.
+
+**v2 (still deferred):**
+- "Take me there" **action cards** — uiHints returns a deep-link/CTA card the
   widget renders; optional element-highlight. Reuses `lib/uiHints.ts` sibling-route
-  pattern so chat latency is untouched.
+  pattern so chat latency is untouched. (Superset of the shipped link version above.)
 - Proactive nudges (first-visit to a complex tab, or on silence) — reuse the
   `trigger: 'silence'` fast-path already in `handleChatTurn` (line 239).
 - Curated doc-section ingest (Option C) driven by measured gaps (§9).

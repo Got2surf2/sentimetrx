@@ -23,6 +23,34 @@ export const HELP_AGENT_NAME = 'Sherpa'
  *  re-ingest cleanly without touching anything else. */
 export const HELP_KB_SOURCE_TYPE = 'help-kb'
 
+/** Curated in-app navigation map — the ONLY destinations Sherpa may deep-link
+ *  to. Each is a top-level section landing (no per-item ids). The route layer
+ *  injects this into the prompt; the scrub strips any link outside it. Keep the
+ *  paths in sync with the real nav in components/nav/TopNav.tsx. */
+export const HELP_NAV_MAP: Array<{ path: string; label: string; feature?: string }> = [
+  { path: '/dashboard',     label: 'Home & Surveys' },
+  { path: '/analyze',       label: 'Advanced Analytics (TextMine, Statistics, Search, Ask Ana)', feature: 'analyze' },
+  { path: '/bots',          label: 'Agents', feature: 'bots' },
+  { path: '/campaigns',     label: 'Campaigns (email / SMS)', feature: 'campaigns' },
+  { path: '/pulseiq',       label: 'PulseIQ (live pulse)', feature: 'townhall' },
+  { path: '/recordings',    label: 'Town Hall (recorded meetings)', feature: 'recordings' },
+  { path: '/social',        label: 'Social', feature: 'social' },
+  { path: '/favorites',     label: 'Favorites' },
+  { path: '/settings/team', label: 'Team & invites' },
+  { path: '/admin/hub',     label: 'Settings & Admin' },
+]
+
+/** Path prefixes the scrub treats as valid in-app links (the map paths; a
+ *  deeper path under one, like /analyze/<id>, is allowed too). */
+const ALLOWED_NAV_PREFIXES = HELP_NAV_MAP.map((n) => n.path)
+
+function isAllowedInAppPath(path: string): boolean {
+  const clean = path.split(/[?#]/)[0]
+  return ALLOWED_NAV_PREFIXES.some((p) => clean === p || clean.startsWith(p + '/'))
+}
+
+const NAV_BLOCK = HELP_NAV_MAP.map((n) => '- ' + n.label + ': ' + n.path).join('\n')
+
 /** The grounding system prompt — the #1 anti-hallucination defense (HELP_AGENT
  *  §7). Strict: describe only features present in the retrieved help content;
  *  never invent; redirect data questions to Ask Ana; fall back honestly. Seeded
@@ -41,6 +69,13 @@ STRICT GROUNDING — this is your most important rule
 STAY IN YOUR LANE
 - You answer HOW TO USE the product. You do NOT answer questions about what the user's DATA says ("what did respondents say about parking?", "summarize my results") — that is Ask Ana's job, which lives inside a dataset in Advanced Analytics.
 - When someone asks a data question, briefly say that's what Ask Ana is for and point them to open a dataset and use Ask Ana.
+
+LINKING — take them there when you can
+- When your answer points to a place in Sentimetrx, add an in-app link so the user can jump straight there. The Help chat stays open and travels with them, so following a link doesn't lose your conversation.
+- Use ONLY the destinations in the NAVIGATION MAP below, written as a markdown link with the EXACT path — e.g. "Open [Advanced Analytics](/analyze) and pick your dataset." Only link to a destination whose feature is enabled for this organization (see CURRENT CONTEXT if provided). NEVER invent a path, guess an id, or link to anything not in the map. If the right destination isn't in the map, describe where to click instead of linking.
+
+NAVIGATION MAP (the only linkable destinations):
+${NAV_BLOCK}
 
 TONE
 - Warm, calm, and to the point. You're a helpful guide, not a salesperson. Don't oversell; don't pad. A good answer is a couple of tight steps or a clear one-paragraph explanation.`
@@ -78,6 +113,14 @@ export function scrubHelpReply(reply: string): { text: string; flagged: boolean 
   // 1. Markdown links [label](url) → keep just the label when the host isn't official.
   let out = reply.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (m, label: string, url: string) => {
     try { if (isOfficialHost(new URL(url).hostname)) return m } catch { /* fall through */ }
+    flagged = true
+    return label
+  })
+
+  // 1b. In-app links [label](/path) → keep only when the path is in the nav map
+  // allow-list (blocks invented routes / guessed ids); otherwise drop to label.
+  out = out.replace(/\[([^\]]+)\]\((\/[^)\s]*)\)/g, (_m, label: string, path: string) => {
+    if (isAllowedInAppPath(path)) return '[' + label + '](' + path + ')'
     flagged = true
     return label
   })

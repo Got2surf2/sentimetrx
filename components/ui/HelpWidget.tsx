@@ -6,39 +6,69 @@
 // Streams from the authed /api/help/chat route (SSE), sending the current page
 // as context so answers are relevant to where the user is. See docs/HELP_AGENT.md.
 //
-// Grounded, product-how-to only: data questions get redirected to Ask Ana by the
-// agent itself (system-prompt scope), not here.
+// Continuity: the conversation + open state persist in sessionStorage, so the
+// chat travels with the user across page navigations and reloads within the tab
+// (TopNav — where this mounts — remounts per page, which would otherwise reset
+// React state). Sherpa's in-app links navigate client-side via the router, so
+// following one keeps the panel and the conversation intact.
 
-import { useEffect, useRef, useState } from 'react'
-import { usePathname } from 'next/navigation'
+import { Fragment, useEffect, useRef, useState } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
 
 const HERMES = '#E8632A'
+const STATE_KEY = 'help_widget_state_v1'
 
 interface Props {
   currentPage?: string
   features?: Record<string, boolean>
 }
 
-interface Msg { role: 'user' | 'assistant'; content: string }
+interface Msg { role: 'user' | 'assistant'; content: string; greeting?: true }
 
 const GREETING: Msg = {
   role: 'assistant',
+  greeting: true,
   content: "Hi, I'm Sherpa 🛟 — I can help you find your way around Sentimetrx. Ask me how to do something, like \"how do I export a deck?\" (For questions about what your data says, use Ask Ana inside a dataset.)",
 }
 
-// Minimal inline formatter: **bold** + line breaks. Avoids pulling a markdown
-// dependency into the nav bundle for a few emphasis spans.
-function renderContent(text: string) {
+// Inline renderer: **bold** + markdown links. In-app links (/path) navigate
+// client-side (keeping the chat open); external links open in a new tab.
+function renderInline(line: string, onNav: (path: string) => void) {
+  const re = /(\[[^\]]+\]\((?:\/[^)\s]+|https?:\/\/[^)\s]+)\)|\*\*[^*]+\*\*)/g
+  const out: React.ReactNode[] = []
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(line)) !== null) {
+    if (m.index > last) out.push(line.slice(last, m.index))
+    const tok = m[0]
+    if (tok.startsWith('**')) {
+      out.push(<strong key={m.index}>{tok.slice(2, -2)}</strong>)
+    } else {
+      const lm = tok.match(/^\[([^\]]+)\]\(([^)]+)\)$/)
+      const label = lm ? lm[1] : tok
+      const url = lm ? lm[2] : ''
+      if (url.startsWith('/')) {
+        out.push(
+          <a key={m.index} onClick={() => onNav(url)}
+            style={{ color: HERMES, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}>{label}</a>,
+        )
+      } else {
+        out.push(
+          <a key={m.index} href={url} target="_blank" rel="noreferrer"
+            style={{ color: HERMES, fontWeight: 600, textDecoration: 'underline' }}>{label}</a>,
+        )
+      }
+    }
+    last = re.lastIndex
+  }
+  if (last < line.length) out.push(line.slice(last))
+  return out.map((n, i) => <Fragment key={i}>{n}</Fragment>)
+}
+
+function renderContent(text: string, onNav: (path: string) => void) {
   return text.split('\n').map((line, li) => (
-    <span key={li}>
-      {li > 0 && <br />}
-      {line.split(/(\*\*[^*]+\*\*)/g).map((seg, si) =>
-        seg.startsWith('**') && seg.endsWith('**')
-          ? <strong key={si}>{seg.slice(2, -2)}</strong>
-          : <span key={si}>{seg}</span>,
-      )}
-    </span>
+    <span key={li}>{li > 0 && <br />}{renderInline(line, onNav)}</span>
   ))
 }
 
@@ -51,15 +81,48 @@ function getSessionId(): string {
   } catch { return 'help-ephemeral' }
 }
 
+interface PersistedState { messages: Msg[]; feedback: Record<number, 'up' | 'down'>; open: boolean }
+
 export default function HelpWidget({ currentPage, features }: Props) {
   const pathname = usePathname()
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<Msg[]>([GREETING])
+  const [feedback, setFeedback] = useState<Record<number, 'up' | 'down'>>({})
   const [input, setInput] = useState('')
   const [streamText, setStreamText] = useState('')
   const [busy, setBusy] = useState(false)
-  const [feedback, setFeedback] = useState<Record<number, 'up' | 'down'>>({})
+  const [hydrated, setHydrated] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Hydrate persisted conversation on mount (survives page navigation + reload).
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(STATE_KEY)
+      if (raw) {
+        const s = JSON.parse(raw) as PersistedState
+        if (Array.isArray(s.messages) && s.messages.length) setMessages(s.messages)
+        if (s.feedback) setFeedback(s.feedback)
+        if (s.open) setOpen(true)
+      }
+    } catch { /* ignore corrupt state */ }
+    setHydrated(true)
+  }, [])
+
+  // Persist after hydration so navigation keeps the conversation.
+  useEffect(() => {
+    if (!hydrated) return
+    try { sessionStorage.setItem(STATE_KEY, JSON.stringify({ messages, feedback, open } satisfies PersistedState)) } catch { /* quota */ }
+  }, [messages, feedback, open, hydrated])
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+  }, [messages, streamText, open])
+
+  function navigate(path: string) {
+    setOpen(true) // keep the chat open as we move; it rehydrates on the next page
+    router.push(path)
+  }
 
   async function sendFeedback(idx: number, rating: 1 | -1) {
     if (feedback[idx]) return
@@ -79,10 +142,6 @@ export default function HelpWidget({ currentPage, features }: Props) {
     } catch { /* best-effort — the local state already thanked them */ }
   }
 
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, streamText, open])
-
   async function send() {
     const q = input.trim()
     if (!q || busy) return
@@ -92,7 +151,7 @@ export default function HelpWidget({ currentPage, features }: Props) {
     setBusy(true)
     setStreamText('')
     try {
-      const apiMessages = next.filter(m => m !== GREETING).map(m => ({ role: m.role, content: m.content }))
+      const apiMessages = next.filter(m => !m.greeting).map(m => ({ role: m.role, content: m.content }))
       const res = await fetch('/api/help/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -186,10 +245,10 @@ export default function HelpWidget({ currentPage, features }: Props) {
                     ? { background: HERMES, color: 'white', maxWidth: '85%', alignSelf: 'flex-end' }
                     : { background: 'white', color: '#1f2937', border: '1px solid #eee', maxWidth: '90%' }}
                 >
-                  {renderContent(m.content)}
+                  {renderContent(m.content, navigate)}
                 </div>
                 {/* Thumbs on real answers (not the greeting) — the KB-gap signal. */}
-                {m.role === 'assistant' && m !== GREETING && (
+                {m.role === 'assistant' && !m.greeting && (
                   <div className="flex items-center gap-1 mt-1 pl-1 text-xs text-gray-400">
                     {feedback[i] ? (
                       <span>Thanks for the feedback!</span>
@@ -208,7 +267,7 @@ export default function HelpWidget({ currentPage, features }: Props) {
             {busy && (
               <div className="flex justify-start">
                 <div className="rounded-2xl px-3 py-2 text-sm bg-white border" style={{ borderColor: '#eee', color: '#1f2937', maxWidth: '90%' }}>
-                  {streamText ? renderContent(streamText) : <LottieLoader size={40} />}
+                  {streamText ? renderContent(streamText, navigate) : <LottieLoader size={40} />}
                 </div>
               </div>
             )}

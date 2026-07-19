@@ -46,6 +46,25 @@ describe('scrubHelpReply — fabricated link/email removal', () => {
   it('handles empty input', () => {
     expect(scrubHelpReply('').flagged).toBe(false)
   })
+
+  it('keeps a valid in-app nav link', () => {
+    const r = scrubHelpReply('Open [Advanced Analytics](/analyze) and pick your dataset.')
+    expect(r.flagged).toBe(false)
+    expect(r.text).toContain('[Advanced Analytics](/analyze)')
+  })
+
+  it('keeps a deeper path under an allowed nav prefix', () => {
+    const r = scrubHelpReply('Your [agent](/bots/new) is here.')
+    expect(r.flagged).toBe(false)
+    expect(r.text).toContain('(/bots/new)')
+  })
+
+  it('strips an invented in-app path but keeps the label', () => {
+    const r = scrubHelpReply('Go to [Billing](/billing-center) to manage your plan.')
+    expect(r.flagged).toBe(true)
+    expect(r.text).not.toContain('/billing-center')
+    expect(r.text).toContain('Billing')
+  })
 })
 
 describe('formatHelpPageContext', () => {
