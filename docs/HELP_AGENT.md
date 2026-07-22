@@ -244,7 +244,11 @@ sentiment tags — leave it, it does nothing harmful.
 
 - **Cost:** platform-keyed, standard-tier model, RAG on, tools minimal. Typical
   turn = 1 embed + 1 model call. Bounded by MAX_TOOL_ROUNDS=3 only if tools are
-  enabled (they're off in MVP). Estimate: fractions of a cent per question.
+  enabled (they're off in MVP). Standard tier = **Sonnet 4.6** ($3/1M in · $15/1M
+  out); a turn is ~3K input (grounding prompt + 5 RAG chunks + short history) +
+  ~250 output tokens, plus one small question embedding → **≈ 1–2¢ per question**
+  (~$10–20 / 1,000). Platform-paid; the customer is never billed. If volume grows,
+  prompt-cache the fixed grounding prefix and sharpen articles flagged by 👎.
 - **Rate limit:** per-authenticated-user and per-IP on `/api/help/chat`
   (`lib/rateLimit.ts`) — the sole abuse/cost guard, since there's no per-org quota.
 - **Auth:** widget + route require a signed-in session. The help agent is internal
