@@ -603,6 +603,9 @@ Major AI features by module:
 - Subject-line and body suggestions
 - Audit log natural-language summaries
 
+**In-product help (Sherpa)**
+- **Help assistant "Sherpa"** (🧭 compass launcher, since 2026-07-18) — a single platform-owned agent (`agents` row, slug `help-guide`, in the Datanautix admin org) on the shared `chatCore` engine (standard tier), **grounded strictly in ~21 curated help-KB articles** under `docs/help-kb/` — an authored corpus, *not* the engineering specs, which is the load-bearing anti-hallucination decision. Global floating launcher (`components/ui/HelpWidget.tsx`) on every authenticated page answers how-to / navigation questions about *using* Sentimetrx — the symmetric counterpart to **Ask Ana** (which answers what your *data* says); each redirects the other out of lane. Authed streaming endpoint `/api/help/chat` injects per-request page context (route + enabled features) onto the grounding prompt so answers fit the current screen; curated in-app deep-linking via `HELP_NAV_MAP` + a feature-integrity scrub (`scrubHelpReply`) strips fabricated links/emails and invented routes; the conversation persists across navigation in sessionStorage. Thumbs 👍/👎 feedback (`help_feedback`, sql/184) is the KB-gap detector driving the next article/vocabulary backlog. Authored to UI labels and to users' vocabulary, not product jargon (see the §4 authoring principle). Full spec: `docs/HELP_AGENT.md`.
+
 See `docs/USAGE_ACCOUNTING.md § Estimator` for the 23 forward-looking usage profiles that drive cost modeling.
 
 ---
