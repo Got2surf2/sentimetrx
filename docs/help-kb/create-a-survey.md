@@ -3,13 +3,15 @@
 Sentimetrx surveys are conversational — respondents answer in a friendly chat
 format rather than a long form. There are two ways to build one.
 
-## The fast way: Smart Study Wizard (AI-powered)
+## The fast way: Smart Study Wizard (AI-powered templates)
 
-Pick your industry and what you want to learn, and the wizard drafts a complete
-survey for you. You choose:
+This is what people mean by an **AI template** or **generating a survey with AI**:
+pick your industry and what you want to learn, and the wizard uses AI to draft a
+complete survey for you from a ready-made template. You choose:
 
-- A **blueprint** — the goal of the study (for example Satisfaction & Experience,
-  NPS & Loyalty, Awareness & Perception, Churn & Risk, or Journey & Touchpoint).
+- A **blueprint** — a ready-made survey **template** for the goal of the study (for
+  example Satisfaction & Experience, NPS & Loyalty, Awareness & Perception, Churn &
+  Risk, or Journey & Touchpoint).
 - Your **industry**, which sets sensible defaults for wording and themes.
 - A **focus area** (like retention, communication, or recognition) and a **length**
   (quick ~5 questions, standard ~10, or comprehensive ~15).
