@@ -145,6 +145,22 @@ Articles are authored as Markdown, ingested via the existing `ingest.ts` path
 (one KB source per article), so re-ingest on edit is a solved problem. Author to
 the **UI labels**, not slugs (Schema tab, not `/settings`).
 
+**Authoring principle — write in the user's vocabulary, not just product jargon
+(2026-07-24).** Retrieval is embedding-based over the article chunks, so a query
+only finds an article it shares words/meaning with. A gap here surfaces as a
+**retrieval miss that looks like a coverage gap**: the article exists but the user's
+lay term has no lexical/semantic bridge to it, so the chunk falls below the
+injection floor and Sherpa correctly declines (per §7). This bit us live — "template
+ai" got a "don't have details" fallback even though `create-a-survey.md` documents
+the AI Smart Study Wizard, because the article only ever said "blueprint," never
+"template." Fix pattern: weave the words users actually type into the article as
+natural synonyms (no keyword-stuffing, no invented features) — e.g. blueprint→"a
+ready-made template," agent→"a bot / virtual assistant," PulseIQ/Town Hall→"a focus
+group," plan/usage→"pricing / cost / subscription," privacy→"security / data
+protection." A systematic jargon→lay-term pass across the corpus (2026-07-24, W30
+devlog) closed the known gaps; verify new/edited articles with a lay-phrasing query
+battery against TEST (`scripts/_verify_help_agent.mts` + a re-seed) before shipping.
+
 ---
 
 ## 5. Page-context awareness
