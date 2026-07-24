@@ -1,5 +1,5 @@
 // app/api/help/feedback/route.ts
-// POST — record a thumbs up/down on a Help (Guide, 🛟) answer. Signed-in only.
+// POST — record a thumbs up/down on a Help (Sherpa, 🧭) answer. Signed-in only.
 // This is the KB-gap detector (HELP_AGENT §9): repeated thumbs-down / unhelpful
 // answers are the authoring backlog for the next help article. Writes via
 // service-role, stamping org_id from the authenticated caller (RLS gives

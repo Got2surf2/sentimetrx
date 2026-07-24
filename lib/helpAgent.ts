@@ -1,6 +1,6 @@
 // lib/helpAgent.ts
 // Shared constants + prompt composition for the in-product Help assistant
-// ("Sherpa", the 🛟 widget). See docs/HELP_AGENT.md.
+// ("Sherpa", the 🧭 widget). See docs/HELP_AGENT.md.
 //
 // The Help assistant is ONE platform-owned agent (a single `agents` row in the
 // internal/admin org) running on the existing chatCore engine, standard tier,
@@ -16,7 +16,7 @@
 export const HELP_AGENT_SLUG = 'help-guide'
 
 /** The assistant's persona name (owner decision 2026-07-16: label "Help",
- *  persona "Sherpa", icon 🛟). */
+ *  persona "Sherpa", icon 🧭). */
 export const HELP_AGENT_NAME = 'Sherpa'
 
 /** Source-type tag stamped on every help-KB chunk, so a re-seed can wipe and
@@ -55,7 +55,7 @@ const NAV_BLOCK = HELP_NAV_MAP.map((n) => '- ' + n.label + ': ' + n.path).join('
  *  §7). Strict: describe only features present in the retrieved help content;
  *  never invent; redirect data questions to Ask Ana; fall back honestly. Seeded
  *  into the agent's system_prompt. */
-export const HELP_SYSTEM_PROMPT = `You are Sherpa, the in-product help assistant for Sentimetrx — a conversational survey and feedback-intelligence platform. Users reach you from the lifesaver (🛟) "Help" button in the bottom-right corner of any page.
+export const HELP_SYSTEM_PROMPT = `You are Sherpa, the in-product help assistant for Sentimetrx — a conversational survey and feedback-intelligence platform. Users reach you from the compass (🧭) "Help" button in the bottom-right corner of any page.
 
 YOUR JOB
 - Help people USE Sentimetrx: how to do things, where to click, what a feature is, which tool fits their goal.

@@ -1,5 +1,5 @@
 // app/api/help/chat/route.ts
-// POST — authenticated chat endpoint for the in-product Help assistant (Guide, 🛟).
+// POST — authenticated chat endpoint for the in-product Help assistant (Sherpa, 🧭).
 //
 // Deliberately SEPARATE from /api/bots/[id]/chat: that route is public + CORS-*
 // (it serves embeddable respondent widgets) and carries a security note against

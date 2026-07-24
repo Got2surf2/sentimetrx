@@ -10,25 +10,28 @@ migrated on push (see §13). Owner browser-QC of the widget is the remaining che
 user-facing help content — so users can navigate a functionally rich, complex
 product without a human.
 
-**Naming & icon (owner, 2026-07-16):** the widget users see is labelled **Help**
-and wears a **lifesaver / life-ring icon (🛟)** — the universal support convention
-*and* on the Datanautix nautical brand. The assistant's persona name is **Sherpa**
-(chosen over "Guru": Sherpa fits the navigation metaphor and stays humble, matching
-the honest "here's where to go / I'm not certain" behaviour the anti-hallucination
-design depends on). So: **label = Help, persona = Sherpa, icon = 🛟.**
+**Naming & icon (owner, 2026-07-16; icon updated 2026-07-24):** the widget users
+see is labelled **Help** and wears a **compass icon (🧭)** — a wayfinding cue that
+fits Sherpa's guide-you-there role *and* stays on the Datanautix nautical brand.
+(It first shipped as a lifesaver / life-ring 🛟; the owner switched it to a compass
+on 2026-07-24 as the better metaphor for "find your way around.") The assistant's
+persona name is **Sherpa** (chosen over "Guru": Sherpa fits the navigation metaphor
+and stays humble, matching the honest "here's where to go / I'm not certain"
+behaviour the anti-hallucination design depends on). So: **label = Help, persona =
+Sherpa, icon = 🧭.**
 
 **The two assistants are a clean, symmetric split (owner, 2026-07-16).** Sentimetrx
 has two AI helpers that live in different places and refer to each other:
 - **Ask Ana** — embedded *inside a dataset* (Advanced Analytics). Answers about the
   user's **data** ("what did respondents say about parking?").
-- **Help / Sherpa (🛟)** — a **global** launcher on every page. Answers about **using
+- **Help / Sherpa (🧭)** — a **global** launcher on every page. Answers about **using
   the product** ("how do I export a deck?").
 
 The referral is **bidirectional**: ask Help a *data* question → it points you to
 **Ask Ana**; ask Ask Ana a *how-to / navigation* question → it points you to
 **Help**. Each stays strictly in its lane. (Implementation note: the Help side is
 the system-prompt scope in §7; the Ask-Ana side needs a small how-to/navigation
-intent detector that emits the "open Help (🛟)" redirect — a minor addition to the
+intent detector that emits the "open Help (🧭)" redirect — a minor addition to the
 Ask-Ana path, tracked in §10.)
 
 ---
@@ -277,14 +280,14 @@ it we're guessing at coverage. One small table + one endpoint.
 - [x] One platform help-agent `agents` record + curated help KB (21 articles) —
       `lib/helpAgent.ts` + `scripts/seed-help-agent.mts` (seeded TEST, 98 chunks)
 - [x] `/api/help/chat` route reusing `handleChatTurn` (§6) — authed, same-origin
-- [x] `HelpWidget.tsx` global 🛟 launcher mounted in TopNav (§6)
+- [x] `HelpWidget.tsx` global 🧭 launcher mounted in TopNav (§6)
 - [x] Page-context injection (§5) — `formatHelpPageContext` (route + section + features)
 - [x] Grounding rules (seeded system prompt) + feature-integrity scrub
       (`scrubHelpReply`) + honest fallback (§7) — verified: fabrication bait declined
 - [x] Per-user/IP rate limit (§8)
 - [x] Thumbs feedback (§9) — `sql/184 help_feedback` + `/api/help/feedback` + widget UI
 - [x] **Ask-Ana → Help redirect** — prompt-scope on `app/api/ask-ana`: a product
-      how-to question points the user to the 🛟 Help button instead of answering from
+      how-to question points the user to the 🧭 Help button instead of answering from
       data. The reverse (Help → Ask-Ana) is the Help system-prompt scope (§7).
       Symmetric split complete.
 
@@ -370,7 +373,7 @@ Everything is verified on TEST. To ship to production:
 3. **Confirm the home org's AI is on** — the Help agent's org must be `ai_key_mode`
    `platform` (not `off`), or every turn returns "unavailable" (chatCore gate).
 4. **Post-deploy:** re-run `npm run test:rls` + `npm run test:egress` (new
-   `help_feedback` table) and browser-QC the 🛟 widget on `www.sentimetrx.ai`.
+   `help_feedback` table) and browser-QC the 🧭 widget on `www.sentimetrx.ai`.
 
 Note: the Help agent is a **data-only seed**, not code — a deploy alone won't
 create it; step 2 must run against prod once (and again whenever the KB changes).

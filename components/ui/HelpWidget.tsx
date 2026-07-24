@@ -1,7 +1,7 @@
 'use client'
 
 // components/ui/HelpWidget.tsx
-// The in-product Help launcher — a floating lifesaver (🛟) button on every
+// The in-product Help launcher — a floating compass (🧭) button on every
 // authenticated page that opens a chat panel with "Sherpa", the help assistant.
 // Streams from the authed /api/help/chat route (SSE), sending the current page
 // as context so answers are relevant to where the user is. See docs/HELP_AGENT.md.
@@ -29,7 +29,7 @@ interface Msg { role: 'user' | 'assistant'; content: string; greeting?: true }
 const GREETING: Msg = {
   role: 'assistant',
   greeting: true,
-  content: "Hi, I'm Sherpa 🛟 — I can help you find your way around Sentimetrx. Ask me how to do something, like \"how do I export a deck?\" (For questions about what your data says, use Ask Ana inside a dataset.)",
+  content: "Hi, I'm Sherpa 🧭 — I can help you find your way around Sentimetrx. Ask me how to do something, like \"how do I export a deck?\" (For questions about what your data says, use Ask Ana inside a dataset.)",
 }
 
 // Inline renderer: **bold** + markdown links. In-app links (/path) navigate
@@ -212,7 +212,7 @@ export default function HelpWidget({ currentPage, features }: Props) {
           className="fixed bottom-5 right-5 z-[60] flex items-center justify-center rounded-full shadow-lg transition-transform hover:scale-105"
           style={{ width: 52, height: 52, background: 'white', border: '1px solid #eee', fontSize: 26 }}
         >
-          <span aria-hidden>🛟</span>
+          <span aria-hidden>🧭</span>
         </button>
       )}
 
@@ -227,7 +227,7 @@ export default function HelpWidget({ currentPage, features }: Props) {
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3" style={{ background: HERMES }}>
             <div className="flex items-center gap-2 text-white font-semibold">
-              <span aria-hidden style={{ fontSize: 20 }}>🛟</span>
+              <span aria-hidden style={{ fontSize: 20 }}>🧭</span>
               <span>Help</span>
               <span className="text-white/70 text-sm font-normal">· Sherpa</span>
             </div>

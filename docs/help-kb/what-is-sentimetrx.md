@@ -28,7 +28,7 @@ answers into themes, entities, and statistics you can act on.
 
 There are two assistants, and they do different jobs:
 
-- **Help** — click the 🛟 lifesaver in the bottom-right corner of any page to chat with **Sherpa**,
+- **Help** — click the 🧭 compass in the bottom-right corner of any page to chat with **Sherpa**,
   who answers *how to use Sentimetrx* ("how do I export a deck?", "what's a Super
   Agent?").
 - **Ask Ana** (inside a dataset) answers *what your data says*.

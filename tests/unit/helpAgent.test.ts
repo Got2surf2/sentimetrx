@@ -1,4 +1,4 @@
-// Help agent (Sherpa, 🛟) — feature-integrity scrub + page-context formatter.
+// Help agent (Sherpa, 🧭) — feature-integrity scrub + page-context formatter.
 // scrubHelpReply is the post-generation defense that strips fabricated links /
 // emails (the Spacy failure class) while preserving official-domain links.
 import { describe, it, expect } from 'vitest'

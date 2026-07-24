@@ -31,7 +31,7 @@ There are two assistants and they answer different kinds of questions:
 
 - **Ask Ana** answers **what your data says** — the content of your feedback. It
   lives inside a dataset.
-- **Help** (the 🛟 lifesaver in the bottom-right corner of any page, where you chat with **Sherpa**)
+- **Help** (the 🧭 compass in the bottom-right corner of any page, where you chat with **Sherpa**)
   answers **how to use Sentimetrx** — where to click, how a feature works, how to
   export a deck.
 

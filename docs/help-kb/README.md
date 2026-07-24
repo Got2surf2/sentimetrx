@@ -1,4 +1,4 @@
-# Help KB — source articles for the in-product Help agent (🛟)
+# Help KB — source articles for the in-product Help agent (🧭)
 
 These Markdown files are the **authored, user-facing knowledge base** the Help
 agent answers from. They are ingested into the help agent's KB via the existing
