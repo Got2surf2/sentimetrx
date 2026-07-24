@@ -1,7 +1,8 @@
 # How do I manage my organization and branding?
 
-Your organization holds your team, your studies, and the branding that shows up
-across the product. Organization-wide settings are managed by an **owner**.
+Your organization — your workspace — holds your team, your studies, and the
+branding (logo and colors) that shows up across the product. Organization-wide
+settings are managed by an **owner**.
 
 ## Organization settings
 

@@ -1,7 +1,7 @@
 # How do I create an agent?
 
-An **agent** is a branded, conversational AI chatbot you can put in front of your
-audience. Unlike a fixed survey, an agent holds a real back-and-forth
+An **agent** is a branded, conversational AI chatbot — a bot, virtual assistant,
+or FAQ concierge — you can put in front of your audience. Unlike a fixed survey, an agent holds a real back-and-forth
 conversation — answering questions, probing for detail, and staying on-brand.
 Once published, it's public at its own link and can be embedded on your site.
 

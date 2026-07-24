@@ -13,9 +13,10 @@ segment you're looking at.
 
 ## Key Drivers
 
-The **Key Drivers** insight ranks which factors are most associated with your
-outcome (for example, what correlates with a top-box rating) so you can see what
-matters most at a glance, without setting up a model yourself.
+The **Key Drivers** insight — driver analysis — ranks which factors are most
+associated with (most predictive of) your outcome (for example, what correlates
+with a top-box rating) so you can see what matters most at a glance, without
+setting up a model yourself.
 
 ## Regression (Linear and Logistic)
 

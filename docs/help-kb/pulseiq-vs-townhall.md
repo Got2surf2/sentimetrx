@@ -1,7 +1,8 @@
 # PulseIQ vs Town Hall — which do I use?
 
-Both turn a group conversation into insight, but they work very differently.
-**PulseIQ** is for a *live, digital* session. **Town Hall** is for a *recorded,
+Both turn a group conversation — a **focus group**, panel, or town-hall meeting —
+into insight, but they work very differently. **PulseIQ** runs a *live, digital*
+session (a virtual focus group or live poll). **Town Hall** is for a *recorded,
 in-person* meeting. Pick by whether people are typing into a link right now or
 sitting in a room being recorded.
 

@@ -1,7 +1,8 @@
 # How do I invite teammates?
 
-You can bring colleagues into your organization so they can build studies and
-see your work. Invites and roles are managed from your team settings.
+You can bring colleagues into your organization — add a user, manage seats and
+permissions — so they can build studies and see your work. Invites and roles are
+managed from your team settings.
 
 ## Invite someone
 

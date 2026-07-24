@@ -1,7 +1,8 @@
 # How do I send a survey by email or SMS (Campaigns)?
 
-**Campaigns** send a survey out to a list of people by email, SMS, or both, and
-track who opened, clicked, and responded. Build your survey first, then create a
+**Campaigns** send a survey out to a list of people by email, SMS, or both — an
+email blast, mass text, or newsletter-style send — and track who opened, clicked,
+and responded. Build your survey first, then create a
 campaign linked to it.
 
 ## Set up the campaign

@@ -6,14 +6,17 @@ answers into themes, entities, and statistics you can act on.
 
 ## The main tools, and when to use each
 
-- **Surveys** — chat-style questionnaires your audience answers in a friendly,
-  back-and-forth format. Start here to collect new feedback. Build one in the
-  survey creator and share it by link or QR code.
-- **Agents** — branded AI chatbots that hold a real conversation with your
-  audience (answering questions, probing for detail). Use an agent when you want
-  a two-way conversation rather than a fixed questionnaire.
+- **Surveys** — chat-style questionnaires (a poll, feedback form, or
+  questionnaire) your audience answers in a friendly, back-and-forth format. Start
+  here to collect new feedback. Build one in the survey creator and share it by
+  link or QR code.
+- **Agents** — branded AI chatbots (a bot, virtual assistant, or FAQ concierge)
+  that hold a real conversation with your audience (answering questions, probing
+  for detail). Use an agent when you want a two-way conversation rather than a
+  fixed questionnaire.
 - **Advanced Analytics** (the Analyze module) — where your responses become
-  insight. It includes **TextMine** (themes, entities, dimensions, filtering),
+  insight. It includes **TextMine** (themes, entities, dimensions, sentiment,
+  filtering),
   the **Statistics** tab (charts, key drivers), full-text **Search**, and
   **Ask Ana**.
 - **Ask Ana** — an AI analyst that answers questions about *your data* ("what did

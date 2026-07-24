@@ -1,7 +1,8 @@
 # Where do I see my usage?
 
-Your plan, the tools enabled for your organization, and any usage limits are set
-up with your account team rather than self-served inside the app today.
+Questions about **pricing, cost, your subscription, invoices, or upgrading** — as
+well as your plan, the tools enabled for your organization, and any usage limits —
+are handled with your account team rather than self-served inside the app today.
 
 ## Checking your plan and what's included
 
@@ -9,9 +10,9 @@ The tools your organization can use are controlled by your plan's feature
 settings. If you can see a product in the navigation, it's enabled for you; if
 something you expected is missing, that's a plan/feature setting.
 
-For a breakdown of your current plan, what it includes, or your usage to date,
-the fastest path is to **contact your account team** — they can confirm your
-status and make any changes.
+For **pricing or a quote**, what your current plan includes, your usage to date,
+or to **upgrade or change your plan**, the fastest path is to **contact your
+account team** — they can confirm your status and make any changes.
 
 ## Managing your organization
 

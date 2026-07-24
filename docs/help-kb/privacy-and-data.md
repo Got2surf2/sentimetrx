@@ -1,7 +1,9 @@
 # Where does my data live and how is it protected?
 
 Sentimetrx is built so each organization's data stays separate and under its
-control. The full details are in the **Privacy Notice**, linked from every
+control. This is the place for **security, privacy, data protection, and
+compliance** questions — where your data is stored, how it's used, and how to
+delete it. The full details are in the **Privacy Notice**, linked from every
 survey, agent, and live-session page — this is a plain-language summary.
 
 ## Where your data lives
