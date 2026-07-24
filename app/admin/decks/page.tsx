@@ -55,6 +55,7 @@ export default async function DecksPage() {
   // (or mtime fallback). This way each deck card shows when its own content
   // was last touched, not just the latest deploy time.
   const lastUpdated: Record<string, string | null> = {
+    'advanced-research-deck':      deckLastModified('lib/pptx/advancedResearchDeck.ts'),
     'pitch-deck':                  deckLastModified('app/api/pitch-deck/route.ts'),
     'pitch-deck-v2':               deckLastModified('lib/decks/pitchDeckV2Html.ts'),
     'pitch-deck-v3':               deckLastModified('lib/decks/pitchDeckV3Html.ts'),

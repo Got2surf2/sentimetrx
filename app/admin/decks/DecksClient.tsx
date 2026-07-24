@@ -45,6 +45,17 @@ const DECKS: Deck[] = [
     logKey: 'nepa-comment-deck',
   },
   {
+    href: '/api/advanced-research-deck',
+    filename: 'Sentimetrx-Advanced-Research-Capabilities.pptx',
+    title: 'Four Advanced Research Capabilities',
+    subtitle: 'Client-agnostic capability overview for a first prospect meeting. Opens on the four-capability map — Conversational Surveys, Town Hall (live-conversation capture), PulseIQ (virtual focus groups), and Analytics as the shared insight engine — then a detail drill-down per product (why conversational beats traditional, live theme extraction, virtual focus-group scale, and text analytics · charting · statistics · predictive modeling), closing on the one-platform through-line. No fabricated data; reusable as-is. Optional ?client=<name> injects a name on the cover + footer.',
+    audience: 'Prospective clients · first capability meeting (any vertical)',
+    slides: '10 slides',
+    accent: '#00B4D8',
+    badge: 'TEMPLATE · CAPABILITIES',
+    logKey: 'advanced-research-deck',
+  },
+  {
     href: '/api/sales-pitch-deck?client=bareburger',
     filename: 'Bareburger-Sentimetrx-Capabilities.pptx',
     title: 'Sales Pitch Template — Restaurant (Bareburger sample)',
@@ -290,6 +301,7 @@ const CATEGORIES: { key: DeckCategory; label: string; accent: string }[] = [
 ]
 
 const CATEGORY_OF: Record<string, DeckCategory> = {
+  'advanced-research-deck': 'client',
   'pitch-deck': 'investor',
   'pitch-deck-v2': 'investor',
   'pitch-deck-v3': 'investor',
