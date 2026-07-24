@@ -29,10 +29,11 @@ const CROSSTALK_MIN_SEC = 0.2
 export interface SpeakerTurn {
   start: number
   end: number
+  text: string                // concatenated segment text in this turn (hover-to-read on the floor ribbon)
 }
 
 export interface SpeakerStats {
-  key: string                 // raw identity key ('S1', 'ch0', …)
+  key: string                 // grouping key: the raw label ('S1', 'ch0', …), or 'name:<name>' when clusters merge
   name: string                // resolved display name (speaker_names / channel_labels / raw key)
   isPanel: boolean            // matched against setup_inputs.panel via isPanelMember
   talkSec: number
@@ -100,6 +101,17 @@ export function computeParticipation(
     const raw = s.speaker ? String(s.speaker) : ''
     return (raw && opts.speakerNames?.[raw]) || raw
   }
+  // Two distinct raw labels that resolve to the SAME assigned display name are one
+  // person on the floor (a voice cluster split in two, or two channels labeled
+  // alike) — group them by the assigned name so they collapse into a single row
+  // instead of duplicating the speaker. An unnamed label (name === raw key) keeps
+  // its own raw identity.
+  const groupKeyOf = (s: TranscriptSegment): string | null => {
+    const raw = keyOf(s)
+    if (raw == null) return null
+    const nm = nameOf(s)
+    return nm && nm !== raw ? 'name:' + nm.trim().toLowerCase() : raw
+  }
 
   const keyed = segs.filter(s => keyOf(s) !== null)
   if (keyed.length === 0) return { ok: false, reason: 'no_diarization', ...EMPTY }
@@ -118,7 +130,7 @@ export function computeParticipation(
   interface Acc { key: string; name: string; talkSec: number; words: number; turns: SpeakerTurn[] }
   const byKey = new Map<string, Acc>()
   for (const s of sorted) {
-    const key = keyOf(s) as string
+    const key = groupKeyOf(s) as string
     let acc = byKey.get(key)
     if (!acc) {
       acc = { key, name: nameOf(s), talkSec: 0, words: 0, turns: [] }
@@ -128,9 +140,14 @@ export function computeParticipation(
     // label, so any segment resolves the same) — keep the first resolution.
     acc.talkSec += s.end - s.start
     acc.words += countWords(s.text)
+    const segText = (s.text || '').trim()
     const last = acc.turns[acc.turns.length - 1]
-    if (last && s.start - last.end <= TURN_GAP_SEC) last.end = Math.max(last.end, s.end)
-    else acc.turns.push({ start: s.start, end: s.end })
+    if (last && s.start - last.end <= TURN_GAP_SEC) {
+      last.end = Math.max(last.end, s.end)
+      if (segText) last.text = last.text ? last.text + ' ' + segText : segText
+    } else {
+      acc.turns.push({ start: s.start, end: s.end, text: segText })
+    }
   }
 
   const totalTalkSec = [...byKey.values()].reduce((a, x) => a + x.talkSec, 0)

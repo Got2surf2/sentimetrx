@@ -69,24 +69,35 @@ export default function ParticipationTab({ transcript, speakerNames, channelLabe
 
       {/* Floor ribbon — one lane per speaker, bars = merged turns */}
       <div>
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Who held the floor</div>
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+          Who held the floor
+          <span className="ml-2 font-normal normal-case tracking-normal text-gray-400">— click a bar to play it, hover to read</span>
+        </div>
         <div className="space-y-1">
           {model.speakers.map((s, i) => (
             <div key={s.key} className="flex items-center gap-2">
               <div className="w-32 shrink-0 truncate text-xs text-gray-600 text-right" title={s.name}>{s.name || s.key}</div>
               <div className="relative h-4 flex-1 rounded bg-gray-100 overflow-hidden">
-                {s.turns.map((t, j) => (
-                  <div
-                    key={j}
-                    className="absolute top-0 h-full rounded-[2px]"
-                    style={{
-                      left: (t.start / model.durationSec) * 100 + '%',
-                      width: Math.max(((t.end - t.start) / model.durationSec) * 100, 0.15) + '%',
-                      background: SPEAKER_COLORS[i % SPEAKER_COLORS.length],
-                    }}
-                    title={`${s.name || s.key} · ${fmtTalkTime(t.start)}–${fmtTalkTime(t.end)}`}
-                  />
-                ))}
+                {s.turns.map((t, j) => {
+                  const clip = t.text.length > 400 ? t.text.slice(0, 400).trimEnd() + '…' : t.text
+                  const who = s.name || s.key
+                  const when = `${fmtTalkTime(t.start)}–${fmtTalkTime(t.end)}`
+                  return (
+                    <button
+                      key={j}
+                      type="button"
+                      onClick={() => onPlay(t.start, t.end, `${who} · ${fmtTalkTime(t.start)}`)}
+                      aria-label={`Play ${who} at ${when}`}
+                      className="absolute top-0 h-full rounded-[2px] p-0 border-0 cursor-pointer hover:brightness-110 hover:ring-1 hover:ring-black/30 focus:outline-none focus:ring-2 focus:ring-black/40"
+                      style={{
+                        left: (t.start / model.durationSec) * 100 + '%',
+                        width: Math.max(((t.end - t.start) / model.durationSec) * 100, 0.15) + '%',
+                        background: SPEAKER_COLORS[i % SPEAKER_COLORS.length],
+                      }}
+                      title={`${who} · ${when}${clip ? '\n\n' + clip : ''}\n\n(click to play)`}
+                    />
+                  )
+                })}
               </div>
             </div>
           ))}

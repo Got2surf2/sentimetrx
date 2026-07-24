@@ -40,10 +40,26 @@ describe('computeParticipation', () => {
     ])
     const s1 = m.speakers[0]
     expect(s1.turnCount).toBe(2)
-    expect(s1.turns[0]).toEqual({ start: 0, end: 8 })
+    expect(s1.turns[0]).toMatchObject({ start: 0, end: 8 })
+    expect(s1.turns[0].text).toBe('one two three one two three')  // merged turn concatenates segment text
     expect(s1.longestTurnSec).toBe(8)
     expect(s1.longestTurnStart).toBe(0)
     expect(s1.talkSec).toBe(10)            // talk time sums raw segments, not merged spans
+  })
+
+  it('merges two diarized labels that resolve to the same name into one speaker', () => {
+    // The same person split into two voice clusters (S1 early, S2 late), both
+    // named "J.C. Viert" — should be one row on the floor, not two.
+    const m = computeParticipation(
+      [seg(0, 6, 'S1', 'first stretch'), seg(30, 34, 'S2', 'later stretch'), seg(40, 42, 'S3', 'someone else')],
+      { speakerNames: { S1: 'J.C. Viert', S2: 'J.C. Viert', S3: 'Kelly Butler' } },
+    )
+    expect(m.speakerCount).toBe(2)                       // J.C. Viert (merged) + Kelly Butler
+    const jc = m.speakers.find(s => s.name === 'J.C. Viert')!
+    expect(jc).toBeTruthy()
+    expect(jc.talkSec).toBe(10)                          // 6 + 4 across both clusters
+    expect(jc.turnCount).toBe(2)                         // two separate turns, one speaker
+    expect(m.speakers.filter(s => s.name === 'J.C. Viert')).toHaveLength(1)
   })
 
   it('prefers channel keying + channel_labels on true-stereo captures', () => {
