@@ -5,10 +5,15 @@
 //         (they're big); this is the on-demand fetch used by the review gate
 //         and could back any other transcript surface. Org-scoped read; an
 //         admin org sees all.
-// PATCH — apply per-segment corrections before Q&A extraction (the "full
-//         review surface" at the transcribed gate): fix ASR word errors
-//         (`text`) and reassign a mislabeled diarized segment to a different
-//         speaker (`speaker`). Body: { edits: [{ index, text?, speaker? }] }.
+// PATCH — apply transcript corrections (the "full review surface" at the
+//         transcribed gate + the report Transcript tab). Two body shapes:
+//           { edits: [{ index, text?, speaker? }] }  — per-index text/speaker
+//             fixes (no structural change).
+//           { segments: [{ start, end, text, speaker?, channel?, ... }] }  —
+//             a full replacement, used for STRUCTURAL edits the index form
+//             can't express: boundary nudges, splitting a merged segment, and
+//             merging two segments (segmentEdits.ts). Sanitized + sorted by
+//             start server-side.
 //         Writes recording_transcripts.segments in place (raw_response keeps
 //         the original ASR) and recomputes word_count. Owner or admin only.
 //
@@ -115,11 +120,15 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   }
 
   const body = await req.json().catch(() => ({}))
+  const hasSegments = Array.isArray(body?.segments)
   const edits = body?.edits
-  if (!Array.isArray(edits)) {
-    return NextResponse.json({ error: 'edits must be an array of { index, text?, speaker? }' }, { status: 400 })
+  if (!hasSegments && !Array.isArray(edits)) {
+    return NextResponse.json({ error: 'body must be { edits: [...] } or { segments: [...] }' }, { status: 400 })
   }
-  if (edits.length > MAX_EDITS) {
+  if (hasSegments && body.segments.length > MAX_EDITS) {
+    return NextResponse.json({ error: `too many segments (${MAX_EDITS} max)` }, { status: 400 })
+  }
+  if (!hasSegments && edits.length > MAX_EDITS) {
     return NextResponse.json({ error: `too many edits (${MAX_EDITS} max)` }, { status: 400 })
   }
 
@@ -131,18 +140,42 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     .single()
   if (tErr || !tr) return NextResponse.json({ error: 'transcript not found' }, { status: 404 })
 
-  const segments = (tr.segments ?? []) as TranscriptSegment[]
+  let segments = (tr.segments ?? []) as TranscriptSegment[]
 
-  // Apply edits by index. `text` corrects ASR output; `speaker` reassigns the
-  // diarized label (null/'' clears it). Out-of-range indices are ignored.
-  for (const e of edits) {
-    const i = Number(e?.index)
-    if (!Number.isInteger(i) || i < 0 || i >= segments.length) continue
-    if (typeof e.text === 'string') segments[i].text = e.text.slice(0, MAX_TEXT)
-    if ('speaker' in e) {
-      const sp = e.speaker == null ? '' : String(e.speaker).trim().slice(0, 80)
-      if (sp) segments[i].speaker = sp
-      else delete segments[i].speaker
+  if (hasSegments) {
+    // Full replacement (structural edits: nudge / split / merge). Sanitize each
+    // segment to the known fields, drop malformed ones, and sort by start so the
+    // stored array stays chronological regardless of client ordering.
+    const clean: TranscriptSegment[] = []
+    for (const raw of body.segments as unknown[]) {
+      if (!raw || typeof raw !== 'object') continue
+      const o = raw as Record<string, unknown>
+      const start = Number(o.start), end = Number(o.end)
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) continue
+      const s: TranscriptSegment = { start, end, text: typeof o.text === 'string' ? o.text.slice(0, MAX_TEXT) : '' }
+      const sp = o.speaker == null ? '' : String(o.speaker).trim().slice(0, 80)
+      if (sp) s.speaker = sp
+      if (typeof o.channel === 'number') s.channel = o.channel
+      if (typeof o.confidence === 'number') s.confidence = o.confidence
+      if (typeof o.source_file === 'string') s.source_file = o.source_file
+      if (typeof o.source_offset === 'number') s.source_offset = o.source_offset
+      clean.push(s)
+    }
+    if (clean.length === 0) return NextResponse.json({ error: 'no valid segments' }, { status: 400 })
+    clean.sort((a, b) => a.start - b.start || a.end - b.end)
+    segments = clean
+  } else {
+    // Apply edits by index. `text` corrects ASR output; `speaker` reassigns the
+    // diarized label (null/'' clears it). Out-of-range indices are ignored.
+    for (const e of edits) {
+      const i = Number(e?.index)
+      if (!Number.isInteger(i) || i < 0 || i >= segments.length) continue
+      if (typeof e.text === 'string') segments[i].text = e.text.slice(0, MAX_TEXT)
+      if ('speaker' in e) {
+        const sp = e.speaker == null ? '' : String(e.speaker).trim().slice(0, 80)
+        if (sp) segments[i].speaker = sp
+        else delete segments[i].speaker
+      }
     }
   }
 

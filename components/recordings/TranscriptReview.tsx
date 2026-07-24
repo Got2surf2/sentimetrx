@@ -18,6 +18,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { TranscriptSegment, EntityMap } from '@/lib/recordings/types'
 import { buildReplacements, normalizeSegments } from '@/lib/recordings/normalize'
+import { nudgeSegmentStart, splitSegmentAt, mergeSegmentUp } from '@/lib/recordings/segmentEdits'
 
 export type SegmentRole = 'question' | 'answer'
 type PlayHandler = (startSec: number, endSec: number, label: string) => void
@@ -130,8 +131,14 @@ export default function TranscriptReview({
   const [savingSegs, setSavingSegs] = useState(false)
   const [savedNote, setSavedNote] = useState(false)
   const [fillMsg, setFillMsg] = useState<string | null>(null)
-  const enterEdit = () => { setWorking(segments.map(s => ({ ...s }))); setDirty(new Set()); setSavedNote(false); setFillMsg(null); setView('raw'); setEditMode(true) }
-  const cancelEdit = () => { setEditMode(false); setWorking([]); setDirty(new Set()); setFillMsg(null) }
+  // Structural edits (boundary nudge / split / merge) change the array shape, so
+  // they save the FULL segments array rather than index-keyed edits. `structural`
+  // flags that at least one happened (so an otherwise-clean edit still persists).
+  const [structural, setStructural] = useState(false)
+  // Caret offset inside the focused segment's textarea — drives split-at-cursor.
+  const [caret, setCaret] = useState<{ idx: number; pos: number } | null>(null)
+  const enterEdit = () => { setWorking(segments.map(s => ({ ...s }))); setDirty(new Set()); setStructural(false); setCaret(null); setSavedNote(false); setFillMsg(null); setView('raw'); setEditMode(true) }
+  const cancelEdit = () => { setEditMode(false); setWorking([]); setDirty(new Set()); setStructural(false); setCaret(null); setFillMsg(null) }
   const editText = (i: number, text: string) => {
     setWorking(prev => { const next = prev.slice(); next[i] = { ...next[i], text }; return next })
     setDirty(prev => new Set(prev).add(i))
@@ -145,6 +152,27 @@ export default function TranscriptReview({
       return next
     })
     setDirty(prev => new Set(prev).add(i))
+  }
+  // Structural edits — pure array transforms from segmentEdits.ts. Each runs on
+  // the current working copy on a user event (never during render) and flips the
+  // `structural` flag so the full array is persisted on Save.
+  const nudge = (i: number, delta: number) => {
+    const out = nudgeSegmentStart(working, i, delta)
+    if (out === working) return
+    setWorking(out); setStructural(true); setFillMsg(null)
+  }
+  const splitHere = (i: number) => {
+    if (!caret || caret.idx !== i) return
+    const out = splitSegmentAt(working, i, caret.pos)
+    if (out === working) { setFillMsg('Put the cursor mid-text — where the next speaker starts — before splitting.'); return }
+    setWorking(out); setStructural(true); setCaret(null)
+    setFillMsg('Split into two segments — assign the new speaker on the second line, then Save.')
+  }
+  const mergeUp = (i: number) => {
+    const out = mergeSegmentUp(working, i)
+    if (out === working) return
+    setWorking(out); setStructural(true); setCaret(null)
+    setFillMsg('Merged into the line above — review and Save.')
   }
   // Auto-fill unassigned speaker gaps that are bounded on BOTH sides by the
   // SAME identified speaker — the safe case, no guessing across a speaker
@@ -175,19 +203,23 @@ export default function TranscriptReview({
     setFillMsg(`Filled ${filled.length} segment${filled.length === 1 ? '' : 's'} bounded by the same speaker — review and Save.`)
   }
   const saveSegs = async () => {
-    if (dirty.size === 0) { cancelEdit(); return }
+    if (dirty.size === 0 && !structural) { cancelEdit(); return }
     setSavingSegs(true)
     try {
-      const edits = [...dirty].map(i => ({ index: i, text: working[i].text, speaker: working[i].speaker ?? null }))
+      // Persist the whole working array — structural edits (split/merge/nudge)
+      // shift indices, so an index-keyed patch can't express them. The route
+      // sanitizes + re-sorts. Text/speaker-only edits ride the same path.
       const r = await fetch(`/api/recordings/${recordingId}/transcript`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ edits }),
+        body: JSON.stringify({ segments: working }),
       })
       if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d?.error || `Save failed (${r.status})`); setSavingSegs(false); return }
       const saved = working.map(s => ({ ...s }))
       setSegments(saved)
       setEditMode(false)
       setDirty(new Set())
+      setStructural(false)
+      setCaret(null)
       if (saveHint) setSavedNote(true)
       onSegmentsSaved?.(saved)   // let the parent refresh so the read view / remounts stay in sync
     } catch { alert('Save failed') } finally { setSavingSegs(false) }
@@ -293,7 +325,7 @@ export default function TranscriptReview({
           />
         )}
         {editMode && (
-          <span className="flex-1 text-sm font-semibold text-orange-700">Editing transcript — fix wording or reassign a speaker, then save.</span>
+          <span className="flex-1 text-sm font-semibold text-orange-700">Editing transcript — fix wording, reassign a speaker, nudge a start time (‹ ›), split a merged line at the cursor (✂), or merge into the line above (⤒), then save.</span>
         )}
         {!editMode && canCorrect && (
           <div className="flex rounded-lg border border-gray-200 overflow-hidden shrink-0 text-xs">
@@ -369,7 +401,22 @@ export default function TranscriptReview({
           const cls = [weight, chItalic, color, collision ? 'underline decoration-wavy decoration-amber-500 underline-offset-2' : ''].filter(Boolean).join(' ')
           return (
             <li key={idx} id={`seg-${s.start}`} className="py-2 text-sm flex items-start gap-3 group scroll-mt-24">
-              {onPlay ? (
+              {editMode ? (
+                <div className="w-20 shrink-0 pt-0.5 flex flex-col gap-1">
+                  {onPlay ? (
+                    <button type="button" onClick={() => onPlay(s.start, s.end, s.text.slice(0, 80))} title="Play from here"
+                      className="font-mono text-xs text-gray-400 hover:text-orange-600 text-left">▶ {formatTime(s.start)}</button>
+                  ) : (
+                    <span className="font-mono text-xs text-gray-400">{formatTime(s.start)}</span>
+                  )}
+                  <div className="flex items-center gap-0.5">
+                    <NudgeBtn label="‹‹" title="Start 2s earlier" onClick={() => nudge(idx, -2)} />
+                    <NudgeBtn label="‹" title="Start 0.5s earlier" onClick={() => nudge(idx, -0.5)} />
+                    <NudgeBtn label="›" title="Start 0.5s later" onClick={() => nudge(idx, 0.5)} />
+                    <NudgeBtn label="››" title="Start 2s later" onClick={() => nudge(idx, 2)} />
+                  </div>
+                </div>
+              ) : onPlay ? (
                 <button type="button" onClick={() => onPlay(s.start, s.end, s.text.slice(0, 80))}
                   title="Play from here"
                   className="font-mono text-xs text-gray-400 hover:text-orange-600 w-14 shrink-0 pt-0.5 text-left">
@@ -400,8 +447,23 @@ export default function TranscriptReview({
               )}
 
               {editMode ? (
-                <textarea value={s.text} onChange={e => editText(idx, e.target.value)} rows={Math.max(1, Math.ceil(s.text.length / 80))}
-                  className="flex-1 min-w-0 border border-gray-200 rounded px-2 py-1 leading-relaxed resize-y" style={{ fontSize: '16px' }} />
+                <>
+                  <textarea value={s.text} onChange={e => editText(idx, e.target.value)}
+                    onSelect={e => setCaret({ idx, pos: (e.target as HTMLTextAreaElement).selectionStart ?? 0 })}
+                    rows={Math.max(1, Math.ceil(s.text.length / 80))}
+                    className="flex-1 min-w-0 border border-gray-200 rounded px-2 py-1 leading-relaxed resize-y" style={{ fontSize: '16px' }} />
+                  <div className="shrink-0 flex flex-col gap-1 pt-0.5">
+                    <button type="button" onClick={() => splitHere(idx)}
+                      disabled={!(caret && caret.idx === idx && caret.pos > 0 && caret.pos < (s.text?.length ?? 0))}
+                      title="Split into two speakers at the cursor" aria-label="Split at cursor"
+                      className="text-xs px-1.5 py-0.5 rounded border border-gray-200 text-gray-600 hover:bg-orange-50 hover:text-orange-600 disabled:opacity-30">✂</button>
+                    {idx > 0 && (
+                      <button type="button" onClick={() => mergeUp(idx)}
+                        title="Merge into the line above" aria-label="Merge up"
+                        className="text-xs px-1.5 py-0.5 rounded border border-gray-200 text-gray-600 hover:bg-orange-50 hover:text-orange-600">⤒</button>
+                    )}
+                  </div>
+                </>
               ) : (
                 <span className={cls} title={collision ? 'Both mics were speaking at once here — words may overlap or garble (crosstalk).' : undefined}>{highlight(s.text, search)}</span>
               )}
@@ -419,6 +481,15 @@ function formatTime(sec: number): string {
   const s = Math.floor(sec % 60)
   if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
   return `${m}:${String(s).padStart(2, '0')}`
+}
+
+function NudgeBtn({ label, title, onClick }: { label: string; title: string; onClick: () => void }) {
+  return (
+    <button type="button" title={title} onClick={onClick}
+      className="text-[10px] leading-none px-1 py-0.5 rounded border border-gray-200 text-gray-500 hover:bg-orange-50 hover:text-orange-600">
+      {label}
+    </button>
+  )
 }
 
 function micLabel(channel: number): string {
