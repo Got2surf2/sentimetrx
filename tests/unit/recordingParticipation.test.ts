@@ -47,12 +47,13 @@ describe('computeParticipation', () => {
     expect(s1.talkSec).toBe(10)            // talk time sums raw segments, not merged spans
   })
 
-  it('merges two diarized labels that resolve to the same name into one speaker', () => {
-    // The same person split into two voice clusters (S1 early, S2 late), both
-    // named "J.C. Viert" — should be one row on the floor, not two.
+  it('merges labels that resolve to the same name — incl. a raw label that IS the name', () => {
+    // Real prod shape (NOWOCATS): one cluster keyed 'S8' mapped to 'J.C. Viert',
+    // a SECOND cluster whose raw speaker label was set directly to 'J.C. Viert'
+    // (so name === raw). Both must collapse into one row on the floor.
     const m = computeParticipation(
-      [seg(0, 6, 'S1', 'first stretch'), seg(30, 34, 'S2', 'later stretch'), seg(40, 42, 'S3', 'someone else')],
-      { speakerNames: { S1: 'J.C. Viert', S2: 'J.C. Viert', S3: 'Kelly Butler' } },
+      [seg(0, 6, 'S8', 'first stretch'), seg(30, 34, 'J.C. Viert', 'later stretch'), seg(40, 42, 'S3', 'someone else')],
+      { speakerNames: { S8: 'J.C. Viert', 'J.C. Viert': 'J.C. Viert', S3: 'Kelly Butler' } },
     )
     expect(m.speakerCount).toBe(2)                       // J.C. Viert (merged) + Kelly Butler
     const jc = m.speakers.find(s => s.name === 'J.C. Viert')!
@@ -108,7 +109,7 @@ describe('computeParticipation', () => {
     const m = computeParticipation([seg(5, 5, 'S1'), seg(0, 4, 'S2'), { start: NaN, end: 2, speaker: 'S3', text: 'x' } as TranscriptSegment])
     expect(m.ok).toBe(true)
     expect(m.speakerCount).toBe(1)
-    expect(m.speakers[0].key).toBe('S2')
+    expect(m.speakers[0].key).toBe('name:s2')   // grouping key is the normalized display name (raw echoed when unnamed)
   })
 })
 

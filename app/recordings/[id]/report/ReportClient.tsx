@@ -2741,9 +2741,19 @@ function AudioModal({ recordingId, segments, req, onClose, onSpanSaved }: {
     return idx
   }, [segments, currentTime])
 
+  // Keep the active segment in view — both as the playhead advances AND the
+  // moment the transcript list first mounts (it only renders once `url` loads).
+  // Without the `url` dep the starting segment is never scrolled to on open —
+  // activeIdx is already correct but the <li> didn't exist when the effect first
+  // ran, and it doesn't change again until playback reaches the NEXT segment, so
+  // the view sits at the top. First anchor is instant; later follows are smooth.
+  const didAnchor = useRef(false)
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  }, [activeIdx])
+    const el = activeRef.current
+    if (!el) return
+    el.scrollIntoView({ block: 'nearest', behavior: didAnchor.current ? 'smooth' : 'auto' })
+    didAnchor.current = true
+  }, [activeIdx, url])
 
   const seekTo = (t: number) => {
     const a = audioRef.current

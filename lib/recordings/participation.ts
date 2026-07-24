@@ -101,16 +101,18 @@ export function computeParticipation(
     const raw = s.speaker ? String(s.speaker) : ''
     return (raw && opts.speakerNames?.[raw]) || raw
   }
-  // Two distinct raw labels that resolve to the SAME assigned display name are one
-  // person on the floor (a voice cluster split in two, or two channels labeled
-  // alike) — group them by the assigned name so they collapse into a single row
-  // instead of duplicating the speaker. An unnamed label (name === raw key) keeps
-  // its own raw identity.
+  // Two distinct raw labels that resolve to the SAME display name are one person
+  // on the floor (a voice cluster split in two, or two channels labeled alike) —
+  // group by the normalized display name so they collapse into a single row
+  // instead of duplicating the speaker. Group by the RESOLVED NAME regardless of
+  // whether it equals the raw label: a segment whose raw speaker label was set
+  // directly to the person's name ("J.C. Viert" -> "J.C. Viert") must still merge
+  // with that person's other cluster ("S8" -> "J.C. Viert"). Unnamed labels echo
+  // their raw key through nameOf, so they stay distinct.
   const groupKeyOf = (s: TranscriptSegment): string | null => {
     const raw = keyOf(s)
     if (raw == null) return null
-    const nm = nameOf(s)
-    return nm && nm !== raw ? 'name:' + nm.trim().toLowerCase() : raw
+    return 'name:' + (nameOf(s) || raw).trim().toLowerCase()
   }
 
   const keyed = segs.filter(s => keyOf(s) !== null)
