@@ -1854,7 +1854,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
     logUsage({ org_id: bot.org_id, resource_type: 'bot', resource_id: bot.id, event_type: capKnobs.capability === 'super' ? 'chat_super' : 'chat' }, result.usage)
 
     // Update last_session_at (fire-and-forget). Conversation count is computed live from turns.
-    service.from('agents').update({ last_session_at: new Date().toISOString() }).eq('id', bot.id).then(function() {})
+    service.from('agents').update({ last_session_at: new Date().toISOString() }).eq('id', bot.id).eq('org_id', bot.org_id).then(function() {})
 
     // Store conversation turns — AWAITED before responding so storage is
     // guaranteed even on Vercel where Lambda freezes after response. Prior
