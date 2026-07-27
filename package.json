@@ -101,6 +101,8 @@
     "exceljs": {
       "uuid": "^11.1.1"
     },
-    "postcss": "$postcss"
+    "postcss": "$postcss",
+    "fast-uri": "3.1.4",
+    "body-parser": "1.20.6"
   }
 }

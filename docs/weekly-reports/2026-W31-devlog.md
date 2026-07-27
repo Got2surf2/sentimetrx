@@ -16,3 +16,14 @@ WHY: W31 governance lists 4 high CVEs and prescribes `npm audit fix` as a 5-minu
 Lockfile reverted (`git checkout package-lock.json && npm ci`); `npm audit` back to 4 high / 6 total, `package.json` untouched. What `npm audit fix` *does* legitimately clear is only `fast-uri` (high) plus the `body-parser`/`dompurify` lows — reachable via targeted `overrides` (the pattern package.json already uses) **if** we want them, but deliberately not done unilaterally: an override on `dompurify` sits on the pinned `isomorphic-dompurify`/`jsdom@26` cluster that we have a standing do-not-bump constraint on. Owner decision.
 
 **Correction for the governance report:** W31 lists DOMPurify as one of the 4 highs. It is **low**; the actual 4th high is **`sharp` <0.35.0** (transitive via next), which W31 omits entirely.
+
+## Deps: targeted `overrides` for fast-uri + body-parser — the safe subset of the rejected audit fix (Jul 27)
+
+WHY: Follow-up to the `npm audit fix` rejection above. Of the six advisories, three were genuinely fixable by a patch bump; the blanket fix was unusable because it also de-hoisted `brace-expansion`/`minimatch` into 24 new flagged parents. Pinning the two clean ones directly via `overrides` (the pattern package.json already uses) gets the win without the cascade:
+
+- `fast-uri` 3.1.3 → **3.1.4** (high, GHSA-v2hh-gcrm-f6hx host confusion) — transitive via `@sentry/nextjs` → webpack → schema-utils → ajv.
+- `body-parser` 1.20.5 → **1.20.6** (low, GHSA-v422-hmwv-36x6 DoS) — transitive via `workflow` → `@workflow/cli` → `@workflow/web` → express.
+
+**`dompurify` deliberately left alone** (low, 3.4.11 → 3.4.12 available). It sits on the pinned `isomorphic-dompurify`/`jsdom@26` cluster that carries a standing do-not-bump constraint; a 1-severity-low gain is not worth poking it. Owner call, deliberately deferred.
+
+Result: `npm audit` **6 → 4** (4 high → 3 high, 2 low → 1 low). Remaining: `next` + `sharp` (no released fix — see above) and `brace-expansion`. Lockfile diff is **2 package entries / 12 lines**, vs 26 package paths for the blanket fix — the containment is the whole point. Verified beyond the usual gates: `npm run build` run locally because both packages live in the *build* toolchain (webpack schema validation / CLI express), where unit tests exercise nothing. tsc clean, 1576 tests green, build succeeded.
