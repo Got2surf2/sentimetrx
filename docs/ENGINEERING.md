@@ -428,6 +428,11 @@ Every new PDF template/export MUST, from the start:
 
 Use the shared `brandedPdfChrome({ brand, confidentiality })` in `lib/htmlToPdf.ts` (returns the `page.pdf` header/footer templates + the margins that reserve the bands) and the `.keep` CSS pattern in the renderer. Legacy PDFs (recordings `reportPdf`, agent study) predate this — bring them onto the standard when next touched.
 
+### PPTX deck generation — pptxgenjs gotchas (2026-07-15)
+
+1. **NEVER use the `shadow` option on `addText` (or shapes).** Our pptxgenjs version serializes it with out-of-range OOXML values (`dir`, `dist`, `blurRad`, `alpha` all over-multiplied) AND mutates the passed options object, so the corruption **compounds on every slide that reuses the object**. LibreOffice tolerates the file (so PDF conversion + pixel-QC look fine), but **PowerPoint declares the file corrupt, "repairs" it, and strips shapes** — found via the PPFL proposal deck, where slide 3 went blank after repair. For a hard "sticker" text shadow, draw the text twice: a black copy offset ~0.045" behind the real one (see `shadowText()` in `scripts/oneoff/_ppfl_proposal_deck.ts`).
+2. **Pixel-QC via LibreOffice is NOT a file-validity check.** Before shipping a deck built with new pptxgenjs features, validate the archive: `unzip` the .pptx and `grep -o '[a-zA-Z]*="[0-9]\{9,\}"' ppt/slides/*.xml` — any 9+-digit attribute value is a corruption red flag (legal alpha max is 100000; angles max 21600000). Ideally also open once in real PowerPoint.
+
 - **Keyboard navigation** must work for every interactive element.
   Tab order is logical; focus-visible styles are present.
 - **Color contrast** ≥ 4.5:1 for normal text; 3:1 for ≥18pt.
