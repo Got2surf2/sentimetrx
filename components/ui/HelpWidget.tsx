@@ -101,6 +101,7 @@ export default function HelpWidget({ currentPage, features }: Props) {
       const raw = sessionStorage.getItem(STATE_KEY)
       if (raw) {
         const s = JSON.parse(raw) as PersistedState
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot mount hydration from sessionStorage (an external store that cannot be read during SSR without a hydration mismatch). Deps are [], so this runs exactly once and cannot cascade; a lazy useState initializer would diverge server/client markup on a widget mounted in TopNav on every page.
         if (Array.isArray(s.messages) && s.messages.length) setMessages(s.messages)
         if (s.feedback) setFeedback(s.feedback)
         if (s.open) setOpen(true)
