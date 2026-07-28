@@ -49,6 +49,7 @@ data/chuys-candidates*.jsonl
 # The scripts/_verify_*.ts PulseIQ regression harness lives here on purpose
 # (docs/CONVERGENCE.md § 4.2).
 scripts/_*.ts
+scripts/_*.mts
 scripts/_*.mjs
 scripts/_*.js
 scripts/_*.sql
