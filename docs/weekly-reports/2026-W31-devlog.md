@@ -88,3 +88,19 @@ Fix is the standard controlled-input draft pattern, and the codebase already had
 Swept the class rather than fixing the one report: the only other `value={…join(…)}` controlled input is a read-only `<Row>` display in `components/creator/StepReview.tsx`, and the only other split-in-onChange (`NewSessionClient.tsx:369`) already keeps a separate raw draft. **One occurrence, now fixed.**
 
 Server side was never the constraint — `sanitizeEntries` only trims and caps at 120 chars, so digits/hyphens/periods (`US 441`, `Plymouth-Sorrento`) were always accepted. tsc clean, 1599 tests green, no lint delta (ceiling 252). NOT browser-verified — the interaction needs a click-through on a real recording's Transcript tab.
+
+## Town Hall: share panel visible to admins, and the public link is now the whole meeting (Jul 30)
+
+WHY: Owner couldn't find the share control, then found the shared page was only a one-page summary when the goal was sending VHB the full NOWOCATS June meeting. Two separate problems.
+
+**1. The "Public link" panel was gated on `isOwner` alone** — `recording.created_by === ctx.userId`. A platform admin opening a meeting someone else uploaded saw no share control and nothing explaining why. This was inconsistent on both sides: every other editable tab on the same report already used `isOwner || isAdmin`, and `POST /api/recordings/[id]/share` accepts **any member of the owning org**. The UI was strictly narrower than the API it calls. `ExportTab` now gets `isOwner={data.isOwner || data.isAdmin}` (which also unhides the sibling "Brand & linked agent" panel, same prop, same rationale). Still narrower than the endpoint — non-admin org members remain excluded; noted in RECORDINGS.md §4.7 for whenever that gap bites.
+
+Related and worth recording: I sent the owner looking for an "Export & Share" tab. **That tab does not exist** — it's a code comment; the nav label is **Reports**. Exactly the mistake `feedback_use_ui_labels` exists to prevent.
+
+**2. `/th/[token]` rendered a single-scroll summary.** It now mirrors the internal report's tabs — Presentation · Q&A · Action items · Participation · Transcript — through a new `PublicTabs.tsx` client shell that owns *only* which server-rendered section is visible, so no report data or fetching logic crosses into the client bundle. Sections are conditional; the tab bar disappears when one survives.
+
+**Coverage and "Live vs Final" are deliberately excluded** (owner-confirmed). Both describe how the report was produced — analyst QC state, flagged-for-review counts, raw-vs-corrected ASR — rather than what happened at the meeting, and neither belongs in front of an external audience. The exclusion lives in `page.tsx`, not in `PublicTabs`, so the shell can't accidentally widen it.
+
+Transcript is the **entity-corrected** view via the same `normalizeSegments` the internal tab uses, never raw ASR; participation reuses the pure `computeParticipation` and renders stats + share bars with no playback or editing controls.
+
+Verified against the running dev server on two real shared NOWOCATS reports: both HTTP 200, all four applicable tabs present, bogus token still 404s, and a leakage grep for `flagged_for_review` / `confidence` / `cost_cents` / `org_id` / `Coverage` / `Live vs Final` returns **0 on every term**. The Presentation tab is correctly absent on both — each has `proceedings_summary = NULL` — which also means that one section is typecheck-verified but not yet seen rendered. Page weight went 80 KB to ~330 KB now that the transcript is inline; fine at meeting scale, noted in the spec as the thing to revisit for multi-hour meetings. tsc clean, 1599 tests, no lint delta.

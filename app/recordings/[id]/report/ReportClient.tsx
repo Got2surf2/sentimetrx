@@ -260,7 +260,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
               recordingId={recordingId}
               recordingName={data.recording.name}
               status={data.recording.status}
-              isOwner={data.isOwner}
+              isOwner={data.isOwner || data.isAdmin}
               initialShareEnabled={data.recording.share_enabled}
               initialShareToken={data.recording.share_token}
               initialShareVerbatim={data.recording.share_verbatim}
@@ -2261,6 +2261,11 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
   recordingId: string
   recordingName: string
   status: string
+  /** Owner OR platform admin. Was strictly `created_by === me`, which hid the
+   *  "Public link" panel from admins on any meeting someone else uploaded —
+   *  with nothing on screen explaining why — even though every other editable
+   *  tab here already uses `isOwner || isAdmin` and the share API itself
+   *  accepts any member of the owning org. */
   isOwner: boolean
   initialShareEnabled: boolean
   initialShareToken: string | null
