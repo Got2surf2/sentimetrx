@@ -4509,7 +4509,6 @@ CREATE TABLE IF NOT EXISTS "public"."recordings" (
     "brand_tag" "text",
     "underlying_agent_id" "uuid",
     "share_verbatim" boolean DEFAULT false NOT NULL,
-    "share_audio" boolean DEFAULT false NOT NULL,
     "analysis_org" "text" DEFAULT 'Datanautix'::"text" NOT NULL,
     "analysts" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
     "objectives" "jsonb",
@@ -4526,6 +4525,7 @@ CREATE TABLE IF NOT EXISTS "public"."recordings" (
     "speaker_names" "jsonb",
     "respan_log" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
     "qa_stale" boolean DEFAULT false NOT NULL,
+    "share_audio" boolean DEFAULT false NOT NULL,
     CONSTRAINT "recordings_asr_strategy_check" CHECK (("asr_strategy" = ANY (ARRAY['auto'::"text", 'whisper'::"text", 'deepgram'::"text", 'hybrid'::"text"]))),
     CONSTRAINT "recordings_confidentiality_class_check" CHECK (("confidentiality_class" = ANY (ARRAY['public'::"text", 'internal'::"text", 'client_confidential'::"text", 'restricted'::"text"]))),
     CONSTRAINT "recordings_session_type_check" CHECK (("session_type" = ANY (ARRAY['qa'::"text", 'focus_group'::"text", 'general_meeting'::"text", 'interview'::"text", 'lecture'::"text"]))),
@@ -4621,6 +4621,10 @@ COMMENT ON COLUMN "public"."recordings"."respan_log" IS 'Append-only log of targ
 
 
 COMMENT ON COLUMN "public"."recordings"."qa_stale" IS 'True when the transcript changed (span re-transcribe) without a Q&A re-run, so the pairs are out of date. Cleared by the analyze pass.';
+
+
+
+COMMENT ON COLUMN "public"."recordings"."share_audio" IS 'Public-share opt-in for the stitched meeting audio. When false (default), /api/th/[token]/audio refuses even for a valid, enabled share token. Independent of share_enabled: publishing the written report never implies publishing the recording.';
 
 
 
