@@ -146,15 +146,20 @@ export async function recordBalance(
 // Each returns a USD number or throws. Missing creds → throw (caller marks
 // the service 'unknown', i.e. "not configured", rather than 'error').
 
+// Deepgram scopes the balance endpoint behind `billing:read`, which the ASR
+// key deliberately lacks (it only needs `usage:write`). Prefer a dedicated
+// billing-scoped key; fall back to the ASR key so the probe still reports
+// something on accounts where one key carries both scopes.
 async function probeDeepgramBalance(): Promise<number> {
-  const key = process.env.DEEPGRAM_API_KEY
-  if (!key) throw new Error('DEEPGRAM_API_KEY not set')
+  const key = process.env.DEEPGRAM_BILLING_KEY || process.env.DEEPGRAM_API_KEY
+  if (!key) throw new Error('DEEPGRAM_BILLING_KEY / DEEPGRAM_API_KEY not set')
   const h = { Authorization: `Token ${key}` }
   const projRes = await fetch('https://api.deepgram.com/v1/projects', { headers: h, cache: 'no-store' })
   if (!projRes.ok) throw new Error(`Deepgram projects HTTP ${projRes.status}`)
   const projId = (await projRes.json())?.projects?.[0]?.project_id
   if (!projId) throw new Error('Deepgram: no project found')
   const balRes = await fetch(`https://api.deepgram.com/v1/projects/${projId}/balances`, { headers: h, cache: 'no-store' })
+  if (balRes.status === 403) throw new Error('Deepgram balances HTTP 403 — key lacks billing:read (set DEEPGRAM_BILLING_KEY)')
   if (!balRes.ok) throw new Error(`Deepgram balances HTTP ${balRes.status}`)
   const balances: Array<{ amount?: number | string | null }> = (await balRes.json())?.balances ?? []
   // `amount` is the remaining USD value per balance bucket; sum across buckets.

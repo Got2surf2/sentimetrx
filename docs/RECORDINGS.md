@@ -1238,6 +1238,7 @@ Defined in `vercel.json` / `vercel.ts`.
 |---|---|---|
 | `OPENAI_API_KEY` | Yes (existing) | Whisper + moderation |
 | `DEEPGRAM_API_KEY` | **NEW** | Deepgram batch transcription |
+| `DEEPGRAM_BILLING_KEY` | Optional | Deepgram key with **`billing:read`** scope, used only by the service-balance probe (`lib/serviceHealth.ts`). The ASR key carries `usage:write` and the grant key carries `member` — **neither can read `/v1/projects/{id}/balances`** (403), which renders as "not configured" on the admin health card. Falls back to `DEEPGRAM_API_KEY`. |
 | `ANTHROPIC_API_KEY` | Yes (existing) | Claude analytical pass |
 | `RESEND_API_KEY` | Yes (existing) | Completion email |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes (existing) | Bypass RLS for queue workers |

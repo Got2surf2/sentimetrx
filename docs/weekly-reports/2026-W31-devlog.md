@@ -174,3 +174,15 @@ Reassignment already existed (Transcript tab → edit mode → per-segment selec
 Both controls gated on `canEdit`. Verified the public report renders **zero `<select>` elements** and the PATCH route 403s unauthenticated. tsc clean, 1599 tests, no lint delta.
 
 **⏭ DEFERRED: the participation-ribbon drag surface** for bulk run-level editing — wants a zoom control to be usable at meeting scale.
+
+## 2026-07-30 — Service health: Deepgram balance needs its own billing-scoped key
+
+WHY: The admin **Service Credits & Health** card showed Deepgram and Twilio as "not configured"; owner asked to configure both.
+
+Deepgram was **mis-diagnosed by the card**, not unconfigured. `DEEPGRAM_API_KEY` is set in Vercel production, but its scope is `usage:write` (transcription only) and `DEEPGRAM_GRANT_KEY` is scope `member` — **neither can call `/v1/projects/{id}/balances`**, which requires `billing:read`. The probe throws on the 403 and `probeBalances` maps any throw to `unknown`, which the UI labels "not configured". Same shape as the June `/v1/auth/grant` 403 that produced `DEEPGRAM_GRANT_KEY`, so the fix mirrors it: `probeDeepgramBalance` now prefers **`DEEPGRAM_BILLING_KEY`** and falls back to `DEEPGRAM_API_KEY`, and a 403 now throws with the scope named instead of a bare status code. A `billing:read` key has to be minted in the Deepgram console (no existing key can mint one — `keys:write` is absent).
+
+Twilio's "not configured" is **accurate**: no `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` in `.env.local` or any Vercel environment. Wiring pending owner credentials.
+
+Also corrected SPEC.md's env table: it documented `TWILIO_FROM`, but `lib/email/provider.ts` reads **`TWILIO_PHONE_NUMBER`** — a wrong var name would have silently produced "SMS not configured" at send time.
+
+Env-var-only change on the Vercel side; **takes effect on the next production deploy**, not on save.

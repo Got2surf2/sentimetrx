@@ -559,7 +559,7 @@ Authoritative list of platform env vars; provider-specific ones (SMTP_*, social 
 | `SENDGRID_API_KEY` | SendGrid (optional) |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `SES_REGION` | AWS SES (optional) |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | Generic SMTP (optional) |
-| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM` | Twilio SMS (optional) |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_PHONE_NUMBER` | Twilio SMS (optional) |
 | `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` | DataForSEO (Google + Tripadvisor reviews) |
 | `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` | Reddit API |
 | `REGULATIONS_API_KEY` | Regulations.gov API |
