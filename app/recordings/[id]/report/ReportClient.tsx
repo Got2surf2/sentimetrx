@@ -2019,16 +2019,37 @@ function TranscriptTab({ transcript, entityMap, extractions, channelLabels, spea
   // Entity / name-spelling editor (§3.5b) — the fix-it-later path (the primary
   // editor is the pre-analysis gate). Saves recordings.entity_map; the corrected
   // transcript view applies on reload, the Q&A on a re-analyze.
-  type Ent = { canonical: string; variants: string[]; type?: string; mentions?: number }
+  type Ent = {
+    canonical: string; variants: string[]; type?: string; mentions?: number
+    /** Raw text while the "heard as…" field is being edited. The field is
+     *  comma-separated, but parsing on every keystroke ate the separators:
+     *  the value came from `variants.join(', ')` while onChange split+trimmed+
+     *  filtered, so typing "," made an empty trailing entry, filter(Boolean)
+     *  dropped it, and the re-join erased the comma — you could type letters
+     *  but never a separator, making a second variant impossible. Hold the
+     *  raw string while editing and parse only on blur/save. */
+    variantsText?: string
+  }
   const [ents, setEnts] = useState<Ent[]>(() => (entityMap?.entities as Ent[]) ?? [])
   const [entOpen, setEntOpen] = useState(false)
   const [savingEnts, setSavingEnts] = useState(false)
+  // Parse a pending draft back into variants and drop the draft field, so the
+  // POST body never carries it. A row with no draft is returned untouched.
+  const commitVariants = (e: Ent): Ent => e.variantsText === undefined ? e : {
+    canonical: e.canonical,
+    variants: e.variantsText.split(',').map(v => v.trim()).filter(Boolean),
+    type: e.type,
+    mentions: e.mentions,
+  }
   const saveEnts = async () => {
     setSavingEnts(true)
+    // Commit defensively: clicking Save blurs the input first, but a save
+    // triggered any other way must not drop the half-typed row.
+    const payload = ents.map(commitVariants).filter(e => e.canonical.trim())
     try {
       const r = await fetch(`/api/recordings/${recordingId}/entity-map`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entities: ents.filter(e => e.canonical.trim()) }),
+        body: JSON.stringify({ entities: payload }),
       })
       if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d?.error || 'Save failed'); setSavingEnts(false); return }
       window.location.reload()   // re-render the corrected transcript view with the new map
@@ -2071,8 +2092,9 @@ function TranscriptTab({ transcript, entityMap, extractions, channelLabels, spea
                   <input value={e.canonical} placeholder="Correct spelling"
                     onChange={ev => setEnts(p => p.map((x, j) => j === i ? { ...x, canonical: ev.target.value } : x))}
                     className="w-40 shrink-0 px-2 py-1 border border-gray-200 rounded text-sm" style={{ fontSize: '16px' }} />
-                  <input value={e.variants.join(', ')} placeholder="heard as… (comma-separated)"
-                    onChange={ev => setEnts(p => p.map((x, j) => j === i ? { ...x, variants: ev.target.value.split(',').map(s => s.trim()).filter(Boolean) } : x))}
+                  <input value={e.variantsText ?? e.variants.join(', ')} placeholder="heard as… (comma-separated)"
+                    onChange={ev => setEnts(p => p.map((x, j) => j === i ? { ...x, variantsText: ev.target.value } : x))}
+                    onBlur={() => setEnts(p => p.map((x, j) => j === i ? commitVariants(x) : x))}
                     className="flex-1 min-w-0 px-2 py-1 border border-gray-200 rounded text-sm" style={{ fontSize: '16px' }} />
                   <button type="button" onClick={() => setEnts(p => p.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500 text-lg shrink-0 leading-none">×</button>
                 </div>

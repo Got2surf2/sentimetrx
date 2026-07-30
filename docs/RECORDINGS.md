@@ -523,6 +523,8 @@ ASR diarization emits generic labels ("Speaker 0", "S1"). `recordings.speaker_na
 
 **Entity editor on the report (2026-06-17):** the §3.5b name/term spelling map can now be edited *after* generation via `POST /api/recordings/[id]/entity-map` `{ entities }` (owner/admin) — a "Correct names & terms" panel in the report Transcript tab (canonical + variants per row). The corrected transcript view applies on save (reload); the Q&A on the next re-analyze. The primary editor remains the pre-analysis gate.
 
+**"heard as…" separators were being eaten (fixed 2026-07-30).** The variants field is comma-separated, but it parsed on every keystroke: the value came from `variants.join(', ')` while `onChange` did `split(',').map(trim).filter(Boolean)`. Typing a comma produced an empty trailing entry, `filter(Boolean)` dropped it, and the re-join erased the comma — so ordinary characters typed fine but **separators vanished, making it impossible to enter a second variant** (only the first mis-hearing per term could ever be recorded). The field now holds the raw string in a per-row `variantsText` draft while editing and parses only on **blur or save**, matching the pattern already used by the PulseIQ topic editor. `saveEnts` commits any pending draft defensively and strips the draft field from the POST body. Server-side `sanitizeEntries` was never the constraint — it only trims and caps at 120 chars, so digits, hyphens and periods (`US 441`, `Plymouth-Sorrento`) were always accepted.
+
 ### 3.5 Analyze (Claude pass)
 
 Per session_type prompt, defined in `lib/recordings/prompts/{qa,focus_group,general_meeting,interview,lecture}.ts`. Each prompt receives:
