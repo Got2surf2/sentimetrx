@@ -29,7 +29,7 @@ import TranscriptComparisonTab from './TranscriptComparisonTab'
 import ParticipationTab from './ParticipationTab'
 import TranscriptReview from '@/components/recordings/TranscriptReview'
 import { displayQuestion, displayAnswer, isEdited } from '@/lib/recordings/qaDisplay'
-import { buildReplacements, normalizeText } from '@/lib/recordings/normalize'
+import { buildReplacements, normalizeSegments, normalizeText } from '@/lib/recordings/normalize'
 import { computeCoverage } from '@/lib/recordings/coverage'
 import { buildTranscriptRoles, traceActionItem } from '@/lib/recordings/transcriptRoles'
 import { packLanes, laneTop, barHeight, LANE_H } from '@/lib/recordings/timeline'
@@ -216,6 +216,24 @@ export default function ReportClient({ data, publicMode = false, shareToken = nu
     [transcript],
   )
 
+  // Entity-corrected view of the transcript (variant → canonical). Everything
+  // that DISPLAYS transcript text reads from this: the audio player's
+  // follow-along, action-item source hovers, coverage drill-downs. The raw ASR
+  // is never mutated — this derives a view on read.
+  //
+  // The Transcript tab is the deliberate exception and still receives the raw
+  // `transcript`: TranscriptReview owns the corrected/raw toggle (defaulting to
+  // corrected) and needs the raw side to offer it. Normalising its input would
+  // make "Raw" show corrected text.
+  const correctedSegments = useMemo(
+    () => normalizeSegments(segments, data.recording.entity_map),
+    [segments, data.recording.entity_map],
+  )
+  const correctedTranscript = useMemo(
+    () => (transcript ? { ...transcript, segments: correctedSegments } : null),
+    [transcript, correctedSegments],
+  )
+
   return (
     <PublicShareContext.Provider value={{ publicMode, shareToken, audioEnabled }}>
     <div className="space-y-6">
@@ -296,10 +314,13 @@ export default function ReportClient({ data, publicMode = false, shareToken = nu
         )}
         {tab === 'presentation' && <PresentationTab recording={data.recording} />}
         {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} canEdit={canEdit} onReplaced={replaceExtraction} onPlay={playAt} initialFlagged={reviewFlagged} hasPresentation={hasPresentation} nz={reportNz} />}
-        {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={transcript} recordingId={recordingId} canEdit={canEdit} onReplaced={replaceExtraction} nz={reportNz} />}
-        {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={transcript} recordingId={recordingId} canEdit={canEdit} onPlay={playAt} onReviewFlagged={() => { setReviewFlagged(true); setTab('qa') }} />}
-        {tab === 'participation' && <ParticipationTab transcript={transcript} speakerNames={data.recording.speaker_names} channelLabels={data.recording.channel_labels} audioChannels={data.recording.audio_channels} panel={panelRoster} onPlay={playAt} />}
+        {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={correctedTranscript} recordingId={recordingId} canEdit={canEdit} onReplaced={replaceExtraction} nz={reportNz} />}
+        {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={correctedTranscript} recordingId={recordingId} canEdit={canEdit} onPlay={playAt} onReviewFlagged={() => { setReviewFlagged(true); setTab('qa') }} />}
+        {tab === 'participation' && <ParticipationTab transcript={correctedTranscript} speakerNames={data.recording.speaker_names} channelLabels={data.recording.channel_labels} audioChannels={data.recording.audio_channels} panel={panelRoster} onPlay={playAt} />}
         {tab === 'transcript' && <TranscriptTab transcript={transcript} entityMap={data.recording.entity_map} extractions={extractions} channelLabels={data.recording.channel_labels} speakerNames={data.recording.speaker_names} panelSpeakers={setupNames(data.recording.setup_inputs, 'panel')} extraSpeakers={setupNames(data.recording.setup_inputs, 'speakers')} onSegmentsSaved={segs => setTranscript(prev => prev ? { ...prev, segments: segs } : prev)} recordingId={recordingId} canEdit={canEdit} onPlay={playAt} />}
+        {/* RAW on purpose: this tab diffs live ASR against final ASR. Feeding
+            it entity-corrected text would show spelling corrections as ASR
+            improvements and misrepresent the comparison. */}
         {tab === 'comparison' && <TranscriptComparisonTab liveTranscript={data.recording.live_transcript ?? null} segments={segments} />}
         {tab === 'export' && (
           <div className="space-y-6">
@@ -340,7 +361,7 @@ export default function ReportClient({ data, publicMode = false, shareToken = nu
       {audioReq && (
         <AudioModal
           recordingId={recordingId}
-          segments={segments}
+          segments={correctedSegments}
           speakerNames={data.recording.speaker_names}
           channelLabels={data.recording.channel_labels}
           req={audioReq}

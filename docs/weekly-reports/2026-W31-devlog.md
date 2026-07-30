@@ -148,3 +148,15 @@ Three fixes, one root cause: **the player knew nothing about speaker identity.**
 Lint gotcha worth remembering: the first version computed the banding inline via an IIFE with a mutable counter (`(() => { let runIdx = 0; return (...) })()`), which pushed `react-hooks` to flag the `ref={active ? activeRef : undefined}` inside it as "Cannot access refs during render" — 6 → 7 warnings. Precomputing the rows in a `useMemo` fixed it and is cleaner. Back to 6, no delta.
 
 Verified both surfaces still render (public 200, internal 307 to login). tsc clean, 1599 tests.
+
+## Town Hall: corrected transcript everywhere text is displayed (Jul 30)
+
+WHY: Owner spotted "441 and Plymouth-Cemento Road" in the audio player — "let's show the corrected transcript because they can use the transcript to make corrections to errors that still exist; always use the corrected transcript including in the hovers."
+
+The correction already existed. This meeting's entity map carries canonical `Plymouth Sorrento` with variant `Plymouth-Cemento` (a *separate* entry from `Plymouth Sorrento Road`, which is why a first look at the map suggested it was unmapped). The report, PDF and deck have applied on-read normalization since 2026-06-17 — the **in-app surfaces that render raw segments never did**: the audio player's follow-along, action-item source hovers, coverage drill-downs, and the Participation floor-ribbon tooltip, which shows up to 400 characters of the turn. So the one place they actually listen and hunt for errors was the one place still showing raw ASR.
+
+`ReportClient` now derives `correctedSegments` / `correctedTranscript` once and passes them to every text-displaying consumer. Verified against the real TEST transcript: 22 of 46 variant rules fire on this meeting, and segments containing "Cemento" go 3 → 0 after normalization.
+
+Two deliberate exceptions keep RAW, both recorded in RECORDINGS.md §3.5b: the **Transcript tab** (`TranscriptReview` owns the corrected/raw toggle and needs raw to offer it — normalizing its input would make "Raw" show corrected text) and **Live vs Final** (it diffs live ASR against final ASR; entity corrections would show up as ASR improvements and misrepresent it).
+
+Note the workflow this completes: the player now shows corrected text, so what remains visible is genuinely unmapped — and the "heard as…" field fixed earlier today is where those get added. tsc clean, 1599 tests, no lint delta.
