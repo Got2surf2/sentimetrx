@@ -104,3 +104,11 @@ Related and worth recording: I sent the owner looking for an "Export & Share" ta
 Transcript is the **entity-corrected** view via the same `normalizeSegments` the internal tab uses, never raw ASR; participation reuses the pure `computeParticipation` and renders stats + share bars with no playback or editing controls.
 
 Verified against the running dev server on two real shared NOWOCATS reports: both HTTP 200, all four applicable tabs present, bogus token still 404s, and a leakage grep for `flagged_for_review` / `confidence` / `cost_cents` / `org_id` / `Coverage` / `Live vs Final` returns **0 on every term**. The Presentation tab is correctly absent on both — each has `proceedings_summary = NULL` — which also means that one section is typecheck-verified but not yet seen rendered. Page weight went 80 KB to ~330 KB now that the transcript is inline; fine at meeting scale, noted in the spec as the thing to revisit for multi-hour meetings. tsc clean, 1599 tests, no lint delta.
+
+## Town Hall: raw float percentage on the public Participation tile (Jul 30)
+
+WHY: Owner screenshot — the "Largest share" tile read **32.2567940133911%**. `computeParticipation` returns raw floats on purpose and every consumer rounds at render (`ParticipationTab.tsx:51` does `Math.round(model.topSharePct)`); the public section I added yesterday rounded the per-speaker rows but interpolated `model.topSharePct` straight into the tile. My bug alone — the internal tab was already correct, so there was no class to sweep.
+
+Speaker rows show **whole percents too** (owner call, after seeing a first pass that borrowed the internal tab's `>= 9.5 ? round : toFixed(1)` rule). A column mixing "32%" and "3.2%" reads as inconsistent to an external audience, and the talk time beside each row already separates entries that round to the same percent — so consistency wins over the extra digit here. The internal tab keeps its decimal; that's an analyst view with different priorities.
+
+Verified by diffing the rendered HTML before and after: `32.2567940133911%` is present in the prior render and absent now, with `32%` in its place. tsc clean, 1599 tests, no lint delta.

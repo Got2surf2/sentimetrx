@@ -320,7 +320,10 @@ function ParticipationSection({ model }: { model: ParticipationModel }) {
     { label: 'Speakers', value: String(model.speakerCount) },
     { label: 'Total speaking time', value: fmtTalkTime(model.totalTalkSec) },
     { label: 'Floor changes', value: String(model.floorChanges) },
-    { label: 'Largest share', value: model.topSharePct + '%' },
+    // computeParticipation returns raw floats on purpose; every consumer rounds
+    // at render (see ParticipationTab.tsx). Missing that here printed
+    // "32.2567940133911%" on the tile.
+    { label: 'Largest share', value: Math.round(model.topSharePct) + '%' },
   ]
   return (
     <section className="space-y-5">
@@ -342,7 +345,11 @@ function ParticipationSection({ model }: { model: ParticipationModel }) {
               <div className="h-2 flex-1 rounded bg-slate-100 overflow-hidden">
                 <div className="h-full rounded bg-teal-600" style={{ width: Math.max(1, Math.round(s.sharePct)) + '%' }} />
               </div>
-              <span className="w-28 shrink-0 text-right text-xs text-slate-500">
+              <span className="w-28 shrink-0 text-right text-xs text-slate-500 tabular-nums">
+                {/* Whole percent for every row. The internal tab shows a decimal
+                    below 9.5%, but a column that mixes "32%" and "3.2%" reads as
+                    inconsistent to an external reader; the talk time beside it
+                    already distinguishes rows that round to the same percent. */}
                 {fmtTalkTime(s.talkSec)} · {Math.round(s.sharePct)}%
               </span>
             </div>
