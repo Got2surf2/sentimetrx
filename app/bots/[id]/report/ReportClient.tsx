@@ -172,6 +172,14 @@ export default function ReportClient() {
   const focusMax = Math.max(...s.focuses.map(f => f.exchanges), 1)
   const langMax = Math.max(...s.languages.map(l => l.sessions), 1)
   const intentMax = Math.max(...s.intents.map(i => i.detections), 1)
+  // Defensive || [] — a study cached before the attribution field existed has
+  // no such key. The schema version bump recomputes those, but a report should
+  // never blow up on a stale cache row it happens to read first.
+  const attribution = s.attribution || []
+  // Only worth a section once something is actually tagged; a lone "untagged"
+  // row tells the reader nothing.
+  const showAttribution = attribution.some(a => a.source || a.medium || a.campaign)
+  const attrMax = Math.max(...attribution.map(a => a.opens), 1)
   const entMax = Math.max(...s.entities.map(e => e.mentions), 1)
   const dailyActive = s.health.dailyActivity.filter(d => d.conversations > 0 || d.opens > 0).slice(-21)
   const dailyMax = Math.max(...dailyActive.map(d => Math.max(d.conversations, d.opens)), 1)
@@ -362,6 +370,50 @@ export default function ReportClient() {
           </div>
         )}
       </div>
+
+      {/* Where they came from — embed-URL provenance (docs/BOTS.md) */}
+      {showAttribution && (
+        <div style={card}>
+          <div style={h2}>Where They Came From</div>
+          <p style={{ fontSize: 11, color: MUTE, marginBottom: 10 }}>
+            Last 31 days, by the tag on the link or QR code they opened. &ldquo;Started&rdquo; counts people who went on to talk, not just open the widget.
+          </p>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ textAlign: 'left', color: MUTE, fontSize: 11 }}>
+                <th style={{ padding: '4px 8px 6px 0', fontWeight: 600 }}>Source</th>
+                <th style={{ padding: '4px 8px 6px 0', fontWeight: 600 }}>Medium</th>
+                <th style={{ padding: '4px 8px 6px 0', fontWeight: 600 }}>Campaign</th>
+                <th style={{ padding: '4px 8px 6px 0', fontWeight: 600, width: 120 }}>Opens</th>
+                <th style={{ padding: '4px 8px 6px 0', fontWeight: 600, textAlign: 'right' }}>Started</th>
+                <th style={{ padding: '4px 0 6px 8px', fontWeight: 600, textAlign: 'right' }}>Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {attribution.map((a, i) => {
+                const untagged = !a.source && !a.medium && !a.campaign
+                return (
+                  <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+                    <td style={{ padding: '6px 8px 6px 0', fontWeight: 600, color: untagged ? MUTE : '#374151', fontStyle: untagged ? 'italic' : 'normal' }}>
+                      {untagged ? 'Untagged' : a.source || '—'}
+                    </td>
+                    <td style={{ padding: '6px 8px 6px 0', color: '#374151' }}>{a.medium || '—'}</td>
+                    <td style={{ padding: '6px 8px 6px 0', color: '#374151' }}>{a.campaign || '—'}</td>
+                    <td style={{ padding: '6px 8px 6px 0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Bar value={a.opens} max={attrMax} color="#0F766E" />
+                        <span style={{ width: 32, textAlign: 'right', color: '#374151' }}>{a.opens}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '6px 8px 6px 0', textAlign: 'right', color: '#374151' }}>{a.conversations}</td>
+                    <td style={{ padding: '6px 0 6px 8px', textAlign: 'right', color: MUTE }}>{a.conversionPct == null ? '—' : a.conversionPct + '%'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* ── Act 3: Gaps ── */}
       {s.openQuestions.total > 0 && (

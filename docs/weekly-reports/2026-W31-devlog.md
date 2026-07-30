@@ -64,3 +64,17 @@ Most of the pipe already existed and had for months — `agent_impressions` has 
 Works for plain links and QR codes with **no partner integration at all** — the iframe case is one consumer, not the requirement.
 
 **Known gap, not addressed here:** `totals.impressions` is read by the Agent Study report (`ReportClient.tsx:224` renders a "Widget Opens" tile) and the deck, but I could not find the code that populates it, and there is no view or RPC over `agent_impressions`. So the table still looks write-only and that tile likely never renders. Capture is now correct end to end; **surfacing it in reporting is a separate piece of work.**
+
+## Agents: surface the provenance breakdown — "Where They Came From" in report, HTML export, and deck (Jul 30)
+
+WHY: Capture landed yesterday but nothing read `source`/`medium`/`campaign` back out, so "which QR code is working" was still unanswerable. `AgentStudy` gains `attribution[]` — one row per `(source, medium, campaign)` tuple over 31 days with opens, conversations started, and a conversion rate, busiest first — rendered in all three study consumers.
+
+**Correction to yesterday's entry, which claimed `totals.impressions` is read but never populated.** That was wrong. `agent_impressions` is fully wired and always has been: `computeHealth` derives `opens7d`, `responseRatePct`, and the daily `opens` series from it, and `buildStudy` sets `totals.impressions` and `openedNotEngaged`. The "Widget Opens" tile does render.
+
+**The claim came from a grep that silently matched nothing because `lib/agentStudy.ts` was classified as a binary file.** Line 195 used two literal control bytes (U+0000 and U+0001) as hash delimiters inside the `kbSignature` template literal. `grep` prints "Binary file matches" and lists no lines, so absence-of-output read as absence-of-code. Replaced the raw bytes with their ` ` / `` escape sequences: the string value is identical, so the hash and every cache key it feeds are unchanged, but the file is now valid UTF-8 and greppable. **Worth remembering as a general hazard — a silent grep miss is indistinguishable from a real absence, and `file <path>` is the check.**
+
+The genuine gap was narrower than stated: impressions were only ever selected as `created_at`/`id`, so the *attribution columns* had no reader. That is what this closes.
+
+Design choices worth keeping: opens ride the **existing** beacon select (three more columns, no extra round trip); untagged traffic keeps its own row in the report and HTML export so columns reconcile to the 31-day totals, but is omitted from the deck where it reads as noise on a client slide; the conversations read is deliberately **not** behind `isPhase3ReadSafe()` like the turn reads beside it, because attribution only ever lands in `conversations` and prod runs dual-write on with `READ_PHASE3` off — reading directly means the breakdown works without flipping the read switch. Rate is capped at 100% and null at zero opens, since a blocked beacon can leave conversations without a matching open and a 140% cell reads as a bug.
+
+`STUDY_SCHEMA_VERSION` v7 to v8 so caches predating the field recompute instead of rendering empty; renderers still guard `|| []`. 9 new unit tests (1599 total), tsc clean, no lint delta (ceiling 252). Real-schema read path verified in `scripts/_verify_attribution.mts` (now 23 checks) — a typo'd column would pass every mock test but fails there.

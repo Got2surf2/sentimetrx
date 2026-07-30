@@ -487,6 +487,15 @@ Mechanism:
 
 Attribution lands on the conversation row only when `DUAL_WRITE_PHASE3` is enabled (it is, in production); the impression beacon is unconditional.
 
+**Where it surfaces.** `AgentStudy.attribution` (`lib/agentStudy.ts`) is a "Where They Came From" table — one row per `(source, medium, campaign)` tuple over the last 31 days, with opens, conversations started, and a conversion rate, busiest first. Rendered in all three study consumers: the report page (`app/bots/[id]/report/ReportClient.tsx`), the HTML/PDF export (`lib/agentStudyHtml.ts`), and the PPTX deck (`lib/pptx/agentStudyDeck.ts`).
+
+Three deliberate choices:
+- **Untagged traffic gets its own row** in the report and HTML export so the columns reconcile to the 31-day totals — a breakdown whose parts don't sum to the whole is worse than none. The **deck omits** the untagged row, where it reads as noise on a client-facing slide.
+- **Opens come off the existing beacon select**, which simply gained three columns — the breakdown costs no extra round trip. Conversation-side provenance is one added query.
+- **The conversations read is deliberately NOT behind `isPhase3ReadSafe()`** like the turn reads in the same function. Attribution is only ever written to `conversations`, and in production dual-write is on while `READ_PHASE3` is not — so reading it directly means the breakdown works without flipping the read switch.
+
+Conversations can exceed opens for a bucket (a beacon can be blocked or lost while the chat POST lands), so the rate is capped at 100% and reported as `—` when opens are zero. `STUDY_SCHEMA_VERSION` was bumped to `v8` so studies cached before the field existed are recomputed rather than rendering an empty section.
+
 ### Two-step opener (askName flow)
 
 When `config.askName !== false` (the default), the widget asks the user's name and the topical opener as **two separate** assistant messages, not one concatenated double-question:

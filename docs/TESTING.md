@@ -68,6 +68,7 @@ tests/
 │   ├── guardrails.test.ts
 │   ├── nameExtractor.test.ts  # post-hoc AI name extractor — gating + JSON parsing + defense-in-depth regex
 │   ├── outletPredictor.test.ts # "recover 1–3★ guests" predictor — 1–3★ rate/spread, brand over-rep driver vs loud-but-neutral vs excluded outcome theme, peer-quartile weaknesses/strengths, themeFocus, top-3–5 learn-from list (distinct, best-first), quote attach + projectRecovery what-if (least-improved-theme gate) + buildRecommendedActions greedy playbook + outcomeCorrelations (loyalty→driver) + conventional ratingRank + recommended-actions rec/union (interactive playbook de-dup)
+│   ├── agentStudyAttribution.test.ts # "Where They Came From" grouping — (source,medium,campaign) tuple buckets, untagged kept as its own row so columns reconcile, whitespace/blank normalization, busiest-first sort, rate null at zero opens and capped at 100% when conversations exceed opens
 │   ├── attribution.test.ts   # embed-URL provenance sanitizer — trim/80-char cap/reject-empty, bare names with utm_* fallback (bare wins), absent keys omitted rather than emitted as undefined, non-string junk posted straight at the public API rejected
 │   ├── personaExtractor.test.ts
 │   ├── phase3DualWrite.test.ts

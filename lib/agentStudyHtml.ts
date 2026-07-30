@@ -279,6 +279,37 @@ export function renderAgentStudyHtml(study: AgentStudy): string {
     parts.push(row)
   }
 
+  // ── Where They Came From (embed-URL provenance, docs/BOTS.md) ──
+  // `|| []` guards a study cached before the field existed; the schema-version
+  // bump recomputes those, but the export must not throw on a stale row.
+  const attribution = s.attribution || []
+  if (attribution.some(a => a.source || a.medium || a.campaign)) {
+    const attrMax = Math.max(...attribution.map(a => a.opens), 1)
+    const th = (label: string, extra: string) => '<th style="padding:4px 8px 6px 0;font-weight:600;' + extra + '">' + label + '</th>'
+    let block = '<div style="' + CARD + '"><div style="' + H2 + '">Where They Came From</div>'
+      + '<p style="font-size:11px;color:' + MUTE + ';margin:0 0 10px">Last 31 days, by the tag on the link or QR code they opened. &ldquo;Started&rdquo; counts people who went on to talk, not just open the widget.</p>'
+      + '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="text-align:left;color:' + MUTE + ';font-size:11px">'
+      + th('Source', '') + th('Medium', '') + th('Campaign', '') + th('Opens', 'width:120px')
+      + th('Started', 'text-align:right') + th('Rate', 'text-align:right;padding-left:8px') + '</tr></thead><tbody>'
+    block += attribution.map(a => {
+      const untagged = !a.source && !a.medium && !a.campaign
+      const first = untagged
+        ? '<span style="color:' + MUTE + ';font-style:italic">Untagged</span>'
+        : esc(a.source || '—')
+      return '<tr style="border-top:1px solid #F1F5F9">'
+        + '<td style="padding:6px 8px 6px 0;font-weight:600;color:#374151">' + first + '</td>'
+        + '<td style="padding:6px 8px 6px 0;color:#374151">' + esc(a.medium || '—') + '</td>'
+        + '<td style="padding:6px 8px 6px 0;color:#374151">' + esc(a.campaign || '—') + '</td>'
+        + '<td style="padding:6px 8px 6px 0"><div style="display:flex;align-items:center;gap:8px">' + bar(a.opens, attrMax, '#0F766E')
+        + '<span style="width:32px;text-align:right;color:#374151">' + a.opens + '</span></div></td>'
+        + '<td style="padding:6px 8px 6px 0;text-align:right;color:#374151">' + a.conversations + '</td>'
+        + '<td style="padding:6px 0 6px 8px;text-align:right;color:' + MUTE + '">' + (a.conversionPct == null ? '—' : a.conversionPct + '%') + '</td>'
+        + '</tr>'
+    }).join('')
+    block += '</tbody></table></div>'
+    parts.push(block)
+  }
+
   // ── Open Questions ──
   if (s.openQuestions.open.length > 0) {
     const oqMore = s.openQuestions.total > s.openQuestions.open.length

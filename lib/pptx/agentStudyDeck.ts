@@ -69,6 +69,28 @@ export function buildStudyDeck(study: AgentStudy): DeckSpec {
     })
   }
 
+  // 3b. Where they came from — embed-URL provenance (docs/BOTS.md).
+  // `|| []` guards studies cached before the field existed.
+  const attribution = (study.attribution || []).filter(a => a.source || a.medium || a.campaign)
+  if (attribution.length > 0) {
+    slides.push({
+      type: 'table',
+      title: 'Where They Came From',
+      subtitle: 'Last 31 days, by the tag on the link or QR code opened',
+      columns: ['Source', 'Medium', 'Campaign', 'Opens', 'Started', 'Rate'],
+      // Tagged rows only — an "Untagged" line is useful for reconciling in the
+      // internal report, but reads as noise on a client-facing slide.
+      rows: attribution.slice(0, 12).map(a => [
+        a.source || '—',
+        a.medium || '—',
+        a.campaign || '—',
+        String(a.opens),
+        String(a.conversations),
+        a.conversionPct == null ? '—' : a.conversionPct + '%',
+      ]),
+    })
+  }
+
   // 4. Focus distribution
   if (study.focuses.length > 0) {
     slides.push({

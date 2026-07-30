@@ -49,6 +49,22 @@ export interface AgentHealth {
   dot: 'green' | 'amber' | 'red' | 'idle'
 }
 
+/**
+ * One provenance bucket — where participants reached the agent from, per the
+ * embed-URL params (`?source=/&medium=/&campaign=`, see docs/BOTS.md and
+ * lib/attribution.ts). `null` on all three = untagged traffic (someone opened
+ * the bare link), kept as its own row so the column sums reconcile to the
+ * 31-day totals rather than silently dropping the remainder.
+ */
+export interface AttributionRow {
+  source: string | null
+  medium: string | null
+  campaign: string | null
+  opens: number                 // agent_impressions rows (widget opens)
+  conversations: number         // conversations rows (someone actually talked)
+  conversionPct: number | null  // conversations / opens; null when opens = 0
+}
+
 export interface FocusSummary {
   slug: string
   label: string
@@ -79,6 +95,9 @@ export interface AgentStudy {
     answeredPairs: number              // totalPairs minus validated unanswered (open) questions
     answerRatePct: number | null       // answeredPairs / totalPairs — the agent's "strength" number
   }
+  /** Provenance over the last 31 days, busiest first. Empty when the agent
+   *  has no beacon/conversation rows in the window. */
+  attribution: AttributionRow[]
   depth: { bucket: string; sessions: number }[]   // normalized pair-count buckets
   focuses: FocusSummary[]
   entities: { name: string; mentions: number; focuses: string[] }[]
@@ -192,7 +211,7 @@ Return ONLY JSON, no markdown:
 function kbSignature(systemPrompt: string | null, chunks: KbChunk[]): string {
   const h = crypto.createHash('sha1')
   h.update(systemPrompt || '')
-  for (const c of chunks) h.update(` ${c.title || ''}${c.content || ''}`)
+  for (const c of chunks) h.update(`\u0000${c.title || ''}\u0001${c.content || ''}`)
   return h.digest('hex').slice(0, 16)
 }
 
@@ -518,11 +537,57 @@ function findFollowingAgentLine(sessions: Map<string, Turn[]>, sessionId: string
 //   AI validation of open questions (open[].restated, autoFiltered, filteredExamples).
 //   v5 (2026-06-09): publicComments[] — substantive resident feedback extracted
 //   in the classify pass (the public-comment record artifact).
-const STUDY_SCHEMA_VERSION = 'v7'   // v7: store full sample question/answer (was clipped to 300/320)
+//   v8 (2026-07-30): attribution[] — embed-URL provenance buckets (opens vs
+//   conversations per source/medium/campaign). Bumped so cached v7 studies,
+//   which have no `attribution` key, are recomputed rather than rendering an
+//   empty section.
+const STUDY_SCHEMA_VERSION = 'v8'
 function cacheKeyFor(pairTotal: number, bot: BotRow, kbSig: string): string {
   const h = crypto.createHash('sha1')
   h.update(`${STUDY_SCHEMA_VERSION}|${pairTotal}|${JSON.stringify(bot.focuses || [])}|${JSON.stringify(bot.intents || [])}|${kbSig}`)
   return h.digest('hex').slice(0, 16)
+}
+
+/** Row shape shared by both provenance sources. */
+interface AttrRow { source?: string | null; medium?: string | null; campaign?: string | null }
+
+/**
+ * Fold beacon opens and conversation rows into one provenance table keyed on
+ * the (source, medium, campaign) tuple.
+ *
+ * Both inputs are counted even when all three fields are null, so the columns
+ * reconcile to the 31-day totals instead of quietly dropping untagged traffic
+ * — a breakdown whose parts don't sum to the whole is worse than none.
+ * Sorted by opens, then conversations, so the busiest channel leads; the
+ * untagged row sorts with everything else rather than being pinned.
+ */
+export function buildAttribution(opens: AttrRow[], convs: AttrRow[]): AttributionRow[] {
+  const norm = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+  const bucket = new Map<string, AttributionRow>()
+
+  const touch = (r: AttrRow): AttributionRow => {
+    const source = norm(r.source), medium = norm(r.medium), campaign = norm(r.campaign)
+    const key = `${source ?? ''}\u0000${medium ?? ''}\u0000${campaign ?? ''}`
+    let row = bucket.get(key)
+    if (!row) {
+      row = { source, medium, campaign, opens: 0, conversations: 0, conversionPct: null }
+      bucket.set(key, row)
+    }
+    return row
+  }
+
+  for (const r of opens) touch(r).opens++
+  for (const r of convs) touch(r).conversations++
+
+  const rows = [...bucket.values()]
+  for (const r of rows) {
+    // Conversations can exceed opens for a bucket (a beacon can be blocked or
+    // lost while the chat POST lands), so cap the rate at 100% rather than
+    // printing something like 140% that reads as a bug.
+    r.conversionPct = r.opens > 0 ? Math.min(100, Math.round((r.conversations / r.opens) * 100)) : null
+  }
+  rows.sort((a, b) => (b.opens - a.opens) || (b.conversations - a.conversations))
+  return rows
 }
 
 function bucketFor(pairs: number): string {
@@ -600,9 +665,18 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
   }
 
   // ── impressions + open questions (no AI) ──
-  const [impRes, oqRes] = await Promise.all([
-    service.from('agent_impressions').select('created_at').eq('bot_id', botId).gte('created_at', new Date(Date.now() - 31 * 86400000).toISOString()),
+  const since31d = new Date(Date.now() - 31 * 86400000).toISOString()
+  const [impRes, oqRes, convAttrRes] = await Promise.all([
+    // source/medium/campaign ride the existing beacon select — the attribution
+    // breakdown costs no extra round trip, just three more columns.
+    service.from('agent_impressions').select('created_at, source, medium, campaign').eq('bot_id', botId).gte('created_at', since31d),
     service.from('logged_questions').select('session_id, user_message, classification, status, language, suggested_kb_addition, created_at').eq('bot_id', botId).order('created_at', { ascending: false }).limit(500),
+    // Conversation-side provenance comes straight off `conversations`,
+    // deliberately NOT behind isPhase3ReadSafe() like the turn reads above:
+    // attribution is only ever written to this table (lib/phase3DualWrite),
+    // and dual-write is on in production while READ_PHASE3 is not. Reading it
+    // directly means the breakdown works without flipping the read switch.
+    service.from('conversations').select('source, medium, campaign').eq('bot_id', botId).eq('org_id', bot.org_id).gte('created_at', since31d),
   ])
   const impressions = impRes.data || []
   const allImpRes = await service.from('agent_impressions').select('id', { count: 'exact', head: true }).eq('bot_id', botId)
@@ -797,6 +871,7 @@ export async function getAgentStudy(botId: string, opts: { force?: boolean } = {
       answeredPairs,
       answerRatePct,
     },
+    attribution: buildAttribution(impressions, convAttrRes.data || []),
     depth,
     focuses: focusesArr,
     entities: entitiesArr,
