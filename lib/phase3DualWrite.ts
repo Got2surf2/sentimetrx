@@ -18,6 +18,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { logError } from '@/lib/log'
+import type { Attribution } from '@/lib/attribution'
 
 /**
  * Row shape used by /api/bots/[id]/chat for bot_conversation_turns inserts.
@@ -57,6 +58,10 @@ interface MirrorArgs {
    *  delegation passes the original participant id so cohort analysis
    *  can group by participant without parsing the synthesized session_id. */
   participantId?: string | null
+  /** Provenance from the embed URL (postcard QR, meeting QR, partner
+   *  iframe). Only the keys actually present are written, so a later turn
+   *  that carries no attribution cannot blank out what the first turn set. */
+  attribution?: Attribution
 }
 
 function isEnabled(): boolean {
@@ -116,6 +121,14 @@ export async function mirrorTurns(
       updated_at: new Date().toISOString(),
     }
     if (args.participantId) upsertPayload.participant_id = args.participantId
+
+    // Attribution: set only the keys that are present. `upsert` compiles to
+    // ON CONFLICT DO UPDATE SET <provided columns>, so omitting a key leaves
+    // the stored value intact — the first turn of a session stamps the
+    // provenance and later turns can never null it back out.
+    if (args.attribution?.source) upsertPayload.source = args.attribution.source
+    if (args.attribution?.medium) upsertPayload.medium = args.attribution.medium
+    if (args.attribution?.campaign) upsertPayload.campaign = args.attribution.campaign
 
     const { data: convRow, error: convErr } = await withRetry(
       () => service

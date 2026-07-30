@@ -243,7 +243,10 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
       fetch(m[1] + '/impression', {
         method: 'POST', keepalive: true,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ visitor_id: sessionId, source: eb.site || eb.source, medium: eb.medium, campaign: eb.campaign }),
+        // An explicit ?source= wins over the legacy allowlisted ?site=, which
+        // stays as the fallback so the two site-scoped agents keep attributing
+        // exactly as before.
+        body: JSON.stringify({ visitor_id: sessionId, source: eb.source || eb.site, medium: eb.medium, campaign: eb.campaign }),
       }).catch(() => {})
     } catch { /* beacon is best-effort */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps

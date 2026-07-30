@@ -5,6 +5,7 @@
 
 import { useSearchParams } from 'next/navigation'
 import ChatBot, { type ChatBotConfig } from '@/components/ui/ChatBot'
+import { attributionFromParams } from '@/lib/attribution'
 
 interface Bot {
   id: string
@@ -31,6 +32,19 @@ export default function BotClient({ bot }: { bot: Bot }) {
   const rawSite = searchParams?.get('site')?.toLowerCase() || ''
   const site = ALLOWED_SITES.has(rawSite) ? rawSite : null
 
+  // Provenance passthrough — ?source=/&medium=/&campaign= (or the utm_*
+  // aliases) ride the embed URL so a postcard QR, a meeting placard, and a
+  // partner-site iframe are all distinguishable in reporting. Unlike `site`
+  // above these are NOT allowlisted, because they are stored as data and never
+  // reach the system prompt. See lib/attribution.ts for the security note.
+  const attribution = attributionFromParams((k) => searchParams?.get(k))
+
+  // extraBody rides every POST the widget makes (chat turns + the widget-open
+  // impression beacon), so attribution lands on both the impression row and
+  // the conversations row.
+  const extraBody: Record<string, unknown> = { ...attribution }
+  if (site) extraBody.site = site
+
   const config: ChatBotConfig = {
     apiEndpoint: '/api/bots/' + bot.id + '/chat',
     name: c.name || bot.name,
@@ -52,7 +66,7 @@ export default function BotClient({ bot }: { bot: Bot }) {
     dynamicChips: c.dynamicChips === true || c.dynamicChips === 'true',
     languages: Array.isArray(c.languages) ? c.languages : undefined,
     language: c.language,
-    extraBody: site ? { site } : undefined,
+    extraBody: Object.keys(extraBody).length ? extraBody : undefined,
     researchDisclosure: bot.researchDisclosure === true,
   }
 

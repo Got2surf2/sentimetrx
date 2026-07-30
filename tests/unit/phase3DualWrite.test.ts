@@ -172,3 +172,55 @@ describe('phase3DualWrite — wiring (flag ON)', () => {
     expect(calls[0].filters?.session_id).toBe('sess-1')
   })
 })
+
+describe('phase3DualWrite — attribution on the conversations row', () => {
+  const original = process.env.DUAL_WRITE_PHASE3
+  beforeEach(() => { process.env.DUAL_WRITE_PHASE3 = 'true' })
+  afterEach(() => {
+    if (original === undefined) delete process.env.DUAL_WRITE_PHASE3
+    else process.env.DUAL_WRITE_PHASE3 = original
+  })
+
+  const rows = [{ bot_id: 'bot-1', session_id: 'sess-1', turn_number: 0, role: 'user', content: 'hi' }]
+  const upsertPayload = (calls: { table: string; verb: string; payload?: unknown }[]) =>
+    calls.find(c => c.table === 'conversations' && c.verb === 'upsert')?.payload as Record<string, unknown>
+
+  it('writes source/medium/campaign onto the upsert when provided', async () => {
+    const { service, calls } = buildMockService()
+    await mirrorTurns(service, {
+      botId: 'bot-1', orgId: 'org-1', sessionId: 'sess-1', rows,
+      attribution: { source: 'postcard', medium: 'qr', campaign: 'sr436-widening' },
+    })
+
+    const payload = upsertPayload(calls)
+    expect(payload.source).toBe('postcard')
+    expect(payload.medium).toBe('qr')
+    expect(payload.campaign).toBe('sr436-widening')
+  })
+
+  it('omits the columns entirely when no attribution is passed', async () => {
+    const { service, calls } = buildMockService()
+    await mirrorTurns(service, { botId: 'bot-1', orgId: 'org-1', sessionId: 'sess-1', rows })
+
+    const payload = upsertPayload(calls)
+    expect('source' in payload).toBe(false)
+    expect('medium' in payload).toBe(false)
+    expect('campaign' in payload).toBe(false)
+  })
+
+  // The load-bearing guarantee: upsert compiles to ON CONFLICT DO UPDATE SET
+  // <provided columns>, so a later turn carrying partial (or no) attribution
+  // must not blank out what the session's first turn already stamped.
+  it('omits absent keys on a partial attribution so stored values survive', async () => {
+    const { service, calls } = buildMockService()
+    await mirrorTurns(service, {
+      botId: 'bot-1', orgId: 'org-1', sessionId: 'sess-1', rows,
+      attribution: { campaign: 'sr436-widening' },
+    })
+
+    const payload = upsertPayload(calls)
+    expect(payload.campaign).toBe('sr436-widening')
+    expect('source' in payload).toBe(false)
+    expect('medium' in payload).toBe(false)
+  })
+})

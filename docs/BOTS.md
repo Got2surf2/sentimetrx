@@ -465,6 +465,28 @@ KB chunks carry `metadata.site` so they're filterable in admin, and Hope's chunk
 
 This is the MVP of the `bot_deployment_contexts` design — it doesn't yet do retrieval-side filtering, only system-prompt bias.
 
+### Provenance via `?source=` / `?medium=` / `?campaign=`
+
+Separate from `?site=` above, the embed URL carries **where the participant came from** — a QR code on a postcard, a QR placard at a live meeting, a partner site that iframes the agent, an email link. This is attribution data, not prompt context.
+
+```
+https://www.sentimetrx.ai/b/<slug>?source=postcard&medium=qr&campaign=sr436-widening
+```
+
+`utm_source` / `utm_medium` / `utm_campaign` are accepted as aliases so a link built by any campaign tool works unchanged; the bare name wins when both are present. Because the values ride the URL, this works for **plain links and QR codes with no partner integration at all** — the iframe case is just one consumer.
+
+Mechanism:
+1. `BotClient` calls `attributionFromParams` (`lib/attribution.ts`) and merges the result into `config.extraBody` alongside any `site`.
+2. `ChatBot` spreads `extraBody` into every POST, so the values reach both the chat API and the widget-open impression beacon. On the beacon an explicit `source` wins over the legacy `site`, which stays as the fallback.
+3. `POST /api/bots/[id]/impression` writes them to `agent_impressions` — every widget open, including ones that never become a conversation.
+4. `lib/chatCore.ts` re-cleans the body via `attributionFromBody` and passes an `attribution` object to `mirrorTurns`, which stamps `conversations.source/medium/campaign`.
+
+**Only keys that are present are written to the upsert.** `upsert` compiles to `ON CONFLICT DO UPDATE SET <provided columns>`, so a later turn carrying no attribution cannot blank out what the session's first turn stamped. This is verified against a real database, not just a mock — see `scripts/_verify_attribution.mts`.
+
+**Security — these values never reach the model.** They arrive from a public URL and anyone can set them to anything, so unlike `?site=` they are stored as data only and are never injected into the system prompt. That is exactly why they need no allowlist: the hardening is a trim, an 80-character cap (matching the impression route), and rejection of empties, applied client-side *and* re-applied server-side because `/api/bots/[id]/chat` is public and cookie-free.
+
+Attribution lands on the conversation row only when `DUAL_WRITE_PHASE3` is enabled (it is, in production); the impression beacon is unconditional.
+
 ### Two-step opener (askName flow)
 
 When `config.askName !== false` (the default), the widget asks the user's name and the topical opener as **two separate** assistant messages, not one concatenated double-question:

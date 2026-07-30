@@ -31,6 +31,7 @@ import { detectEmotionAssertions } from '@/lib/emotionFlags'
 import { classifyProbeFocuses } from '@/lib/probeFocusClassifier'
 import { extractName } from '@/lib/nameExtractor'
 import { mirrorTurns, mirrorFocusFlagsUpdate, type MirroredTurn } from '@/lib/phase3DualWrite'
+import { attributionFromBody } from '@/lib/attribution'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
 import { isInfoOnlyMessage } from '@/lib/botProbeGuards'
 import { pickNextTopic, type NextTopic } from '@/lib/pickNextTopic'
@@ -140,6 +141,12 @@ type ChatTurnBody = {
   demo?: boolean
   trigger?: string
   site?: string
+  /** Provenance passthrough from the embed URL (postcard QR, meeting QR,
+   *  partner iframe). Stored on the conversations row; NEVER injected into
+   *  the system prompt — see lib/attribution.ts. */
+  source?: string
+  medium?: string
+  campaign?: string
 }
 type AgentFocus = BotFocus & { probe_template?: string; keywords?: string[] }
 interface AgentIntent {
@@ -222,6 +229,11 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
   const ip = ctx.ip
 
   const { messages, session_id, user_name, language: userLanguage, debug: debugMode, demo: demoMode, trigger, site: deploymentSite } = body as ChatTurnBody
+
+  // Provenance from the embed URL. Re-cleaned here because /api/bots/[id]/chat
+  // is public and cookie-free — anyone can POST it directly, so the client's
+  // sanitization is not trusted. Data only; never reaches the prompt.
+  const attribution = attributionFromBody(body as ChatTurnBody)
 
   // Usage context for persona/demographic extraction (passed per-call — no module global)
   const personaUsageCtx = { org_id: bot.org_id, resource_type: 'bot' as const, resource_id: bot.id, event_type: 'persona' }
@@ -313,10 +325,10 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
     }
     if (ctx.townHallContext) {
       try {
-        await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: probeLang, rows: [probeRow], townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null })
+        await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: probeLang, rows: [probeRow], townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null, attribution })
       } catch (e) { void logError('chatCore.mirrorTurns', e, { orgId: bot.org_id }) }
     } else {
-      void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: probeLang, rows: [probeRow], townHallId: null, participantId: null }).then(function() {})
+      void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: probeLang, rows: [probeRow], townHallId: null, participantId: null, attribution }).then(function() {})
     }
     return { reply: probeText, _silence: true }
   }
@@ -491,9 +503,9 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
           else if (ctx.townHallContext) {
             // Awaited in town-hall mode: the warning turn counts toward the
             // participant budget the policy reads from the mirror.
-            await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id as string, language: userLanguage || 'en', rows: guardRows as unknown as MirroredTurn[], townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null })
+            await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id as string, language: userLanguage || 'en', rows: guardRows as unknown as MirroredTurn[], townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null, attribution })
           } else {
-            void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id as string, language: userLanguage || 'en', rows: guardRows as unknown as MirroredTurn[], townHallId: null, participantId: null }).then(function() {})
+            void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id as string, language: userLanguage || 'en', rows: guardRows as unknown as MirroredTurn[], townHallId: null, participantId: null, attribution }).then(function() {})
           }
         } catch { /* audit-trail storage is best-effort */ }
       }
@@ -582,10 +594,10 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
             void service.from('bot_conversation_turns').insert(deflectTurns).then(function() {})
             if (ctx.townHallContext) {
               try {
-                await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang || 'en', rows: deflectTurns, townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null })
+                await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang || 'en', rows: deflectTurns, townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null, attribution })
               } catch (e) { void logError('chatCore.mirrorTurns', e, { orgId: bot.org_id }) }
             } else {
-              void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang || 'en', rows: deflectTurns, townHallId: null, participantId: null }).then(function() {})
+              void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang || 'en', rows: deflectTurns, townHallId: null, participantId: null, attribution }).then(function() {})
             }
           }
 
@@ -1991,7 +2003,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
         // mode keeps the async fast path (nothing reads the mirror inline).
         if (ctx.townHallContext) {
           try {
-            await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsForMirror as unknown as MirroredTurn[], townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null })
+            await mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsForMirror as unknown as MirroredTurn[], townHallId: ctx.townHallContext.townHallId, participantId: ctx.townHallContext.participantId ?? null, attribution })
           } catch (e) { void logError('chatCore.mirrorTurns', e, { orgId: bot.org_id }) }
           // O(1) counter maintenance (sql/154): bump the session total +
           // the picked topic's tally once per stored topic-tagged reply.
@@ -2009,7 +2021,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
             }
           }
         } else {
-          void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsForMirror as unknown as MirroredTurn[], townHallId: null, participantId: null }).then(function() {})
+          void mirrorTurns(service, { botId: bot.id, orgId: bot.org_id, sessionId: session_id, language: botLang, rows: turnsForMirror as unknown as MirroredTurn[], townHallId: null, participantId: null, attribution }).then(function() {})
         }
 
         // Focus classify happens after the insert lands — best-effort
