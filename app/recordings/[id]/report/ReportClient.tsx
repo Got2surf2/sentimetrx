@@ -9,7 +9,7 @@
 // § 4.5 / § 4.6 / § 4.10 / § 4.11 routes — the affordances render but their
 // click handlers show a "not yet wired" tooltip rather than firing.
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import LottieLoader from '@/components/ui/LottieLoader'
@@ -341,6 +341,8 @@ export default function ReportClient({ data, publicMode = false, shareToken = nu
         <AudioModal
           recordingId={recordingId}
           segments={segments}
+          speakerNames={data.recording.speaker_names}
+          channelLabels={data.recording.channel_labels}
           req={audioReq}
           onClose={() => setAudioReq(null)}
           onSpanSaved={replaceExtraction}
@@ -2803,9 +2805,14 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
 
 const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2]
 
-function AudioModal({ recordingId, segments, req, onClose, onSpanSaved }: {
+function AudioModal({ recordingId, segments, speakerNames, channelLabels, req, onClose, onSpanSaved }: {
   recordingId: string
   segments: TranscriptSegment[]
+  /** Raw diarization labels ("S2") mean nothing to a reader — resolve them to
+   *  the names set on the recording, same rule the transcript + participation
+   *  views use. */
+  speakerNames: Record<string, string> | null
+  channelLabels: string[] | null
   req: AudioRequest
   onClose: () => void
   onSpanSaved?: (e: RecordingExtractionRow) => void
@@ -2818,6 +2825,29 @@ function AudioModal({ recordingId, segments, req, onClose, onSpanSaved }: {
   const [duration, setDuration] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [rate, setRate] = useState(1)
+
+  // "S2" → "Brian Sanders". Channel labels win on true-stereo captures, then
+  // the diarization-label map, then the raw label as a last resort.
+  const nameOf = useCallback((seg: TranscriptSegment | undefined): string | null => {
+    if (!seg) return null
+    if (seg.channel != null && channelLabels?.[seg.channel]) return channelLabels[seg.channel]
+    if (seg.speaker && speakerNames?.[String(seg.speaker)]?.trim()) return speakerNames[String(seg.speaker)].trim()
+    return seg.speaker ? String(seg.speaker) : null
+  }, [speakerNames, channelLabels])
+
+  // Speaker runs, precomputed. A wall of same-looking rows is hard to follow
+  // while listening, so each change of speaker gets a header row and the block
+  // gets an alternating tint. Banded by RUN, not identity, so two speakers can
+  // never land on the same shade back to back.
+  const rows = useMemo(() => {
+    let run = 0
+    return segments.map((seg, i) => {
+      const prev = i > 0 ? segments[i - 1] : undefined
+      const changed = !prev || prev.speaker !== seg.speaker || prev.channel !== seg.channel
+      if (changed) run++
+      return { seg, changed, banded: run % 2 === 1, name: nameOf(seg) }
+    })
+  }, [segments, nameOf])
 
   // Span-trim controls — only when the player was opened for a specific pair.
   const span = useSpanEdit({ recordingId, extractionId: req.extractionId, startSec: req.startSec, endSec: req.endSec, onSaved: onSpanSaved })
@@ -2902,8 +2932,13 @@ function AudioModal({ recordingId, segments, req, onClose, onSpanSaved }: {
       <div className="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-xs text-gray-500">Playing from {formatTime(req.startSec)}</div>
-            <div className="text-sm font-semibold text-gray-900 truncate">{req.label}</div>
+            {/* Tracks the playhead: the label the player was opened with goes
+                stale the moment playback crosses into another speaker. */}
+            <div className="text-xs text-gray-500 truncate">{req.label}</div>
+            <div className="text-sm font-semibold text-gray-900 truncate">
+              {nameOf(segments[activeIdx]) ?? 'Playing'}
+              <span className="font-normal text-gray-400"> · {formatTime(currentTime)}</span>
+            </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none shrink-0">×</button>
         </div>
@@ -2993,21 +3028,28 @@ function AudioModal({ recordingId, segments, req, onClose, onSpanSaved }: {
               </div>
             )}
 
-            {segments.length > 0 && (
-              <ol className="border-t border-gray-100 pt-3 max-h-64 overflow-y-auto divide-y divide-gray-50">
-                {segments.map((s, i) => {
+            {rows.length > 0 && (
+              <ol className="border-t border-gray-100 pt-3 max-h-72 overflow-y-auto">
+                {rows.map(({ seg: s, changed, banded, name }, i) => {
                   const active = i === activeIdx
                   return (
-                    <li
-                      key={i}
-                      ref={active ? activeRef : undefined}
-                      className={'py-1.5 px-2 text-sm flex items-start gap-2 cursor-pointer rounded ' + (active ? 'bg-orange-50' : 'hover:bg-gray-50')}
-                      onClick={() => seekTo(s.start)}
-                    >
-                      <span className="font-mono text-xs text-gray-400 w-12 shrink-0 pt-0.5">{formatTime(s.start)}</span>
-                      {s.speaker && <span className="text-xs font-semibold text-gray-500 w-9 shrink-0 pt-0.5">{s.speaker}</span>}
-                      <span className={active ? 'text-gray-900' : 'text-gray-700'}>{s.text}</span>
-                    </li>
+                    <Fragment key={i}>
+                      {changed && (
+                        <li className="flex items-center gap-2 pt-2.5 pb-1 px-2" aria-hidden>
+                          <span className="text-xs font-bold text-gray-700">{name ?? 'Speaker'}</span>
+                          <span className="h-px flex-1 bg-gray-200" />
+                          <span className="font-mono text-[11px] text-gray-400">{formatTime(s.start)}</span>
+                        </li>
+                      )}
+                      <li
+                        ref={active ? activeRef : undefined}
+                        className={'py-1.5 px-2 text-sm flex items-start gap-2 cursor-pointer rounded ' + (active ? 'bg-orange-100 ring-1 ring-orange-200' : banded ? 'bg-gray-50/70 hover:bg-gray-100' : 'hover:bg-gray-50')}
+                        onClick={() => seekTo(s.start)}
+                      >
+                        <span className="font-mono text-xs text-gray-400 w-12 shrink-0 pt-0.5">{formatTime(s.start)}</span>
+                        <span className={active ? 'text-gray-900 font-medium' : 'text-gray-700'}>{s.text}</span>
+                      </li>
+                    </Fragment>
                   )
                 })}
               </ol>

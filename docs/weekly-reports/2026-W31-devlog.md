@@ -134,3 +134,17 @@ Also made the internal ParticipationTab use whole percents, so it can't disagree
 Verified on the running dev server: public report renders 200 with exactly Q&A · Action items · Participation · Transcript, and an audit for `re-extract` / `regenerate` / `sign off` / `mark reviewed` / `re-transcribe` / `edit setup` / scope controls / `confidentiality_class` / `client_confidential` / `cost_cents` / `raw_response` returns **0 on every term**. Internal report still gated (307 to login). tsc clean, 1599 tests, no lint delta on any touched file.
 
 **⏭ ON PUSH: `npm run migrate sql/185_recordings_share_audio.sql`.** Still unverified in a browser: the Presentation tab (both shared TEST meetings have `proceedings_summary` NULL) and click-to-play with audio enabled.
+
+## Town Hall: audio player follows the speaker (Jul 30)
+
+WHY: Owner, on the modal player — "would look fantastic if the top label changed to match who is speaking; be great if we can also change the background between speakers or add a speaker-change marker."
+
+Three fixes, one root cause: **the player knew nothing about speaker identity.** It received only `segments`, so (a) the header showed `req.label` — whoever was speaking when the player was *opened* — and went stale the instant playback crossed into another voice, and (b) the follow-along rows printed raw diarization labels (`S2`, `S5`) even though the recording had real names mapped.
+
+- **`speakerNames` + `channelLabels` are now passed into `AudioModal`**, with a local `nameOf()` resolving channel label → speaker-name map → raw label. Same precedence the transcript and participation views use. Not extracted to a shared helper: `TranscriptReview`'s equivalent resolves against *editable local state*, a genuinely different concern.
+- **Header tracks the playhead** — resolved current speaker + live timestamp, with the original label demoted to context above it.
+- **Speaker-change marker + banding.** Each change of speaker gets a header row (name, rule, timestamp) and the block gets an alternating tint. Banded by **run, not identity**, so two speakers can never land on the same shade back to back — identity-banding would put the same colour on adjacent speakers whenever a third one spoke between them.
+
+Lint gotcha worth remembering: the first version computed the banding inline via an IIFE with a mutable counter (`(() => { let runIdx = 0; return (...) })()`), which pushed `react-hooks` to flag the `ref={active ? activeRef : undefined}` inside it as "Cannot access refs during render" — 6 → 7 warnings. Precomputing the rows in a `useMemo` fixed it and is cleaner. Back to 6, no delta.
+
+Verified both surfaces still render (public 200, internal 307 to login). tsc clean, 1599 tests.
