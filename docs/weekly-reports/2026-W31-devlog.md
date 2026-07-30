@@ -112,3 +112,7 @@ WHY: Owner screenshot — the "Largest share" tile read **32.2567940133911%**. `
 Speaker rows show **whole percents too** (owner call, after seeing a first pass that borrowed the internal tab's `>= 9.5 ? round : toFixed(1)` rule). A column mixing "32%" and "3.2%" reads as inconsistent to an external audience, and the talk time beside each row already separates entries that round to the same percent — so consistency wins over the extra digit here. The internal tab keeps its decimal; that's an analyst view with different priorities.
 
 Verified by diffing the rendered HTML before and after: `32.2567940133911%` is present in the prior render and absent now, with `32%` in its place. tsc clean, 1599 tests, no lint delta.
+
+## Town Hall: align the public Participation time/percent column (Jul 30)
+
+WHY: Owner screenshot — the right-hand column read ragged. Time and percent shared one right-aligned span, so with "13:39" (5 chars) next to "7:38" (4 chars) the separator and the `%` drifted horizontally down the list even though the right edge lined up. Split into fixed-width columns (`w-11` time, separator, `w-8` percent) with `tabular-nums`, so the dots and percents form clean vertical rules.

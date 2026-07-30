@@ -345,12 +345,17 @@ function ParticipationSection({ model }: { model: ParticipationModel }) {
               <div className="h-2 flex-1 rounded bg-slate-100 overflow-hidden">
                 <div className="h-full rounded bg-teal-600" style={{ width: Math.max(1, Math.round(s.sharePct)) + '%' }} />
               </div>
-              <span className="w-28 shrink-0 text-right text-xs text-slate-500 tabular-nums">
-                {/* Whole percent for every row. The internal tab shows a decimal
-                    below 9.5%, but a column that mixes "32%" and "3.2%" reads as
-                    inconsistent to an external reader; the talk time beside it
-                    already distinguishes rows that round to the same percent. */}
-                {fmtTalkTime(s.talkSec)} · {Math.round(s.sharePct)}%
+              {/* Time and percent are separate fixed-width columns, not one
+                  right-aligned string: "13:39" and "7:38" differ in width, so a
+                  combined span left the separator and the % ragged down the
+                  column. Whole percent for every row — the internal tab shows a
+                  decimal below 9.5%, but a column mixing "32%" and "3.2%" reads
+                  as inconsistent, and the talk time already separates rows that
+                  round the same. */}
+              <span className="shrink-0 flex items-baseline justify-end gap-1.5 text-xs text-slate-500 tabular-nums">
+                <span className="w-11 text-right">{fmtTalkTime(s.talkSec)}</span>
+                <span className="text-slate-300">·</span>
+                <span className="w-8 text-right">{Math.round(s.sharePct)}%</span>
               </span>
             </div>
           ))}
