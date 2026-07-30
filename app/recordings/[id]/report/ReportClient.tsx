@@ -9,7 +9,7 @@
 // § 4.5 / § 4.6 / § 4.10 / § 4.11 routes — the affordances render but their
 // click handlers show a "not yet wired" tooltip rather than firing.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import LottieLoader from '@/components/ui/LottieLoader'
@@ -58,13 +58,38 @@ export interface ReportData {
   analyticsDatasetId: string | null   // dataset mirror id when Analytics is available; null = hide cross-link
 }
 
+// Public-share mode. The SAME component renders the internal report and the
+// public one at /th/[token] (docs/RECORDINGS.md §7.2) so the two can never
+// drift apart. A context rather than prop-threading because the audio player
+// sits six levels down.
+//
+// SAFETY: everything here must fail CLOSED. `publicMode` defaults false so a
+// component that forgets to consult it behaves as the internal report (the
+// authenticated case), and `canEdit` is computed once at the top of
+// ReportClient as `!publicMode && (isOwner || isAdmin)` — never re-derived
+// downstream. Any NEW mutation affordance must be gated on the canEdit that is
+// passed down, not on isOwner/isAdmin directly.
+interface PublicShareCtx {
+  publicMode: boolean
+  shareToken: string | null   // drives the token-authorised audio endpoint
+  audioEnabled: boolean       // recordings.share_audio — per-meeting opt-in (sql/185)
+}
+const PublicShareContext = createContext<PublicShareCtx>({ publicMode: false, shareToken: null, audioEnabled: true })
+
 type Tab = 'presentation' | 'qa' | 'actions' | 'coverage' | 'participation' | 'transcript' | 'comparison' | 'export'
 
 const HERMES = '#E8632A'
 
 const TABS: readonly Tab[] = ['presentation', 'qa', 'actions', 'coverage', 'participation', 'transcript', 'comparison', 'export']
 
-export default function ReportClient({ data }: { data: ReportData }) {
+export default function ReportClient({ data, publicMode = false, shareToken = null, audioEnabled = true }: {
+  data: ReportData
+  /** Render for /th/[token]: drops the Reports tab, forces read-only, hides
+   *  sign-off, and routes audio through the token endpoint. */
+  publicMode?: boolean
+  shareToken?: string | null
+  audioEnabled?: boolean
+}) {
   // Draft report (sql/125): unreviewed AI output → watermark + pending-review
   // banner. Cleared ONLY by a sign-off (POST /signoff), which captures the
   // reviewer's name + id + timestamp + optional note. No anonymous finalize.
@@ -72,6 +97,11 @@ export default function ReportClient({ data }: { data: ReportData }) {
   // Transcript held in state so in-place segment edits (speaker reassignment /
   // verbatim fixes from the Transcript tab) reflect in the read view and survive
   // tab switches without a full reload.
+  // THE gate for every mutation affordance in this report. Derived once so a
+  // downstream component can never accidentally re-derive a laxer rule; public
+  // mode forces it false regardless of who is signed in.
+  const canEdit = !publicMode && (data.isOwner || data.isAdmin)
+
   const [transcript, setTranscript] = useState(data.transcript)
   const [isDraft, setIsDraft] = useState(data.recording.draft)
   const [signing, setSigning] = useState(false)
@@ -110,10 +140,17 @@ export default function ReportClient({ data }: { data: ReportData }) {
     // A Q&A-skipped close-out has no pairs — land on the transcript (the actual
     // deliverable) instead of an empty Coverage tab.
     const hasQa = data.extractions.some(e => e.unit_type === 'qa_pair')
-    const fallback: Tab = hasQa ? 'coverage' : 'transcript'
+    // Public reports never land on (or can be deep-linked to) an internal-only
+    // tab. Dropping a tab from the nav is NOT enough — `tab` state drives the
+    // body, so a default of 'coverage' would render Coverage with no tab shown.
+    const internalOnly = (k: string) => publicMode && (k === 'coverage' || k === 'comparison' || k === 'export')
+    const fallback: Tab = publicMode
+      ? (hasPresentation ? 'presentation' : hasQa ? 'qa' : 'transcript')
+      : (hasQa ? 'coverage' : 'transcript')
     const t = tabParam ?? ''
     if (t === 'presentation' && !hasPresentation) return fallback
     if (t === 'comparison' && !hasLiveTranscript) return fallback
+    if (internalOnly(t)) return fallback
     return (TABS as readonly string[]).includes(t) ? (t as Tab) : fallback
   })
   // One-shot: Coverage's "Review these" → Q&A tab pre-filtered to flagged pairs.
@@ -180,10 +217,20 @@ export default function ReportClient({ data }: { data: ReportData }) {
   )
 
   return (
+    <PublicShareContext.Provider value={{ publicMode, shareToken, audioEnabled }}>
     <div className="space-y-6">
       {/* Draft banner — opening "pending human review" statement + the sign-off
-          that finalizes it (captures who reviewed). */}
-      {isDraft && (
+          that finalizes it (captures who reviewed). Sign-off is an internal
+          action, so public readers get the read-only notice below instead. */}
+      {isDraft && publicMode && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl px-4 py-3">
+          <div className="text-sm font-bold text-amber-900">⚠ DRAFT — pending human review</div>
+          <p className="text-xs text-amber-800 mt-0.5">
+            This report was generated automatically and has <strong>not yet been reviewed by a person</strong>. Figures and attributions may change. It will be finalized after review.
+          </p>
+        </div>
+      )}
+      {isDraft && !publicMode && (
         <div className="bg-amber-50 border-2 border-amber-300 rounded-xl px-4 py-3 space-y-2">
           <div>
             <div className="text-sm font-bold text-amber-900">⚠ DRAFT — pending human review</div>
@@ -245,14 +292,14 @@ export default function ReportClient({ data }: { data: ReportData }) {
           </div>
         )}
         {data.recording.qa_stale && (
-          <StaleQaBanner recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} />
+          <StaleQaBanner recordingId={recordingId} canEdit={canEdit} />
         )}
         {tab === 'presentation' && <PresentationTab recording={data.recording} />}
-        {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} onReplaced={replaceExtraction} onPlay={playAt} initialFlagged={reviewFlagged} hasPresentation={hasPresentation} nz={reportNz} />}
-        {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={transcript} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onReplaced={replaceExtraction} nz={reportNz} />}
-        {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={transcript} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onPlay={playAt} onReviewFlagged={() => { setReviewFlagged(true); setTab('qa') }} />}
+        {tab === 'qa' && <QATab recordingId={recordingId} extractions={qaPairs} agenda={agenda} canEdit={canEdit} onReplaced={replaceExtraction} onPlay={playAt} initialFlagged={reviewFlagged} hasPresentation={hasPresentation} nz={reportNz} />}
+        {tab === 'actions' && <ActionItemsTab extractions={actionItems} transcript={transcript} recordingId={recordingId} canEdit={canEdit} onReplaced={replaceExtraction} nz={reportNz} />}
+        {tab === 'coverage' && <CoverageTab recording={data.recording} extractions={extractions} transcript={transcript} recordingId={recordingId} canEdit={canEdit} onPlay={playAt} onReviewFlagged={() => { setReviewFlagged(true); setTab('qa') }} />}
         {tab === 'participation' && <ParticipationTab transcript={transcript} speakerNames={data.recording.speaker_names} channelLabels={data.recording.channel_labels} audioChannels={data.recording.audio_channels} panel={panelRoster} onPlay={playAt} />}
-        {tab === 'transcript' && <TranscriptTab transcript={transcript} entityMap={data.recording.entity_map} extractions={extractions} channelLabels={data.recording.channel_labels} speakerNames={data.recording.speaker_names} panelSpeakers={setupNames(data.recording.setup_inputs, 'panel')} extraSpeakers={setupNames(data.recording.setup_inputs, 'speakers')} onSegmentsSaved={segs => setTranscript(prev => prev ? { ...prev, segments: segs } : prev)} recordingId={recordingId} canEdit={data.isOwner || data.isAdmin} onPlay={playAt} />}
+        {tab === 'transcript' && <TranscriptTab transcript={transcript} entityMap={data.recording.entity_map} extractions={extractions} channelLabels={data.recording.channel_labels} speakerNames={data.recording.speaker_names} panelSpeakers={setupNames(data.recording.setup_inputs, 'panel')} extraSpeakers={setupNames(data.recording.setup_inputs, 'speakers')} onSegmentsSaved={segs => setTranscript(prev => prev ? { ...prev, segments: segs } : prev)} recordingId={recordingId} canEdit={canEdit} onPlay={playAt} />}
         {tab === 'comparison' && <TranscriptComparisonTab liveTranscript={data.recording.live_transcript ?? null} segments={segments} />}
         {tab === 'export' && (
           <div className="space-y-6">
@@ -264,6 +311,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
               initialShareEnabled={data.recording.share_enabled}
               initialShareToken={data.recording.share_token}
               initialShareVerbatim={data.recording.share_verbatim}
+              initialShareAudio={!!(data.recording as { share_audio?: boolean }).share_audio}
               agents={data.agents}
               initialBrandTag={data.recording.brand_tag}
               initialAgentId={data.recording.underlying_agent_id}
@@ -299,6 +347,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
         />
       )}
     </div>
+    </PublicShareContext.Provider>
   )
 }
 
@@ -312,6 +361,9 @@ const CONFIDENTIALITY_PILL: Record<string, { label: string; cls: string }> = {
 }
 
 function ReportHeader({ recording, qaPairCount, analyticsDatasetId }: { recording: RecordingRow; qaPairCount: number; analyticsDatasetId: string | null }) {
+  // Deep links into the authed app leak the recording UUID and dead-end an
+  // external reader at a login screen.
+  const { publicMode } = useContext(PublicShareContext)
   const analystNames = (recording.analysts ?? []).map(a => a.name).filter(Boolean).join(', ')
   const conf = CONFIDENTIALITY_PILL[recording.confidentiality_class] ?? CONFIDENTIALITY_PILL.client_confidential
   const objectives = recording.objectives
@@ -332,9 +384,11 @@ function ReportHeader({ recording, qaPairCount, analyticsDatasetId }: { recordin
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Link href={`/recordings/${recording.id}/setup`} className="text-xs text-gray-500 hover:text-orange-600 underline">
-            Edit setup ⚙
-          </Link>
+          {!publicMode && (
+            <Link href={`/recordings/${recording.id}/setup`} className="text-xs text-gray-500 hover:text-orange-600 underline">
+              Edit setup ⚙
+            </Link>
+          )}
           {analyticsDatasetId && (
             <Link href={`/analyze/${analyticsDatasetId}`} className="text-xs text-gray-500 hover:text-orange-600 underline">
               Open in Analytics ↗
@@ -394,16 +448,24 @@ function TabBar({
   // 'warn' tone = the badge is a count of pairs needing review (same number as the
   // card's "N pairs need review" pill) → render amber so it reads as an alert, not
   // a neutral item count.
+  const { publicMode } = useContext(PublicShareContext)
   const tabs: Array<{ key: Tab; label: string; badge?: number; tone?: 'warn' }> = [
     // Presentation leads (the meeting's first half) — only on community meetings.
     ...(hasPresentation ? [{ key: 'presentation' as Tab, label: 'Presentation' }] : []),
-    { key: 'coverage',   label: 'Coverage',     badge: counts.coverage, tone: 'warn' },
+    // Coverage + Live vs Final are ANALYST QC, not meeting content, so they are
+    // internal-only. Coverage flags every agenda item with no Q&A pairs as a
+    // gap — but presentation sections ("Welcome and Opening Remarks", "Study
+    // Methodology") never draw audience questions, so publicly it reads as
+    // "this report missed 4 of 7 agenda items" when nothing is wrong. Live vs
+    // Final exposes raw-vs-corrected ASR, i.e. how the sausage is made.
+    ...(publicMode ? [] : [{ key: 'coverage' as Tab, label: 'Coverage', badge: counts.coverage, tone: 'warn' as const }]),
     { key: 'qa',         label: 'Q&A',          badge: counts.qa },
     { key: 'actions',    label: 'Action items', badge: counts.actions },
     { key: 'participation', label: 'Participation' },
     { key: 'transcript', label: 'Transcript' },
-    ...(hasLiveTranscript ? [{ key: 'comparison' as Tab, label: 'Live vs Final' }] : []),
-    { key: 'export',     label: 'Reports' },
+    ...(hasLiveTranscript && !publicMode ? [{ key: 'comparison' as Tab, label: 'Live vs Final' }] : []),
+    // Reports = exports + the share panel + sign-off: internal-only by nature.
+    ...(publicMode ? [] : [{ key: 'export' as Tab, label: 'Reports' }]),
   ]
   return (
     <nav className="flex gap-1 border-b border-gray-200">
@@ -575,10 +637,14 @@ function PresentationTab({ recording }: { recording: RecordingRow }) {
 
 // ── Q&A tab ──────────────────────────────────────────────────────────────────
 
-function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFlagged = false, hasPresentation = false, nz }: {
+function QATab({ recordingId, extractions, agenda, canEdit, onReplaced, onPlay, initialFlagged = false, hasPresentation = false, nz }: {
   recordingId: string
   extractions: RecordingExtractionRow[]
   agenda: string[]
+  /** QATab previously had NO edit gate — its re-analyze and per-pair controls
+   *  rendered for anyone. Harmless while the report was login-only; a hole once
+   *  the same component serves /th/[token]. */
+  canEdit: boolean
   onReplaced: (e: RecordingExtractionRow) => void
   onPlay: PlayHandler
   initialFlagged?: boolean
@@ -661,14 +727,14 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFl
               className="text-xs px-3 py-1.5 border border-gray-200 rounded hover:bg-gray-50">Collapse all</button>
           </div>
         </div>
-        <button
+        {canEdit && <button
           type="button"
           onClick={() => setReanalyzeModal({ scope: 'all' })}
           className="text-sm px-3 py-1.5 rounded-lg border border-orange-200 text-orange-700 font-medium hover:bg-orange-50 transition-colors"
           title="Re-extract all Q&A pairs from the transcript"
         >
           ↻ Re-extract all
-        </button>
+        </button>}
       </div>
 
       {(typeCounts.size > 1 || flaggedCount > 0 || sentimentCounts.size > 0 || (hasPresentation && (inScopeCount > 0 || outScopeCount > 0))) && (
@@ -745,6 +811,7 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFl
               extraction={e}
               expanded={expandedAll || expanded.has(e.id)}
               onToggle={() => toggleCard(e.id)}
+              canEdit={canEdit}
               onReplaced={onReplaced}
               onPlay={onPlay}
               hasPresentation={hasPresentation}
@@ -760,14 +827,16 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFl
               <h2 className="text-base font-bold text-gray-900">
                 {topic} <span className="text-gray-400 text-sm font-normal">· {items.length}</span>
               </h2>
-              <button
-                type="button"
-                onClick={() => setReanalyzeModal({ scope: 'topic', topic })}
-                className="text-xs px-2 py-1 text-gray-500 hover:text-gray-900"
-                title={`Re-extract pairs for "${topic}" (§ 4.11)`}
-              >
-                ⋯
-              </button>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => setReanalyzeModal({ scope: 'topic', topic })}
+                  className="text-xs px-2 py-1 text-gray-500 hover:text-gray-900"
+                  title={`Re-extract pairs for "${topic}" (§ 4.11)`}
+                >
+                  ⋯
+                </button>
+              )}
             </header>
             <ul className="space-y-2">
               {items.map(e => (
@@ -777,7 +846,8 @@ function QATab({ recordingId, extractions, agenda, onReplaced, onPlay, initialFl
                   extraction={e}
                   expanded={expandedAll || expanded.has(e.id)}
                   onToggle={() => toggleCard(e.id)}
-                  onReplaced={onReplaced}
+                  canEdit={canEdit}
+              onReplaced={onReplaced}
                   onPlay={onPlay}
                   hasPresentation={hasPresentation}
                   nz={nz}
@@ -896,11 +966,14 @@ function ReanalyzeModal({ recordingId, scope, topic, onClose, onSuccess }: {
   )
 }
 
-function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPlay, ordinal, hasPresentation = false, nz }: {
+function QACard({ recordingId, extraction, expanded, onToggle, canEdit, onReplaced, onPlay, ordinal, hasPresentation = false, nz }: {
   recordingId: string
   extraction: RecordingExtractionRow
   expanded: boolean
   onToggle: () => void
+  /** Gates every mutation control on the card (scope, hand-edit, regenerate,
+   *  mark-reviewed). False on the public report at /th/[token]. */
+  canEdit: boolean
   onReplaced: (e: RecordingExtractionRow) => void
   onPlay: PlayHandler
   // Sequence number in the "In order" view; omitted in topic view.
@@ -1051,7 +1124,7 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
             {typeof extraction.confidence === 'number' && (
               <span className="text-gray-500">confidence {(extraction.confidence * 100).toFixed(0)}%</span>
             )}
-            {hasPresentation && (
+            {hasPresentation && canEdit && (
               <span className="inline-flex items-center gap-1 ml-1">
                 <span className="text-gray-400">Scope:</span>
                 <button type="button" onClick={() => { void setScope('in_scope') }}
@@ -1071,7 +1144,7 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
             >
               ▶ Play / adjust segment
             </button>
-            {hasPolished && (
+            {hasPolished && canEdit && (
               <button
                 type="button"
                 onClick={() => setEditing(true)}
@@ -1081,7 +1154,7 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
                 ✎ Edit
               </button>
             )}
-            {!showComposer ? (
+            {!showComposer && canEdit ? (
               <button
                 type="button"
                 onClick={() => setShowComposer(true)}
@@ -1090,7 +1163,7 @@ function QACard({ recordingId, extraction, expanded, onToggle, onReplaced, onPla
                 ↻ Regenerate
               </button>
             ) : null}
-            {flagged && (
+            {flagged && canEdit && (
               <button
                 type="button"
                 onClick={() => { void markReviewed() }}
@@ -1240,6 +1313,7 @@ function SegmentAudioPlayer({ recordingId, extractionId, startSec, endSec, onSpa
   endSec: number | null
   onSpanSaved?: (e: RecordingExtractionRow) => void
 }) {
+  const { publicMode, shareToken, audioEnabled } = useContext(PublicShareContext)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [url, setUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1263,12 +1337,15 @@ function SegmentAudioPlayer({ recordingId, extractionId, startSec, endSec, onSpa
   useEffect(() => {
     let cancelled = false
     setLoading(true); setError(null)
-    fetch(`/api/recordings/${recordingId}/audio`)
+    // Public reports authorise by share token, not session — and only when the
+    // meeting opted into audio (sql/185). Skipping the fetch entirely when it
+    // hasn't means no pointless 404 and no player flash.
+    fetch(publicMode ? `/api/th/${shareToken}/audio` : `/api/recordings/${recordingId}/audio`)
       .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d?.error || `audio ${r.status}`); return d })
       .then(d => { if (!cancelled) { setUrl(d.url as string); setLoading(false) } })
       .catch(e => { if (!cancelled) { setError(e instanceof Error ? e.message : 'audio unavailable'); setLoading(false) } })
     return () => { cancelled = true }
-  }, [recordingId])
+  }, [recordingId, publicMode, shareToken, audioEnabled])
 
   const onLoaded = () => {
     const a = audioRef.current; if (!a) return
@@ -2257,7 +2334,7 @@ function VersionSignoffPanel({ recordingId, signoff, analyzedVersion }: {
 
 // ── Export & Share tab ───────────────────────────────────────────────────────
 
-function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEnabled, initialShareToken, initialShareVerbatim, agents, initialBrandTag, initialAgentId }: {
+function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEnabled, initialShareToken, initialShareVerbatim, initialShareAudio, agents, initialBrandTag, initialAgentId }: {
   recordingId: string
   recordingName: string
   status: string
@@ -2270,6 +2347,7 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
   initialShareEnabled: boolean
   initialShareToken: string | null
   initialShareVerbatim: boolean
+  initialShareAudio: boolean
   agents: Array<{ id: string; name: string }>
   initialBrandTag: string | null
   initialAgentId: string | null
@@ -2284,6 +2362,7 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
   const [shareEnabled, setShareEnabled] = useState(initialShareEnabled)
   const [shareToken, setShareToken] = useState<string | null>(initialShareToken)
   const [shareVerbatim, setShareVerbatim] = useState(initialShareVerbatim)
+  const [shareAudio, setShareAudio] = useState(initialShareAudio)
   const [shareBusy, setShareBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const shareUrl = shareToken && typeof window !== 'undefined' ? `${window.location.origin}/th/${shareToken}` : ''
@@ -2325,7 +2404,7 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
 
   // One call covers both fields — always send the current state of the other so
   // toggling one never clobbers the other (the route updates whatever's present).
-  const postShare = async (body: { enabled: boolean; show_verbatim: boolean }) => {
+  const postShare = async (body: { enabled: boolean; show_verbatim: boolean; include_audio?: boolean }) => {
     setShareBusy(true)
     setError(null)
     try {
@@ -2339,6 +2418,7 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
       setShareEnabled(d.enabled)
       if (d.token) setShareToken(d.token)
       if (typeof d.show_verbatim === 'boolean') setShareVerbatim(d.show_verbatim)
+      if (typeof d.include_audio === 'boolean') setShareAudio(d.include_audio)
     } catch (e) {
       setError((e as Error)?.message || 'Share update failed')
     } finally {
@@ -2348,6 +2428,7 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
 
   const toggleShare = (next: boolean) => postShare({ enabled: next, show_verbatim: shareVerbatim })
   const setVerbatim = (next: boolean) => postShare({ enabled: shareEnabled, show_verbatim: next })
+  const setAudio = (next: boolean) => postShare({ enabled: shareEnabled, show_verbatim: shareVerbatim, include_audio: next })
 
   const copyLink = async () => {
     if (!shareUrl) return
@@ -2587,6 +2668,24 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
                     Verbatim
                   </button>
                 </div>
+              </div>
+              {/* Audio is a separate, bigger disclosure than the written report
+                  — publishing residents' voices. Off by default (sql/185). */}
+              <div className="mt-3 flex items-start gap-2 text-sm">
+                <input
+                  id="share-audio"
+                  type="checkbox"
+                  checked={shareAudio}
+                  disabled={shareBusy}
+                  onChange={e => { void setAudio(e.target.checked) }}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300"
+                />
+                <label htmlFor="share-audio" className="text-gray-700">
+                  Include the meeting audio
+                  <span className="block text-xs text-gray-400">
+                    Lets anyone with the link play the recording from any timestamp. Off by default — the written report never implies publishing the audio.
+                  </span>
+                </label>
               </div>
               <p className="mt-1.5 text-xs text-gray-400">
                 {shareVerbatim

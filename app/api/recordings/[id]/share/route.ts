@@ -33,7 +33,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // confirm the row exists to a caller who shouldn't see it.
   const { data: rec } = await service
     .from('recordings')
-    .select('id, org_id, created_by, status, share_token, share_enabled, share_verbatim')
+    .select('id, org_id, created_by, status, share_token, share_enabled, share_verbatim, share_audio')
     .eq('id', recording_id)
     .single()
   if (!rec) return NextResponse.json({ error: 'not found' }, { status: 404 })
@@ -42,7 +42,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // above is the gate. 404 (not 403) on cross-org so we don't confirm the row.
   if (!isAdmin && rec.org_id !== orgId) return NextResponse.json({ error: 'not found' }, { status: 404 })
 
-  let body: { enabled?: boolean; expires_in_days?: number; show_verbatim?: boolean } = {}
+  let body: { enabled?: boolean; expires_in_days?: number; show_verbatim?: boolean; include_audio?: boolean } = {}
   try { body = await req.json() } catch { /* empty body → treat as no-op */ }
   const enabled = body.enabled === true
 
@@ -70,6 +70,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if ('show_verbatim' in body) patch.share_verbatim = body.show_verbatim === true
   const verbatim = 'show_verbatim' in body ? body.show_verbatim === true : !!rec.share_verbatim
 
+  // Audio is a separate, deliberately opt-in disclosure (sql/185): publishing
+  // the written report never implies publishing residents' voices. Same
+  // write-only-when-present rule as share_verbatim, so enable/disable of the
+  // link can't silently flip it.
+  if ('include_audio' in body) patch.share_audio = body.include_audio === true
+  const includeAudio = 'include_audio' in body ? body.include_audio === true : !!(rec as { share_audio?: boolean }).share_audio
+
   const { error: updErr } = await service
     .from('recordings')
     .update(patch)
@@ -84,5 +91,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     path: enabled ? `/th/${token}` : null,
     expires_at: enabled ? expires_at : null,
     show_verbatim: verbatim,
+    include_audio: includeAudio,
   })
 }

@@ -116,3 +116,21 @@ Verified by diffing the rendered HTML before and after: `32.2567940133911%` is p
 ## Town Hall: align the public Participation time/percent column (Jul 30)
 
 WHY: Owner screenshot — the right-hand column read ragged. Time and percent shared one right-aligned span, so with "13:39" (5 chars) next to "7:38" (4 chars) the separator and the `%` drifted horizontally down the list even though the right edge lined up. Split into fixed-width columns (`w-11` time, separator, `w-8` percent) with `tabular-nums`, so the dots and percents form clean vertical rules.
+
+## Town Hall: the public share link IS the report now — ReportClient in publicMode (Jul 30)
+
+WHY: Owner: "the internal view allows a much more interactive experience but the shared doesn't — ideally the shared one should be the same as the internal one without the reports tab." The hand-built public page from earlier today was already drifting from the internal report, so `/th/[token]` now renders the **same `ReportClient`** in a new `publicMode` instead of a parallel implementation. Deleted `PublicTabs.tsx` and the bespoke section builders.
+
+**Three mutation controls had no edit gate at all** and rendered for anyone: QATab's "Re-extract all", its per-topic `⋯` re-extract menu, and QACard's scope / hand-edit / regenerate / mark-reviewed cluster. Harmless while the report was login-only, a hole the moment the component serves a public route. `QATab` and `QACard` now take `canEdit`, computed **once** in ReportClient as `!publicMode && (isOwner || isAdmin)` and passed down — never re-derived. Owner confirmed mid-build: "no editing, no re-transcribe for sure."
+
+**The RSC-payload leak was the real find.** `ReportClient` is a client component, so anything on `data.recording` is serialized into page source and readable in view-source *whether or not a tab renders it*. Passing the `select('*')` row published the sign-off reviewer's note, `confidentiality_class: client_confidential`, internal objectives, and the share token; the transcript row carried `raw_response` (entire ASR vendor payload) and `cost_cents`. Now an **allowlist**, never a denylist, so a future column can't silently become public. Page weight fell ~2.3 MB → ~207 KB as a side effect.
+
+**Coverage and Live vs Final are out after all** — and the owner's own reaction is why. Coverage rendered four agenda items at 0 with ⚠ gap markers. I checked the data before removing anything: not a bug. Those four are *presentation sections* ("Welcome and Opening Remarks", "Study Methodology") that never draw audience questions, while the actual Q&A had landed on emergent topics (US 441 Corridor Congestion, Multimodal Transportation). Correct analysis, but publicly it reads as "this report missed 4 of 7 agenda items." Also learned: **dropping a tab from the nav is not enough** — `tab` state drives the body and the internal default is `coverage`, so publicMode overrides the default and rejects internal keys via `?tab=`.
+
+**Audio: opt-in per meeting** (`recordings.share_audio`, sql/185, default false, applied to TEST). New `GET /api/th/[token]/audio` authorises by share token instead of session and fails closed on six conditions; an enabled link with `share_audio=false` still 404s, so publishing the written report never implies publishing residents' voices. Toggle sits beside Polished/Verbatim in the Reports tab. Verified both directions against TEST: off → 404, on → 200 with a 30-min signed URL scoped to that one mp3.
+
+Also made the internal ParticipationTab use whole percents, so it can't disagree with the public view now that they're the same component.
+
+Verified on the running dev server: public report renders 200 with exactly Q&A · Action items · Participation · Transcript, and an audit for `re-extract` / `regenerate` / `sign off` / `mark reviewed` / `re-transcribe` / `edit setup` / scope controls / `confidentiality_class` / `client_confidential` / `cost_cents` / `raw_response` returns **0 on every term**. Internal report still gated (307 to login). tsc clean, 1599 tests, no lint delta on any touched file.
+
+**⏭ ON PUSH: `npm run migrate sql/185_recordings_share_audio.sql`.** Still unverified in a browser: the Presentation tab (both shared TEST meetings have `proceedings_summary` NULL) and click-to-play with audio enabled.

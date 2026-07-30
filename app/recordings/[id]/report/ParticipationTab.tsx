@@ -165,7 +165,12 @@ function SpeakerRow({ s, color, onPlay }: { s: SpeakerStats; color: string; onPl
           <div className="h-2 flex-1 rounded-full bg-gray-100 overflow-hidden">
             <div className="h-full rounded-full" style={{ width: Math.max(s.sharePct, 0.5) + '%', background: color }} />
           </div>
-          <span className="text-xs tabular-nums text-gray-600 w-9 text-right">{s.sharePct >= 9.5 ? Math.round(s.sharePct) : s.sharePct.toFixed(1)}%</span>
+          {/* Whole percent for every row. This used to show one decimal below
+              9.5%, but a column mixing "32%" and "3.2%" reads as inconsistent,
+              and the talk-time column beside it already separates rows that
+              round to the same percent. Kept identical to the public report
+              (/th/[token]) so the two views never disagree on a number. */}
+          <span className="text-xs tabular-nums text-gray-600 w-9 text-right">{Math.round(s.sharePct)}%</span>
         </div>
       </td>
       <td className="py-2 pr-3 text-right tabular-nums text-gray-700">{s.turnCount}</td>

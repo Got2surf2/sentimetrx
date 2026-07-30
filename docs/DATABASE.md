@@ -112,7 +112,7 @@ complete empty schema. Data restore comes from the nightly org snapshots
 
 | Table | Purpose |
 |---|---|
-| `recordings` | A recorded in-person meeting: status pipeline (upload→transcribe→extract→complete), setup config, share token (`/th/<token>` public report). |
+| `recordings` | A recorded in-person meeting: status pipeline (upload→transcribe→extract→complete), setup config, share token (`/th/<token>` public report). Public sharing is three independent flags: `share_enabled` (link live), `share_verbatim` (polished vs verbatim Q&A), and `share_audio` (sql/185 — lets the public report play the recording; default false, because publishing the written report must never imply publishing residents' voices). |
 | `recording_files` | Uploaded/captured audio-video assets (via `recording_id`). |
 | `recording_transcripts` | Deepgram transcripts incl. live-capture segments + speaker roles. |
 | `recording_extractions` | AI extraction output (Q&A pairs, themes, summary) per config version. |

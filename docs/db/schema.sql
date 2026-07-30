@@ -4509,6 +4509,7 @@ CREATE TABLE IF NOT EXISTS "public"."recordings" (
     "brand_tag" "text",
     "underlying_agent_id" "uuid",
     "share_verbatim" boolean DEFAULT false NOT NULL,
+    "share_audio" boolean DEFAULT false NOT NULL,
     "analysis_org" "text" DEFAULT 'Datanautix'::"text" NOT NULL,
     "analysts" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
     "objectives" "jsonb",
