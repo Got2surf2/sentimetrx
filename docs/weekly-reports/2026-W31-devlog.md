@@ -160,3 +160,17 @@ The correction already existed. This meeting's entity map carries canonical `Ply
 Two deliberate exceptions keep RAW, both recorded in RECORDINGS.md §3.5b: the **Transcript tab** (`TranscriptReview` owns the corrected/raw toggle and needs raw to offer it — normalizing its input would make "Raw" show corrected text) and **Live vs Final** (it diffs live ASR against final ASR; entity corrections would show up as ASR improvements and misrepresent it).
 
 Note the workflow this completes: the player now shows corrected text, so what remains visible is genuinely unmapped — and the "heard as…" field fixed earlier today is where those get added. tsc clean, 1599 tests, no lint delta.
+
+## Town Hall: reassign a speaker from the audio player (Jul 30)
+
+WHY: Owner hit a mis-attributed block in the player and asked for drag-to-reassign on a participation-style bar — "or do you want to check the transcription algo, it feels like these edge cases break fairly frequently."
+
+**Checked the algo question first, and the answer is no.** This recording is `audio_channels=1` with **0 of 760 segments carrying a channel**, so speaker identity is 100% ASR-vendor voice clustering — we have no knob. It found **11 speakers where Participation shows ~9**, i.e. over-splitting, and the failures in the screenshot are two-second utterances ("Right.", "And that's just at the intersection.") which is precisely where clustering breaks. The structural fix is **capture, not code**: `computeParticipation` already prefers channels when `audio_channels >= 2`, so a panel mic + an audience mic makes identity deterministic and deletes this failure class for future meetings. Worth doing regardless of any UI.
+
+Reassignment already existed (Transcript tab → edit mode → per-segment select, plus split/merge/nudge and fill-same-speaker-gaps), so this was about *where*, not *whether*. Pushed back on drag-on-the-ribbon: it aggregates runs over time, so the short segments that actually get misassigned are sub-pixel targets at meeting scale — the interaction would be hardest exactly where it's needed. Owner chose player-rows now, ribbon later as a bulk surface.
+
+`AudioModal` gains a **"move block →"** select on each speaker-change header (reassigns the whole run in one call — the common failure) and a hover-revealed per-line select for a single stray segment. Both target an **existing diarization label**, not free text, so the speaker stays joined up with participation and the roster. Persists via the existing `PATCH /transcript` `{ edits: [{ index, speaker }] }`; indices are RAW-array positions, which line up because `correctedSegments` is a 1:1 map.
+
+Both controls gated on `canEdit`. Verified the public report renders **zero `<select>` elements** and the PATCH route 403s unauthenticated. tsc clean, 1599 tests, no lint delta.
+
+**⏭ DEFERRED: the participation-ribbon drag surface** for bulk run-level editing — wants a zoom control to be usable at meeting scale.

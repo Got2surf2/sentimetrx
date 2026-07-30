@@ -364,6 +364,13 @@ export default function ReportClient({ data, publicMode = false, shareToken = nu
           segments={correctedSegments}
           speakerNames={data.recording.speaker_names}
           channelLabels={data.recording.channel_labels}
+          canEdit={canEdit}
+          onSpeakerReassigned={edits => setTranscript(prev => {
+            if (!prev) return prev
+            const next = [...(prev.segments as TranscriptSegment[])]
+            for (const e of edits) if (next[e.index]) next[e.index] = { ...next[e.index], speaker: e.speaker }
+            return { ...prev, segments: next }
+          })}
           req={audioReq}
           onClose={() => setAudioReq(null)}
           onSpanSaved={replaceExtraction}
@@ -2826,7 +2833,7 @@ function ExportTab({ recordingId, recordingName, status, isOwner, initialShareEn
 
 const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2]
 
-function AudioModal({ recordingId, segments, speakerNames, channelLabels, req, onClose, onSpanSaved }: {
+function AudioModal({ recordingId, segments, speakerNames, channelLabels, canEdit, onSpeakerReassigned, req, onClose, onSpanSaved }: {
   recordingId: string
   segments: TranscriptSegment[]
   /** Raw diarization labels ("S2") mean nothing to a reader — resolve them to
@@ -2834,6 +2841,11 @@ function AudioModal({ recordingId, segments, speakerNames, channelLabels, req, o
    *  views use. */
   speakerNames: Record<string, string> | null
   channelLabels: string[] | null
+  /** Diarization mis-assigns short utterances constantly on a mono capture, and
+   *  the player is where you HEAR it. Reassigning here saves a round trip to the
+   *  Transcript tab. Never true in publicMode. */
+  canEdit: boolean
+  onSpeakerReassigned: (edits: Array<{ index: number; speaker: string }>) => void
   req: AudioRequest
   onClose: () => void
   onSpanSaved?: (e: RecordingExtractionRow) => void
@@ -2862,13 +2874,50 @@ function AudioModal({ recordingId, segments, speakerNames, channelLabels, req, o
   // never land on the same shade back to back.
   const rows = useMemo(() => {
     let run = 0
-    return segments.map((seg, i) => {
+    const out = segments.map((seg, i) => {
       const prev = i > 0 ? segments[i - 1] : undefined
       const changed = !prev || prev.speaker !== seg.speaker || prev.channel !== seg.channel
       if (changed) run++
-      return { seg, changed, banded: run % 2 === 1, name: nameOf(seg) }
+      return { seg, i, changed, run, banded: run % 2 === 1, name: nameOf(seg), runIndices: [] as number[] }
     })
+    // Whole-run indices, so the header control can move an entire mis-attributed
+    // block in one call — the common failure, not a single stray line.
+    const byRun = new Map<number, number[]>()
+    for (const r of out) { const arr = byRun.get(r.run) ?? []; arr.push(r.i); byRun.set(r.run, arr) }
+    for (const r of out) r.runIndices = byRun.get(r.run) ?? []
+    return out
   }, [segments, nameOf])
+
+  // Every distinct diarization label in this transcript, with its resolved name.
+  // Reassignment targets an EXISTING label rather than free text so the speaker
+  // stays joined up with participation, the roster and every other view.
+  const roster = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const seg of segments) {
+      const raw = seg.speaker ? String(seg.speaker) : null
+      if (raw && !seen.has(raw)) seen.set(raw, nameOf(seg) ?? raw)
+    }
+    return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+  }, [segments, nameOf])
+
+  const [reassigning, setReassigning] = useState(false)
+  const [reassignErr, setReassignErr] = useState<string | null>(null)
+  // `index` is the position in the RAW segments array. correctedSegments is a
+  // 1:1 map of it, so the indices line up.
+  const reassign = useCallback(async (indices: number[], speaker: string) => {
+    if (!indices.length || !speaker) return
+    setReassigning(true); setReassignErr(null)
+    try {
+      const res = await fetch(`/api/recordings/${recordingId}/transcript`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ edits: indices.map(index => ({ index, speaker })) }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || `save failed (${res.status})`)
+      onSpeakerReassigned(indices.map(index => ({ index, speaker })))
+    } catch (e) {
+      setReassignErr(e instanceof Error ? e.message : 'Reassign failed')
+    } finally { setReassigning(false) }
+  }, [recordingId, onSpeakerReassigned])
 
   // Span-trim controls — only when the player was opened for a specific pair.
   const span = useSpanEdit({ recordingId, extractionId: req.extractionId, startSec: req.startSec, endSec: req.endSec, onSaved: onSpanSaved })
@@ -3049,26 +3098,58 @@ function AudioModal({ recordingId, segments, speakerNames, channelLabels, req, o
               </div>
             )}
 
+            {reassignErr && (
+              <p className="text-xs text-red-600">{reassignErr}</p>
+            )}
             {rows.length > 0 && (
               <ol className="border-t border-gray-100 pt-3 max-h-72 overflow-y-auto">
-                {rows.map(({ seg: s, changed, banded, name }, i) => {
+                {rows.map(({ seg: s, changed, banded, name, runIndices }, i) => {
                   const active = i === activeIdx
                   return (
                     <Fragment key={i}>
                       {changed && (
-                        <li className="flex items-center gap-2 pt-2.5 pb-1 px-2" aria-hidden>
+                        <li className="flex items-center gap-2 pt-2.5 pb-1 px-2">
                           <span className="text-xs font-bold text-gray-700">{name ?? 'Speaker'}</span>
+                          {canEdit && roster.length > 1 && (
+                            <select
+                              value=""
+                              disabled={reassigning}
+                              onChange={e => { const v = e.target.value; e.currentTarget.value = ''; if (v) void reassign(runIndices, v) }}
+                              className="text-[11px] border border-gray-200 rounded px-1 py-0.5 text-gray-500 bg-white"
+                              title="Reassign this whole block to another speaker"
+                            >
+                              <option value="">move block →</option>
+                              {roster.filter(([raw]) => raw !== String(s.speaker ?? '')).map(([raw, label]) => (
+                                <option key={raw} value={raw}>{label}</option>
+                              ))}
+                            </select>
+                          )}
                           <span className="h-px flex-1 bg-gray-200" />
                           <span className="font-mono text-[11px] text-gray-400">{formatTime(s.start)}</span>
                         </li>
                       )}
                       <li
                         ref={active ? activeRef : undefined}
-                        className={'py-1.5 px-2 text-sm flex items-start gap-2 cursor-pointer rounded ' + (active ? 'bg-orange-100 ring-1 ring-orange-200' : banded ? 'bg-gray-50/70 hover:bg-gray-100' : 'hover:bg-gray-50')}
+                        className={'group py-1.5 px-2 text-sm flex items-start gap-2 cursor-pointer rounded ' + (active ? 'bg-orange-100 ring-1 ring-orange-200' : banded ? 'bg-gray-50/70 hover:bg-gray-100' : 'hover:bg-gray-50')}
                         onClick={() => seekTo(s.start)}
                       >
                         <span className="font-mono text-xs text-gray-400 w-12 shrink-0 pt-0.5">{formatTime(s.start)}</span>
-                        <span className={active ? 'text-gray-900 font-medium' : 'text-gray-700'}>{s.text}</span>
+                        <span className={'flex-1 ' + (active ? 'text-gray-900 font-medium' : 'text-gray-700')}>{s.text}</span>
+                        {canEdit && roster.length > 1 && (
+                          <select
+                            value=""
+                            disabled={reassigning}
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => { const v = e.target.value; e.currentTarget.value = ''; if (v) void reassign([i], v) }}
+                            className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-[11px] border border-gray-200 rounded px-1 py-0.5 text-gray-500 bg-white shrink-0"
+                            title="Reassign just this line"
+                          >
+                            <option value="">→</option>
+                            {roster.filter(([raw]) => raw !== String(s.speaker ?? '')).map(([raw, label]) => (
+                              <option key={raw} value={raw}>{label}</option>
+                            ))}
+                          </select>
+                        )}
                       </li>
                     </Fragment>
                   )
