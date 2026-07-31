@@ -289,7 +289,10 @@ requires a logged-in caller and reads no tenant data by id.)
   - Supabase service-role key: **90 days**
   - Anthropic API key: **90 days**
   - OpenAI API key (`OPENAI_API_KEY`): **90 days**
-  - Deepgram key (`DEEPGRAM_API_KEY` / `DEEPGRAM_GRANT_KEY`): **90 days**
+  - Deepgram key (`DEEPGRAM_API_KEY` / `DEEPGRAM_GRANT_KEY` / `DEEPGRAM_BILLING_KEY`): **90 days**
+  - Twilio (`TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN`): **90 days** — note the
+    account is **shared with a non-Sentimetrx app (MovieRex)**, so rotation has
+    to be coordinated across both or it breaks the other app.
   - Azure OpenAI key (`AZURE_OPENAI_API_KEY`): **90 days**
   - Resend API key + webhook secret (`RESEND_WEBHOOK_SECRET`): **180 days**
   - DataForSEO login/password: **180 days**

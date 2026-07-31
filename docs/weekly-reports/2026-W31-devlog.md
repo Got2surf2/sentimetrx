@@ -186,3 +186,9 @@ Twilio's "not configured" is **accurate**: no `TWILIO_ACCOUNT_SID` / `TWILIO_AUT
 Also corrected SPEC.md's env table: it documented `TWILIO_FROM`, but `lib/email/provider.ts` reads **`TWILIO_PHONE_NUMBER`** — a wrong var name would have silently produced "SMS not configured" at send time.
 
 Env-var-only change on the Vercel side; **takes effect on the next production deploy**, not on save.
+
+**Configured (same day).** Owner minted an Owner-role Deepgram key; set as `DEEPGRAM_BILLING_KEY` in Vercel **production**. Twilio credentials were reused from the owner's **MovieRex** app (same Twilio account) → `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` in production. `probeBalances()` run locally against the real vendor APIs now returns **deepgram `ok` $195.86**, **twilio `ok` $28.58**, dataforseo `low` $37.81 — all three tier-1 rows resolve.
+
+**`TWILIO_PHONE_NUMBER` deliberately NOT set.** The account's only SMS-capable number is `+1 417 479 2400`, friendly-name "MovieRex". The balance probe needs only SID + token, so the health card works without it; setting it would silently enable SMS campaign sends to respondents **from a MovieRex-branded number** on shared A2P 10DLC registration. Needs a Sentimetrx/Datanautix number (or an explicit decision to share) before SMS campaigns are usable. Twilio is therefore **not** yet added to the SECURITY.md subprocessor table — no respondent data reaches it until sending is enabled.
+
+Vercel env vars apply at **deploy time**: the admin card keeps showing the old "not configured" until the next production deploy.
