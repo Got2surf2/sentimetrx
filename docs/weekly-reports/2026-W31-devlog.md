@@ -192,3 +192,7 @@ Env-var-only change on the Vercel side; **takes effect on the next production de
 **`TWILIO_PHONE_NUMBER` deliberately NOT set.** The account's only SMS-capable number is `+1 417 479 2400`, friendly-name "MovieRex". The balance probe needs only SID + token, so the health card works without it; setting it would silently enable SMS campaign sends to respondents **from a MovieRex-branded number** on shared A2P 10DLC registration. Needs a Sentimetrx/Datanautix number (or an explicit decision to share) before SMS campaigns are usable. Twilio is therefore **not** yet added to the SECURITY.md subprocessor table — no respondent data reaches it until sending is enabled.
 
 Vercel env vars apply at **deploy time**: the admin card keeps showing the old "not configured" until the next production deploy.
+
+## NOWOCATS recap deck: client-confirmed corrections (Aug 2)
+
+WHY: Owner shipping the client-corrected NOWOCATS engagement recap deck source (`scripts/oneoff/_nowocats_recap_deck.ts`). Two ASR road names confirmed by the client 2026-07-29 and corrected at build (do-not-revert comments in source): **"Big Road" → Vick Road** and **"Plymouth-Cemento" → Plymouth-Sorrento**. Also: the 16 June 2026 meeting is **Community Meeting #2, not #3** — relabeled deck-wide (live-capture + comment-log are the SAME meeting), and the stage numerals ("1 ·", "2 ·", "3 ·") dropped from slide headers so "#2" reads unambiguously. Content-only (deck generator script); regenerate to `~/Downloads/NOWOCATS_Engagement_Recap.pptx`.

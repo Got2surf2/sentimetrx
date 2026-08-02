@@ -37,7 +37,7 @@ const D = {
   lowConfidence: 13,          // xlsx "Sarina Low-Confidence Answers"
   offHoursPct: 52,            // 44/84 outside 9-5 weekday, America/New_York
   weekendPct: 46,             // 39/84
-  // DURING — Community Meeting 3 only (per client scope)
+  // DURING — Community Meeting #2 only (per client scope)
   cmMinutes: 44,              // 2,618 sec
   cmSegments: 760,
   cmWords: 6569,
@@ -49,7 +49,8 @@ const D = {
   // NEVER put our processing cost in a client deck — that is Datanautix margin.
   // Efficiency is framed as THEIR saved staff time, never our cost to deliver.
   // AFTER — comment log
-  // AFTER — Community Meeting 2's comment log only (client scope)
+  // AFTER — Community Meeting #2's comment log only (client scope). SAME meeting as
+  // the live capture above — the 16 June 2026 meeting is #2, not #3 (client, 7/29).
   // DO NOT re-split these. The batch is the authority: 10 questions in, 10 drafts
   // out, 100%. Two drafts are short because the question was "add me to the contact
   // list" — a short correct answer is still an answer. Do not demote them to "not
@@ -134,8 +135,8 @@ export function buildDeck(): PptxGenJS {
   hdr(s2, 'What we ran', 'Three components across one meeting cycle — each stage feeding the next')
   const stages: [string, string, string, string][] = [
     ['1', 'BEFORE  ·  SARINA', 'Pre-meeting conversation', `${D.conversations} residents raised concerns in their own words, on their own schedule, in the weeks before anyone walked into the room. ${D.qaExchanges} question-and-answer exchanges, ${D.spanish} of them in Spanish.`],
-    ['2', 'DURING  ·  TOWN HALL', 'Live meeting capture', `Community Meeting 3 captured in full, transcribed with speaker attribution, and returned as a report in the project team's own format — in under six hours.`],
-    ['3', 'AFTER  ·  SARINA', 'Response drafting', `Meeting 2’s ${D.m2Entries} comment-log entries handled as one record each — all ${D.m2Answered} questions answered from the study’s own materials. Nothing sends until the project lead has read it.`],
+    ['2', 'DURING  ·  TOWN HALL', 'Live meeting capture', `Community Meeting #2 captured in full, transcribed with speaker attribution, and returned as a report in the project team's own format — in under six hours.`],
+    ['3', 'AFTER  ·  SARINA', 'Response drafting', `The same meeting’s ${D.m2Entries} comment-log entries handled as one record each — all ${D.m2Answered} questions answered from the study’s own materials. Nothing sends until the project lead has read it.`],
   ]
   stages.forEach((st, i) => {
     const x = 0.5 + i * 4.15
@@ -157,7 +158,7 @@ export function buildDeck(): PptxGenJS {
   // ── 3. Before — reach and timing ───────────────────────────────────────────
   const s3 = pptx.addSlide()
   s3.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
-  hdr(s3, '1 · Before the meeting', 'Sarina — a conversational agent, open from late May through the June 16 meeting')
+  hdr(s3, 'Before the meeting', 'Sarina — a conversational agent, open from late May through the June 16 meeting')
   kpi(s3, 0.5, 1.42, 2.92, String(D.conversations), 'resident conversations\n(76 before the meeting)')
   kpi(s3, 3.63, 1.42, 2.92, String(D.qaExchanges), 'question-and-answer\nexchanges', C.orange)
   kpi(s3, 6.76, 1.42, 2.92, `${D.offHoursPct}%`, 'took place outside\n9–5 weekday hours', C.gold)
@@ -212,7 +213,7 @@ export function buildDeck(): PptxGenJS {
   // ── 5. The live meeting ────────────────────────────────────────────────────
   const s5 = pptx.addSlide()
   s5.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
-  hdr(s5, '2 · The live meeting', 'NOWOCATS Community Meeting 3 — 16 June 2026, Apopka Community Center')
+  hdr(s5, 'The live meeting', 'NOWOCATS Community Meeting #2 — 16 June 2026, Apopka Community Center')
   kpi(s5, 0.5, 1.42, 2.92, `${D.cmMinutes} min`, 'of meeting audio\ncaptured in full')
   kpi(s5, 3.63, 1.42, 2.92, String(D.cmSpeakers), 'distinct speakers\nseparated and attributed', C.orange)
   kpi(s5, 6.76, 1.42, 2.92, `${D.cmTurnaroundHrs} hrs`, 'from upload to finished\nreport in the team’s hands', C.gold)
@@ -237,14 +238,16 @@ export function buildDeck(): PptxGenJS {
   // ── 6. Commitments captured ────────────────────────────────────────────────
   const s6 = pptx.addSlide()
   s6.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
-  hdr(s6, 'Five commitments, captured automatically', 'Extracted from the Community Meeting 3 transcript — each traceable to the moment it was said')
+  hdr(s6, 'Five commitments, captured automatically', 'Extracted from the Community Meeting #2 transcript — each traceable to the moment it was said')
   const decisions = [
+    // Raw ASR heard "Plymouth-Cemento"; corrected at build and CONFIRMED by client
+    // 2026-07-29. Do not revert to the transcript spelling.
     'The Plymouth-Sorrento Road and US 441 intersection will be reviewed for potential signal re-timing or geometric improvements.',
     'Comments on the South Central and Michael Gladden Boulevard intersection will be recorded, and the intersection looked at, regardless of jurisdictional responsibility.',
     'Orange County and the City of Apopka are proceeding with design for the Welch Road and Rock Springs Road intersection, including a planned traffic signal and additional lanes.',
-    // NOTE: transcript renders this as "441 and Big Road" — likely an ASR mishearing.
-    // Left as captured; the project team should confirm the intended road name.
-    'A mid-term improvement (by 2040) at the US 441 and Big Road intersection adds an eastbound lane using available median right-of-way.',
+    // ASR heard "441 and Big Road"; client confirmed 2026-07-29 it is VICK ROAD.
+    // Corrected here — do not revert to the raw transcript spelling.
+    'A mid-term improvement (by 2040) at the US 441 and Vick Road intersection adds an eastbound lane using available median right-of-way.',
     'Bike lane recommendations in the study call for protected lanes or multi-purpose paths with separation from traffic.',
   ]
   decisions.forEach((d, i) => {
@@ -289,8 +292,8 @@ export function buildDeck(): PptxGenJS {
   // ── 8. After the meeting ───────────────────────────────────────────────────
   const s8 = pptx.addSlide()
   s8.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: C.slateCard } })
-  hdr(s8, '3 · After the meeting', 'Community Meeting 2’s comment log — one traceable record per resident, not an inbox to excavate')
-  kpi(s8, 0.5, 1.42, 2.92, String(D.m2Entries), 'comment-log entries\nfollowing Meeting 2')
+  hdr(s8, 'After the meeting', 'Community Meeting #2’s comment log — one traceable record per resident, not an inbox to excavate')
+  kpi(s8, 0.5, 1.42, 2.92, String(D.m2Entries), 'comment-log entries following\nCommunity Meeting #2')
   kpi(s8, 3.63, 1.42, 2.92, `${D.m2Answered} of ${D.m2Answered}`, 'questions answered — every\none from the existing knowledge base', C.orange)
   kpi(s8, 6.76, 1.42, 2.92, String(D.m2ContactOnly), 'contact and information requests\nneeding no human authorship', C.tealMid)
   kpi(s8, 9.89, 1.42, 2.94, '1', 'record per resident, from\narrival through completion', C.green)
@@ -334,7 +337,7 @@ export function buildDeck(): PptxGenJS {
   s9.addShape('roundRect', { x: 0.5, y: 4.78, w: 12.33, h: 1.62, rectRadius: 0.12, fill: { color: C.navy } })
   s9.addText('WHAT WE’D SUGGEST NEXT', { x: 0.85, y: 4.94, w: 6, h: 0.3, fontSize: 9.5, fontFace: 'Arial', color: C.tealMid, bold: true, charSpacing: 2 })
   const nexts = [
-    ['1', 'Approve the drafted responses and route new comments through the queue', 'closes Meeting 2 and makes the next intake automatic'],
+    ['1', 'Approve the drafted responses and route new comments through the queue', 'closes Community Meeting #2 and makes the next intake automatic'],
     ['2', 'Extend across the remaining meeting cycle', 'rather than a single meeting'],
     ['3', 'Bring both meetings into one thematic view', 'so the record is complete from the start of the study'],
   ]
