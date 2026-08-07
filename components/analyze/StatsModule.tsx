@@ -52,7 +52,7 @@ import {
   descBL, descBL_naive, corrBL, corrBL_naive,
   ttestBL, ttestBL_naive, anovaBL, anovaBL_naive,
   mwBL, mwBL_naive,
-  chiBL, chiBL_naive, regrBL, regrBL_naive,
+  chiBL, chiBL_naive, regrBL,
   bootstrapCI, type MCResult,
   type TTestResult, type ANOVAResult, type ChiSquareResult, type MannWhitneyResult,
 } from '@/lib/statsUtils'
@@ -211,6 +211,57 @@ function BottomLine({ text, naiveText, naiveNode }: { text: string; naiveText?: 
         )}
       </div>
       {shown}
+    </div>
+  )
+}
+
+// Plain-English render for a LINEAR regression Bottom Line — a colour-coded
+// block that mirrors the logistic one (bold factor names; red = linked to a
+// LOWER outcome, green = HIGHER; muted = no clear effect). No per-factor % here:
+// OLS betas aren't standardized, so their magnitudes aren't comparable across
+// differently-scaled predictors — only the sign (direction) is safe to show.
+function regrBLNode(res: RegressionResult | null, out: string, aliases: Record<string, string>): ReactNode {
+  if (!res) return null
+  var label = function(name: string) { return aliases[name] || name }
+  if (res.Fp >= 0.05) return "We tried to predict " + out + " from these factors, but the model isn't reliable — it doesn't do meaningfully better than just guessing the average, so there's no trustworthy pattern to read into here."
+  var r2 = Math.round(res.R2 * 100)
+  var r2str = r2 < 10 ? 'only a small slice' : r2 < 30 ? 'a fair amount' : r2 < 60 ? 'a lot' : 'most'
+  var body = res.coefs.slice(1)
+  var sig = body.filter(function(c) { return c.p < 0.05 })
+  var down = sig.filter(function(c) { return c.beta < 0 })
+  var up = sig.filter(function(c) { return c.beta > 0 })
+  var nonSig = body.filter(function(c) { return c.p >= 0.05 })
+  var row = function(heading: string, color: string, items: RegressionResult['coefs']) {
+    return (
+      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10.5, fontWeight: 800, color: color, textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap', minWidth: 108 }}>{heading}</span>
+        <span style={{ flex: 1, minWidth: 140 }}>
+          {items.map(function(c, i) {
+            return (
+              <span key={c.name}>
+                <strong style={{ color: color }}>{label(c.name)}</strong>
+                {i < items.length - 1 ? <span style={{ color: T.textFaint }}>, </span> : null}
+              </span>
+            )
+          })}
+        </span>
+      </div>
+    )
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+      <div>
+        We looked at what drives <strong>{out}</strong>, across {res.n.toLocaleString()} responses. The overall pattern is real, not a fluke.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {down.length > 0 && row('Linked to lower', T.red, down)}
+        {up.length > 0 && row('Linked to higher', T.green, up)}
+        {sig.length === 0 && <div style={{ color: T.textFaint }}>No single factor stands out on its own, though together they carry a real signal.</div>}
+        {nonSig.length > 0 && row('No clear effect', T.textFaint, nonSig)}
+      </div>
+      <div style={{ color: T.textFaint }}>
+        Together these explain {r2str} of why {out} varies from one response to the next ({r2}%) — the rest comes down to things we didn&rsquo;t measure.
+      </div>
     </div>
   )
 }
@@ -1379,7 +1430,7 @@ function RegressionPanel({ numFields, catFields, data, aliases, datasetId, theme
 
               {activeResult ? (
                 <>
-                  {<BottomLine text={regrBL(activeResult, aliases[activeOutcome] || activeOutcome, aliases)} naiveText={regrBL_naive(activeResult, aliases[activeOutcome] || activeOutcome, aliases)} />}
+                  {<BottomLine text={regrBL(activeResult, aliases[activeOutcome] || activeOutcome, aliases)} naiveNode={regrBLNode(activeResult, aliases[activeOutcome] || activeOutcome, aliases)} />}
                   <Card style={{ padding: 0, overflow: 'hidden' }}>
                     <div style={{ padding: '11px 16px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Model Fit — {aliases[activeOutcome] || activeOutcome}</span>

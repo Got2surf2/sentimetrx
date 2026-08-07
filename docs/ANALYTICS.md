@@ -408,7 +408,10 @@ non-significant terms) — so the reader sees *which* factors matter, in which d
 opens with the target + sample size + real-pattern line and closes with the model-fit caveat ("together these
 explain only a small part / a good part / most of the story — the rest comes down to things we didn't
 measure"). `BottomLine` gained a `naiveNode` prop so the Plain-English register can be rich JSX while every
-other Stats result stays a plain `naiveText` string. The **linear** counterpart `regrBL_naive`
+other Stats result stays a plain `naiveText` string. The **linear** regression Plain English uses the same
+block (`regrBLNode`): rows are **LINKED TO LOWER** (red) / **LINKED TO HIGHER** (green) by coefficient
+**sign** (not magnitude — OLS betas aren't standardized, so no per-factor %, unlike logistic's odds-ratio %),
+plus **NO CLEAR EFFECT** (muted). The old string generator `regrBL_naive` was removed. The **linear** counterpart `regrBL_naive`
 (`lib/statsUtils.ts`) mirrors this register — target + sample size + reliability + fit% translated to plain
 words + **directional drivers** ("Linked to a higher / lower <outcome>: …", by coefficient sign). Both
 registers must genuinely differ from Expert (logistic was identical for the significant-terms case until
