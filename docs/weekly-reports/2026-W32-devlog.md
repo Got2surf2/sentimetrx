@@ -17,3 +17,9 @@ WHY: On the logistic regression result the "Bottom Line" card's Expert and Plain
 WHY: Owner compared our Plain-English toggle to Gemini's breakdown of the same logistic output and wanted ours as complete for a non-technical reader. Enriched the logistic plain branch to a full layperson brief — target, "a real pattern, not a fluke (holds across all N responses)", the biggest lever in intuitive terms, and the model-fit caveat — pulling the sample size from `fit.d.n`. Gave the **linear** regression the same treatment: `regrBL_naive` now states the target + sample size + reliability + fit% in plain words and lists **directional drivers** ("Linked to a higher / lower <outcome>: …") by coefficient sign, replacing the old flat "the factors that matter most are: …" list. Expert registers for both are unchanged. `docs/ANALYTICS.md` updated. tsc clean; stats (36) + full suite green; no lint delta.
 
 ---
+
+## Analyze: fix "Manage members → Save changes does nothing" on collections (Aug 7)
+
+WHY: Owner reported adding a dataset to a collection and clicking Save changes did nothing. Root cause was a stale-closure bug in `AnalyzeClient.tsx`, not the modal or the API — the add always succeeded server-side. `ManageMembersModal.save()` calls `onChanged()` then `onClose()` synchronously in one tick; `onChanged` did `setManageDirty(true)` and `onClose` read `const dirty = manageDirty` to decide whether to `window.location.reload()`. Both callbacks are closures from the same render, so `onClose` saw the pre-update `false`, skipped the reload, and the grid never refreshed — the member was in the collection but invisible until a manual page refresh, which read as "Save does nothing." Fixed by tracking the dirty flag in a `useRef` (readable synchronously in the same tick) instead of `useState`. Swept the class: no other parent reads a sibling-callback-set state value synchronously in an onClose. tsc clean; 1602 tests green.
+
+---

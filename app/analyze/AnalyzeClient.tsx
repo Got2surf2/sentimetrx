@@ -3,7 +3,7 @@
 // app/analyze/AnalyzeClient.tsx
 // Dataset card grid with filter bar and create button
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import DatasetCard from '@/components/analyze/DatasetCard'
 import DatasetFilterBar from '@/components/analyze/DatasetFilterBar'
@@ -38,7 +38,12 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
   const [showCollectionModal, setShowCollectionModal] = useState(false)
   // Add-datasets-to-existing-collection modal state (null = closed).
   const [manageCollection, setManageCollection] = useState<{ datasetId: string; name: string } | null>(null)
-  const [manageDirty, setManageDirty] = useState(false)
+  // Tracked as a ref, not state: the modal calls onChanged() then onClose()
+  // synchronously in one save(), and onClose must read the just-set value.
+  // A useState round-trip wouldn't have flushed yet, so onClose would read a
+  // stale `false` and skip the reload — the add succeeded but the grid never
+  // refreshed, which read to the user as "Save changes does nothing."
+  const manageDirtyRef = useRef(false)
   // Brand drill-in: when set, the grid shows only that brand-collection's
   // member datasets instead of the flat listing. Cleared by "Back to all".
   const [drillIn, setDrillIn] = useState<{ collectionId: string; name: string } | null>(null)
@@ -143,7 +148,7 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
   // Open the "Add datasets" modal for a collection — fetch its current members
   // first so they're excluded from the picker.
   function handleManageMembers(collectionDatasetId: string, name: string) {
-    setManageDirty(false)
+    manageDirtyRef.current = false
     setManageCollection({ datasetId: collectionDatasetId, name: name })
   }
 
@@ -328,8 +333,8 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
           collectionDatasetId={manageCollection.datasetId}
           collectionName={manageCollection.name}
           eligibleDatasets={eligibleForCollection}
-          onChanged={function() { setManageDirty(true) }}
-          onClose={function() { const dirty = manageDirty; setManageCollection(null); if (dirty) window.location.reload() }}
+          onChanged={function() { manageDirtyRef.current = true }}
+          onClose={function() { const dirty = manageDirtyRef.current; setManageCollection(null); if (dirty) window.location.reload() }}
         />
       )}
     </div>
