@@ -40,6 +40,7 @@ import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { createClient } from '@supabase/supabase-js'
+import { autoDetectSchema, emptySchemaConfig, emptyThemeModel } from '../../lib/datasetUtils'
 
 // .env.local → process.env (same loader the other one-off scripts use)
 const envText = readFileSync(path.join(process.cwd(), '.env.local'), 'utf-8')
@@ -64,6 +65,7 @@ const target = (flag('--target') ?? 'test').toLowerCase()
 const limit = flag('--limit') ? Math.max(1, parseInt(flag('--limit')!, 10)) : null
 const recreate = args.includes('--recreate')
 const only = flag('--only')
+const repairState = args.includes('--repair-state')
 
 if (target !== 'test' && target !== 'prod') throw new Error('--target must be test or prod')
 
@@ -172,6 +174,66 @@ function buildPostRows(items: CorpusItem[]): Row[] {
     }))
 }
 
+/**
+ * Every dataset needs a `dataset_state` row or /analyze 404s — the TextMine,
+ * Charts, Stats and Schema pages all call notFound() when it is missing. The
+ * normal upload route creates one immediately with an empty schema and lets the
+ * app auto-detect fields on first open; mergeSchemaStats cannot bootstrap here
+ * because it returns early when schema.fields is empty. Scripted ingests that
+ * skip this step produce a dataset that exists, has rows, and is unopenable —
+ * which is exactly why scripts/repair-review-dataset-state.ts had to exist.
+ */
+const SCHEMA_SAMPLE = 3000
+
+async function ensureState(service: Db, datasetId: string, userId: string, sample: Row[], force = false) {
+  // An empty schema is NOT enough: the upload flow runs autoDetectSchema over
+  // the rows and stores the result. Without it TextMine reports "0 open-ended
+  // fields" and disables "Mine with AI" — the dataset opens but cannot be mined.
+  const schema = sample.length ? autoDetectSchema(sample as Record<string, unknown>[]) : emptySchemaConfig()
+
+  // ONLY `text` may be open-ended. Auto-detection reads ofr_subjects,
+  // ofr_topics, ofr_subject_tags and doc_title as prose (they are long,
+  // multi-word strings) and would hand them to the theme miner — which would
+  // then "discover" themes that are really just the Federal Register's own tags
+  // read back to us, and document titles. Demoting them to categorical keeps
+  // them fully usable as filters and Compare dimensions while keeping them out
+  // of mining. This is the same separation as keeping tags out of the body.
+  for (const f of schema.fields) {
+    if (f.type === 'open-ended' && f.field !== 'text') f.type = 'categorical'
+  }
+  // autoDetectSchema sets primaryTextField to the FIRST open-ended field it
+  // found, which may be one we just demoted — repin it after the pass.
+  if (schema.fields.some((f) => f.field === 'text')) schema.primaryTextField = 'text'
+  const open = schema.fields.filter((f) => f.type === 'open-ended').map((f) => f.field)
+
+  const { data: existing } = await service
+    .from('dataset_state').select('dataset_id, schema_config').eq('dataset_id', datasetId).maybeSingle()
+
+  if (existing) {
+    const have = (existing.schema_config as { fields?: unknown[] } | null)?.fields?.length ?? 0
+    // `force` (i.e. --repair-state) always recomputes. Skipping a non-empty
+    // schema is the non-destructive default, but during a repair it silently
+    // preserves the very schema you are trying to correct.
+    if (have > 0 && !force) return { action: 'kept' as const, open }
+    const { error } = await service.from('dataset_state')
+      .update({ schema_config: schema, updated_by: userId }).eq('dataset_id', datasetId)
+    if (error) throw error
+    return { action: 'filled' as const, open }
+  }
+
+  const { error } = await service.from('dataset_state').insert({
+    dataset_id: datasetId,
+    schema_config: schema,
+    theme_model: emptyThemeModel(),
+    saved_charts: [],
+    saved_stats: [],
+    filter_state: {},
+    updated_by: userId,
+  })
+  if (error) throw error
+  return { action: 'created' as const, open }
+}
+
 async function ingest(
   service: Db,
   orgId: string,
@@ -208,6 +270,8 @@ async function ingest(
     .single()
   if (createErr) throw createErr
   const datasetId = created!.id as string
+  const st = await ensureState(service, datasetId, userId, rows.slice(0, SCHEMA_SAMPLE))
+  console.log(`  schema ${st.action}: open-ended fields → ${st.open.join(', ') || '(none)'}`)
 
   const slice = limit ? rows.slice(0, limit) : rows
   let inserted = 0
@@ -271,11 +335,29 @@ async function main() {
   console.log(`  user: ${owner.email}`)
   const members = [owner]
 
+  const orgId = org.id as string
+  const userId = members[0].id as string
+
+  // Repair-only: backfill dataset_state for datasets already ingested, without
+  // re-inserting their rows.
+  if (repairState) {
+    for (const name of [SPOKEN_NAME, POSTS_NAME]) {
+      const { data: ds } = await service
+        .from('datasets').select('id, row_count').eq('org_id', orgId).eq('name', name).maybeSingle()
+      if (!ds) { console.log(`  – "${name}" not found, skipping`); continue }
+      const { data: sampleRows } = await service
+        .from('dataset_rows_flat').select('data').eq('dataset_id', ds.id)
+        .order('row_index', { ascending: true }).range(0, SCHEMA_SAMPLE - 1)
+      const sample = (sampleRows ?? []).map((r) => r.data as Row)
+      const st = await ensureState(service, String(ds.id), userId, sample, true)
+      console.log(`  ${st.action.padEnd(7)} "${name}" (${ds.row_count} rows, schema from ${sample.length}) → open-ended: ${st.open.join(', ') || '(none)'}`)
+    }
+    return
+  }
+
   const items = readFileSync(CORPUS, 'utf-8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as CorpusItem)
   console.log(`  corpus: ${items.length} items`)
 
-  const orgId = org.id as string
-  const userId = members[0].id as string
   const built = new Date().toISOString()
 
   if (only !== 'posts') {
