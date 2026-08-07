@@ -3,7 +3,7 @@
 // Statistics module — 5 panels matching Ana.html.
 // Loads raw rows from the API, applies filters, runs all computations client-side.
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from 'react'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import { themeSetForField, type Theme, type ThemeModel } from '@/lib/themeUtils'
 import LottieLoader from '@/components/ui/LottieLoader'
@@ -194,15 +194,16 @@ function DSSelect({ label, value, onChange, options }: { label: string; value: s
   )
 }
 
-function BottomLine({ text, naiveText }: { text: string; naiveText?: string }) {
+function BottomLine({ text, naiveText, naiveNode }: { text: string; naiveText?: string; naiveNode?: ReactNode }) {
   var [mode, setMode] = useState('naive')
   if (!text) return null
-  var shown = mode === 'naive' && naiveText ? naiveText : text
+  var hasNaive = !!(naiveText || naiveNode)
+  var shown = mode === 'naive' && hasNaive ? (naiveNode ?? naiveText) : text
   return (
     <div style={{ marginTop: 18, marginBottom: 6, minHeight: 90, background: T.accentBg, border: '1px solid ' + T.accentMid, borderLeft: '3px solid ' + T.accent, borderRadius: 8, padding: '12px 16px 16px', fontSize: 13, lineHeight: 1.7, color: T.textMid }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
         <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase', color: T.accent }}>{'\u25C6'} Bottom Line</div>
-        {naiveText && (
+        {hasNaive && (
           <div style={{ display: 'flex', gap: 3, background: T.bg, borderRadius: 7, padding: '2px 3px', border: '1px solid ' + T.border }}>
             <button onClick={function() { setMode('expert') }} style={{ fontSize: 10, fontWeight: 600, padding: '2px 9px', borderRadius: 5, border: 'none', background: mode === 'expert' ? T.accent : 'transparent', color: mode === 'expert' ? 'white' : T.textFaint, cursor: 'pointer', transition: 'all .12s' }}>Expert</button>
             <button onClick={function() { setMode('naive') }} style={{ fontSize: 10, fontWeight: 600, padding: '2px 9px', borderRadius: 5, border: 'none', background: mode === 'naive' ? T.accent : 'transparent', color: mode === 'naive' ? 'white' : T.textFaint, cursor: 'pointer', transition: 'all .12s' }}>Plain English</button>
@@ -902,35 +903,71 @@ function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, da
   var res = fit && 'res' in fit ? fit.res : null
   var dropped: { name: string; vif: number }[] = fit && 'dropped' in fit && Array.isArray(fit.dropped) ? fit.dropped : []
 
-  var logitBL = function(naive: boolean): string {
+  // Expert register — one dense odds-ratio sentence.
+  var logitBL = function(): string {
     if (!res || !fit || !('d' in fit) || !fit.d) return ''
     var label = fit.d.outcomeLabel
     var ps = res.coefs.filter(function(c) { return c.name !== 'Intercept' })
     if (res.separation && !res.regularized) return 'The model could not be estimated reliably (separation) — coefficients are not trustworthy. Drop a predictor or add data.'
     var sig = ps.filter(function(c) { return c.p < 0.05 })
-    if (!sig.length) return (naive ? 'Nothing here moves the needle: ' : '') + 'None of the ' + ps.length + ' terms significantly shifts the odds that a response has ' + label + ' (all p ≥ 0.05).'
+    if (!sig.length) return 'None of the ' + ps.length + ' terms significantly shifts the odds that a response has ' + label + ' (all p ≥ 0.05).'
     var top = sig.slice().sort(function(a, b) { return Math.abs(Math.log(b.or)) - Math.abs(Math.log(a.or)) })[0]
     var pct = Math.round(Math.abs((top.or - 1) * 100))
     var lever = aliases[top.name] || top.name
-    if (naive) {
-      var effect = top.or >= 1 ? 'makes that about ' + pct + '% more likely' : 'cuts those chances by about ' + pct + '%'
-      var strength = res.pseudoR2 < 0.1 ? 'only a small part' : res.pseudoR2 < 0.2 ? 'a modest part' : res.pseudoR2 < 0.4 ? 'a good part' : 'most'
-      var nameOf = function(c: typeof ps[number]) { return aliases[c.name] || c.name }
-      var others = sig.filter(function(c) { return c.name !== top.name })
-      var down = others.filter(function(c) { return c.or < 1 }).map(nameOf)
-      var up = others.filter(function(c) { return c.or >= 1 }).map(nameOf)
-      var nonSig = ps.filter(function(c) { return c.p >= 0.05 }).map(nameOf)
-      var parts: string[] = []
-      parts.push('We looked at what makes a response end up with ' + label + ', based on ' + fit.d.n.toLocaleString() + ' responses.')
-      parts.push('Of the ' + ps.length + ' things we checked, ' + sig.length + ' genuinely move the needle — a real pattern, not a fluke.')
-      parts.push('The biggest is ' + lever + ', which ' + effect + '.')
-      if (down.length) parts.push('Others that make ' + label + ' less likely: ' + down.slice(0, 6).join(', ') + '.')
-      if (up.length) parts.push('Others that make it more likely: ' + up.slice(0, 6).join(', ') + '.')
-      if (nonSig.length) parts.push('The ' + nonSig.length + " that didn't make a clear difference: " + nonSig.slice(0, 6).join(', ') + '.')
-      parts.push('All together these factors explain ' + strength + " of the story — the rest comes down to things we didn't measure.")
-      return parts.join(' ')
-    }
     return sig.length + ' of ' + ps.length + ' terms significantly affect the odds that a response has ' + label + '. Strongest: ' + lever + ' ' + (top.or >= 1 ? 'multiplies' : 'cuts') + ' the odds ' + fmt2(top.or) + '× (' + (top.or >= 1 ? '+' : '−') + pct + '%). McFadden pseudo-R² = ' + fmt2(res.pseudoR2) + '.'
+  }
+
+  // Plain-English register — a scannable, colour-coded block (bold factor names;
+  // red = lowers the odds of the outcome, green = raises them, each with its own
+  // % effect) instead of one run-on paragraph.
+  var logitBLNode = function(): ReactNode {
+    if (!res || !fit || !('d' in fit) || !fit.d) return null
+    var label = fit.d.outcomeLabel
+    var ps = res.coefs.filter(function(c) { return c.name !== 'Intercept' })
+    if (res.separation && !res.regularized) return "The model can't be read reliably yet — there isn't enough contrast in the data. Add more responses or drop a factor."
+    var sig = ps.filter(function(c) { return c.p < 0.05 })
+    if (!sig.length) return 'Nothing here clearly moves the needle — none of the ' + ps.length + ' factors makes a real difference to whether a response reaches ' + label + '.'
+    var nameOf = function(c: typeof ps[number]) { return aliases[c.name] || c.name }
+    var pctOf = function(c: typeof ps[number]) { return Math.round(Math.abs((c.or - 1) * 100)) }
+    var byMag = function(a: typeof ps[number], b: typeof ps[number]) { return pctOf(b) - pctOf(a) }
+    var down = sig.filter(function(c) { return c.or < 1 }).sort(byMag)
+    var up = sig.filter(function(c) { return c.or >= 1 }).sort(byMag)
+    var nonSig = ps.filter(function(c) { return c.p >= 0.05 })
+    var strength = res.pseudoR2 < 0.1 ? 'only a small part' : res.pseudoR2 < 0.2 ? 'a modest part' : res.pseudoR2 < 0.4 ? 'a good part' : 'most'
+    var row = function(heading: string, color: string, items: typeof ps, showPct: boolean) {
+      return (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10.5, fontWeight: 800, color: color, textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap', minWidth: 108 }}>{heading}</span>
+          <span style={{ flex: 1, minWidth: 140 }}>
+            {items.map(function(c, i) {
+              return (
+                <span key={c.name}>
+                  <strong style={{ color: color }}>{nameOf(c)}</strong>
+                  {showPct ? <span style={{ color: color, fontWeight: 700 }}>{' '}{c.or < 1 ? '−' : '+'}{pctOf(c)}%</span> : null}
+                  {i < items.length - 1 ? <span style={{ color: T.textFaint }}>, </span> : null}
+                </span>
+              )
+            })}
+          </span>
+        </div>
+      )
+    }
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+        <div>
+          We looked at what makes a response reach <strong>{label}</strong>, across {fit.d.n.toLocaleString()} responses.{' '}
+          <strong>{sig.length}</strong> of the {ps.length} factors genuinely move the needle — a real pattern, not a fluke.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {down.length > 0 && row('Lower the odds', T.red, down, true)}
+          {up.length > 0 && row('Raise the odds', T.green, up, true)}
+          {nonSig.length > 0 && row('No clear effect', T.textFaint, nonSig, false)}
+        </div>
+        <div style={{ color: T.textFaint }}>
+          Together these explain {strength} of the story — the rest comes down to things we didn&rsquo;t measure.
+        </div>
+      </div>
+    )
   }
 
   var predGroup = function(title: string, vars: RegVar[], withOrd: boolean) {
@@ -1042,7 +1079,7 @@ function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, da
                 <b style={{ color: T.text }}>Dropped for collinearity (VIF &gt; 10):</b> {dropped.map(function(dd) { return (aliases[dd.name] || dd.name) + ' (' + (dd.vif === Infinity ? '∞' : fmtN(dd.vif)) + ')' }).join(', ')}.
               </div>
             )}
-            <BottomLine text={logitBL(false)} naiveText={logitBL(true)} />
+            <BottomLine text={logitBL()} naiveNode={logitBLNode()} />
             <Card style={{ padding: 0, overflow: 'hidden' }}>
               <div style={{ padding: '11px 16px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Model Fit</span>

@@ -45,8 +45,9 @@ export type ActionPlanInput = {
 // review count or any theme's READ verdict. Cheap, stable signature.
 export function actionPlanBasis(reviews: number, themeTable: ThemeTableRow[]): string {
   // Bump the version prefix to invalidate all cached plans after a prompt change.
-  // v3 (2026-08-07): outlet-specific location naming + verbatim-accuracy fix.
-  return `v3|${reviews}|${themeTable.map((t) => `${t.theme}:${t.read}`).join(',')}`
+  // v4 (2026-08-07): refer to "your location" (brand/outlet names can be messy)
+  // — supersedes v3's specific-naming attempt; verbatim-accuracy fix stays.
+  return `v4|${reviews}|${themeTable.map((t) => `${t.theme}:${t.read}`).join(',')}`
 }
 
 // Themes to work on: FIX first, then WATCH, worst avg★ first — up to 3.
@@ -140,18 +141,14 @@ export async function generateActionPlan(input: ActionPlanInput): Promise<Action
     })
     .join('\n')
 
-  // Full "Brand City, State" label so the narrative names the SPECIFIC outlet,
-  // not just the brand (owner ask 2026-08-07: "Fleming's Brookfield, Wisconsin",
-  // not "Fleming's"). Skip re-prefixing when outletName already carries the brand
-  // (e.g. a location_name like "Fleming's Lake Nona") so it doesn't double up.
-  const brandTok = (input.brand.toLowerCase().match(/[a-z0-9']{3,}/g) || []).find((w) => w !== 'the') || ''
-  const locationLabel = (brandTok && input.outletName.toLowerCase().includes(brandTok))
-    ? input.outletName
-    : `${input.brand} ${input.outletName}`.trim()
+  // This report is always scoped to ONE location, and the underlying brand /
+  // outlet names can be messy or demo-grade (e.g. "Flemings Reviews · demo
+  // Fleming's Prime Steakhouse & Wine Bar"), so naming them produces garbled
+  // prose. Refer to it generically as "your location" — unambiguous here and
+  // never wrong (owner call 2026-08-07). Don't feed the raw names to the model.
+  const system = `You are an operations consultant writing a one-page action plan for the general manager of a single restaurant location, drawn entirely from that location's own Google reviews. Be concrete and operational, never generic. Always refer to the location in the second person as "your location" — never state or guess a brand or store name. Return ONLY raw JSON — no markdown, no backticks. Start with { and end with }.`
 
-  const system = `You are an operations consultant writing a one-page action plan for the general manager of a single restaurant location, drawn entirely from that location's own Google reviews. Be concrete and operational, never generic. Refer to the location by its full name "${locationLabel}" (which includes the city/state) — never by the bare brand alone. Return ONLY raw JSON — no markdown, no backticks. Start with { and end with }.`
-
-  const user = `Location: ${locationLabel}
+  const user = `Location: your location (a single restaurant; do not name a brand or store).
 ${input.reviews.toLocaleString()} reviews, ${input.rating.toFixed(2)}★ overall${input.recent ? `; last ${input.recent.count} reviews ${input.recent.avg.toFixed(2)}★ (${input.recent.direction})` : ''}; owner-response rate ${Math.round(input.ownerResponseRate * 100)}%.
 
 How every theme scores at this location:
