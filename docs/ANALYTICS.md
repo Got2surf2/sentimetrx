@@ -398,10 +398,15 @@ residual/Q-Q diagnostics are hidden in logistic mode. Math verified in `tests/un
 (intercept recovery, effect sign, separation detection, VIF = 1/(1−r²), pruning). The **Bottom Line**
 card carries the same Expert/Plain-English toggle as every other Stats result: Expert states it in odds-ratio
 terms ("N of M terms significantly affect the odds… multiplies/cuts the odds X×… McFadden pseudo-R²"),
-while Plain English (`logitBL(naive=true)`) drops all jargon — names the single biggest lever, phrases its
-effect as "makes that ~X% more likely" / "cuts those chances by ~X%", and translates the pseudo-R² into
-"explains only a small part / a good part / most of what's going on". Both registers must genuinely differ
-(they were identical for the significant-terms case until 2026-08-07).
+while Plain English (`logitBL(naive=true)`) is a **Gemini-style layperson brief** — no "odds", "McFadden", or
+"pseudo-R²". It states the target, whether the effect is a real pattern vs. a fluke and the sample size it
+holds across, the single biggest lever phrased as "makes that ~X% more likely" / "cuts those chances by ~X%",
+and the model-fit caveat ("these factors together explain only a small part / a good part / most of the
+story — the rest comes down to things we didn't measure"). The **linear** counterpart `regrBL_naive`
+(`lib/statsUtils.ts`) mirrors this register — target + sample size + reliability + fit% translated to plain
+words + **directional drivers** ("Linked to a higher / lower <outcome>: …", by coefficient sign). Both
+registers must genuinely differ from Expert (logistic was identical for the significant-terms case until
+2026-08-07; the linear naive text was enriched the same day).
 
 **Logistic on categorical fields + themes (2026-07-15).** Because a survey's real drivers are its
 Likert **categorical** fields and its **themes**, not raw numeric columns, the logistic panel is its

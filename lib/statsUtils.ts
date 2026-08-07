@@ -613,10 +613,15 @@ export function chiBL_naive(res: ChiSquareResult | null, rf: string, cf: string)
 export function regrBL_naive(res: RegressionResult | null, out: string, aliases?: Record<string, string>): string {
   if (!res) return ''
   var r2 = Math.round(res.R2 * 100)
-  var sig = res.coefs.slice(1).filter(function(c: RegressionResult['coefs'][number]) { return c.p < 0.05 })
   var label = function(name: string) { return (aliases && aliases[name]) || name }
-  if (res.Fp >= 0.05) return "We tried to predict " + out + " using the other factors. The model isn't reliable \u2014 it doesn't do meaningfully better than just guessing the average."
+  if (res.Fp >= 0.05) return "We tried to predict " + out + " from these factors, but the model isn't reliable \u2014 it doesn't do meaningfully better than just guessing the average, so there's no trustworthy pattern to read into here."
+  var sig = res.coefs.slice(1).filter(function(c: RegressionResult['coefs'][number]) { return c.p < 0.05 })
   var r2str = r2 < 10 ? 'only a small slice' : r2 < 30 ? 'a fair amount' : r2 < 60 ? 'a lot' : 'most'
-  var sigStr = sig.length ? ' The factors that matter most are: ' + sig.map(function(c: RegressionResult['coefs'][number]) { return label(c.name) }).join(', ') + '.' : ''
-  return 'Our factors explain ' + r2str + ' of why ' + out + ' varies across people (' + r2 + '% of the variation).' + sigStr
+  var up = sig.filter(function(c: RegressionResult['coefs'][number]) { return c.beta > 0 }).map(function(c: RegressionResult['coefs'][number]) { return label(c.name) })
+  var down = sig.filter(function(c: RegressionResult['coefs'][number]) { return c.beta < 0 }).map(function(c: RegressionResult['coefs'][number]) { return label(c.name) })
+  var drivers = ''
+  if (up.length) drivers += ' Linked to a higher ' + out + ': ' + up.slice(0, 4).join(', ') + '.'
+  if (down.length) drivers += ' Linked to a lower ' + out + ': ' + down.slice(0, 4).join(', ') + '.'
+  if (!sig.length) drivers = ' No single factor stands out on its own, though together they carry a real signal.'
+  return 'We looked at what drives ' + out + ', based on ' + res.n.toLocaleString() + ' responses. The overall pattern is real, not a fluke \u2014 but these factors together explain ' + r2str + ' of why ' + out + ' varies from one response to the next (' + r2 + '%), so plenty of it comes down to things we didn\u2019t measure.' + drivers
 }
