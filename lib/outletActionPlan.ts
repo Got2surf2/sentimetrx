@@ -45,7 +45,8 @@ export type ActionPlanInput = {
 // review count or any theme's READ verdict. Cheap, stable signature.
 export function actionPlanBasis(reviews: number, themeTable: ThemeTableRow[]): string {
   // Bump the version prefix to invalidate all cached plans after a prompt change.
-  return `v2|${reviews}|${themeTable.map((t) => `${t.theme}:${t.read}`).join(',')}`
+  // v3 (2026-08-07): outlet-specific location naming + verbatim-accuracy fix.
+  return `v3|${reviews}|${themeTable.map((t) => `${t.theme}:${t.read}`).join(',')}`
 }
 
 // Themes to work on: FIX first, then WATCH, worst avg★ first — up to 3.
@@ -59,19 +60,26 @@ function pickPriorityThemes(themeTable: ThemeTableRow[]): ThemeTableRow[] {
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, '').replace(/\s+/g, ' ').trim()
 
-// Guard against fabricated verbatims: a returned quote must be a (normalized)
-// substring of one of the real candidate quotes we provided. Otherwise fall
-// back to the theme's own candidate. This permits light trimming (a substring)
-// but blocks invented text.
-function validateVerbatims(returned: PlanVerbatim[] | undefined, theme: string, candidates: Map<string, string>): PlanVerbatim[] {
+// Guard against fabricated / altered verbatims. We match the model's returned
+// quote to a real candidate by NORMALIZED substring (tolerating trimming), but
+// then ALWAYS display the real candidate's exact text — never the model's own
+// version. norm() strips case + punctuation, so the model could "pass" this
+// check while having silently re-punctuated, fixed a typo, or stitched two
+// fragments; showing its text then prints a quote no reviewer actually wrote,
+// which reads as fabricated. Candidates are exact review substrings
+// (extractSentence), so rendering match.raw guarantees a verbatim quote.
+export function validateVerbatims(returned: PlanVerbatim[] | undefined, theme: string, candidates: Map<string, string>): PlanVerbatim[] {
   const pool = [...candidates.values()].map((q) => ({ raw: q, n: norm(q) }))
   const out: PlanVerbatim[] = []
+  const seen = new Set<string>()
   for (const v of returned || []) {
-    const q = (v?.quote || '').trim()
-    if (!q) continue
-    const nq = norm(q)
+    const nq = norm(v?.quote || '')
+    if (!nq) continue
     const match = pool.find((p) => p.n.includes(nq) || nq.includes(p.n))
-    if (match) out.push({ rating: Math.min(3, Math.max(1, Math.round(v.rating) || 2)), quote: q.length <= match.raw.length ? q : match.raw })
+    if (match && !seen.has(match.raw)) {
+      seen.add(match.raw)
+      out.push({ rating: Math.min(3, Math.max(1, Math.round(v.rating) || 2)), quote: match.raw })
+    }
   }
   if (!out.length && candidates.has(theme)) out.push({ rating: 2, quote: candidates.get(theme)! })
   return out.slice(0, 2)
@@ -132,9 +140,18 @@ export async function generateActionPlan(input: ActionPlanInput): Promise<Action
     })
     .join('\n')
 
-  const system = `You are an operations consultant writing a one-page action plan for the general manager of a single restaurant location, drawn entirely from that location's own Google reviews. Be concrete and operational, never generic. Return ONLY raw JSON — no markdown, no backticks. Start with { and end with }.`
+  // Full "Brand City, State" label so the narrative names the SPECIFIC outlet,
+  // not just the brand (owner ask 2026-08-07: "Fleming's Brookfield, Wisconsin",
+  // not "Fleming's"). Skip re-prefixing when outletName already carries the brand
+  // (e.g. a location_name like "Fleming's Lake Nona") so it doesn't double up.
+  const brandTok = (input.brand.toLowerCase().match(/[a-z0-9']{3,}/g) || []).find((w) => w !== 'the') || ''
+  const locationLabel = (brandTok && input.outletName.toLowerCase().includes(brandTok))
+    ? input.outletName
+    : `${input.brand} ${input.outletName}`.trim()
 
-  const user = `Location: ${input.brand} — ${input.outletName}
+  const system = `You are an operations consultant writing a one-page action plan for the general manager of a single restaurant location, drawn entirely from that location's own Google reviews. Be concrete and operational, never generic. Refer to the location by its full name "${locationLabel}" (which includes the city/state) — never by the bare brand alone. Return ONLY raw JSON — no markdown, no backticks. Start with { and end with }.`
+
+  const user = `Location: ${locationLabel}
 ${input.reviews.toLocaleString()} reviews, ${input.rating.toFixed(2)}★ overall${input.recent ? `; last ${input.recent.count} reviews ${input.recent.avg.toFixed(2)}★ (${input.recent.direction})` : ''}; owner-response rate ${Math.round(input.ownerResponseRate * 100)}%.
 
 How every theme scores at this location:
@@ -148,7 +165,7 @@ For EACH priority produce:
 - "title": an imperative headline (e.g. "Get every order right at the pass").
 - "theme": the exact theme name.
 - "diagnosis": 1–2 sentences explaining the problem. NAME THE THEME explicitly in the first sentence (e.g. "Order accuracy is the store's lowest-scoring theme…" or "Pricing & value drives…") so the reader knows which theme this priority is about, then ground it in the theme's avg★/%-negative and what guests actually say. Distinguish execution errors from skill/recipe issues where relevant. Write as if you read the reviews yourself — never refer to "the candidate quote", "the data", or "the numbers above" as meta-references.
-- "verbatims": 1–2 short guest quotes. You MUST take these from the candidate quote(s) provided for that priority — you may lightly trim, but NEVER invent or paraphrase a quote. If no candidate is provided, use an empty array.
+- "verbatims": 1–2 short guest quotes. Copy the candidate quote(s) provided for that priority EXACTLY — same words, spelling, and punctuation. Do NOT trim, fix, reword, or stitch fragments; the quote must be reproducible verbatim from a real review. If no candidate is provided, use an empty array.
 - "actions": 2–4 concrete, specific operator actions a manager can implement this week, each ONE sentence under 30 words (e.g. "Bag-check rule: nothing leaves the pass without one person reading the ticket against the bag"). No vague advice like "improve quality".
 
 Then "keepDoing": a 1–2 sentence paragraph on what's already working — cite the recent trend and owner-response rate if they're strong, and name the store's top strengths. Keep it encouraging.
