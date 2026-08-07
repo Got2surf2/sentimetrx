@@ -27,7 +27,14 @@ const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uD800-\uDFFF]/g
 const PAGE = 1000
 
 /** Embed a batch of field blocks into the rows' data._tx via the RPC (one
- *  UPDATE per batch; the tsv trigger skips the reserved key). */
+ *  UPDATE per batch; the tsv trigger skips the reserved key).
+ *
+ *  Retries a *transient* failure — chiefly a Postgres statement timeout (57014),
+ *  which the 500-row write can cross when the DB is momentarily slow or under
+ *  concurrent read load (the whole Dimensions tab fires signal-stats/rows/theme
+ *  queries at the same time). apply_taxonomy_verdicts is an idempotent upsert
+ *  per (row, fieldKey), so re-applying the same batch is safe — this turns the
+ *  user's manual "Try again" into an automatic recovery instead of an HTTP 500. */
 async function embedVerdicts(
   service: SupabaseClient,
   datasetId: string,
@@ -35,10 +42,18 @@ async function embedVerdicts(
   items: { id: number; tx: TaxonomyFieldBlock }[],
 ): Promise<void> {
   if (!items.length) return
-  const { error } = await service.rpc('apply_taxonomy_verdicts', {
-    p_dataset_id: datasetId, p_field_key: fieldKey, p_items: items,
-  })
-  if (error) throw new Error(`apply_taxonomy_verdicts failed: ${error.message}`)
+  let lastErr = ''
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { error } = await service.rpc('apply_taxonomy_verdicts', {
+      p_dataset_id: datasetId, p_field_key: fieldKey, p_items: items,
+    })
+    if (!error) return
+    lastErr = error.message
+    const transient = error.code === '57014' || /statement timeout|timeout|connection|ECONNRESET|fetch failed/i.test(error.message)
+    if (!transient || attempt === 2) break
+    await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)))
+  }
+  throw new Error(`apply_taxonomy_verdicts failed: ${lastErr}`)
 }
 
 /** Recompute + store the field's rollup after a completed run. Non-fatal: a

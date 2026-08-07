@@ -401,8 +401,11 @@ terms ("N of M terms significantly affect the odds… multiplies/cuts the odds X
 while Plain English (`logitBL(naive=true)`) is a **Gemini-style layperson brief** — no "odds", "McFadden", or
 "pseudo-R²". It states the target, whether the effect is a real pattern vs. a fluke and the sample size it
 holds across, the single biggest lever phrased as "makes that ~X% more likely" / "cuts those chances by ~X%",
-and the model-fit caveat ("these factors together explain only a small part / a good part / most of the
-story — the rest comes down to things we didn't measure"). The **linear** counterpart `regrBL_naive`
+then **names the movers by direction** ("Others that make <outcome> less likely: …" for odds-ratio &lt; 1,
+"Others that make it more likely: …" for &gt; 1) **and the non-significant terms** ("The N that didn't make a
+clear difference: …") — so the reader sees *which* factors matter and which don't, not just a count — and
+closes with the model-fit caveat ("these factors together explain only a small part / a good part / most of
+the story — the rest comes down to things we didn't measure"). The **linear** counterpart `regrBL_naive`
 (`lib/statsUtils.ts`) mirrors this register — target + sample size + reliability + fit% translated to plain
 words + **directional drivers** ("Linked to a higher / lower <outcome>: …", by coefficient sign). Both
 registers must genuinely differ from Expert (logistic was identical for the significant-terms case until

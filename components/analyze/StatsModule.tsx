@@ -915,11 +915,20 @@ function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, da
     if (naive) {
       var effect = top.or >= 1 ? 'makes that about ' + pct + '% more likely' : 'cuts those chances by about ' + pct + '%'
       var strength = res.pseudoR2 < 0.1 ? 'only a small part' : res.pseudoR2 < 0.2 ? 'a modest part' : res.pseudoR2 < 0.4 ? 'a good part' : 'most'
-      var nTot = fit.d.n
-      var checked = ps.length === 1
-        ? 'The one thing we checked genuinely moves the needle'
-        : 'Of the ' + ps.length + ' things we checked, ' + sig.length + ' genuinely move the needle'
-      return 'We looked at what makes a response end up with ' + label + '. ' + checked + " — and this is a real pattern, not a fluke (it holds across all " + nTot.toLocaleString() + ' responses). The biggest factor is ' + lever + ": when it's in play it " + effect + '. Bear in mind, though, that these factors together explain ' + strength + " of the story — plenty of what drives " + label + " comes down to things we didn't measure."
+      var nameOf = function(c: typeof ps[number]) { return aliases[c.name] || c.name }
+      var others = sig.filter(function(c) { return c.name !== top.name })
+      var down = others.filter(function(c) { return c.or < 1 }).map(nameOf)
+      var up = others.filter(function(c) { return c.or >= 1 }).map(nameOf)
+      var nonSig = ps.filter(function(c) { return c.p >= 0.05 }).map(nameOf)
+      var parts: string[] = []
+      parts.push('We looked at what makes a response end up with ' + label + ', based on ' + fit.d.n.toLocaleString() + ' responses.')
+      parts.push('Of the ' + ps.length + ' things we checked, ' + sig.length + ' genuinely move the needle — a real pattern, not a fluke.')
+      parts.push('The biggest is ' + lever + ', which ' + effect + '.')
+      if (down.length) parts.push('Others that make ' + label + ' less likely: ' + down.slice(0, 6).join(', ') + '.')
+      if (up.length) parts.push('Others that make it more likely: ' + up.slice(0, 6).join(', ') + '.')
+      if (nonSig.length) parts.push('The ' + nonSig.length + " that didn't make a clear difference: " + nonSig.slice(0, 6).join(', ') + '.')
+      parts.push('All together these factors explain ' + strength + " of the story — the rest comes down to things we didn't measure.")
+      return parts.join(' ')
     }
     return sig.length + ' of ' + ps.length + ' terms significantly affect the odds that a response has ' + label + '. Strongest: ' + lever + ' ' + (top.or >= 1 ? 'multiplies' : 'cuts') + ' the odds ' + fmt2(top.or) + '× (' + (top.or >= 1 ? '+' : '−') + pct + '%). McFadden pseudo-R² = ' + fmt2(res.pseudoR2) + '.'
   }
