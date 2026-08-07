@@ -395,7 +395,13 @@ the single highest-VIF predictor until all are ≤ 10, so a correlated cluster k
 and effects aren't split across redundant twins — the dropped predictors (with their VIF) are surfaced
 in the panel. Above 50K rows this runs over the loaded 50K sample, like the other Stats panels. OLS
 residual/Q-Q diagnostics are hidden in logistic mode. Math verified in `tests/unit/logisticRegression.test.ts`
-(intercept recovery, effect sign, separation detection, VIF = 1/(1−r²), pruning).
+(intercept recovery, effect sign, separation detection, VIF = 1/(1−r²), pruning). The **Bottom Line**
+card carries the same Expert/Plain-English toggle as every other Stats result: Expert states it in odds-ratio
+terms ("N of M terms significantly affect the odds… multiplies/cuts the odds X×… McFadden pseudo-R²"),
+while Plain English (`logitBL(naive=true)`) drops all jargon — names the single biggest lever, phrases its
+effect as "makes that ~X% more likely" / "cuts those chances by ~X%", and translates the pseudo-R² into
+"explains only a small part / a good part / most of what's going on". Both registers must genuinely differ
+(they were identical for the significant-terms case until 2026-08-07).
 
 **Logistic on categorical fields + themes (2026-07-15).** Because a survey's real drivers are its
 Likert **categorical** fields and its **themes**, not raw numeric columns, the logistic panel is its

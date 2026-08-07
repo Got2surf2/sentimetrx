@@ -911,7 +911,13 @@ function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, da
     if (!sig.length) return (naive ? 'Nothing here moves the needle: ' : '') + 'None of the ' + ps.length + ' terms significantly shifts the odds that a response has ' + label + ' (all p ≥ 0.05).'
     var top = sig.slice().sort(function(a, b) { return Math.abs(Math.log(b.or)) - Math.abs(Math.log(a.or)) })[0]
     var pct = Math.round(Math.abs((top.or - 1) * 100))
-    return sig.length + ' of ' + ps.length + ' terms significantly affect the odds that a response has ' + label + '. Strongest: ' + (aliases[top.name] || top.name) + ' ' + (top.or >= 1 ? 'multiplies' : 'cuts') + ' the odds ' + fmt2(top.or) + '× (' + (top.or >= 1 ? '+' : '−') + pct + '%). McFadden pseudo-R² = ' + fmt2(res.pseudoR2) + '.'
+    var lever = aliases[top.name] || top.name
+    if (naive) {
+      var effect = top.or >= 1 ? 'makes that about ' + pct + '% more likely' : 'cuts those chances by about ' + pct + '%'
+      var strength = res.pseudoR2 < 0.1 ? 'only a small part' : res.pseudoR2 < 0.2 ? 'a modest part' : res.pseudoR2 < 0.4 ? 'a good part' : 'most'
+      return 'We looked at what makes a response end up with ' + label + '. Of the ' + ps.length + ' things we checked, ' + sig.length + ' genuinely change the odds. The biggest factor is ' + lever + " — when it's in play it " + effect + '. All together these factors explain ' + strength + " of what's going on; the rest comes down to things we didn't measure."
+    }
+    return sig.length + ' of ' + ps.length + ' terms significantly affect the odds that a response has ' + label + '. Strongest: ' + lever + ' ' + (top.or >= 1 ? 'multiplies' : 'cuts') + ' the odds ' + fmt2(top.or) + '× (' + (top.or >= 1 ? '+' : '−') + pct + '%). McFadden pseudo-R² = ' + fmt2(res.pseudoR2) + '.'
   }
 
   var predGroup = function(title: string, vars: RegVar[], withOrd: boolean) {
