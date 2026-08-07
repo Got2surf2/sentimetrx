@@ -12,7 +12,7 @@ import LottieLoader from '@/components/ui/LottieLoader'
 import { SUBSTANTIVE_RULE_NOTE } from '@/lib/usefulness'
 import { AXIS_COLOR, DIM_AXIS_LABEL, dimSubLabel, type Axis } from '@/lib/dimensionFields'
 
-interface SubStat { axis: string; sub: string; count: number; rate: number; pos: number; neg: number; posPct: number | null; avgRating: number | null }
+interface SubStat { axis: string; sub: string; count: number; rate: number; pos: number; neg: number; posPct: number | null; avgRating: number | null; sentBasis?: 'keyword' | 'rating' | null }
 interface TextField { field: string; label: string }
 interface Rollup {
   classifiedRows: number
@@ -668,7 +668,10 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
                           <div style={{ display: 'flex', height: 7, borderRadius: 4, overflow: 'hidden', background: '#fee2e2' }}>
                             <div style={{ width: `${s.posPct}%`, background: GREEN }} />
                           </div>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: sentimentColor(s.posPct), marginTop: 4 }}>{Math.round(s.posPct)}% positive</div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: sentimentColor(s.posPct), marginTop: 4 }}>
+                            {Math.round(s.posPct)}% positive
+                            {s.sentBasis === 'rating' && <span style={{ fontWeight: 500, color: SLATE }}> · by rating</span>}
+                          </div>
                         </div>
                       )}
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 'auto' }}>
@@ -686,7 +689,7 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
       })()}
 
       <p style={{ marginTop: 28, fontSize: 11, color: SLATE, fontStyle: 'italic' }}>
-        Keyword-tier classification into a shared, consistent set of dimensions. Mention rate = % of classified reviews touching the dimension / sub-dimension; sentiment = share of polarised mentions that are positive. Pick a dimension chip — including ⚠ Severity — to open its cards, then click any card to read the comments behind it.
+        Keyword-tier classification into a shared, consistent set of dimensions. Mention rate = % of classified reviews touching the dimension / sub-dimension; sentiment = share of polarised mentions that are positive, or — for “who”-type dimensions with no evaluative language of their own (“· by rating”) — the share of those reviews rated 4★ or higher. Pick a dimension chip — including ⚠ Severity — to open its cards, then click any card to read the comments behind it.
       </p>
     </div>
   )

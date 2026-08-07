@@ -487,7 +487,15 @@ cards** below. A pill is the collapsed form of its cards.
   `● Steak  ★4.3 / ▓▓▓▓▓▓░░ 72% positive / 64% of product · 1,240 ›`.
   Each card = axis-color dot + sub title (title-cased) + **★ avg rating** + **pos/neg
   sentiment bar** (`posPct`) + footer leading with the sub's **share of its dimension**
-  (`round(100·sub.count / axis.count)` — "% of *this dimension's* reviews that mention
+  — **sentiment fallback:** the `touchpoint` "who" entities (server, manager, chef, …)
+  are all *neutral* keyword phrases, so they carry mention counts but never pos/neg
+  assertions and would otherwise render "No sentiment signal". When keyword polarity is
+  absent (`pos+neg == 0`), `posPct` falls back to the **star ratings of the mentioning
+  reviews** (share rated ≥4★), and `SubStat.sentBasis` records which method produced the
+  number (`'keyword'` | `'rating'` | `null`) so the card can label the rating-based bar
+  "· by rating" and never silently blend the two denominators. Requires a rollup
+  refresh (re-run the keyword classify) to regenerate the stored rollup.
+  Footer share = (`round(100·sub.count / axis.count)` — "% of *this dimension's* reviews that mention
   the sub", distinct from the axis pill's % of *all* reviews) + the raw count muted;
   click → the existing `setDrill(...)` comment panel. All percentages are **rounded (no
   decimals)**. Honest-by-omission: cards carry only the four things a sub genuinely knows

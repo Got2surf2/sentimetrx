@@ -3,7 +3,7 @@ import { computeInsightAlerts, computeDimensionAlerts, dimensionsToSignals, them
 import type { TaxonomyRollup, SubStat } from '@/lib/taxonomyRollup'
 
 function sub(p: Partial<SubStat> & { axis: string; sub: string; count: number }): SubStat {
-  return { rate: 0, pos: 0, neg: 0, posPct: null, avgRating: null, ...p }
+  return { rate: 0, pos: 0, neg: 0, posPct: null, avgRating: null, sentBasis: null, ...p }
 }
 function rollup(p: Partial<TaxonomyRollup> & { subs: SubStat[] }): TaxonomyRollup {
   return { classifiedRows: 1000, withSignal: 1000, overallAvgRating: 4.3, axes: [], alerts: [], alertRows: 0, ...p }

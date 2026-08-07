@@ -34,7 +34,7 @@ export interface TaxonomyRow {
   dateMs?: number | null     // attached when a trend date field is requested
 }
 
-export interface SubStat { axis: string; sub: string; count: number; rate: number; pos: number; neg: number; posPct: number | null; avgRating: number | null }
+export interface SubStat { axis: string; sub: string; count: number; rate: number; pos: number; neg: number; posPct: number | null; avgRating: number | null; sentBasis: 'keyword' | 'rating' | null }
 
 // Emotion-language summary (expressed-language framing — "contains X language").
 // Rates that go client-facing are denominated on NEGATIVE rows (rating ≤ 3):
@@ -82,6 +82,11 @@ interface TaxonomyAcc {
   subCount: Record<string, number>
   subPos: Record<string, number>
   subNeg: Record<string, number>
+  // rating-based per-sub row counts (rating ≥4 / ≤3), used as a sentiment
+  // fallback for "who"-style subs (touchpoint entities) whose keyword phrases
+  // are all neutral — they get mention counts but never pos/neg assertions.
+  subPosRows: Record<string, number>
+  subNegRows: Record<string, number>
   alertCount: Record<string, number>
   // avg-rating accumulators: [sum, count] of the rating field over matching rows
   axisRatS: Record<string, number>; axisRatN: Record<string, number>
@@ -97,7 +102,7 @@ interface TaxonomyAcc {
 
 function newTaxonomyAcc(): TaxonomyAcc {
   return {
-    n: 0, axisCount: {}, subCount: {}, subPos: {}, subNeg: {}, alertCount: {},
+    n: 0, axisCount: {}, subCount: {}, subPos: {}, subNeg: {}, subPosRows: {}, subNegRows: {}, alertCount: {},
     axisRatS: {}, axisRatN: {}, subRatS: {}, subRatN: {},
     overallRatS: 0, overallRatN: 0, withSignal: 0, alertRows: 0,
     negRows: 0, posRows: 0, emoNeg: {}, emoPos: {}, disapChurn: 0, disapChurnNeg: 0,
@@ -119,7 +124,11 @@ function accumulateTaxonomyRow(acc: TaxonomyAcc, r: TaxonomyRow): void {
       for (const sub of arr) {
         const k = ax + ':' + sub
         acc.subCount[k] = (acc.subCount[k] || 0) + 1
-        if (rating != null) { acc.subRatS[k] = (acc.subRatS[k] || 0) + rating; acc.subRatN[k] = (acc.subRatN[k] || 0) + 1 }
+        if (rating != null) {
+          acc.subRatS[k] = (acc.subRatS[k] || 0) + rating; acc.subRatN[k] = (acc.subRatN[k] || 0) + 1
+          if (rating >= 4) acc.subPosRows[k] = (acc.subPosRows[k] || 0) + 1
+          else if (rating <= 3) acc.subNegRows[k] = (acc.subNegRows[k] || 0) + 1
+        }
       }
     }
   }
@@ -150,7 +159,7 @@ function accumulateTaxonomyRow(acc: TaxonomyAcc, r: TaxonomyRow): void {
 }
 
 function finalizeTaxonomy(acc: TaxonomyAcc, topSubs = 40): TaxonomyRollup {
-  const { n, axisCount, subCount, subPos, subNeg, alertCount,
+  const { n, axisCount, subCount, subPos, subNeg, subPosRows, subNegRows, alertCount,
           axisRatS, axisRatN, subRatS, subRatN,
           overallRatS, overallRatN, withSignal, alertRows,
           negRows, posRows, emoNeg, emoPos, disapChurn, disapChurnNeg } = acc
@@ -172,10 +181,21 @@ function finalizeTaxonomy(acc: TaxonomyAcc, topSubs = 40): TaxonomyRollup {
   const subs: SubStat[] = Object.keys(subCount).map(k => {
     const [axis, sub] = k.split(':')
     const pos = subPos[k] || 0, neg = subNeg[k] || 0
+    // Keyword polarity first (share of polarised mentions that are positive).
+    // When a sub carries no polarised mentions — the touchpoint "who" entities
+    // are all neutral phrases — fall back to the star ratings of the mentioning
+    // reviews (% rated ≥4), so the card shows real sentiment instead of "No
+    // sentiment signal". sentBasis lets the UI label the two honestly.
+    let posPct: number | null = pos + neg === 0 ? null : Math.round(100 * pos / (pos + neg))
+    let sentBasis: 'keyword' | 'rating' | null = posPct === null ? null : 'keyword'
+    if (posPct === null) {
+      const rp = subPosRows[k] || 0, rn = subNegRows[k] || 0
+      if (rp + rn > 0) { posPct = Math.round(100 * rp / (rp + rn)); sentBasis = 'rating' }
+    }
     return {
       axis, sub, count: subCount[k],
       rate: +(100 * subCount[k] / denom).toFixed(1),
-      pos, neg, posPct: pos + neg === 0 ? null : Math.round(100 * pos / (pos + neg)),
+      pos, neg, posPct, sentBasis,
       avgRating: mean(subRatS[k] || 0, subRatN[k] || 0),
     }
   }).sort((a, b) => b.count - a.count).slice(0, topSubs)

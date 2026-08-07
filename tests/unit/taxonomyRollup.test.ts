@@ -45,6 +45,40 @@ describe('aggregateTaxonomy', () => {
     expect(steak.posPct).toBe(50)               // 1 pos / (1 pos + 1 neg)
   })
 
+  it('falls back to star ratings for neutral "who" subs with no polarised mentions', () => {
+    // Touchpoint entities ("server") are all neutral keyword phrases: they get
+    // mention counts but never pos/neg assertions. Sentiment should fall back to
+    // the star ratings of the mentioning reviews (share rated ≥4), flagged 'rating'.
+    const rows: TaxonomyRow[] = [
+      { ...blank(), rating: 5, axis_touchpoint: ['server'] },
+      { ...blank(), rating: 4, axis_touchpoint: ['server'] },
+      { ...blank(), rating: 2, axis_touchpoint: ['server'] },
+    ]
+    const server = aggregateTaxonomy(rows).subs.find(s => s.sub === 'server')!
+    expect(server.count).toBe(3)
+    expect(server.pos).toBe(0)
+    expect(server.neg).toBe(0)
+    expect(server.posPct).toBe(67)          // 2 of 3 rated ≥4
+    expect(server.sentBasis).toBe('rating')
+  })
+
+  it('prefers keyword polarity over the rating fallback when both exist', () => {
+    const rows: TaxonomyRow[] = [
+      { ...blank(), rating: 2, axis_product: ['steak'],
+        assertions: [{ axis: 'product', sub: 'steak', polarity: 'pos' }] },
+    ]
+    const steak = aggregateTaxonomy(rows).subs.find(s => s.sub === 'steak')!
+    expect(steak.posPct).toBe(100)          // keyword pos wins, not the 2★ rating
+    expect(steak.sentBasis).toBe('keyword')
+  })
+
+  it('leaves posPct null when there is neither polarity nor a rating', () => {
+    const server = aggregateTaxonomy([{ ...blank(), axis_touchpoint: ['server'] }])
+      .subs.find(s => s.sub === 'server')!
+    expect(server.posPct).toBeNull()
+    expect(server.sentBasis).toBeNull()
+  })
+
   it('returns zeros for an empty dataset', () => {
     const r = aggregateTaxonomy([])
     expect(r.classifiedRows).toBe(0)
