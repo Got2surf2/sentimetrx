@@ -118,8 +118,29 @@ function ofrFields(subjects: string | null) {
   return { ofr_subjects: subjects, ofr_subject_tags: tags, ofr_topics: topics }
 }
 
+/**
+ * EXACT-DUPLICATE REMOVAL (added 2026-08-08). The published analysis counts
+ * unique passages — 49,033 spoken paragraphs and 7,371 posts — so the dataset
+ * must hold exactly those, or the app and the report disagree on the
+ * denominator and neither can be trusted. First occurrence wins, so the
+ * earliest date and its provenance are what survive.
+ *
+ * Only byte-identical text is dropped. Near-duplicates are deliberately kept:
+ * the candidate-endorsement form letters are near-identical by design but each
+ * is a real letter about a different person, and collapsing them would erase
+ * something he actually did.
+ */
+const seenText = new Set<string>()
+const isNewText = (t: string) => {
+  const k = t.trim()
+  if (seenText.has(k)) return false
+  seenText.add(k)
+  return true
+}
+
 function buildSpokenRows(items: CorpusItem[]): Row[] {
   const rows: Row[] = []
+  seenText.clear()
   for (const doc of items) {
     if (doc.source !== 'govinfo_dcpd') continue
     const paras = doc.trump_text.split('\n\n').map((p) => p.trim()).filter(Boolean)
@@ -128,6 +149,7 @@ function buildSpokenRows(items: CorpusItem[]): Row[] {
     for (const p of paras) {
       const wc = p.split(/\s+/).length
       if (wc < MIN_PARAGRAPH_WORDS) continue
+      if (!isNewText(p)) continue
       rows.push({
         // `text` is the verbatim and nothing else — no titles, no subject tags.
         text: p,
@@ -150,8 +172,9 @@ function buildSpokenRows(items: CorpusItem[]): Row[] {
 }
 
 function buildPostRows(items: CorpusItem[]): Row[] {
+  seenText.clear()
   return items
-    .filter((p) => p.source === 'truth_social' && p.trump_text.trim().length > 0)
+    .filter((p) => p.source === 'truth_social' && p.trump_text.trim().length > 0 && isNewText(p.trump_text))
     .map((p, i) => ({
       text: p.trump_text,
       word_count: p.trump_word_count,
@@ -234,6 +257,36 @@ async function ensureState(service: Db, datasetId: string, userId: string, sampl
   return { action: 'created' as const, open }
 }
 
+/**
+ * Deleting the dataset row alone cascades to ~49,000 rows in one statement and
+ * hits the Postgres statement timeout (57014) — observed against the TEST
+ * project on the first deduped re-ingest. A timeout mid-cascade is the worst
+ * outcome for a LIVE dataset: the delete rolls back, but only after burning the
+ * timeout, and repeated attempts never converge. So the rows go first, in
+ * batches small enough to finish, and the parent row is removed only once the
+ * child table is empty.
+ */
+async function deleteDatasetSafely(service: Db, datasetId: string, orgId: string) {
+  const CHUNK = 2000
+  let removed = 0
+  for (;;) {
+    const { data: ids, error: selErr } = await service
+      .from('dataset_rows_flat').select('id').eq('dataset_id', datasetId).limit(CHUNK)
+    if (selErr) throw selErr
+    if (!ids?.length) break
+    const { error: delErr } = await service
+      .from('dataset_rows_flat').delete().in('id', ids.map((r) => (r as { id: string }).id))
+    if (delErr) throw delErr
+    removed += ids.length
+    process.stdout.write(`\r    rows deleted: ${removed}`)
+  }
+  if (removed) process.stdout.write('\n')
+  // Pair id WITH org_id — a bare id delete on the service-role client is a
+  // cross-tenant hazard even in a one-off.
+  const { error } = await service.from('datasets').delete().eq('id', datasetId).eq('org_id', orgId)
+  if (error) throw error
+}
+
 async function ingest(
   service: Db,
   orgId: string,
@@ -252,8 +305,7 @@ async function ingest(
       return
     }
     console.log(`  --recreate: deleting ${existing[0].id}…`)
-    const { error } = await service.from('datasets').delete().eq('id', existing[0].id).eq('org_id', orgId)
-    if (error) throw error
+    await deleteDatasetSafely(service, existing[0].id, orgId)
   }
 
   const { data: created, error: createErr } = await service
