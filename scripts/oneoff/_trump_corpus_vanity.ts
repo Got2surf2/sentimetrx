@@ -140,7 +140,45 @@ const comparisons = PAIRS.map(([a, b]) => {
   return { vanity: a, vanityN: an, kitchen: b, kitchenN: bn, ratio }
 })
 
+// ── Days in office ─────────────────────────────────────────────────────────
+// "He talked about the ballroom on X% of his days in office" is a different and
+// more intuitive unit than share-of-passages, and it is the one that pairs with
+// an external time series. Denominator is CALENDAR DAYS since the inauguration,
+// which is the honest one for that phrasing — but note the DCPD ~5-week lag
+// means the last few weeks are posts-only, so a topic he only ever discusses in
+// speeches is slightly understated at the tail.
+const dayOf = new Map<string, string[]>()
+for (const c of rows) {
+  const d = c.date.slice(0, 10)
+  const texts = c.source === 'govinfo_dcpd'
+    ? c.trump_text.split('\n\n').map((x) => x.trim()).filter((p) => p.split(/\s+/).length >= 15)
+    : (c.trump_text.trim() && !/^RT[\s@:]/.test(c.trump_text) ? [c.trump_text.trim()] : [])
+  if (!texts.length) continue
+  dayOf.set(d, [...(dayOf.get(d) ?? []), ...texts])
+}
+const days = [...dayOf.keys()].sort()
+const INAUG = Date.UTC(2025, 0, 20)
+const lastDay = Date.parse(days[days.length - 1] + 'T00:00:00Z')
+const calendarDays = Math.round((lastDay - INAUG) / 86400000) + 1
+
+say(`\n══ DAYS IN OFFICE ══\n`)
+say(`  ${calendarDays} calendar days since the inauguration · he is on the record on ${days.length} of them\n`)
+const daysWith = (t: Topic) => {
+  const res = t.kws.map(rx)
+  return days.filter((d) => (dayOf.get(d) ?? []).some((x) => {
+    const l = x.toLowerCase()
+    return res.some((r) => r.test(l)) && !(t.clean && t.clean.test(x))
+  })).length
+}
+const dayPct: Record<string, { days: number; pctOfTerm: number }> = {}
+for (const t of [...VANITY, ...KITCHEN]) {
+  const n = daysWith(t)
+  dayPct[t.name] = { days: n, pctOfTerm: Math.round((1000 * n) / calendarDays) / 10 }
+  say(`  ${t.name.padEnd(38)}${String(n).padStart(4)} days   ${String(dayPct[t.name].pctOfTerm).padStart(5)}% of days in office`)
+}
+
 writeFileSync(path.join(DIR, 'vanity_gap.json'), JSON.stringify({
+  daysInOffice: { calendarDays, onRecordDays: days.length, byTopic: dayPct },
   denominator: { passages: ALL.length, spoken: S.length, posts: P.length },
   vanity: V, kitchen: K, comparisons,
   dropped: { gold: 'overwhelmingly "golden age" slogan and "liquid gold" (oil)', statue: 'monuments policy, not self-commemoration' },
