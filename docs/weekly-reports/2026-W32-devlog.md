@@ -110,3 +110,11 @@ Built from the CORRECTED figures only, and the script carries a do-not-reintrodu
 
 Pixel-QC caught two defects that tsc cannot: the four-column "his words against his words" table had collapsed (`131"cost of living"` ran together as one string, because the mid-row numeric column had `padding-right: 0` from the shared `.n` class) and adding the endorsement-checklist block overflowed page 1 by a single line, orphaning a pull-quote onto an otherwise blank page 3. Fixed with explicit per-column widths on `table.pair` and ~40px of reclaimed leading. Final: 2 pages, both full.
 
+
+## Trump corpus summary PDF: rebuilt for readability (Aug 8, later)
+
+WHY: Owner read the first cut and wanted it sharper, more concise and catchier, with taglines attached to the statements. The first version was a research document — dense tables, paragraph prose, findings the reader had to assemble themselves. Rebuilt around the number-then-line pattern: a hero stat block, three stat cards, a row of zeros, and short tables, with the report's "the line" quotes promoted from an internal artifact to the actual deliverable. Prose cut by roughly half; no figure changed.
+
+The taglines were already written and verified in the long-form report and were simply omitted from the external cut — that was the mistake. They are the part a candidate says out loud, so they now sit directly under the number that earns them.
+
+Two defects caught in pixel-QC, neither visible to tsc: a bare `.zero div` selector matched the `.n` and `.w` children as well as the cells, boxing every number inside a second border (fixed with a direct-child selector), and the section heading read "Four numbers" over three cards — fixed by adding the missing border-vs-doctor tagline so the count is honest. Also self-inflicted and worth noting: a CSS comment written with backticks around a selector name terminated the enclosing JS template literal and broke the build with a syntax error 60 lines away from the real cause. Same class as the NUL-byte grep miss — a stray delimiter in a string context. Final: 2 pages, verified by pdftotext grep that no retracted figure ships.
