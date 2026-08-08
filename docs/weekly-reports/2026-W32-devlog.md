@@ -158,3 +158,11 @@ WHY: Owner wants outside consequences set against his personal attention ("X% mo
 ⚠️ VERIFICATION LIMIT recorded in both scripts: cdc.gov and bls.gov both return HTTP 403 to our fetcher, so these figures come from search summaries of those pages rather than verbatim reads. Internally consistent and matching the known shape of the 2025 Texas outbreak, but one step removed — confirm by eye before anything goes outside.
 
 PDF gains a closing juxtaposition block (703% / 15.6%) with the CDC attribution inside the block so it cannot be mistaken for our measurement, plus a method paragraph stating the no-division rule explicitly.
+
+## Trump corpus: Factoids reference sheet (Aug 8, later⁶)
+
+WHY: The material outgrew the two-page summary — obsession gap, name-calling, economy claims, measles and the silence shares will not all fit, and cramming them in would blunt the summary's single argument. So the summary stays as the argument and `_trump_corpus_factoids_pdf.ts` becomes the bank: every verified number, grouped, each with a usable line beside it, to be picked from. Three pages, `~/Downloads/Datanautix_TrumpCorpus_Factoids.pdf`.
+
+The economy claims land here rather than in the summary, which is the right home for them — they are a different kind of claim (falsifiable assertions rather than absences) and they need the present-tense caveat spelled out, which would have cost the summary its momentum.
+
+Two design rules the sheet enforces on the page rather than in a comment: **external figures carry an "EXTERNAL SOURCE" chip** so a reader can never mistake CDC or BLS numbers for something we counted, and the header carries a **confirm-by-eye warning** because cdc.gov and bls.gov both block automated reads. The method footer states what was tested and thrown out — "gold", "crazy", the 75-day "no inflation" figure — so the pruning is visible to anyone checking the work rather than buried in the scripts.
