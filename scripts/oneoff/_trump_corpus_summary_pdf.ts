@@ -99,6 +99,18 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
   .card p { font-size: 9.8px; color: #475569; line-height: 1.42; margin: 0; }
   .card p b { color: #0f172a; }
 
+  /* The one block mixing an outside statistic with our measurement. Visually
+     separated on purpose, and the CDC line is attributed inside the block —
+     a reader must never mistake it for something we counted. */
+  .juxt { background: #0f172a; border-radius: 9px; padding: 16px 18px; margin-top: 14px; }
+  .juxt .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .juxt .n { font-size: 33px; font-weight: 800; color: #fff; line-height: 1; letter-spacing: -.03em; }
+  .juxt .n.o { color: ${ORANGE}; }
+  .juxt .w { font-size: 9.8px; color: #cbd5e1; margin-top: 6px; line-height: 1.4; }
+  .juxt .src { font-size: 8.2px; color: #64748b; margin-top: 4px; }
+  .juxt .ask { font-size: 15px; font-weight: 700; color: #fff; margin: 13px 0 0;
+               border-top: 1px solid #334155; padding-top: 11px; line-height: 1.35; }
+
   .method { border-top: 1px solid #e2e8f0; margin-top: 16px; padding-top: 10px; }
   .method .lbl { font-size: 8px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase;
                  color: #94a3b8; margin: 0 0 5px; }
@@ -223,6 +235,24 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
   <p class="say">He renamed a mountain and renamed a gulf. He never once mentioned a first-time buyer.</p>
 </div>
 
+<div class="juxt keep">
+  <div class="row">
+    <div>
+      <div class="n o">703%</div>
+      <div class="w">more measles cases — <b style="color:#fff">285</b> in 2024, <b style="color:#fff">2,289</b> in 2025, and
+        <b style="color:#fff">2,465</b> already by August 2026</div>
+      <div class="src">CDC, Measles Cases and Outbreaks, as of 6 Aug 2026 — external source, not this corpus</div>
+    </div>
+    <div>
+      <div class="n">15.6%</div>
+      <div class="w">of his days in office he spent talking about his new <b style="color:#fff">ballroom</b> — 88 of 565 days.
+        He mentioned child care on <b style="color:#fff">seven</b>.</div>
+      <div class="src">This corpus</div>
+    </div>
+  </div>
+  <p class="ask">Is this what you voted for? And every Republican in Congress watched him do it. Is this why you voted for them?</p>
+</div>
+
 <div class="method">
   <p class="lbl">What these numbers are — and are not</p>
   <p>Sources are the official public record of presidential documents and a public archive of his posts, from 20 January
@@ -235,6 +265,10 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
     slogan and "liquid gold" for oil rather than anything gilded. <b>These are lower bounds</b> — someone can discuss
     housing without saying "affordable housing" — so the defensible claim is the comparison, not the absolute count,
     because both sides were measured by identical rules.</p>
+  <p><b>The measles figures are CDC's, not ours</b>, and are the only outside statistic in this document. They sit
+    beside the attention figure and are never divided by it — a case count and a share of days are different units on
+    different populations, and a ratio between them would mean nothing. No causal claim is made or implied: these are
+    two separately sourced facts about the same nineteen months.</p>
 </div>
 
 </body></html>`
