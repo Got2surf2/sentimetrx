@@ -6,19 +6,25 @@
 // This is the teaser, not a replacement — it carries the findings and enough method to be
 // trusted, and stops short of the build recipe.
 //
-// NUMBER DISCIPLINE — every figure here traces to a script, none computed by hand:
-//   _trump_corpus_salience.ts     attention shares (spoken n=49,046)
-//   _trump_corpus_endorsements.ts post shares, endorsement-excluded (n=5,901)
-//   _trump_corpus_ratios.ts       word counts + topic ratios, unscripted (n=25,743)
+// NUMBER DISCIPLINE — every figure here traces to a script, none computed by hand.
+// ALL FIGURES ARE ON THE DEDUPED CORPUS (exact-duplicate units removed):
+//   _trump_corpus_dedup_check.ts  denominators, unscripted/staged, endorsement letters
+//   _trump_corpus_endorsements.ts post shares, endorsement-excluded
+//   _trump_corpus_ratios.ts       word counts + topic ratios, unscripted
 //   _trump_corpus_audit.ts        the zero-and-once claims
+// Denominators: 49,033 spoken paragraphs · 6,385 own-word posts · 25,732 unscripted
+// · 5,756 posts excluding endorsements. Do not mix these with the pre-dedup values
+// (49,046 / 6,638 / 25,743 / 5,901) that earlier drafts used.
 //
-// DO NOT REINTRODUCE (both retracted 2026-08-08, see project_trump_corpus memory):
-//   - "16x / sixteen posts about the border" — that is the UNCORRECTED ratio, 84% of it
-//     endorsement boilerplate. The number is 6.2x. It has been retracted twice now.
+// DO NOT REINTRODUCE (all retracted 2026-08-08, see project_trump_corpus memory):
+//   - "16x / sixteen posts about the border" — the UNCORRECTED ratio, 84% of it
+//     endorsement boilerplate. The number is 6.3x. It has been retracted twice.
 //   - "voters rank immigration ninth" — Gallup's 9% misread as a rank.
-// Endorsement count is stated as "more than 730" on purpose: the exact figure moves
-// between 733 and 737 depending on how strictly the form letter is matched, and an
-// external one-pager should not hang on a matcher choice.
+//   - "730+ endorsements" — 737 POSTS contain the form letter but 108 are duplicate
+//     re-posts of an identical letter, so it is 629 DISTINCT letters. The count of
+//     distinct PEOPLE is lower still (he re-endorses the same candidate) and is NOT
+//     stated anywhere, because name extraction from the letters is not reliable.
+//     Never phrase this as "730+ candidates" or "730+ different people".
 //
 // Poll figures are EXTERNAL and always labelled as such — a voter-priority % and an
 // attention-share % are different units on different populations and are never divided.
@@ -118,10 +124,10 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
 <div class="rule"></div>
 <p class="thesis">He is not losing the argument on affordability.<br>He is <em>not having it.</em></p>
 <p class="deck">Every word Donald Trump has spoken on the public record and posted in his own words since the
-  January 2025 inauguration — 49,046 passages of speech, 6,638 posts, nineteen months.</p>
+  January 2025 inauguration — 49,033 passages of speech, 6,385 posts, nineteen months.</p>
 
 <div class="hero keep">
-  <div class="num">11<small>of 49,046</small></div>
+  <div class="num">11<small>of 49,033</small></div>
   <div>
     <p class="say">He's given a thousand speeches about your country. He's given eleven sentences about your grocery bill.</p>
     <p class="src">Passages of speech containing the phrase "cost of living." "Making ends meet" appears once.</p>
@@ -132,12 +138,12 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
   <h2>Three numbers, three lines</h2>
   <div class="grid3">
     <div class="stat keep">
-      <div class="n">6.2×</div>
+      <div class="n">6.3×</div>
       <p class="lbl">He posts about <b>the border</b> six times for every once about <b>health care</b></p>
     </div>
     <div class="stat keep">
       <div class="n">1%</div>
-      <p class="lbl">Of his <b>730+ endorsement letters</b> mention health care. 84% mention the border</p>
+      <p class="lbl">Of his <b>629 endorsement letters</b> mention health care. 85% mention the border</p>
     </div>
     <div class="stat keep">
       <div class="n">0.03%</div>
@@ -145,7 +151,7 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
     </div>
   </div>
   <p class="say">He posts about the border six times for every once he posts about your doctor. Check which one is on your kitchen table.</p>
-  <p class="say">He wrote out, seven hundred and thirty times, exactly what he thinks a good Republican stands for. Health care didn't make the list.</p>
+  <p class="say">He wrote out, six hundred and twenty-nine times, exactly what he thinks a good Republican stands for. Health care didn't make the list.</p>
   <p class="say">He'll tell you who to blame for your rent. He'll never tell you how to pay it.</p>
 </div>
 
@@ -166,9 +172,9 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
   <table>
     <thead><tr><th>Issue</th><th class="n">Of his speeches</th><th class="n">Of his posts</th></tr></thead>
     <tbody>
-      <tr><td>Crime</td><td class="n">3.7%</td><td class="n">6.4%</td></tr>
-      <tr><td>Tariffs / trade</td><td class="n">3.5%</td><td class="n">6.2%</td></tr>
-      <tr><td>Immigration</td><td class="n">2.8%</td><td class="n">5.7%</td></tr>
+      <tr><td>Crime</td><td class="n">3.8%</td><td class="n">6.4%</td></tr>
+      <tr><td>Tariffs / trade</td><td class="n">3.5%</td><td class="n">6.3%</td></tr>
+      <tr><td>Immigration</td><td class="n">2.8%</td><td class="n">5.8%</td></tr>
       <tr class="hi"><td>Housing</td><td class="n">0.4%</td><td class="n">1.0%</td></tr>
       <tr class="hi"><td>Health care</td><td class="n">0.8%</td><td class="n">0.9%</td></tr>
       <tr class="hi"><td>Child care</td><td class="n">0.03%</td><td class="n">0.1%</td></tr>
@@ -188,14 +194,14 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
   <div class="card keep">
     <h3>Unscripted, he still doesn't say it</h3>
     <p>Strip out every set-piece speech and keep only tarmac exchanges, phone interviews and gaggles —
-      <b>25,743 paragraphs</b> of him talking off the cuff. Health care: <b>0.7%</b>, against 0.9% when someone
-      writes it for him. In all 25,743, "cost of living" appears <b>three times</b>. "Minimum wage," "uninsured,"
+      <b>25,732 paragraphs</b> of him talking off the cuff. Health care: <b>0.73%</b>, against 0.82% when someone
+      writes it for him. In all of them, "cost of living" appears <b>three times</b>. "Minimum wage," "uninsured,"
       "affordable housing": <b>zero</b>.</p>
   </div>
   <div class="card keep">
     <h3>Immigration is a script, not an instinct</h3>
-    <p>It's <b>3.0%</b> of staged speeches but only <b>2.1%</b> unscripted. Tariffs run the other way —
-      <b>3.0%</b> staged, <b>3.9%</b> unscripted. Left to himself, he talks about trade, not the border.</p>
+    <p>It's <b>3.24%</b> of staged speeches but only <b>2.37%</b> unscripted. Tariffs run the other way —
+      <b>3.09%</b> staged, <b>3.94%</b> unscripted. Left to himself, he talks about trade, not the border.</p>
   </div>
 </div>
 <p class="say">When someone writes his speech, he talks about the border. When he's just talking, he talks about tariffs. Neither one is your rent.</p>
