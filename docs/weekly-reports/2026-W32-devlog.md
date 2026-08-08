@@ -101,3 +101,12 @@ Three further errors found in the same audit pass: (1) Part 3 recommended "sixte
 Corpus data itself is unchanged; no app code touched. Both one-offs verified against the real 11,279-item corpus.
 
 ---
+
+## Trump corpus: two-page shareable summary PDF (Aug 8)
+
+WHY: Owner wants something sendable to an external reader (campaign / consultant / prospect) rather than the long-form internal report. `scripts/oneoff/_trump_corpus_summary_pdf.ts` renders a two-page Letter brief to ~/Downloads via `brandedPdfChrome`, matching the Kimley-Horn / PPFL one-off pattern — Datanautix wordmark, confidentiality footer, page numbers.
+
+Built from the CORRECTED figures only, and the script carries a do-not-reintroduce block naming both retracted numbers (the 15.2x "sixteen posts about the border" and the "immigration ninth" rank misread) so a future edit cannot walk them back in — this is the second time the 16x has had to be removed. Endorsement count is deliberately stated as "more than 730" rather than 737: the exact figure moves between 733 and 737 depending on how strictly the form letter is matched, and an external one-pager should not hang on a matcher choice. Verified by pdftotext grep that no retracted figure appears in the shipped file.
+
+Pixel-QC caught two defects that tsc cannot: the four-column "his words against his words" table had collapsed (`131"cost of living"` ran together as one string, because the mid-row numeric column had `padding-right: 0` from the shared `.n` class) and adding the endorsement-checklist block overflowed page 1 by a single line, orphaning a pull-quote onto an otherwise blank page 3. Fixed with explicit per-column widths on `table.pair` and ~40px of reclaimed leading. Final: 2 pages, both full.
+
