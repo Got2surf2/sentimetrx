@@ -89,3 +89,15 @@ Deliberately did NOT build the report on the mined themes: the question is about
 Result: unscripted cut = 384 docs / 25,743 paragraphs. Affordability is equally absent unscripted vs staged (health care 0.7% vs 0.9%; "cost of living" said 3 times in 25,743 unscripted paragraphs; good-paying jobs / uninsured / preschool / affordable housing / minimum wage all zero), so it is not a staffing artefact. Immigration is a script not an instinct (3.0% staged vs 2.1% unscripted); tariffs the reverse (3.0% → 3.9%). Report at ~/Downloads/trump-corpus/REPORT_democratic_talking_points.md carries a corrections section documenting all three inflators so the method survives an opponent checking it.
 
 ---
+
+## Trump corpus: endorsement correction made reproducible; four report numbers fixed (Aug 8)
+
+WHY: Picking the corpus work back up, the first thing checked was whether every published number could be regenerated. Three could. The headline post figures could not — immigration 5.1%, crime 6.4% and the 5.5x immigration-to-health-care ratio were computed by hand mid-session and never written to a script. That is the one class of number that cannot be defended when someone asks how it was made, and the uncorrected alternative (15.2x) is the exact figure we had already retracted.
+
+Writing `_trump_corpus_endorsements.ts` to reproduce them showed they were wrong. **The correction had been applied to the numerator but not the denominator**: removing the 737 endorsement form letters takes immigration from 958 posts to 336, but 336 was divided by the original 6,638-post base rather than the 5,901 that remain. 336/6638 = 5.06% ≈ the published 5.1%; the correct figure is 336/5901 = **5.7%**, and the ratio is **6.2x**, not 5.5x. Crime, in the same table, *had* used the corrected denominator (6.4%) — so two rows of one table were computed two different ways, and every other row was still raw. This is precisely the mixed-denominator error the report exists to avoid, committed inside the correction meant to prevent it. The script now prints both frames side by side and refuses to blend them.
+
+Three further errors found in the same audit pass: (1) Part 3 recommended "sixteen posts about the border for every one about health care" as the strongest single contrast — that is the retracted 15.2x, contradicting Part 1 two pages earlier, and it sat in the one paragraph a campaign would actually lift; (2) the same sentence claimed voters rank "immigration ninth", which appears to be the Gallup 9% misread as a rank, and is unsupported by any cited poll — in the list where health care is second, immigration is third; (3) a ratio printed as "1.3%" instead of "1.3x". The report's method section now carries a reproducibility clause naming the script behind each figure, on the rule that a number no script can regenerate does not belong in it.
+
+Corpus data itself is unchanged; no app code touched. Both one-offs verified against the real 11,279-item corpus.
+
+---
