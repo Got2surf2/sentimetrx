@@ -166,3 +166,11 @@ WHY: The material outgrew the two-page summary — obsession gap, name-calling, 
 The economy claims land here rather than in the summary, which is the right home for them — they are a different kind of claim (falsifiable assertions rather than absences) and they need the present-tense caveat spelled out, which would have cost the summary its momentum.
 
 Two design rules the sheet enforces on the page rather than in a comment: **external figures carry an "EXTERNAL SOURCE" chip** so a reader can never mistake CDC or BLS numbers for something we counted, and the header carries a **confirm-by-eye warning** because cdc.gov and bls.gov both block automated reads. The method footer states what was tested and thrown out — "gold", "crazy", the 75-day "no inflation" figure — so the pruning is visible to anyone checking the work rather than buried in the scripts.
+
+## Trump corpus: 30-second video spot (Aug 8, later⁷)
+
+WHY: Owner asked for a 30-second spot from three headlines. `_trump_spot_video.ts` renders 750 frames at 1920x1080/25fps through headless Chrome — the same puppeteer path the PDFs use — and muxes with ffmpeg (h264 CRF 18, AAC, faststart). Output `~/Downloads/Datanautix_SilenceGap_30s.mp4`, verified by ffprobe at exactly 30.000s with both streams valid.
+
+Structure: cold open on the corpus size, then ballroom 209 vs "preschool" zero, then name-calling on 415 of 565 days vs child care on 7, then measles +703% against 15.6% of his days, closing on "Is this what you voted for?" Numbers count up on an eased curve and the quoted word lands after the count settles, so the eye reads the number before the zero. The CDC figure is captioned CDC on screen — it is the only number in the spot we did not count, and it must never appear unattributed.
+
+**The music is a synthesised placeholder, not licensed music, and is flagged as such in the script header with the one-line ffmpeg command to swap in a real track.** No music was downloaded. Worth recording plainly: I cannot hear the output — the audio is verified only by ffprobe for duration and stream validity, so it needs a human listen before use. The visuals were pixel-QC'd frame by frame, which caught a real defect: at 150px the scene-3 line wrapped and the second line ran into the datanautix wordmark. Fixed with a single nowrap line at 112px.
