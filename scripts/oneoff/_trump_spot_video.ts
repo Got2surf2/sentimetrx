@@ -258,11 +258,15 @@ window.renderAt=function(t){
  *   S&P 500  +17.9% then +12.7%      =  100 -> 118 -> 133
  */
 const spotMeasles = (portrait: string | null) => `<!doctype html><html><head><meta charset="utf-8"><style>${BASE_CSS}
-  .chartwrap{position:absolute;inset:0;padding:150px 140px 130px;display:flex;flex-direction:column;opacity:0}
-  .ctitle{font-size:34px;letter-spacing:.2em;text-transform:uppercase;color:#64748b;font-weight:700;margin-bottom:8px}
-  .csub{font-size:26px;color:#475569;margin-bottom:26px}
+  .chartwrap{position:absolute;inset:0;padding:78px 112px 74px;display:flex;flex-direction:column;opacity:0}
+  .chead{font-size:70px;font-weight:800;color:#fff;line-height:1.1;letter-spacing:-.025em;margin-bottom:10px}
+  .chead em{color:${ORANGE};font-style:normal}
+  .csub{font-size:28px;color:#64748b;margin-bottom:14px}
   svg{flex:1;width:100%}
-  .lbl{font-size:30px;font-weight:800}
+  .yrs{display:flex;justify-content:space-between;font-size:30px;color:#64748b;font-weight:600;margin-top:6px}
+  .legend{display:flex;gap:76px;align-items:flex-end;margin-top:24px}
+  .lg .v{font-size:82px;font-weight:800;line-height:1;letter-spacing:-.03em}
+  .lg .k{font-size:28px;color:#94a3b8;font-weight:600;margin-top:8px}
 </style></head><body><div id="stage">
   ${portrait ? `<div id="portrait" style="background-image:url('${portrait}')"></div>` : ''}
   <div class="scene" id="m0">
@@ -271,23 +275,33 @@ const spotMeasles = (portrait: string | null) => `<!doctype html><html><head><me
   </div>
 
   <div class="chartwrap" id="chart">
-    <div class="ctitle">Growth since 2024</div>
-    <div class="csub">Indexed to 100 &mdash; CDC measles cases &middot; S&amp;P 500 total return &middot; external sources</div>
-    <svg viewBox="0 0 1640 620" preserveAspectRatio="none">
-      <line x1="0" y1="600" x2="1640" y2="600" stroke="#1e293b" stroke-width="3"/>
-      <line x1="0" y1="380" x2="1640" y2="380" stroke="#111c2f" stroke-width="2"/>
-      <line x1="0" y1="160" x2="1640" y2="160" stroke="#111c2f" stroke-width="2"/>
-      <path id="pMkt" fill="none" stroke="#64748b" stroke-width="7" stroke-linecap="round"/>
-      <path id="pMea" fill="none" stroke="${ORANGE}" stroke-width="11" stroke-linecap="round"/>
-      <circle id="dMkt" r="12" fill="#64748b" opacity="0"/>
-      <circle id="dMea" r="15" fill="${ORANGE}" opacity="0"/>
+    <div class="chead">Measles didn't go up like the market.<br>It went up <em>twenty-three times faster.</em></div>
+    <div class="csub">Growth since 2024, indexed to 100 &middot; CDC measles cases &middot; S&amp;P 500 total return &middot; external sources</div>
+    <svg viewBox="0 0 1696 560">
+      <defs>
+        <linearGradient id="fillMea" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${ORANGE}" stop-opacity=".55"/>
+          <stop offset="100%" stop-color="${ORANGE}" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <line x1="118" y1="510" x2="1696" y2="510" stroke="#243147" stroke-width="3"/>
+      <line x1="118" y1="356" x2="1696" y2="356" stroke="#151f33" stroke-width="2"/>
+      <line x1="118" y1="202" x2="1696" y2="202" stroke="#151f33" stroke-width="2"/>
+      <line x1="118" y1="48"  x2="1696" y2="48"  stroke="#151f33" stroke-width="2"/>
+      <text x="100" y="519" text-anchor="end" fill="#64748b" font-size="27" font-weight="600">0%</text>
+      <text x="100" y="365" text-anchor="end" fill="#64748b" font-size="27" font-weight="600">+300%</text>
+      <text x="100" y="211" text-anchor="end" fill="#64748b" font-size="27" font-weight="600">+600%</text>
+      <text x="100" y="57"  text-anchor="end" fill="#64748b" font-size="27" font-weight="600">+900%</text>
+      <path id="aMea" fill="url(#fillMea)" stroke="none"/>
+      <path id="pMkt" fill="none" stroke="#64748b" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path id="pMea" fill="none" stroke="${ORANGE}" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle id="dMkt" r="13" fill="#64748b" opacity="0"/>
+      <circle id="dMea" r="18" fill="${ORANGE}" opacity="0"/>
     </svg>
-    <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:26px;color:#475569">
-      <span>2024</span><span>2025</span><span>2026 to date</span>
-    </div>
-    <div style="margin-top:26px;display:flex;gap:58px;align-items:baseline">
-      <div class="lbl" style="color:${ORANGE}">Measles <span id="mv">+0%</span></div>
-      <div class="lbl" style="color:#94a3b8">Stock market <span id="sv">+0%</span></div>
+    <div class="yrs"><span style="margin-left:96px">2024</span><span>2025</span><span>2026 to date</span></div>
+    <div class="legend">
+      <div class="lg"><div class="v" style="color:${ORANGE}" id="mv">+0%</div><div class="k">Measles cases</div></div>
+      <div class="lg"><div class="v" style="color:#94a3b8" id="sv">+0%</div><div class="k">Stock market</div></div>
     </div>
   </div>
 
@@ -307,8 +321,10 @@ const spotMeasles = (portrait: string | null) => `<!doctype html><html><head><me
   <div class="bar" id="bar"></div>
 </div><script>${SCENE_JS}
   // Three real points only. X positions are evenly spaced years.
-  const XS=[10,820,1630], MEA=[100,803,865], MKT=[100,118,133];
-  const yOf=v=>600-(Math.min(v,900)/900)*580;
+  // Three real points only; x evenly spaced by year. y maps growth-over-2024 to
+  // the labelled 0/+300/+600/+900% gridlines, so the axis and the line agree.
+  const XS=[150,900,1650], MEA=[100,803,865], MKT=[100,118,133];
+  const yOf=v=>510-(Math.min(v-100,900)/900)*462;
   function pathTo(pts,p){
     // p in 0..1 walks the polyline; partial segments interpolate linearly.
     const seg=(pts.length-1)*p, i=Math.min(Math.floor(seg),pts.length-2), f=seg-i;
@@ -328,10 +344,12 @@ window.renderAt=function(t){
   const a=pathTo(MEA,p), b=pathTo(MKT,p);
   document.getElementById('pMea').setAttribute('d',a.d);
   document.getElementById('pMkt').setAttribute('d',b.d);
+  // Area under the measles line - the wall of orange is what makes it land.
+  document.getElementById('aMea').setAttribute('d', p>0.01 ? a.d+' L '+a.x+' 510 L '+XS[0]+' 510 Z' : '');
   const dm=document.getElementById('dMea'), dk=document.getElementById('dMkt');
   dm.setAttribute('cx',a.x); dm.setAttribute('cy',a.y); dm.setAttribute('opacity',p>0.02?1:0);
   dk.setAttribute('cx',b.x); dk.setAttribute('cy',b.y); dk.setAttribute('opacity',p>0.02?1:0);
-  document.getElementById('mv').textContent='+'+Math.round(765*p)+'%';
+  document.getElementById('mv').textContent='+'+Math.round(765*p).toLocaleString()+'%';
   document.getElementById('sv').textContent='+'+Math.round(33*p)+'%';
   scene(document.getElementById('m2'),t,12.6,18.2);
   scene(document.getElementById('m3'),t,18.2,22.4);

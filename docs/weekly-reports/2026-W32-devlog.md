@@ -210,3 +210,13 @@ WHY: Owner feedback — the type looked wrong, the frame was underfilled, bring 
 ⚠️ **Flagged for the owner and deliberately not papered over: RFK Jr.'s messaging is contradictory.** He has also said parents should vaccinate their children and called MMR the most effective prevention — FactCheck.org keeps a timeline of the mixed messaging. An ad implying he is uniformly anti-vaccine invites that correction; quoting what he actually said, attributed and dated, does not. The spot is built the second way.
 
 **No percentage is given for deaths, deliberately.** There were 3 US measles deaths in 2025 and zero for the preceding decade, so a percentage increase is division by zero — undefined, not "infinite". The raw fact is stronger anyway and is what the spot uses: "3 — the first measles deaths in this country in a decade. All three were unvaccinated."
+
+## Measles spot: chart rebuilt to carry its own weight (Aug 8, later¹¹)
+
+WHY: Owner — the chart was not impressive and the scale and legend were too small to read. It was drawn as two bare lines with no y-axis values, a 26px legend, and no text explaining what the viewer was looking at, so it asked the audience to do the work.
+
+Rebuilt: a 70px headline states the finding before the chart draws ("Measles didn't go up like the market. It went up twenty-three times faster."), the y-axis now carries real labelled gridlines at 0/+300/+600/+900%, the legend numbers went from 30px to 82px, and an orange gradient area fills under the measles line — the wall of colour is what actually makes the gap land, more than the line itself did. The SVG also dropped `preserveAspectRatio="none"`, which had been stretching stroke widths non-uniformly.
+
+The y mapping was corrected in the same pass: it previously plotted the raw index (100-900) against gridlines that are now labelled as growth over 2024, so the axis and the line would have disagreed. It now maps `value - 100` onto the labelled scale.
+
+Note on which percentage appears where: the chart runs to **2026-to-date, so it reads +765%**, while the factoids sheet and the PDF quote **+703% for 2025 vs 2024**. Both are correct for their stated period and the chart axis is labelled "2026 to date" — but they are different endpoints and should not be presented as the same figure.
