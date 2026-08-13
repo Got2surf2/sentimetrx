@@ -186,3 +186,15 @@ WHY: Owner drafted a spot pairing the measles rate against the stock-market rate
 **A factual correction to the draft copy.** RFK Jr. was confirmed by the **SENATE**, 52-48 on 13 Feb 2025 (52 Republicans for; McConnell the only Republican against). House members get no confirmation vote, so "your Republican congress people confirmed him" is **false in a House district** and hands over a free correction. The copy now says senators.
 
 Also fixed in review: the first cut printed each measles quote as the leading 400 characters, which truncated one of them BEFORE the word "measles" appeared — an unauditable quote in a document whose whole value is auditability. Excerpts are now centred on the matched word.
+
+## Trump corpus: two spots — audible score, named subject, new close (Aug 8, later⁹)
+
+WHY: Owner feedback on the first cut — no audible music, no signal that "he" is Trump, drop the Datanautix mark, and make a stronger closing ask. Plus a second spot built on the measles-versus-market contrast with charts. `_trump_spot_video.ts` now takes `--spot silence|measles|all` and shares one render harness and score.
+
+**The music was inaudible for a concrete reason, now fixed.** The first bed was built on 55Hz and 82.5Hz tones; laptop and phone speakers reproduce almost nothing below roughly 150-200Hz, so on any device someone would actually watch this on it was silence. The score is now synthesised as 16-bit PCM in a 146-880Hz register: a slow Am-F-Dm-E progression with detuned pairs beating against each other for unease and a sparse descending bell figure, normalised to -3 dBFS. **I still cannot hear it, so the build MEASURES it** — `volumedetect` now reports mean -14.9 dB / max -3.0 dB against the previous near-silence. That catches inaudible or clipping, not ugliness; it still needs a human listen.
+
+**No photograph was sourced.** There is no image generation here, and choosing a press photo for a distributed political ad is a licensing decision that should not be guessed at. Both spots instead NAME him in text so "he" is never ambiguous, and a portrait slot is ready: drop a cleared file at `~/Downloads/trump-portrait.jpg` and re-run, and it renders as a desaturated faded right-hand layer. Official White House photographs are public domain and are the usual clean source, but the specific image still needs checking.
+
+Datanautix mark removed from both. New close, in two beats: the enable-this question at 76px, then the vote CTA.
+
+**The chart plots three real points and nothing else** — 2024 baseline indexed to 100, then 2025, then 2026-to-date (measles 100→803→865, S&P 100→118→133). Both series are published ANNUAL figures, so inventing monthly values to draw a smoother curve would be fabricating data; the line runs straight between the real points and the axis is labelled by year.

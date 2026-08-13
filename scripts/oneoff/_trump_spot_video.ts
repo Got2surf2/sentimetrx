@@ -1,152 +1,327 @@
 /**
- * 30-second video spot from three of the corpus headlines.
+ * 30-second video spots from the corpus findings.
  *
- *   node --conditions=react-server --import tsx scripts/oneoff/_trump_spot_video.ts
+ *   node --conditions=react-server --import tsx scripts/oneoff/_trump_spot_video.ts --spot silence
+ *   node --conditions=react-server --import tsx scripts/oneoff/_trump_spot_video.ts --spot measles
+ *   ... --spot all
  *
- * Renders 1920x1080 @ 25fps frames with headless Chrome, then muxes them with
- * ffmpeg. Output: ~/Downloads/Datanautix_SilenceGap_30s.mp4
+ * Renders 1920x1080 @ 25fps through headless Chrome, synthesises the score, and
+ * muxes with ffmpeg. Outputs to ~/Downloads.
  *
- * ⚠️ THE MUSIC IS A PLACEHOLDER AND MUST BE REPLACED. It is synthesised by
- * ffmpeg (a low drone plus a slow pulse) purely so the file is not silent.
- * Nobody has licensed music here and none was downloaded. To drop in a real
- * track:
- *     ffmpeg -i Datanautix_SilenceGap_30s.mp4 -i track.mp3 -map 0:v -map 1:a \
- *            -c:v copy -c:a aac -shortest out.mp4
- * I also cannot HEAR the output — the audio is verified only by ffprobe for
- * duration and stream validity. Listen before using it anywhere.
+ * ── PORTRAIT (owner asked for a faded Trump in the background) ───────────────
+ * I did NOT source a photograph. There is no image generation here, and picking
+ * a press photo for a distributed political ad is a licensing decision that is
+ * not mine to guess at. Instead the spots NAME HIM IN TEXT so "he" is never
+ * ambiguous, and this slot is ready for a file you have cleared:
  *
- * THE THREE HEADLINES, all script-verified (see the factoids sheet):
- *   1. "ballroom" 209 vs "preschool" 0
- *   2. name-calling on 415 of 565 days vs child care on 7
- *   3. measles +703% (CDC, external) vs 15.6% of his days on the ballroom
- * The CDC figure is captioned as CDC on screen — it is the only number in the
- * spot we did not count ourselves, and it must never appear unattributed.
+ *     drop a file at  ~/Downloads/trump-portrait.jpg  (or .png)  and re-run
+ *
+ * It renders as a desaturated, heavily-faded right-hand layer. Official White
+ * House photographs are works of the US government and are public domain, which
+ * is the usual clean source — but confirm the specific image before using it.
+ *
+ * ── SCORE ────────────────────────────────────────────────────────────────────
+ * The first version was INAUDIBLE and this is why: it was built on 55Hz and
+ * 82.5Hz tones. Laptop and phone speakers reproduce almost nothing below about
+ * 150-200Hz, so on the devices anyone would actually watch this on, it was
+ * silence. The score is now synthesised in an audible register (110-880Hz) as a
+ * slow minor-key progression — Am, F, Dm, E — with detuned pairs that beat
+ * against each other for unease, and a sparse descending bell figure. Sad and
+ * disconcerting rather than dramatic.
+ *
+ * I still cannot HEAR it. What I can do, and do below, is MEASURE it: the build
+ * prints ffmpeg volumedetect output, so an inaudible or clipping mix is caught
+ * as a number even though the aesthetics are not. Listen before using it.
+ *
+ * Every figure spoken on screen is script-verified; CDC and market numbers are
+ * captioned as external on screen because they are not ours.
  */
 
-import { mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 
-const OUT = path.join(homedir(), 'Downloads', 'Datanautix_SilenceGap_30s.mp4')
-const TMP = path.join(homedir(), 'Downloads', '.spot-frames')
-const FPS = 25
-const SECS = 30
-const TOTAL = FPS * SECS
-const W = 1920, H = 1080
+const DL = path.join(homedir(), 'Downloads')
+const FPS = 25, SECS = 30, TOTAL = FPS * SECS, W = 1920, H = 1080
+const ORANGE = '#E85A1A'
 
-const TEAL = '#0F7173', ORANGE = '#E85A1A'
+const args = process.argv.slice(2)
+const which = (args[args.indexOf('--spot') + 1] ?? 'all').toLowerCase()
 
-/** Scene boundaries in seconds. */
-const SC = { open: [0, 2.4], one: [2.4, 10], two: [10, 17.6], three: [17.6, 25.2], close: [25.2, 30] } as const
+// ── Portrait, only if the owner has supplied one ────────────────────────────
+function portraitDataUri(): string | null {
+  for (const ext of ['jpg', 'jpeg', 'png']) {
+    const p = path.join(DL, `trump-portrait.${ext}`)
+    if (existsSync(p)) {
+      const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
+      return `data:${mime};base64,${readFileSync(p).toString('base64')}`
+    }
+  }
+  return null
+}
 
-const page = `<!doctype html><html><head><meta charset="utf-8"><style>
+// ── Score ───────────────────────────────────────────────────────────────────
+/**
+ * 16-bit stereo PCM, written by hand. Kept in 110-880Hz deliberately: the
+ * previous sub-100Hz bed was inaudible on the speakers this will be watched on.
+ */
+function writeScore(file: string) {
+  const SR = 44100, N = SR * SECS
+  const L = new Float64Array(N), R = new Float64Array(N)
+
+  // i - VI - iv - V in A minor. Sad, and the V at the end leaves it unresolved.
+  const CHORDS: [number, number[]][] = [
+    [0.0, [220.0, 261.63, 329.63]],  // Am
+    [7.5, [174.61, 220.0, 261.63]],  // F
+    [15.0, [146.83, 174.61, 220.0]], // Dm
+    [22.5, [164.81, 207.65, 246.94]],// E
+  ]
+  const env = (t: number, a: number, b: number) => {
+    if (t < a || t > b) return 0
+    const inn = Math.min(1, (t - a) / 1.6), out = Math.min(1, (b - t) / 2.2)
+    return Math.min(inn, out)
+  }
+  for (let i = 0; i < N; i++) {
+    const t = i / SR
+    let l = 0, r = 0
+    for (const [start, notes] of CHORDS) {
+      const e = env(t, start, start + 8.6)
+      if (!e) continue
+      notes.forEach((f, k) => {
+        // Detuned pair per note — the slow beat between them is the unease.
+        const a = Math.sin(2 * Math.PI * f * t)
+        const b = Math.sin(2 * Math.PI * (f * 1.0022) * t)
+        const v = e * (0.15 - k * 0.028)
+        l += v * (a * 0.6 + b * 0.4)
+        r += v * (a * 0.4 + b * 0.6)
+      })
+      // Octave-down body, still above 140Hz so it survives small speakers.
+      const sub = Math.sin(2 * Math.PI * (notes[0] / 2) * t) * e * 0.10
+      l += sub; r += sub
+    }
+    // Sparse descending bell figure: A4 G4 F4 E4, one every ~6s, decaying.
+    const BELLS: [number, number][] = [[5.5, 440], [11.5, 392], [17.5, 349.23], [23.5, 329.63]]
+    for (const [bt, bf] of BELLS) {
+      const d = t - bt
+      if (d < 0 || d > 4) continue
+      const decay = Math.exp(-d * 1.15)
+      const tone = Math.sin(2 * Math.PI * bf * t) * 0.5 + Math.sin(2 * Math.PI * bf * 2 * t) * 0.14
+      l += tone * decay * 0.17; r += tone * decay * 0.17
+    }
+    // Slow tremolo across the whole bed — breathing, slightly unsettling.
+    const trem = 0.9 + 0.1 * Math.sin(2 * Math.PI * 0.28 * t)
+    l *= trem; r *= trem
+    const fade = Math.min(1, t / 2.0) * Math.min(1, (SECS - t) / 3.0)
+    L[i] = l * fade; R[i] = r * fade
+  }
+  // Normalise to -3 dBFS so it is unambiguously audible without clipping.
+  let peak = 0
+  for (let i = 0; i < N; i++) peak = Math.max(peak, Math.abs(L[i]), Math.abs(R[i]))
+  const g = peak > 0 ? (0.708 / peak) : 1
+
+  const data = Buffer.alloc(N * 4)
+  for (let i = 0; i < N; i++) {
+    data.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(L[i] * g * 32767))), i * 4)
+    data.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(R[i] * g * 32767))), i * 4 + 2)
+  }
+  const hdr = Buffer.alloc(44)
+  hdr.write('RIFF', 0); hdr.writeUInt32LE(36 + data.length, 4); hdr.write('WAVE', 8)
+  hdr.write('fmt ', 12); hdr.writeUInt32LE(16, 16); hdr.writeUInt16LE(1, 20); hdr.writeUInt16LE(2, 22)
+  hdr.writeUInt32LE(SR, 24); hdr.writeUInt32LE(SR * 4, 28); hdr.writeUInt16LE(4, 32); hdr.writeUInt16LE(16, 34)
+  hdr.write('data', 36); hdr.writeUInt32LE(data.length, 40)
+  writeFileSync(file, Buffer.concat([hdr, data]))
+}
+
+// ── Shared page chrome ──────────────────────────────────────────────────────
+const BASE_CSS = `
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{width:${W}px;height:${H}px;background:#0b1220;overflow:hidden;
-    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;}
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif}
   #stage{position:relative;width:100%;height:100%}
-  .scene{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;
-    padding:0 150px;opacity:0}
-  .kicker{font-size:30px;letter-spacing:.22em;text-transform:uppercase;color:#64748b;font-weight:700;margin-bottom:38px}
-  .big{font-size:250px;font-weight:800;color:#fff;line-height:.92;letter-spacing:-.045em}
+  #portrait{position:absolute;right:0;top:0;width:52%;height:100%;
+    background-size:cover;background-position:center 18%;
+    filter:grayscale(1) contrast(.85) brightness(.62);opacity:.20;
+    -webkit-mask-image:linear-gradient(to right,transparent 0%,rgba(0,0,0,.75) 45%,rgba(0,0,0,.9) 100%)}
+  .scene{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 140px;opacity:0}
+  .kicker{font-size:30px;letter-spacing:.22em;text-transform:uppercase;color:#64748b;font-weight:700;margin-bottom:34px}
+  .big{font-size:230px;font-weight:800;color:#fff;line-height:.92;letter-spacing:-.045em}
   .big.o{color:${ORANGE}}
-  .cap{font-size:44px;color:#cbd5e1;margin-top:22px;line-height:1.3;font-weight:500;max-width:1500px}
-  .cap b{color:#fff;font-weight:800}
-  .vs{font-size:34px;color:#475569;letter-spacing:.2em;text-transform:uppercase;font-weight:700;margin:40px 0 34px}
-  .mid{font-size:150px;font-weight:800;color:#fff;line-height:.95;letter-spacing:-.04em}
-  .sub{font-size:38px;color:#94a3b8;margin-top:14px;font-weight:500}
-  .src{font-size:24px;color:#475569;margin-top:26px;letter-spacing:.06em}
-  .ask{font-size:104px;font-weight:800;color:#fff;line-height:1.1;letter-spacing:-.025em}
-  .ask em{color:${ORANGE};font-style:normal}
-  .mark{position:absolute;left:150px;bottom:96px;font-size:38px;font-weight:800;letter-spacing:.01em}
-  .mark .a{color:${TEAL}}.mark .b{color:${ORANGE}}
+  .cap{font-size:42px;color:#cbd5e1;margin-top:20px;line-height:1.3;font-weight:500;max-width:1450px}
+  .vs{font-size:32px;color:#475569;letter-spacing:.2em;text-transform:uppercase;font-weight:700;margin:34px 0 28px}
+  .mid{font-size:132px;font-weight:800;color:#fff;line-height:.95;letter-spacing:-.04em}
+  .src{font-size:23px;color:#475569;margin-top:22px;letter-spacing:.06em}
+  .final{font-size:76px;font-weight:800;color:#fff;line-height:1.16;letter-spacing:-.02em;max-width:1560px}
+  .final em{color:${ORANGE};font-style:normal}
+  .cta{font-size:62px;font-weight:800;color:#fff;line-height:1.2;letter-spacing:-.02em}
+  .cta span{color:${ORANGE}}
   .bar{position:absolute;left:0;bottom:0;height:8px;background:${ORANGE}}
-</style></head><body><div id="stage">
+`
 
-  <div class="scene" id="s0">
-    <div class="big" style="font-size:96px;line-height:1.12">Since he took office,<br>he has said <span style="color:${ORANGE}">55,418</span> things.</div>
-    <div class="cap" style="margin-top:34px">Every word on the public record. Every post in his own words.</div>
+const SCENE_JS = `
+  const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+  const ease=t=>1-Math.pow(1-clamp(t,0,1),3);
+  function scene(el,t,a,b){
+    let o=0,y=24;
+    if(t>=a-0.001&&t<=b){
+      const inT=ease((t-a)/0.45), outT=1-ease((t-(b-0.35))/0.35);
+      o=Math.min(inT, t>b-0.35?Math.max(outT,0):1);
+      y=24*(1-inT)-9*ease((t-a)/(b-a));
+    }
+    el.style.opacity=o; el.style.transform='translateY('+y+'px)';
+  }
+  function countTo(el,t,a,target,dur){
+    el.textContent=Math.round(target*ease(clamp((t-a)/dur,0,1))).toLocaleString();
+  }
+`
+
+const FINAL_HTML = `
+  <div class="scene" id="sf">
+    <div class="final">Your Republican elected officials have continued to <em>enable this</em>.<br><br>
+      Are they really who you want <em>controlling your future?</em></div>
   </div>
+  <div class="scene" id="sc">
+    <div class="cta">Go out and <span>vote</span>.<br>Take charge of your own future.</div>
+  </div>`
 
+// ── Spot 1: the silence gap ─────────────────────────────────────────────────
+const spotSilence = (portrait: string | null) => `<!doctype html><html><head><meta charset="utf-8"><style>${BASE_CSS}</style></head><body><div id="stage">
+  ${portrait ? `<div id="portrait" style="background-image:url('${portrait}')"></div>` : ''}
+  <div class="scene" id="s0">
+    <div class="big" style="font-size:88px;line-height:1.14">Donald Trump has been<br>President for <span style="color:${ORANGE}">565 days</span>.</div>
+    <div class="cap" style="margin-top:30px">Here is what he chose to talk about.</div>
+  </div>
   <div class="scene" id="s1">
-    <div class="kicker">He talked about his ballroom</div>
+    <div class="kicker">Donald Trump talked about his ballroom</div>
     <div class="big" id="n1">0</div>
     <div class="vs">He has never said</div>
-    <div class="mid o" style="color:${ORANGE}" id="w1">&ldquo;preschool&rdquo;</div>
+    <div class="mid" style="color:${ORANGE}" id="w1">&ldquo;preschool&rdquo;</div>
   </div>
-
   <div class="scene" id="s2">
     <div class="kicker">He called someone a name on</div>
-    <div class="big"><span id="n2">0</span> <span style="font-size:110px;color:#64748b">of his 565 days</span></div>
+    <div class="big"><span id="n2">0</span> <span style="font-size:100px;color:#64748b">of those 565 days</span></div>
     <div class="vs">He mentioned child care on</div>
-    <div class="mid o" style="color:${ORANGE}">7 days</div>
+    <div class="mid" style="color:${ORANGE}">7 days</div>
   </div>
-
   <div class="scene" id="s3">
     <div class="kicker">Measles cases in this country</div>
     <div class="big o" style="color:${ORANGE}">+<span id="n3">0</span>%</div>
     <div class="src">CDC &mdash; 285 cases in 2024, 2,289 in 2025</div>
-    <div class="vs">He spent his time on</div>
-    <!-- One line only. At 150px this wrapped and the second line ran into the
-         datanautix mark at the bottom-left. -->
-    <div class="mid" style="font-size:112px;white-space:nowrap">his ballroom &mdash; <span style="color:#94a3b8">15.6% of his days</span></div>
+    <div class="vs">Trump spent his time on</div>
+    <div class="mid" style="font-size:104px;white-space:nowrap">his ballroom &mdash; <span style="color:#94a3b8">15.6% of his days</span></div>
   </div>
-
-  <div class="scene" id="s4">
-    <div class="ask">Is this what<br>you <em>voted for?</em></div>
-    <div class="cap" style="margin-top:40px">And every Republican in Congress watched him do it.</div>
-  </div>
-
-  <div class="mark" id="mark"><span class="a">data</span><span class="b">nautix</span></div>
+  ${FINAL_HTML}
   <div class="bar" id="bar"></div>
-</div>
-<script>
-  const SC = ${JSON.stringify(SC)};
-  const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
-  const ease=t=>1-Math.pow(1-clamp(t,0,1),3);
-  // Each scene fades in over 0.45s, holds, fades out over 0.35s, and drifts up
-  // slightly — enough motion to feel alive without pulling focus off the number.
-  function scene(el,t,[a,b]){
-    let o=0,y=26;
-    if(t>=a-0.001&&t<=b){
-      const inT=ease((t-a)/0.45), outT=1-ease((t-(b-0.35))/0.35);
-      o=Math.min(inT, t>b-0.35?Math.max(outT,0):1);
-      y=26*(1-inT)-10*ease((t-a)/(b-a))
-    }
-    el.style.opacity=o; el.style.transform='translateY('+y+'px)';
-  }
-  function countTo(el,t,[a,b],target,dur){
-    const p=ease(clamp((t-a)/dur,0,1));
-    el.textContent=Math.round(target*p).toLocaleString();
-  }
-  window.renderAt=function(t){
-    scene(document.getElementById('s0'),t,SC.open);
-    scene(document.getElementById('s1'),t,SC.one);
-    scene(document.getElementById('s2'),t,SC.two);
-    scene(document.getElementById('s3'),t,SC.three);
-    scene(document.getElementById('s4'),t,SC.close);
-    countTo(document.getElementById('n1'),t,SC.one,209,2.2);
-    countTo(document.getElementById('n2'),t,SC.two,415,2.2);
-    countTo(document.getElementById('n3'),t,SC.three,703,2.2);
-    // The quoted word lands after the count settles, so the eye reads the
-    // number first and the zero second.
-    const w1=document.getElementById('w1');
-    w1.style.opacity = t>SC.one[0]+3.1 ? ease((t-SC.one[0]-3.1)/0.5) : 0;
-    document.getElementById('bar').style.width=(100*clamp(t/${SECS},0,1))+'%';
-    document.getElementById('mark').style.opacity = t>1 ? 0.9 : 0;
-  };
-  window.renderAt(0);
-</script></body></html>`
+</div><script>${SCENE_JS}
+window.renderAt=function(t){
+  scene(document.getElementById('s0'),t,0,2.6);
+  scene(document.getElementById('s1'),t,2.6,8.8);
+  scene(document.getElementById('s2'),t,8.8,14.4);
+  scene(document.getElementById('s3'),t,14.4,20.2);
+  scene(document.getElementById('sf'),t,20.2,26.6);
+  scene(document.getElementById('sc'),t,26.6,30);
+  countTo(document.getElementById('n1'),t,2.6,209,2.0);
+  countTo(document.getElementById('n2'),t,8.8,415,2.0);
+  countTo(document.getElementById('n3'),t,14.4,703,2.0);
+  const w1=document.getElementById('w1');
+  w1.style.opacity = t>5.5 ? ease((t-5.5)/0.5) : 0;
+  document.getElementById('bar').style.width=(100*clamp(t/${SECS},0,1))+'%';
+};window.renderAt(0);</script></body></html>`
 
-async function main() {
+// ── Spot 2: measles against the market, with the chart ──────────────────────
+/**
+ * THE CHART PLOTS THREE REAL POINTS AND NOTHING ELSE. 2024 is the baseline
+ * (indexed 100), then 2025, then 2026-to-date. Both series are published annual
+ * figures — inventing monthly values to make a smoother curve would be
+ * fabricating data, so the line is drawn straight between the real points and
+ * the axis is labelled by year.
+ *   measles  285 -> 2,289 -> 2,465   =  100 -> 803 -> 865
+ *   S&P 500  +17.9% then +12.7%      =  100 -> 118 -> 133
+ */
+const spotMeasles = (portrait: string | null) => `<!doctype html><html><head><meta charset="utf-8"><style>${BASE_CSS}
+  .chartwrap{position:absolute;inset:0;padding:150px 140px 130px;display:flex;flex-direction:column;opacity:0}
+  .ctitle{font-size:34px;letter-spacing:.2em;text-transform:uppercase;color:#64748b;font-weight:700;margin-bottom:8px}
+  .csub{font-size:26px;color:#475569;margin-bottom:26px}
+  svg{flex:1;width:100%}
+  .lbl{font-size:30px;font-weight:800}
+</style></head><body><div id="stage">
+  ${portrait ? `<div id="portrait" style="background-image:url('${portrait}')"></div>` : ''}
+  <div class="scene" id="m0">
+    <div class="big" style="font-size:84px;line-height:1.14">Two things went up<br>under <span style="color:${ORANGE}">Donald Trump</span>.</div>
+    <div class="cap" style="margin-top:30px">He only ever mentions one of them.</div>
+  </div>
+
+  <div class="chartwrap" id="chart">
+    <div class="ctitle">Growth since 2024</div>
+    <div class="csub">Indexed to 100 &mdash; CDC measles cases &middot; S&amp;P 500 total return &middot; external sources</div>
+    <svg viewBox="0 0 1640 620" preserveAspectRatio="none">
+      <line x1="0" y1="600" x2="1640" y2="600" stroke="#1e293b" stroke-width="3"/>
+      <line x1="0" y1="380" x2="1640" y2="380" stroke="#111c2f" stroke-width="2"/>
+      <line x1="0" y1="160" x2="1640" y2="160" stroke="#111c2f" stroke-width="2"/>
+      <path id="pMkt" fill="none" stroke="#64748b" stroke-width="7" stroke-linecap="round"/>
+      <path id="pMea" fill="none" stroke="${ORANGE}" stroke-width="11" stroke-linecap="round"/>
+      <circle id="dMkt" r="12" fill="#64748b" opacity="0"/>
+      <circle id="dMea" r="15" fill="${ORANGE}" opacity="0"/>
+    </svg>
+    <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:26px;color:#475569">
+      <span>2024</span><span>2025</span><span>2026 to date</span>
+    </div>
+    <div style="margin-top:26px;display:flex;gap:58px;align-items:baseline">
+      <div class="lbl" style="color:${ORANGE}">Measles <span id="mv">+0%</span></div>
+      <div class="lbl" style="color:#94a3b8">Stock market <span id="sv">+0%</span></div>
+    </div>
+  </div>
+
+  <div class="scene" id="m2">
+    <div class="kicker">Donald Trump has said the word</div>
+    <div class="big" style="font-size:150px;color:${ORANGE}">&ldquo;measles&rdquo;</div>
+    <div class="mid" style="font-size:96px;margin-top:16px">three times in 19 months</div>
+    <div class="cap" style="margin-top:26px">He talked about the stock market on <b style="color:#fff">137 days</b>.</div>
+  </div>
+  ${FINAL_HTML}
+  <div class="bar" id="bar"></div>
+</div><script>${SCENE_JS}
+  // Three real points only. X positions are evenly spaced years.
+  const XS=[10,820,1630], MEA=[100,803,865], MKT=[100,118,133];
+  const yOf=v=>600-(Math.min(v,900)/900)*580;
+  function pathTo(pts,p){
+    // p in 0..1 walks the polyline; partial segments interpolate linearly.
+    const seg=(pts.length-1)*p, i=Math.min(Math.floor(seg),pts.length-2), f=seg-i;
+    let d='M '+XS[0]+' '+yOf(pts[0]);
+    for(let k=1;k<=i;k++) d+=' L '+XS[k]+' '+yOf(pts[k]);
+    const x=XS[i]+(XS[i+1]-XS[i])*f, y=yOf(pts[i])+(yOf(pts[i+1])-yOf(pts[i]))*f;
+    d+=' L '+x+' '+y;
+    return {d,x,y};
+  }
+window.renderAt=function(t){
+  scene(document.getElementById('m0'),t,0,3.4);
+  const cw=document.getElementById('chart');
+  let co=0;
+  if(t>=3.4&&t<=17.0){ co=Math.min(ease((t-3.4)/0.5), t>16.6?Math.max(1-ease((t-16.6)/0.4),0):1); }
+  cw.style.opacity=co;
+  const p=ease(clamp((t-4.2)/6.2,0,1));
+  const a=pathTo(MEA,p), b=pathTo(MKT,p);
+  document.getElementById('pMea').setAttribute('d',a.d);
+  document.getElementById('pMkt').setAttribute('d',b.d);
+  const dm=document.getElementById('dMea'), dk=document.getElementById('dMkt');
+  dm.setAttribute('cx',a.x); dm.setAttribute('cy',a.y); dm.setAttribute('opacity',p>0.02?1:0);
+  dk.setAttribute('cx',b.x); dk.setAttribute('cy',b.y); dk.setAttribute('opacity',p>0.02?1:0);
+  document.getElementById('mv').textContent='+'+Math.round(765*p)+'%';
+  document.getElementById('sv').textContent='+'+Math.round(33*p)+'%';
+  scene(document.getElementById('m2'),t,17.0,22.4);
+  scene(document.getElementById('sf'),t,22.4,27.2);
+  scene(document.getElementById('sc'),t,27.2,30);
+  document.getElementById('bar').style.width=(100*clamp(t/${SECS},0,1))+'%';
+};window.renderAt(0);</script></body></html>`
+
+async function render(name: string, html: string) {
   const chrome = ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     '/Applications/Chromium.app/Contents/MacOS/Chromium'].find((p) => existsSync(p))
   if (!chrome) throw new Error('No local Chrome found')
-
-  rmSync(TMP, { recursive: true, force: true })
-  mkdirSync(TMP, { recursive: true })
+  const TMP = path.join(DL, `.spot-${name}`)
+  rmSync(TMP, { recursive: true, force: true }); mkdirSync(TMP, { recursive: true })
   const htmlPath = path.join(TMP, 'spot.html')
-  writeFileSync(htmlPath, page)
+  writeFileSync(htmlPath, html)
 
   const puppeteer = (await import('puppeteer-core')).default
   const browser = await puppeteer.launch({ executablePath: chrome, headless: true, args: ['--no-sandbox', '--font-render-hinting=none'] })
@@ -157,33 +332,32 @@ async function main() {
     for (let f = 0; f < TOTAL; f++) {
       await p.evaluate((t) => (window as unknown as { renderAt: (t: number) => void }).renderAt(t), f / FPS)
       await p.screenshot({ path: path.join(TMP, `f${String(f).padStart(5, '0')}.png`) as `${string}.png` })
-      if (f % 50 === 0) process.stdout.write(`\r  frames ${f}/${TOTAL}`)
+      if (f % 100 === 0) process.stdout.write(`\r  ${name}: ${f}/${TOTAL}`)
     }
-    process.stdout.write(`\r  frames ${TOTAL}/${TOTAL}\n`)
+    process.stdout.write(`\r  ${name}: ${TOTAL}/${TOTAL}\n`)
   } finally { await browser.close() }
 
-  // PLACEHOLDER BED — synthesised, not licensed music. A low two-note drone with
-  // a slow pulse; deliberately restrained so it reads as a bed and not a tune.
-  const audio = path.join(TMP, 'bed.wav')
-  execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error',
-    '-f', 'lavfi', '-i', `sine=frequency=55:duration=${SECS}`,
-    '-f', 'lavfi', '-i', `sine=frequency=82.5:duration=${SECS}`,
-    '-f', 'lavfi', '-i', `sine=frequency=110:duration=${SECS}`,
-    '-filter_complex',
-    '[0:a]volume=0.30[a0];[1:a]volume=0.16[a1];' +
-    `[2:a]volume=0.10,tremolo=f=0.5:d=0.7[a2];` +
-    '[a0][a1][a2]amix=inputs=3:normalize=0,' +
-    `afade=t=in:st=0:d=1.5,afade=t=out:st=${SECS - 2.5}:d=2.5,` +
-    'highpass=f=40,alimiter=limit=0.7[out]',
-    '-map', '[out]', '-ac', '2', '-ar', '48000', audio], { stdio: 'inherit' })
+  const wav = path.join(TMP, 'score.wav')
+  writeScore(wav)
+  // MEASURED, not heard. An inaudible or clipping mix shows up here as a number.
+  const vd = execFileSync('ffmpeg', ['-hide_banner', '-i', wav, '-af', 'volumedetect', '-f', 'null', '-'],
+    { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] })
+  const levels = (vd.match(/(mean_volume|max_volume):.*/g) ?? []).join('  ')
+  console.log(`  score levels → ${levels}`)
 
+  const out = path.join(DL, `Datanautix_${name}_30s.mp4`)
   execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error',
-    '-framerate', String(FPS), '-i', path.join(TMP, 'f%05d.png'),
-    '-i', audio,
+    '-framerate', String(FPS), '-i', path.join(TMP, 'f%05d.png'), '-i', wav,
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', 'medium',
-    '-c:a', 'aac', '-b:a', '160k', '-shortest', '-movflags', '+faststart', OUT], { stdio: 'inherit' })
-
+    '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out], { stdio: 'inherit' })
   rmSync(TMP, { recursive: true, force: true })
-  console.log(`\nWrote ${OUT}`)
+  console.log(`  wrote ${out}`)
+}
+
+async function main() {
+  const portrait = portraitDataUri()
+  console.log(portrait ? '  portrait: using ~/Downloads/trump-portrait.*' : '  portrait: none supplied — spots name him in text instead')
+  if (which === 'silence' || which === 'all') await render('SilenceGap', spotSilence(portrait))
+  if (which === 'measles' || which === 'all') await render('MeaslesVsMarket', spotMeasles(portrait))
 }
 main().catch((e) => { console.error(e); process.exit(1) })
