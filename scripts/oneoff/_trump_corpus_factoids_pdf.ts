@@ -105,10 +105,10 @@ ${section('Words he has never said', 'Bare word counts. No interpretation is pos
   { n: '12', fact: 'times he has said <b>"cost of living"</b> in 55,418 passages.', line: "He's given a thousand speeches about your country. He's given twelve sentences about your grocery bill." },
 ])}
 
-${section('Name-calling versus empathy', 'Insults counted only as invented proper-noun epithets and unambiguous personal slurs. Ritual condolence after a tragedy is counted separately — he does perform that duty, and pooling it would hide the real gap.', [
-  { n: '1,575', fact: 'passages of <b>name-calling</b>. <b>148</b> acknowledge that ordinary people are struggling — a ratio of <b>10.6 to 1</b>.' },
-  { n: '73.6%', fact: 'of his days in office he called someone a name — <b>415 of 565 days</b>. He mentioned child care on <b>seven</b>.', line: 'He called someone a name on four hundred and fifteen of his five hundred and sixty-five days in office. He mentioned child care on seven.' },
-  { n: '276', fact: 'times <b>"incompetent"</b>; 232 <b>"Crooked"</b>; 230 <b>"lunatic"</b>; 207 <b>"Sleepy Joe"</b>; 150 <b>"loser"</b>; 139 <b>"disgrace"</b>.' },
+${section('Name-calling versus empathy', 'Invented proper-noun epithets and unambiguous personal slurs only. An earlier draft published 1,575 by counting "fool" (which catches "foolish gift"), "loser" (which catches the legal doctrine "loser pays") and "disgrace" (which is about things) — those are excluded. Ritual condolence after a tragedy is counted separately; he does perform that duty, and pooling it would hide the real gap.', [
+  { n: '718', fact: 'passages of <b>name-calling</b>. <b>148</b> acknowledge that ordinary people are struggling — a ratio of <b>4.9 to 1</b>.' },
+  { n: '55%', fact: 'of his days in office he called someone a name — <b>312 of 565 days</b>. He mentioned child care on <b>seven</b>.', line: 'He called someone a name on three hundred and twelve of his five hundred and sixty-five days in office. He mentioned child care on seven.' },
+  { n: '230', fact: 'times <b>"lunatic"</b>; 207 <b>"Sleepy Joe"</b>; 83 <b>"deranged"</b>; 72 <b>"Crooked Joe"</b>; 40 <b>"low IQ"</b>; 34 <b>"psycho"</b>.' },
   { n: '34', fact: 'passages of <b>condolence after a tragedy</b> — the formal duty of the office, which he does perform. The gap is ordinary hardship, not sympathy in the abstract.' },
 ])}
 

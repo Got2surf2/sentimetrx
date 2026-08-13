@@ -211,7 +211,7 @@ const spotSilence = (portrait: string | null) => `<!doctype html><html><head><me
   </div>
   <div class="scene" id="s1">
     <div class="kicker">Donald Trump talked about his ballroom</div>
-    <div class="big" id="n1">0</div>
+    <div class="big" id="n1">0</div><div class="mid" style="font-size:96px;color:#94a3b8;margin-top:8px">times</div>
     <div class="vs">He has never said</div>
     <div class="mid" style="color:${ORANGE}" id="w1">&ldquo;preschool&rdquo;</div>
   </div>
@@ -239,9 +239,9 @@ window.renderAt=function(t){
   scene(document.getElementById('sf'),t,18.8,24.3);
   scene(document.getElementById('sc'),t,24.3,28.3);
   scene(document.getElementById('se'),t,28.3,30);
-  countTo(document.getElementById('n1'),t,2.6,209,2.0);
-  countTo(document.getElementById('n2'),t,8.8,415,2.0);
-  countTo(document.getElementById('n3'),t,14.4,703,2.0);
+  countTo(document.getElementById('n1'),t,2.4,209,0.8);
+  countTo(document.getElementById('n2'),t,8.0,312,0.8);
+  countTo(document.getElementById('n3'),t,13.2,703,0.8);
   const w1=document.getElementById('w1');
   w1.style.opacity = t>5.2 ? ease((t-5.2)/0.5) : 0;
   document.getElementById('bar').style.width=(100*clamp(t/${SECS},0,1))+'%';
@@ -340,7 +340,7 @@ window.renderAt=function(t){
   let co=0;
   if(t>=2.9&&t<=12.6){ co=Math.min(ease((t-2.9)/0.5), t>12.2?Math.max(1-ease((t-12.2)/0.4),0):1); }
   cw.style.opacity=co;
-  const p=ease(clamp((t-3.6)/5.6,0,1));
+  const p=ease(clamp((t-3.6)/4.4,0,1));
   const a=pathTo(MEA,p), b=pathTo(MKT,p);
   document.getElementById('pMea').setAttribute('d',a.d);
   document.getElementById('pMkt').setAttribute('d',b.d);

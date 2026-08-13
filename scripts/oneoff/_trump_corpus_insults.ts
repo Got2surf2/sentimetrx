@@ -67,11 +67,34 @@ const count = (texts: string[], kws: string[]) => {
   return texts.filter((t) => { const l = t.toLowerCase(); return res.some((r) => r.test(l)) }).length
 }
 
-/** Invented epithets and unambiguous personal slurs. No false positives possible. */
+/**
+ * Invented epithets and unambiguous personal slurs ONLY.
+ *
+ * ⚠️ SECOND PRUNE, 2026-08-08. The first version of this list published 1,575
+ * passages / 417 days and it was WRONG — inflated by exactly the failure mode
+ * this project keeps hitting. Sampling the matches is what caught it:
+ *   'fool'        173 → "foolishly given away", "this foolish gift". A policy
+ *                       adjective, not a name.
+ *   'loser'       150 → "LOSER PAYS", the legal-costs doctrine. He is
+ *                       discussing tort reform, not insulting anyone.
+ *   'disgrace'    139 → "the Green New Deal was such a total disgrace". Things.
+ *   'nasty'       106 → "they've been very nasty to us on trade".
+ *   'incompetent' 276 → mixes "an incompetent President" with "FEMA is
+ *                       incompetently run". Cannot be separated by keyword.
+ *   'crooked' bare→ "a crooked election"; narrowed to the actual epithets
+ *                       ("Crooked Joe", "Crooked Hillary").
+ *   'scum'        38 → briefly reinstated and removed again: it does catch
+ *                       "scum like Adam Schiff", but it also rides the
+ *                       criminals-and-gangs register already excluded above,
+ *                       and keeping it would contradict that exclusion.
+ * Cleaned, it is 718 passages / 312 days (55% of on-record days). Smaller, and every match is a person
+ * being called a name. LESSON, again: a keyword list is not evidence until the
+ * matches have been read.
+ */
 const INSULTS = [
-  'sleepy joe', 'crooked', "cryin'", 'cryin ', "lyin'", 'lyin ', 'pocahontas', 'shifty',
-  'birdbrain', 'dumbocrat', 'desanctimonious', 'deranged', 'psycho', 'lunatic', 'moron',
-  'idiot', 'loser', 'low iq', 'slob', 'wise guy', 'incompetent', 'disgrace', 'nasty', 'fool',
+  'sleepy joe', 'crooked joe', 'crooked hillary', 'crooked hunter', "cryin'", "lyin'",
+  'pocahontas', 'shifty', 'birdbrain', 'dumbocrat', 'desanctimonious', 'deranged',
+  'psycho', 'lunatic', 'moron', 'idiot', 'low iq', 'slob', 'wise guy',
 ]
 /** Acknowledging that ordinary people are struggling. The thing being measured. */
 const HARDSHIP = [
