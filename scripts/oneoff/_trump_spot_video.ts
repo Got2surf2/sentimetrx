@@ -137,24 +137,37 @@ function writeScore(file: string) {
 const BASE_CSS = `
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{width:${W}px;height:${H}px;background:#0b1220;overflow:hidden;
-    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif}
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
   #stage{position:relative;width:100%;height:100%}
   #portrait{position:absolute;right:0;top:0;width:52%;height:100%;
     background-size:cover;background-position:center 18%;
     filter:grayscale(1) contrast(.85) brightness(.62);opacity:.20;
     -webkit-mask-image:linear-gradient(to right,transparent 0%,rgba(0,0,0,.75) 45%,rgba(0,0,0,.9) 100%)}
-  .scene{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 140px;opacity:0}
-  .kicker{font-size:30px;letter-spacing:.22em;text-transform:uppercase;color:#64748b;font-weight:700;margin-bottom:34px}
-  .big{font-size:230px;font-weight:800;color:#fff;line-height:.92;letter-spacing:-.045em}
+  .scene{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 112px;opacity:0}
+  .kicker{font-size:36px;letter-spacing:.2em;text-transform:uppercase;color:#64748b;font-weight:700;margin-bottom:46px}
+  .big{font-size:268px;font-weight:800;color:#fff;line-height:.9;letter-spacing:-.045em}
   .big.o{color:${ORANGE}}
-  .cap{font-size:42px;color:#cbd5e1;margin-top:20px;line-height:1.3;font-weight:500;max-width:1450px}
-  .vs{font-size:32px;color:#475569;letter-spacing:.2em;text-transform:uppercase;font-weight:700;margin:34px 0 28px}
-  .mid{font-size:132px;font-weight:800;color:#fff;line-height:.95;letter-spacing:-.04em}
-  .src{font-size:23px;color:#475569;margin-top:22px;letter-spacing:.06em}
-  .final{font-size:76px;font-weight:800;color:#fff;line-height:1.16;letter-spacing:-.02em;max-width:1560px}
+  /* Any inline run inside .big MUST reset tracking. em-based negative
+     letter-spacing is recomputed at the span's own font-size and eats the word
+     spaces - that is what turned "of those 565 days" into "ofthose565days". */
+  .big .run{letter-spacing:normal;word-spacing:.12em}
+  .cap{font-size:48px;color:#cbd5e1;margin-top:38px;line-height:1.28;font-weight:500;max-width:1580px}
+  .vs{font-size:36px;color:#475569;letter-spacing:.2em;text-transform:uppercase;font-weight:700;margin:52px 0 40px}
+  .mid{font-size:158px;font-weight:800;color:#fff;line-height:.94;letter-spacing:-.035em}
+  .src{font-size:26px;color:#475569;margin-top:30px;letter-spacing:.05em}
+  .final{font-size:94px;font-weight:800;color:#fff;line-height:1.14;letter-spacing:-.022em;max-width:1680px}
   .final em{color:${ORANGE};font-style:normal}
-  .cta{font-size:62px;font-weight:800;color:#fff;line-height:1.2;letter-spacing:-.02em}
+  .cta{font-size:78px;font-weight:800;color:#fff;line-height:1.18;letter-spacing:-.022em}
   .cta span{color:${ORANGE}}
+  .quote{font-size:80px;font-weight:700;color:#fff;line-height:1.2;letter-spacing:-.02em;max-width:1680px}
+  .attrib{font-size:34px;color:#94a3b8;margin-top:52px;font-weight:600}
+  .false{font-size:44px;color:${ORANGE};margin-top:44px;font-weight:800;letter-spacing:.02em}
+  /* Closing card - the brand wordmark is one word, no separator. */
+  .endcard{align-items:flex-start}
+  .endcard .by{font-size:40px;color:#94a3b8;font-weight:600;margin-bottom:34px}
+  .endcard .wm{font-size:132px;font-weight:800;letter-spacing:-.03em}
+  .endcard .wm .a{color:#0F7173}.endcard .wm .b{color:${ORANGE}}
+  .endcard .tag{font-size:52px;color:#fff;font-weight:700;margin-top:40px}
   .bar{position:absolute;left:0;bottom:0;height:8px;background:${ORANGE}}
 `
 
@@ -182,6 +195,11 @@ const FINAL_HTML = `
   </div>
   <div class="scene" id="sc">
     <div class="cta">Go out and <span>vote</span>.<br>Take charge of your own future.</div>
+  </div>
+  <div class="scene endcard" id="se">
+    <div class="by">Brought to you by</div>
+    <div class="wm"><span class="a">data</span><span class="b">nautix</span></div>
+    <div class="tag">We make facts matter.</div>
   </div>`
 
 // ── Spot 1: the silence gap ─────────────────────────────────────────────────
@@ -199,7 +217,7 @@ const spotSilence = (portrait: string | null) => `<!doctype html><html><head><me
   </div>
   <div class="scene" id="s2">
     <div class="kicker">He called someone a name on</div>
-    <div class="big"><span id="n2">0</span> <span style="font-size:100px;color:#64748b">of those 565 days</span></div>
+    <div class="big"><span id="n2">0</span> <span class="run" style="font-size:118px;color:#64748b">of those 565 days</span></div>
     <div class="vs">He mentioned child care on</div>
     <div class="mid" style="color:${ORANGE}">7 days</div>
   </div>
@@ -214,17 +232,18 @@ const spotSilence = (portrait: string | null) => `<!doctype html><html><head><me
   <div class="bar" id="bar"></div>
 </div><script>${SCENE_JS}
 window.renderAt=function(t){
-  scene(document.getElementById('s0'),t,0,2.6);
-  scene(document.getElementById('s1'),t,2.6,8.8);
-  scene(document.getElementById('s2'),t,8.8,14.4);
-  scene(document.getElementById('s3'),t,14.4,20.2);
-  scene(document.getElementById('sf'),t,20.2,26.6);
-  scene(document.getElementById('sc'),t,26.6,30);
+  scene(document.getElementById('s0'),t,0,2.4);
+  scene(document.getElementById('s1'),t,2.4,8.0);
+  scene(document.getElementById('s2'),t,8.0,13.2);
+  scene(document.getElementById('s3'),t,13.2,18.8);
+  scene(document.getElementById('sf'),t,18.8,24.3);
+  scene(document.getElementById('sc'),t,24.3,28.3);
+  scene(document.getElementById('se'),t,28.3,30);
   countTo(document.getElementById('n1'),t,2.6,209,2.0);
   countTo(document.getElementById('n2'),t,8.8,415,2.0);
   countTo(document.getElementById('n3'),t,14.4,703,2.0);
   const w1=document.getElementById('w1');
-  w1.style.opacity = t>5.5 ? ease((t-5.5)/0.5) : 0;
+  w1.style.opacity = t>5.2 ? ease((t-5.2)/0.5) : 0;
   document.getElementById('bar').style.width=(100*clamp(t/${SECS},0,1))+'%';
 };window.renderAt(0);</script></body></html>`
 
@@ -273,10 +292,16 @@ const spotMeasles = (portrait: string | null) => `<!doctype html><html><head><me
   </div>
 
   <div class="scene" id="m2">
-    <div class="kicker">Donald Trump has said the word</div>
-    <div class="big" style="font-size:150px;color:${ORANGE}">&ldquo;measles&rdquo;</div>
-    <div class="mid" style="font-size:96px;margin-top:16px">three times in 19 months</div>
-    <div class="cap" style="margin-top:26px">He talked about the stock market on <b style="color:#fff">137 days</b>.</div>
+    <div class="kicker">The man they confirmed to run public health</div>
+    <div class="quote">&ldquo;There are adverse events from the vaccine.<br><em style="color:${ORANGE};font-style:normal">It does cause deaths every year.</em>&rdquo;</div>
+    <div class="attrib">Robert F. Kennedy Jr., Fox News, 11 March 2025</div>
+    <div class="false">This is false.</div>
+  </div>
+  <div class="scene" id="m3">
+    <div class="kicker">Americans who died of measles in 2025</div>
+    <div class="big o" style="color:${ORANGE}">3</div>
+    <div class="mid" style="font-size:88px;margin-top:38px">The first measles deaths<br>in this country in a decade.</div>
+    <div class="cap" style="margin-top:24px">All three were unvaccinated.</div>
   </div>
   ${FINAL_HTML}
   <div class="bar" id="bar"></div>
@@ -294,12 +319,12 @@ const spotMeasles = (portrait: string | null) => `<!doctype html><html><head><me
     return {d,x,y};
   }
 window.renderAt=function(t){
-  scene(document.getElementById('m0'),t,0,3.4);
+  scene(document.getElementById('m0'),t,0,2.9);
   const cw=document.getElementById('chart');
   let co=0;
-  if(t>=3.4&&t<=17.0){ co=Math.min(ease((t-3.4)/0.5), t>16.6?Math.max(1-ease((t-16.6)/0.4),0):1); }
+  if(t>=2.9&&t<=12.6){ co=Math.min(ease((t-2.9)/0.5), t>12.2?Math.max(1-ease((t-12.2)/0.4),0):1); }
   cw.style.opacity=co;
-  const p=ease(clamp((t-4.2)/6.2,0,1));
+  const p=ease(clamp((t-3.6)/5.6,0,1));
   const a=pathTo(MEA,p), b=pathTo(MKT,p);
   document.getElementById('pMea').setAttribute('d',a.d);
   document.getElementById('pMkt').setAttribute('d',b.d);
@@ -308,9 +333,11 @@ window.renderAt=function(t){
   dk.setAttribute('cx',b.x); dk.setAttribute('cy',b.y); dk.setAttribute('opacity',p>0.02?1:0);
   document.getElementById('mv').textContent='+'+Math.round(765*p)+'%';
   document.getElementById('sv').textContent='+'+Math.round(33*p)+'%';
-  scene(document.getElementById('m2'),t,17.0,22.4);
-  scene(document.getElementById('sf'),t,22.4,27.2);
-  scene(document.getElementById('sc'),t,27.2,30);
+  scene(document.getElementById('m2'),t,12.6,18.2);
+  scene(document.getElementById('m3'),t,18.2,22.4);
+  scene(document.getElementById('sf'),t,22.4,26.4);
+  scene(document.getElementById('sc'),t,26.4,28.3);
+  scene(document.getElementById('se'),t,28.3,30);
   document.getElementById('bar').style.width=(100*clamp(t/${SECS},0,1))+'%';
 };window.renderAt(0);</script></body></html>`
 

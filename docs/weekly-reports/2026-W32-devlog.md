@@ -198,3 +198,15 @@ WHY: Owner feedback on the first cut — no audible music, no signal that "he" i
 Datanautix mark removed from both. New close, in two beats: the enable-this question at 76px, then the vote CTA.
 
 **The chart plots three real points and nothing else** — 2024 baseline indexed to 100, then 2025, then 2026-to-date (measles 100→803→865, S&P 100→118→133). Both series are published ANNUAL figures, so inventing monthly values to draw a smoother curve would be fabricating data; the line runs straight between the real points and the axis is labelled by year.
+
+## Trump corpus spots: typography fix, brand end card, RFK quote + measles deaths (Aug 8, later¹⁰)
+
+WHY: Owner feedback — the type looked wrong, the frame was underfilled, bring Datanautix back as a closing card, and the measles spot was weak without RFK Jr.'s own words or a death toll.
+
+**The "ugly font" was a real CSS bug, not taste.** `.big` carries `letter-spacing:-.045em`, and an inline `<span>` inside it inherits that and recomputes it at its OWN font-size — so at 118px the negative tracking ate the word spaces and "of those 565 days" rendered as "ofthose565days". Fixed with a `.run` class that resets tracking and adds word-spacing on any inline run inside a display number. Type scale up across the board (big 230→268px, mid 132→158, final 76→94) and inter-element spacing widened, taking content from roughly half the frame to about two-thirds. Brand end card added to both spots: "Brought to you by datanautix — We make facts matter", wordmark one word, teal/orange, per the deck branding rule.
+
+**The RFK Jr. quote is verbatim and dated, and getting there mattered.** Search summaries gave paraphrases; putting a paraphrase in a real person's mouth in a political ad is not acceptable, so the exact wording was pulled from the FactCheck.org write-up of the 11 March 2025 Hannity interview: "There are adverse events from the vaccine. It does cause deaths every year." On screen with speaker, outlet, date, and "This is false."
+
+⚠️ **Flagged for the owner and deliberately not papered over: RFK Jr.'s messaging is contradictory.** He has also said parents should vaccinate their children and called MMR the most effective prevention — FactCheck.org keeps a timeline of the mixed messaging. An ad implying he is uniformly anti-vaccine invites that correction; quoting what he actually said, attributed and dated, does not. The spot is built the second way.
+
+**No percentage is given for deaths, deliberately.** There were 3 US measles deaths in 2025 and zero for the preceding decade, so a percentage increase is division by zero — undefined, not "infinite". The raw fact is stronger anyway and is what the spot uses: "3 — the first measles deaths in this country in a decade. All three were unvaccinated."
