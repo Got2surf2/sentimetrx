@@ -43,7 +43,20 @@ for (const c of corpus) {
 const th = (kw: string[]): MinedTheme => ({
   id: 'x', name: 'x', description: '', keywords: kw, sentiment: 'neutral', count: 0, percentage: 0, relatedThemes: [],
 })
-const hit = (kw: string[]) => scanThemes(U, [th(kw)]).perTheme[0] ?? 0
+/**
+ * ⚠️ POLICY-MANDATE DENY (2026-08-08). "mandate" in the election-win topic was
+ * catching "the EV mandate", "COVID-19 Vaccine Mandates" and similar — policy
+ * mandates, not "my recent election is a mandate". 19 of 41 unscripted matches.
+ * Blocked forms are stripped before matching, so a passage survives only if
+ * something other than a policy mandate put it in the topic.
+ */
+const POLICY_MANDATE = /\b(electric vehicle|ev|vaccine|covid(-19)?|mask|emission|gas)\s+mandate[sd]?\b/gi
+/** golf→golfer/golfing: other people playing golf is not him on his properties. */
+const GOLFER = /golfer[s]?|golfing/gi
+const hit = (kw: string[]) => {
+  const cleaned = U.map((t) => t.replace(POLICY_MANDATE, ' ').replace(GOLFER, ' '))
+  return scanThemes(cleaned, [th(kw)]).perTheme[0] ?? 0
+}
 const pct = (n: number) => Math.round((10000 * n) / U.length) / 100
 
 console.log(`UNSCRIPTED corpus: ${U.length} paragraphs (tarmac, plane, Oval, phone interviews, gaggles)\n`)

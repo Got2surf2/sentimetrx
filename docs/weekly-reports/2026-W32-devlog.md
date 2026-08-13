@@ -245,3 +245,13 @@ WHY: Owner, after the name-calling correction — audit every other keyword list
 Fixed structurally with an optional `deny` regex per topic (same shape as the existing Kennedy Center crash filter): a passage is dropped when its only claim to the topic is a blocked form. Applied to golf. The audit script stays committed so any new list can be run through it before publication.
 
 **The audit also states its own limit on the page: a 0% bleed does NOT mean a keyword is correct.** "loser pays" was a clean whole-word match and still completely wrong. Bleed detection ranks what to read; it does not replace reading.
+
+## Mandate contamination fixed; PolitiFact convergence (Aug 8, later¹⁴)
+
+Applied the policy-mandate and golfer denies to `_trump_corpus_ratios.ts`, the last place the contaminated keywords still fed a published figure. The long-form report's Part 2b table is corrected: **election win / mandate 13.6x → 12.1x (150 → 133)** and **golf vs child care 16x → 12.7x (96 → 76)**, and the bare word count "golf" 58 → 43. A fourth entry was added to the report's corrections section documenting prefix bleed, so the method survives someone checking it.
+
+**External convergence worth recording.** PolitiFact published "Trump's construction projects" on 11 Aug 2026 (Caleb McCullough, Loreben Tuquero) with a separate methodology note. They used PolicyNote transcripts, OpenAI Codex for sentence-level classification into 82 topics with every AI label human-reviewed, speaker separation, and a prompted-versus-unprompted split. **Independently, they surfaced the same projects we did — ballroom, Reflecting Pool, Kennedy Center, Triumphal Arch, Garden of American Heroes.** Two teams, different sources, different classification methods, same finding: that is meaningful corroboration of the obsession-gap result, and it is now the strongest external validation this analysis has.
+
+Honest comparison, recorded so nobody overclaims in a conversation: **their sentence-level LLM classification under full human review reads context in a way our keyword lists cannot**, and their 82-topic taxonomy is finer-grained than ours. Our real advantages are reproducibility (deterministic — same input, same number), a public-domain source rather than a commercial platform, a 19-month window against their 7, social posts as well as speech, and speed on repeat runs. Do not claim parity on nuance.
+
+Outreach draft to both reporters written to `~/Downloads/PolitiFact_outreach_draft.md` — **not sent**, and carrying two open items: Larry Kahn's title is left as a placeholder rather than invented, and the disclosure line (how much method to reveal to a journalist who is a potential collaborator rather than a competitor) is the owner's call.
