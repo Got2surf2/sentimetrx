@@ -59,17 +59,35 @@ const rx = (kw: string) => new RegExp(`(?<![a-z])${kw.toLowerCase().replace(/[.*
 /** DCA-crash context that borrows "Kennedy Center" as a landmark, not a subject. */
 const CRASH = /crash|collision|midair|mid-air|helicopter|black hawk|blackhawk|plane|aircraft|air traffic|control tower|kennedy center tape/i
 
-function count(texts: string[], kws: string[], clean?: RegExp): number {
+function count(texts: string[], kws: string[], clean?: RegExp, deny?: RegExp): number {
   const res = kws.map(rx)
   return texts.filter((t) => {
     const low = t.toLowerCase()
     if (!res.some((r) => r.test(low))) return false
     if (clean && clean.test(t)) return false
+    if (deny) {
+      // Keep the passage only if something OTHER than a denied form matched.
+      const stripped = low.replace(new RegExp(deny.source, 'gi'), ' ')
+      if (!res.some((r) => r.test(stripped))) return false
+    }
     return true
   }).length
 }
 
-interface Topic { name: string; kws: string[]; clean?: RegExp }
+interface Topic { name: string; kws: string[]; clean?: RegExp; deny?: RegExp }
+
+/**
+ * ⚠️ THE PREFIX-BLEED DEFECT (found 2026-08-08 by _trump_corpus_keyword_audit.ts).
+ * The shared matcher is `(?<![a-z])keyword` — it guards the LEFT edge only, so
+ * every keyword also matches longer words STARTING with it. Usually that is
+ * wanted (tariff→tariffs, murder→murderers, deport→deportation are the same
+ * topic). Sometimes it is not:
+ *   golf → golfer/golfers/golfing — him praising Adam Scott or a kid at an
+ *          event is NOT him talking about his own golf courses. 52 of the 248
+ *          passages, and the published line "248 times he talked about his golf
+ *          courses" was wrong because of it. Now 196.
+ * `deny` drops a passage whose only claim to the topic is a blocked form.
+ */
 
 /** Things he returns to that essentially no voter ranks as a priority. */
 const VANITY: Topic[] = [
@@ -78,7 +96,7 @@ const VANITY: Topic[] = [
   { name: 'The Kennedy Center', kws: ['kennedy center'], clean: CRASH },
   { name: 'The 2020 election', kws: ['rigged election', 'stolen election', '2020 election', 'election was rigged'] },
   { name: 'The Lincoln Memorial Reflecting Pool', kws: ['reflecting pool'] },
-  { name: 'Golf and his properties', kws: ['golf', 'mar-a-lago', 'doral', 'turnberry'] },
+  { name: 'Golf and his properties', kws: ['golf', 'mar-a-lago', 'doral', 'turnberry'], deny: /golfer|golfing/i },
   { name: 'Winning a Nobel Prize', kws: ['nobel'] },
   { name: 'Renaming the Gulf and Denali', kws: ['gulf of america', 'denali', 'mount mckinley'] },
   { name: 'Teleprompters', kws: ['teleprompter'] },
@@ -104,10 +122,10 @@ const tally = (list: Topic[], heading: string) => {
   say('  ' + 'Topic'.padEnd(38) + 'total'.padStart(7) + 'spoken'.padStart(8) + 'posts'.padStart(7) + '   per-keyword')
   const res: Record<string, number> = {}
   for (const t of list) {
-    const tot = count(ALL, t.kws, t.clean)
+    const tot = count(ALL, t.kws, t.clean, t.deny)
     res[t.name] = tot
-    const per = t.kws.map((k) => `${k}:${count(ALL, [k], t.clean)}`).join(' ')
-    say(`  ${t.name.padEnd(38)}${String(tot).padStart(7)}${String(count(S, t.kws, t.clean)).padStart(8)}${String(count(P, t.kws, t.clean)).padStart(7)}   ${per}`)
+    const per = t.kws.map((k) => `${k}:${count(ALL, [k], t.clean, t.deny)}`).join(' ')
+    say(`  ${t.name.padEnd(38)}${String(tot).padStart(7)}${String(count(S, t.kws, t.clean, t.deny)).padStart(8)}${String(count(P, t.kws, t.clean, t.deny)).padStart(7)}   ${per}`)
   }
   say('')
   return res
@@ -167,7 +185,13 @@ const daysWith = (t: Topic) => {
   const res = t.kws.map(rx)
   return days.filter((d) => (dayOf.get(d) ?? []).some((x) => {
     const l = x.toLowerCase()
-    return res.some((r) => r.test(l)) && !(t.clean && t.clean.test(x))
+    if (!res.some((r) => r.test(l))) return false
+    if (t.clean && t.clean.test(x)) return false
+    if (t.deny) {
+      const stripped = l.replace(new RegExp(t.deny.source, 'gi'), ' ')
+      if (!res.some((r) => r.test(stripped))) return false
+    }
+    return true
   })).length
 }
 const dayPct: Record<string, { days: number; pctOfTerm: number }> = {}

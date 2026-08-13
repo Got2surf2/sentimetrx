@@ -89,19 +89,19 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><title>Trump Corp
 
 ${section('The obsession gap', 'Things he returns to constantly that no voter ranks as a priority — against the things they do. Passage counts, one denominator (55,418).', [
   { n: '209', fact: 'passages about <b>the White House ballroom</b>. Three about affordable housing.', line: 'He has talked about his ballroom two hundred and nine times. He has never said the word "preschool."' },
-  { n: '248', fact: 'passages about <b>his golf courses and properties</b>. Eight about child care.', line: 'Two hundred and forty-eight times he talked about his golf courses. Eight times about child care.' },
+  { n: '196', fact: 'passages about <b>his golf courses and properties</b>. Eight about child care.', line: 'One hundred and ninety-six times he talked about his golf courses. Eight times about child care.' },
   { n: '134', fact: 'passages about <b>the 2020 election</b>. Thirty about wages and paychecks.', line: 'One hundred and thirty-four passages about an election he lost six years ago. Thirty about your paycheck.' },
   { n: '124', fact: 'passages about <b>the Kennedy Center</b>. Twenty about being uninsured or facing medical bills.', line: "He has a plan for the Kennedy Center. He doesn't have one for your health insurance." },
   { n: '103', fact: 'passages about <b>windmills</b>. Eight about child care.', line: 'He talked about windmills a hundred times. He has never once said "good-paying jobs."' },
   { n: '69', fact: 'passages about <b>the Lincoln Memorial Reflecting Pool</b>.', line: 'He found the time for a ballroom, a reflecting pool, a triumphal arch and a Nobel Prize. He never found the time for your rent.' },
   { n: '68', fact: 'passages about <b>winning a Nobel Prize</b>. Sixty-four about renaming the Gulf and Mount McKinley.', line: 'He renamed a mountain and renamed a gulf. He never once mentioned a first-time buyer.' },
-  { n: '601', fact: 'passages on the ballroom, golf courses, arch, Reflecting Pool and Nobel <b>combined</b>. Eleven on child care and affordable housing combined.' },
+  { n: '549', fact: 'passages on the ballroom, golf courses, arch, Reflecting Pool and Nobel <b>combined</b>. Eleven on child care and affordable housing combined.' },
 ])}
 
 ${section('Words he has never said', 'Bare word counts. No interpretation is possible — he either used the word or he did not. This is the strongest evidence in the analysis.', [
   { n: '0', fact: '<b>"preschool"</b>, <b>"uninsured"</b>, <b>"good-paying jobs"</b>, <b>"making ends meet"</b>, <b>"first-time buyer"</b> — none said once in nineteen months.' },
   { n: '1', fact: 'time he has said <b>"minimum wage"</b>. He said "teleprompter" thirty-two times.', line: 'He has complained about teleprompters thirty-two times. He has said "minimum wage" once.' },
-  { n: '3', fact: 'times he has said <b>"child care"</b>. He said "golf" a hundred and fifty-nine times.' },
+  { n: '3', fact: 'times he has said <b>"child care"</b>. He said "golf" a hundred and five times.' },
   { n: '12', fact: 'times he has said <b>"cost of living"</b> in 55,418 passages.', line: "He's given a thousand speeches about your country. He's given twelve sentences about your grocery bill." },
 ])}
 
@@ -138,8 +138,10 @@ ${section('The silence gap, in shares', 'Share of everything he says. Two denomi
   <p><b>What was tested and thrown out</b>, so the method can be checked: "gold" (408 hits) was dropped — it is the
     "golden age" slogan and "liquid gold" for oil, not gilding. "crazy" (539) is "the numbers are crazy". A bare "no
     inflation" match returns 75 days, but most are past tense about his first term, so only present-tense assertions
-    are counted. Candidate-endorsement form letters are excluded from post shares; they recite a fixed checklist and
-    would otherwise triple immigration and crime without him having discussed either.</p>
+    are counted. Every list was then re-audited for <b>prefix bleed</b>: the matcher also catches longer words starting
+    with a keyword, which is correct for tariff/tariffs but wrong for <b>golf/golfer</b>, so passages only about other
+    people golfing are now excluded (248 &rarr; 196). Candidate-endorsement form letters are excluded from post shares;
+    they recite a fixed checklist and would otherwise triple immigration and crime without him having discussed either.</p>
   <p><b>These are lower bounds</b> — someone can discuss housing without saying "affordable housing" — so the
     defensible claim is always the comparison, never the absolute count, because both sides were measured by
     identical rules. Voter polling and the CDC and BLS figures are external, cited as such, and never divided

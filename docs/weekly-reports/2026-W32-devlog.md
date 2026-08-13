@@ -230,3 +230,18 @@ The inflation was the failure mode this project keeps hitting, and sampling the 
 **Two process failures worth recording.** First, I had already pruned this list once and still shipped it without reading the matches — the earlier prune dropped "crazy" and "stupid" but waved through "fool" and "loser", which are worse. A keyword list is not evidence until the matches have been read, and that has now been true three times. Second, the 415→312 edit **silently did not apply** because I ran a string replace without asserting the target existed, and the target had drifted (the countTo start times were never updated when the scenes were re-timed, so the line read `8.8,415` not `8.0,415`). Only frame-level QC caught that the video still said 415. Every substitution in this pass now asserts.
 
 Also fixed from the same review: the count-up ran 2.0s inside a ~5s scene, so any paused or grabbed frame in the first 40% of the scene showed a misleadingly low number — that is precisely how the owner saw "24". Counts are now 0.8s. Scene 1 now reads "209 **times**" rather than a bare 209, since the following scene is denominated in days and the units were being silently compared.
+
+## Systemic keyword audit: the prefix-bleed defect (Aug 8, later¹³)
+
+WHY: Owner, after the name-calling correction — audit every other keyword list the same way. The "fool"→"foolish" failure was not bad luck; it is a **defect in the matcher every list shares**. `new RegExp('(?<![a-z])' + kw)` guards the LEFT edge only, so every keyword also matches any longer word that STARTS with it. New `_trump_corpus_keyword_audit.ts` runs all 109 keywords across all published lists and reports, per keyword, how many matches are the keyword as a PREFIX of a longer word, with the actual continuations.
+
+**43 of 109 keywords bleed. Most of it is benign and actually wanted** — tariff→tariffs, murder→murderers, deport→deportation, border→borders, windmill→windmills are the same concept, and prefix matching is what catches inflections. Four were not:
+
+- **golf → golfer / golfers / golfing (69 of 159).** Him praising Adam Scott or a kid at an event is not him talking about his own golf courses. **The published line "248 times he talked about his golf courses" was wrong; it is 196**, the ratio to child care drops 31x → **24.5x**, the bare word count 159 → **105**, and the combined-vanity union 601 → **549**. Corrected in the summary PDF and the factoids sheet, with the correction stated in the method footer rather than quietly swapped.
+- **ice → icebreakers / Iceland (34).** "We're going to order about 40 Coast Guard big icebreakers" was being counted as an immigration-enforcement mention.
+- **crime → Crimea (13).** "Under President Obama, they lost Crimea" counted as crime.
+- **mandate → EV mandate / vaccine mandate (132 of 145 non-election).** Only a minority are "my recent election is a mandate"; the rest are policy mandates. This contaminates the election-win topic in the long-form report's ratio table.
+
+Fixed structurally with an optional `deny` regex per topic (same shape as the existing Kennedy Center crash filter): a passage is dropped when its only claim to the topic is a blocked form. Applied to golf. The audit script stays committed so any new list can be run through it before publication.
+
+**The audit also states its own limit on the page: a 0% bleed does NOT mean a keyword is correct.** "loser pays" was a clean whole-word match and still completely wrong. Bleed detection ranks what to read; it does not replace reading.

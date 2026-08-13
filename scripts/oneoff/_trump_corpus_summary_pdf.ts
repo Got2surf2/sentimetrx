@@ -147,7 +147,7 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
     <thead><tr><th>He said…</th><th class="n">times</th><th>…and in nineteen months, never</th><th class="n">times</th></tr></thead>
     <tbody>
       <tr><td>"ballroom"</td><td class="n">209</td><td>"preschool"</td><td class="n z">0</td></tr>
-      <tr><td>"golf"</td><td class="n">159</td><td>"uninsured"</td><td class="n z">0</td></tr>
+      <tr><td>"golf"</td><td class="n">105</td><td>"uninsured"</td><td class="n z">0</td></tr>
       <tr><td>"windmill"</td><td class="n">100</td><td>"good-paying jobs"</td><td class="n z">0</td></tr>
       <tr><td>"reflecting pool"</td><td class="n">69</td><td>"making ends meet"</td><td class="n z">0</td></tr>
       <tr><td>"Nobel"</td><td class="n">68</td><td>"first-time buyer"</td><td class="n z">0</td></tr>
@@ -165,8 +165,8 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
       <p class="lbl">More on <b>the ballroom</b> than on <b>affordable housing</b> — 209 passages against 3</p>
     </div>
     <div class="stat keep">
-      <div class="n">31×</div>
-      <p class="lbl">More on <b>his golf courses</b> than on <b>child care</b> — 248 against 8</p>
+      <div class="n">24.5×</div>
+      <p class="lbl">More on <b>his golf courses</b> than on <b>child care</b> — 196 against 8</p>
     </div>
     <div class="stat keep">
       <div class="n">23×</div>
@@ -186,7 +186,7 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
   <div>
     <table>
       <tbody>
-        <tr><td>His golf courses and properties</td><td class="n">248</td></tr>
+        <tr><td>His golf courses and properties</td><td class="n">196</td></tr>
         <tr><td>The White House ballroom</td><td class="n">209</td></tr>
         <tr><td>The 2020 election</td><td class="n">134</td></tr>
         <tr><td>The Kennedy Center</td><td class="n">124</td></tr>
@@ -206,7 +206,7 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
     </table>
   </div>
 </div>
-<p class="say">Six hundred and one passages on the ballroom, the golf courses, the arch, the Reflecting Pool and his Nobel Prize. Eleven on child care and affordable housing.</p>
+<p class="say">Five hundred and forty-nine passages on the ballroom, the golf courses, the arch, the Reflecting Pool and his Nobel Prize. Eleven on child care and affordable housing.</p>
 
 <div class="sec">
   <h2>It isn't his speechwriters. It isn't in his head.</h2>
@@ -228,7 +228,7 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
 
 <div class="sec">
   <h2>Lines you can use</h2>
-  <p class="say">Two hundred and forty-eight times he talked about his golf courses. Eight times about child care.</p>
+  <p class="say">One hundred and ninety-six times he talked about his golf courses. Eight times about child care.</p>
   <p class="say">He talked about windmills a hundred times. He has never once said "good-paying jobs."</p>
   <p class="say">He has a plan for the Kennedy Center. He doesn't have one for your health insurance.</p>
   <p class="say">One hundred and thirty-four passages about an election he lost six years ago. Thirty about your paycheck.</p>
