@@ -49,45 +49,20 @@ import { execFileSync } from 'node:child_process'
 const DL = path.join(homedir(), 'Downloads')
 const FPS = 25, SECS = 30, TOTAL = FPS * SECS, W = 1920, H = 1080
 /**
- * Brand Positioning Doctors palette.
- *
- * CORRECTED 2026-08-14 after seeing the actual logo. My first pass counted hex
- * values in the site's page source and picked #ffc700 (25 hits) as the accent.
- * That was WRONG — the mark is GREEN and white on black; the yellow was site
- * chrome, not brand identity. A frequency count of a page's markup is not a
- * brand palette, and the logo is the authority.
- *
- * RESOLVED: the mark was found on their own site as a 269x94 GIF
- * (BPD_website_home_01.gif) and the greens below are SAMPLED from it, not
- * guessed. It is installed at ~/Downloads/bpd-logo.png, upscaled 4x with
- * lanczos. ⚠️ 94px of source height is small for a 1080p frame, so the
- * "IS YOUR BRAND VITAL?" tagline inside the mark is soft — if a vector or
- * high-res original exists, drop it in the same place and re-run.
+ * Back to the original palette (owner, 2026-08-14): Ana orange on the deep navy
+ * ground, Sarina teal as the supporting colour. The Brand Positioning Doctors
+ * green/plate scheme and the closing brand card were removed in the same pass —
+ * if they are ever wanted back, the sampled BPD values were #52D12A (green),
+ * #309A62 (deep green) and #303030 (the logo's plate).
  */
-const ACCENT = '#52D12A'   // brand green, SAMPLED from the logo (633px of it)
-const SECOND = '#309A62'   // the deeper green at the dark end of the gradient
-const INK = '#141414'      // near-black ground
-const PLATE = '#303030'    // the logo's OWN background grey — the end card uses
-                           // it full-bleed so the mark sits flush instead of
-                           // showing a grey rectangle against a darker ground
-const MUTED = '#8C8C8C'    // neutral grey
+const ACCENT = '#E85A1A'   // Ana orange
+const SECOND = '#0F7173'   // Sarina teal
+const INK = '#0b1220'      // deep navy ground
+const MUTED = '#64748b'
 const ORANGE = ACCENT      // legacy name still used throughout the templates
 
 const args = process.argv.slice(2)
 const which = (args[args.indexOf('--spot') + 1] ?? 'all').toLowerCase()
-
-// ── Brand logo, only if the owner has supplied a file ───────────────────────
-/** Save the mark to ~/Downloads/bpd-logo.png (or .jpg/.svg) and it is used. */
-function logoDataUri(): string | null {
-  for (const ext of ['png', 'svg', 'jpg', 'jpeg']) {
-    const p = path.join(DL, `bpd-logo.${ext}`)
-    if (existsSync(p)) {
-      const mime = ext === 'svg' ? 'image/svg+xml' : ext === 'png' ? 'image/png' : 'image/jpeg'
-      return `data:${mime};base64,${readFileSync(p).toString('base64')}`
-    }
-  }
-  return null
-}
 
 // ── Portrait, only if the owner has supplied one ────────────────────────────
 function portraitDataUri(): string | null {
@@ -191,24 +166,18 @@ const BASE_CSS = `
      letter-spacing is recomputed at the span's own font-size and eats the word
      spaces - that is what turned "of those 565 days" into "ofthose565days". */
   .big .run{letter-spacing:normal;word-spacing:.12em}
-  .cap{font-size:48px;color:#D8D8D8;margin-top:38px;line-height:1.28;font-weight:500;max-width:1580px}
-  .vs{font-size:36px;color:#6E6E6E;letter-spacing:.2em;text-transform:uppercase;font-weight:700;margin:52px 0 40px}
+  .cap{font-size:48px;color:#cbd5e1;margin-top:38px;line-height:1.28;font-weight:500;max-width:1580px}
+  .vs{font-size:36px;color:#475569;letter-spacing:.2em;text-transform:uppercase;font-weight:700;margin:52px 0 40px}
   .mid{font-size:158px;font-weight:800;color:#fff;line-height:.94;letter-spacing:-.035em}
-  .src{font-size:26px;color:#6E6E6E;margin-top:30px;letter-spacing:.05em}
+  .src{font-size:26px;color:#475569;margin-top:30px;letter-spacing:.05em}
   .final{font-size:94px;font-weight:800;color:#fff;line-height:1.14;letter-spacing:-.022em;max-width:1680px}
   .final em{color:${ORANGE};font-style:normal}
   .cta{font-size:78px;font-weight:800;color:#fff;line-height:1.18;letter-spacing:-.022em}
   .cta span{color:${ORANGE}}
   .quote{font-size:80px;font-weight:700;color:#fff;line-height:1.2;letter-spacing:-.02em;max-width:1680px}
-  .attrib{font-size:34px;color:#A8A8A8;margin-top:52px;font-weight:600}
+  .attrib{font-size:34px;color:#94a3b8;margin-top:52px;font-weight:600}
   .false{font-size:44px;color:${ORANGE};margin-top:44px;font-weight:800;letter-spacing:.02em}
   /* Closing card - the brand wordmark is one word, no separator. */
-  .endcard{align-items:flex-start;background:${PLATE}}
-  .endcard .by{font-size:40px;color:#A8A8A8;font-weight:600;margin-bottom:34px}
-  .endcard .wm{font-size:88px;font-weight:800;white-space:nowrap;color:#fff;letter-spacing:-.01em}
-  .endcard .wm .d{color:${ACCENT};letter-spacing:.14em;margin-left:.18em}
-  .endcard .logo{height:290px;margin:2px 0 6px;image-rendering:auto}
-  .endcard .tag{font-size:52px;color:#fff;font-weight:700;margin-top:40px}
   .bar{position:absolute;left:0;bottom:0;height:8px;background:${ORANGE}}
 `
 
@@ -229,7 +198,7 @@ const SCENE_JS = `
   }
 `
 
-const finalHtml = (LOGO: string | null) => `
+const finalHtml = () => `
   <div class="scene" id="sf">
     <div class="final">Your Republican elected officials have continued to <em>enable this</em>.<br><br>
       Are they really who you want <em>controlling your future?</em></div>
@@ -237,14 +206,10 @@ const finalHtml = (LOGO: string | null) => `
   <div class="scene" id="sc">
     <div class="cta">Go out and <span>vote</span>.<br><span>Take charge</span> of your own future.</div>
   </div>
-  <div class="scene endcard" id="se">
-    <div class="by">Brought to you by</div>
-    ${LOGO ? `<img class="logo" src="${LOGO}">` : '<div class="wm">BRAND POSITIONING<span class="d">DOCTORS</span></div>'}
-    <div class="tag">We make facts matter.</div>
   </div>`
 
 // ── Spot 1: the silence gap ─────────────────────────────────────────────────
-const spotSilence = (portrait: string | null, LOGO: string | null) => `<!doctype html><html><head><meta charset="utf-8"><style>${BASE_CSS}</style></head><body><div id="stage">
+const spotSilence = (portrait: string | null) => `<!doctype html><html><head><meta charset="utf-8"><style>${BASE_CSS}</style></head><body><div id="stage">
   ${portrait ? `<div id="portrait" style="background-image:url('${portrait}')"></div>` : ''}
   <div class="scene" id="s0">
     <div class="big" style="font-size:88px;line-height:1.14">Donald Trump has been<br>President for <span style="color:${ORANGE}">565 days</span>.</div>
@@ -252,7 +217,7 @@ const spotSilence = (portrait: string | null, LOGO: string | null) => `<!doctype
   </div>
   <div class="scene" id="s1">
     <div class="kicker">Donald Trump talked about his ballroom</div>
-    <div class="big"><span id="n1">0</span> <span class="run" style="font-size:104px;color:#A8A8A8">times</span></div>
+    <div class="big"><span id="n1">0</span> <span class="run" style="font-size:104px;color:#94a3b8">times</span></div>
     <div class="vs">He has never said</div>
     <div class="mid" style="color:${ORANGE}" id="w1">&ldquo;preschool&rdquo;</div>
   </div>
@@ -267,9 +232,9 @@ const spotSilence = (portrait: string | null, LOGO: string | null) => `<!doctype
     <div class="big o" style="color:${ORANGE}">+<span id="n3">0</span>%</div>
     <div class="src">CDC &mdash; 285 cases in 2024, 2,289 in 2025</div>
     <div class="vs">Trump spent his time on</div>
-    <div class="mid" style="font-size:104px;white-space:nowrap">his ballroom &mdash; <span style="color:#A8A8A8">15.6% of his days</span></div>
+    <div class="mid" style="font-size:104px;white-space:nowrap">his ballroom &mdash; <span style="color:#94a3b8">15.6% of his days</span></div>
   </div>
-  ${finalHtml(LOGO)}
+  ${finalHtml()}
   <div class="bar" id="bar"></div>
 </div><script>${SCENE_JS}
 window.renderAt=function(t){
@@ -278,8 +243,7 @@ window.renderAt=function(t){
   scene(document.getElementById('s2'),t,8.0,13.2);
   scene(document.getElementById('s3'),t,13.2,18.8);
   scene(document.getElementById('sf'),t,18.8,24.3);
-  scene(document.getElementById('sc'),t,24.3,28.3);
-  scene(document.getElementById('se'),t,28.3,30);
+  scene(document.getElementById('sc'),t,24.3,30);
   countTo(document.getElementById('n1'),t,2.4,209,0.8);
   countTo(document.getElementById('n2'),t,8.0,312,0.8);
   countTo(document.getElementById('n3'),t,13.2,703,0.8);
@@ -298,7 +262,7 @@ window.renderAt=function(t){
  *   measles  285 -> 2,289 -> 2,465   =  100 -> 803 -> 865
  *   S&P 500  +17.9% then +12.7%      =  100 -> 118 -> 133
  */
-const spotMeasles = (portrait: string | null, LOGO: string | null) => `<!doctype html><html><head><meta charset="utf-8"><style>${BASE_CSS}
+const spotMeasles = (portrait: string | null) => `<!doctype html><html><head><meta charset="utf-8"><style>${BASE_CSS}
   .chartwrap{position:absolute;inset:0;padding:78px 112px 74px;display:flex;flex-direction:column;opacity:0}
   .chead{font-size:70px;font-weight:800;color:#fff;line-height:1.1;letter-spacing:-.025em;margin-bottom:10px}
   .chead em{color:${ORANGE};font-style:normal}
@@ -307,7 +271,7 @@ const spotMeasles = (portrait: string | null, LOGO: string | null) => `<!doctype
   .yrs{display:flex;justify-content:space-between;font-size:30px;color:${MUTED};font-weight:600;margin-top:6px}
   .legend{display:flex;gap:76px;align-items:flex-end;margin-top:24px}
   .lg .v{font-size:82px;font-weight:800;line-height:1;letter-spacing:-.03em}
-  .lg .k{font-size:28px;color:#A8A8A8;font-weight:600;margin-top:8px}
+  .lg .k{font-size:28px;color:#94a3b8;font-weight:600;margin-top:8px}
 </style></head><body><div id="stage">
   ${portrait ? `<div id="portrait" style="background-image:url('${portrait}')"></div>` : ''}
   <div class="scene" id="m0">
@@ -325,10 +289,10 @@ const spotMeasles = (portrait: string | null, LOGO: string | null) => `<!doctype
           <stop offset="100%" stop-color="${ORANGE}" stop-opacity="0"/>
         </linearGradient>
       </defs>
-      <line x1="118" y1="510" x2="1696" y2="510" stroke="#3A3A3A" stroke-width="3"/>
-      <line x1="118" y1="356" x2="1696" y2="356" stroke="#242424" stroke-width="2"/>
-      <line x1="118" y1="202" x2="1696" y2="202" stroke="#242424" stroke-width="2"/>
-      <line x1="118" y1="48"  x2="1696" y2="48"  stroke="#242424" stroke-width="2"/>
+      <line x1="118" y1="510" x2="1696" y2="510" stroke="#243147" stroke-width="3"/>
+      <line x1="118" y1="356" x2="1696" y2="356" stroke="#151f33" stroke-width="2"/>
+      <line x1="118" y1="202" x2="1696" y2="202" stroke="#151f33" stroke-width="2"/>
+      <line x1="118" y1="48"  x2="1696" y2="48"  stroke="#151f33" stroke-width="2"/>
       <text x="100" y="519" text-anchor="end" fill="${MUTED}" font-size="27" font-weight="600">0%</text>
       <text x="100" y="365" text-anchor="end" fill="${MUTED}" font-size="27" font-weight="600">+300%</text>
       <text x="100" y="211" text-anchor="end" fill="${MUTED}" font-size="27" font-weight="600">+600%</text>
@@ -342,7 +306,7 @@ const spotMeasles = (portrait: string | null, LOGO: string | null) => `<!doctype
     <div class="yrs"><span style="margin-left:96px">2024</span><span>2025</span><span>2026 to date</span></div>
     <div class="legend">
       <div class="lg"><div class="v" style="color:${ORANGE}" id="mv">+0%</div><div class="k">Measles cases</div></div>
-      <div class="lg"><div class="v" style="color:#A8A8A8" id="sv">+0%</div><div class="k">Stock market</div></div>
+      <div class="lg"><div class="v" style="color:#94a3b8" id="sv">+0%</div><div class="k">Stock market</div></div>
     </div>
   </div>
 
@@ -358,7 +322,7 @@ const spotMeasles = (portrait: string | null, LOGO: string | null) => `<!doctype
     <div class="mid" style="font-size:88px;margin-top:38px">The first measles deaths<br>in this country in a decade.</div>
     <div class="cap" style="margin-top:24px">All three were unvaccinated.</div>
   </div>
-  ${finalHtml(LOGO)}
+  ${finalHtml()}
   <div class="bar" id="bar"></div>
 </div><script>${SCENE_JS}
   // Three real points only. X positions are evenly spaced years.
@@ -395,8 +359,7 @@ window.renderAt=function(t){
   scene(document.getElementById('m2'),t,12.6,18.2);
   scene(document.getElementById('m3'),t,18.2,22.4);
   scene(document.getElementById('sf'),t,22.4,26.4);
-  scene(document.getElementById('sc'),t,26.4,28.3);
-  scene(document.getElementById('se'),t,28.3,30);
+  scene(document.getElementById('sc'),t,26.4,30);
   document.getElementById('bar').style.width=(100*clamp(t/${SECS},0,1))+'%';
 };window.renderAt(0);</script></body></html>`
 
@@ -442,10 +405,8 @@ async function render(name: string, html: string) {
 
 async function main() {
   const portrait = portraitDataUri()
-  const logo = logoDataUri()
-  console.log(logo ? '  logo: using ~/Downloads/bpd-logo.*' : '  logo: none supplied — wordmark set in type (white BRAND POSITIONING + green DOCTORS)')
   console.log(portrait ? '  portrait: using ~/Downloads/trump-portrait.*' : '  portrait: none supplied — spots name him in text instead')
-  if (which === 'silence' || which === 'all') await render('SilenceGap', spotSilence(portrait, logo))
-  if (which === 'measles' || which === 'all') await render('MeaslesVsMarket', spotMeasles(portrait, logo))
+  if (which === 'silence' || which === 'all') await render('SilenceGap', spotSilence(portrait))
+  if (which === 'measles' || which === 'all') await render('MeaslesVsMarket', spotMeasles(portrait))
 }
 main().catch((e) => { console.error(e); process.exit(1) })
