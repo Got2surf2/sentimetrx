@@ -85,6 +85,17 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><title>Side-by-Si
   .vote .d{font-size:9.4px;color:#475569;margin-top:4px;line-height:1.45}
   .vote .d b{color:#0f172a}
 
+  table.ties{width:100%;border-collapse:collapse;font-size:9.3px;margin-top:6px}
+  table.ties th{text-align:left;font-size:7.6px;text-transform:uppercase;letter-spacing:.09em;color:#94a3b8;
+                font-weight:800;padding:0 7px 5px 0;border-bottom:1px solid #e2e8f0}
+  table.ties td{padding:6px 7px 6px 0;border-bottom:1px solid #f1f5f9;color:#475569;vertical-align:top}
+  table.ties td b{color:#0f172a}
+  table.ties .c{text-align:center;font-weight:800;width:52px}
+  table.ties .y{color:${ORANGE}}
+  table.ties .n{color:#64748b}
+  table.ties tr.hi td{background:#fffaf5}
+  .fine{font-size:9.3px;color:#475569;margin:9px 0 0;line-height:1.45}
+  .fine b{color:#0f172a}
   .method{border-top:1px solid #e2e8f0;margin-top:19px;padding-top:10px}
   .method p{font-size:8.7px;color:#94a3b8;line-height:1.45;margin:0 0 4px}
   .method b{color:#64748b}
@@ -152,6 +163,33 @@ ${pairs('Public health', 'His attention against the CDC record over the same per
       Three Republicans did vote no. She did not.</div>
   </div>
   <p class="say">Fifty to fifty. If Ashley Moody had voted no, it would have failed. She didn't.</p>
+</div>
+
+<div class="sec keep" style="page-break-before:always">
+  <h2>Twelve times the Senate tied. She was on the winning side of all twelve.</h2>
+  <p class="blurb">Every 50&ndash;50 roll call of this Congress, from the official Senate vote records. At 50&ndash;50 a single senator changing sides changes the outcome &mdash; so each of these is decisive by definition, whichever way she voted.</p>
+
+  <table class="ties">
+    <thead><tr><th>Roll call</th><th>Date</th><th>What it was</th><th class="c">Moody</th><th>Outcome</th></tr></thead>
+    <tbody>
+      <tr class="hi"><td>15</td><td>24 Jan 2025</td><td><b>Pete Hegseth</b> confirmed Secretary of Defense</td><td class="c y">Yea</td><td>Confirmed, VP broke the tie</td></tr>
+      <tr class="hi"><td>372</td><td>1 Jul 2025</td><td><b>H.R.1 reconciliation</b> &mdash; the Medicaid and SNAP cuts</td><td class="c y">Yea</td><td>Passed, VP broke the tie</td></tr>
+      <tr class="hi"><td>9</td><td>14 Jan 2026</td><td>Killed the privileged status of a resolution to <b>remove US forces from unauthorised hostilities against Venezuela</b></td><td class="c y">Yea</td><td>Resolution blocked, VP broke the tie</td></tr>
+      <tr><td>371</td><td>1 Jul 2025</td><td>The substitute amendment carrying H.R.1</td><td class="c y">Yea</td><td>Agreed to, VP broke the tie</td></tr>
+      <tr><td>370</td><td>1 Jul 2025</td><td>Graham amendment to H.R.1</td><td class="c y">Yea</td><td>Agreed to, VP broke the tie</td></tr>
+      <tr><td>358</td><td>1 Jul 2025</td><td>Amendment to <b>eliminate the private and religious school scholarship program</b></td><td class="c n">Nay</td><td>Defeated</td></tr>
+      <tr><td>368</td><td>1 Jul 2025</td><td>Amendment to strike the appropriation for the Office of Management and Budget</td><td class="c n">Nay</td><td>Defeated</td></tr>
+      <tr><td>367</td><td>1 Jul 2025</td><td>Amendment on airport lease revenues for aviation safety</td><td class="c n">Nay</td><td>Defeated</td></tr>
+      <tr><td>391</td><td>15 Jul 2025</td><td rowspan="2">H.R.4, the package <b>rescinding money Congress had already appropriated</b></td><td class="c y">Yea</td><td>Agreed to, VP broke the tie</td></tr>
+      <tr><td>392</td><td>15 Jul 2025</td><td class="c y">Yea</td><td>Agreed to, VP broke the tie</td></tr>
+      <tr><td>654</td><td>18 Dec 2025</td><td>Resolution to overturn the HHS rule <b>"Adhering to the Text of the Administrative Procedure Act"</b></td><td class="c n">Nay</td><td>Defeated &mdash; rule stands</td></tr>
+      <tr><td>122</td><td>13 May 2026</td><td>Motion to take up restoring the <b>CFPB debt-collection rule</b></td><td class="c n">Nay</td><td>Rejected</td></tr>
+    </tbody>
+  </table>
+
+  <p class="say">Twelve times this Senate has split straight down the middle. Twelve times Ashley Moody was on the winning side. Not once did she break with them.</p>
+  <p class="fine"><b>Three worth naming on their own.</b> She cast a decisive vote to put <b>Pete Hegseth</b> at the Pentagon. She cast a decisive vote for the bill that <b>cut Medicaid and SNAP</b>. And she cast a decisive vote to <b>block a resolution reining in unauthorised military action against Venezuela</b> &mdash; a war-powers vote, decided by one seat.</p>
+  <p class="fine"><b>Say it precisely.</b> "Decisive" is accurate for every vote on this page because the chamber was tied. It is <b>not</b> accurate for the RFK Jr. confirmation on the previous page, which was 52&ndash;48. Keep the two claims separate.</p>
 </div>
 
 <div class="method">
