@@ -42,6 +42,11 @@ interface WordEntry {
   word: string
   freq: number
   themeIdx: number
+  /** Placeholder chip for a theme whose comments matched no keyword strictly
+   *  enough to be counted here — its `freq` is borrowed from the theme's own
+   *  count, so it is NOT a real term frequency and must not be shown as a
+   *  share (it would read as a flat 100% of the theme). */
+  synthetic?: boolean
 }
 
 interface Props {
@@ -60,10 +65,18 @@ interface Props {
   themeDimensions?: Record<string, { axis: string; sub: string; count: number }[]>
 }
 
-function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalResponses, sentiment, colorBy, onClick, signalScore, maxSignal, sizeBy }: {
+function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalResponses, themeTotal, themeName, synthetic, sentiment, colorBy, onClick, signalScore, maxSignal, sizeBy }: {
   word: string; freq: number; themeIdx: number; dimmed: boolean
   themeColors: Record<number, typeof THEME_PALETTE[0]>; maxFreq: number
   totalResponses: number
+  /** When set, the share is read against THIS THEME's comments instead of the
+   *  whole substantive corpus — "10% of people raise Pricing, and 30% of THEM
+   *  say price". Only the per-theme grouped view passes it; the flat cloud
+   *  mixes themes under one heading, so there the shared corpus denominator is
+   *  the only one every chip can be compared on. */
+  themeTotal?: number
+  themeName?: string
+  synthetic?: boolean
   sentiment?: { positive: number; negative: number; neutral: number }
   colorBy?: 'theme' | 'sentiment'
   onClick?: () => void
@@ -75,7 +88,20 @@ function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalRespons
   const sizeValue = useSignal ? Math.abs(signalScore!) : freq
   const sizeMax = useSignal ? Math.max(maxSignal!, 1) : Math.max(maxFreq, 1)
   const size = 12 + Math.round((sizeValue / sizeMax) * 20)
-  const pct = totalResponses > 0 ? Math.round(freq / totalResponses * 100) : 0
+  // `freq` is a COMMENT count, not an occurrence count — the scan above adds 1
+  // per matching row (and the general-word pass de-dupes within a row) — so
+  // dividing by a comment total is a like-for-like share either way.
+  // Clamped: the theme's own count comes from a broader matcher (stems, word
+  // gaps) than this cloud's strict \bword\b, so freq should never exceed it,
+  // but a share over 100% is the one thing that must not reach the screen.
+  const denom = themeTotal != null && themeTotal > 0 ? themeTotal : totalResponses
+  const pct = denom > 0 ? Math.min(100, Math.round(freq / denom * 100)) : 0
+  const showPct = !synthetic
+  const pctNote = themeTotal != null && themeTotal > 0
+    ? freq.toLocaleString() + ' of the ' + themeTotal.toLocaleString() + ' comments in '
+      + (themeName || 'this theme') + ' mention it (' + pct + '%)'
+    : freq.toLocaleString() + ' of ' + totalResponses.toLocaleString()
+      + ' substantive comments mention it (' + pct + '%)'
 
   // Sentiment coloring
   var sentColor = T.textMute
@@ -101,7 +127,10 @@ function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalRespons
   return (
     <span
       onClick={onClick}
-      title={word + ': ' + freq + ' occurrences (' + pct + '%)' + (useSignal ? ' | avg score: ' + Math.round(signalScore!) : '') + (sentiment ? ' | +' + sentiment.positive + ' -' + sentiment.negative : '')}
+      title={word + ': ' + (synthetic
+        ? 'no comment in this theme matches this term exactly — shown so the theme is represented'
+        : pctNote)
+        + (useSignal ? ' | avg score: ' + Math.round(signalScore!) : '') + (sentiment ? ' | +' + sentiment.positive + ' -' + sentiment.negative : '')}
       style={{
         fontSize: size, fontWeight: freq > maxFreq * 0.5 ? 700 : 500,
         color: wordColor, background: wordBg,
@@ -113,7 +142,7 @@ function Word({ word, freq, themeIdx, dimmed, themeColors, maxFreq, totalRespons
       onMouseLeave={function() { setHov(false) }}
     >
       {word}
-      <span style={{ fontSize: Math.max(9, size - 6), fontWeight: 600, opacity: 0.6 }}>{pct}%</span>
+      {showPct && <span style={{ fontSize: Math.max(9, size - 6), fontWeight: 600, opacity: 0.6 }}>{pct}%</span>}
     </span>
   )
 }
@@ -189,7 +218,7 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
     themes.forEach(function(t, idx) {
       if (t.count > 0 && !representedThemes.has(idx)) {
         var topKw = (t.keywords || [])[0]
-        if (topKw) allWords.push({ word: topKw.toLowerCase(), freq: Math.max(1, t.count), themeIdx: idx })
+        if (topKw) allWords.push({ word: topKw.toLowerCase(), freq: Math.max(1, t.count), themeIdx: idx, synthetic: true })
       }
     })
     const covered = new Set(Object.keys(wordThemeMap))
@@ -349,8 +378,9 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
           Theme Clouds
           {total > 0 && (
             <span style={{ fontSize: 10, fontWeight: 500, color: T.textFaint, marginLeft: 8 }}
-              title={'Terms and their percentages are over comments carrying usable feedback — ' + (nonEmpty - total).toLocaleString() + ' non-substantive answers are excluded so they don’t dilute the cloud. ' + SUBSTANTIVE_RULE_NOTE}>
-              over {total.toLocaleString()} substantive{nonEmpty > total ? ' of ' + nonEmpty.toLocaleString() + ' answered' : ''}
+              title={'The badge on the left of each row is the theme\'s share of all ' + total.toLocaleString() + ' substantive comments. The percentage on each TERM is its share of that theme\'s own comments — "9% of people raise Pricing, and 24% of them say price". Non-substantive answers ('
+                + (nonEmpty - total).toLocaleString() + ') are excluded so they don’t dilute either number. ' + SUBSTANTIVE_RULE_NOTE}>
+              over {total.toLocaleString()} substantive{nonEmpty > total ? ' of ' + nonEmpty.toLocaleString() + ' answered' : ''} {'·'} terms are % of their theme
             </span>
           )}
         </span>
@@ -535,19 +565,36 @@ export default function WordCloud({ themes, themeColors, parsedData, activeField
                       </button>
                     )}
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 8px', alignItems: 'baseline' }}>
-                    {(showAll
-                      ? tWords
-                      : tWords.filter(function(w) { return total > 0 && (w.freq / total * 100) >= MIN_PCT })
-                    ).map(function(w) {
-                      return <Word key={w.word} {...w} dimmed={false} themeColors={themeColors} maxFreq={maxFreq} totalResponses={total} sentiment={wordSentiments[w.word]} colorBy={colorBy} signalScore={wordSignals[w.word]?.avg} maxSignal={maxSignal} sizeBy={sizeBy} onClick={function() { if (onWordClick) onWordClick(w.word, idx, 'keyword') }} />
-                    })}
-                    {!showAll && tWords.some(function(w) { return total > 0 && (w.freq / total * 100) < MIN_PCT }) && (
-                      <span style={{ fontSize: 10, color: T.textFaint, marginLeft: 4 }}>
-                        +{tWords.filter(function(w) { return total > 0 && (w.freq / total * 100) < MIN_PCT }).length} below {MIN_PCT}% hidden
-                      </span>
-                    )}
-                  </div>
+                  {/* Terms here read against THIS THEME's comments, not the whole
+                      corpus: "9% of people raise Pricing, and 24% of THEM say
+                      price". Against the corpus every term collapsed toward 0%
+                      (a term inside a 9% theme can't exceed 9% of everything),
+                      so the chips carried no usable contrast — several real
+                      contributors rendered a flat "0%". The hide threshold uses
+                      the SAME denominator as the number on the chip; if it kept
+                      using the corpus total the "below 3% hidden" note would be
+                      talking about a percentage the user can't see. */}
+                  {(function() {
+                    const themeTotal = t.count > 0 ? t.count : 0
+                    const share = function(w: WordEntry) {
+                      const d = themeTotal > 0 ? themeTotal : total
+                      return d > 0 ? Math.min(100, w.freq / d * 100) : 0
+                    }
+                    const shown = showAll ? tWords : tWords.filter(function(w) { return w.synthetic || share(w) >= MIN_PCT })
+                    const hidden = tWords.length - shown.length
+                    return (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 8px', alignItems: 'baseline' }}>
+                        {shown.map(function(w) {
+                          return <Word key={w.word} {...w} dimmed={false} themeColors={themeColors} maxFreq={maxFreq} totalResponses={total} themeTotal={themeTotal} themeName={t.name} sentiment={wordSentiments[w.word]} colorBy={colorBy} signalScore={wordSignals[w.word]?.avg} maxSignal={maxSignal} sizeBy={sizeBy} onClick={function() { if (onWordClick) onWordClick(w.word, idx, 'keyword') }} />
+                        })}
+                        {hidden > 0 && (
+                          <span style={{ fontSize: 10, color: T.textFaint, marginLeft: 4 }}>
+                            +{hidden} below {MIN_PCT}% of this theme hidden
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })()}
                   {/* Items mentioned within this theme — entity cross-tab */}
                   {(function() {
                     const teList = themeEntities[themeKey(t, idx)] || []

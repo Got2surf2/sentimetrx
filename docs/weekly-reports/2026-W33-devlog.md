@@ -81,3 +81,31 @@ While wiring that I found the cards rendering **"95% CI: 0–0%"** before the ro
 **One thing I did not fix, deliberately, because it's a decision and not a bug.** The server count and the client recount don't agree: for *Food Quality* the server says **1,817** and the client recount says **1,962**. Both are correct under their own rule — the server numerator is substantive-gated (sql/181, matching the metric strip's model), the client recount counts all matches — and both divide by the same 19,709, so each is internally consistent. This predates today; the server counts were always overwritten by the recount once rows loaded, so nobody saw the difference. Progressive rendering makes it briefly visible, and the co-occurrence percentages inherit it (13% vs 14%). The "calculating…" chip labels precisely that window. Picking which rule is canonical is the owner's call, not something to slip into a perf commit.
 
 Zero lint delta (20 warnings on the touched files before and after), tsc clean, suite 1657 green.
+
+## Theme-cloud term percentages were a share of the corpus, not the theme (Aug 14, later)
+
+Owner, looking at the Pricing row: *price 2%, bill 1%, cost 1%, expensive 0%, portion size 0%, value 0%*. "Feels like it should be of the theme — so we read it as *10% of the people talk about food quality and prep, and 30% of them tie back to overcooked*."
+
+He's right, and the old behaviour was worse than merely unintuitive. Both the theme badge and every term chip divided by the same corpus total (`WordCloud.tsx`, `totalResponses={total}`), and **a term inside a 9% theme mathematically cannot exceed 9% of everything** — so the chips were squeezed into a 0–9 point range and several genuine contributors rendered a flat **0%**. The view was displaying a number whose ceiling was set by the row it sat on.
+
+Terms in the **grouped** view now divide by their own theme's comment count. Same row, after: *price 19%, bill 15%, cost 7%, expensive 6%*. Food Quality reads *overcooked 27%, dry 20%, undercooked 15%, burnt 11%* — exactly the sentence the owner wanted to be able to say.
+
+**The thing I checked before touching it**, because "30% of them" is a claim about people: whether `freq` was an occurrence count or a comment count. It's comments — the keyword scan adds 1 per matching row, and the general-word pass carries a `seen` Set that de-dupes within a row. So `freq / t.count` is comments-over-comments, a like-for-like share, and the chip reconciles against the "View 1,962 comments" button right next to it. Had it been occurrences the percentage could have exceeded 100% and meant nothing.
+
+**Verified against the database rather than eyeballed** (same 50K deterministic sample, same strict `\bword\b` the cloud uses):
+
+| chip | substantive comments | ÷ theme | shown |
+|---|---|---|---|
+| overcooked | 528 | 1,962 | 27% |
+| price | 331 | 1,724 | 19% |
+| forgot | 292 | 784 | 37% |
+
+All three match the rendered chip exactly, and the sample's substantive row count came back 19,709 — the number in the cloud header. Worth recording that my *first* query returned 580 for overcooked, not 528: the gap is one-word answers that are literally just "Overcooked", which the substantive lens correctly drops. The raw match count and the displayed numerator are not the same thing, and checking the wrong one would have made a correct number look broken.
+
+Three details that came with it:
+
+- **The 3% hide threshold now uses the same denominator as the chip.** It was filtering on % of corpus while displaying % of theme, so "+7 below 3% hidden" would have been describing a percentage nobody could see. Note now reads "below 3% of this theme hidden".
+- **The flat (ungrouped) cloud keeps the corpus denominator.** It mixes terms from every theme plus non-theme words under one heading, so the shared total is the only scale every chip can be compared on. `themeTotal` is passed only by the grouped view.
+- **The synthetic placeholder chip no longer shows a percentage at all.** For a theme whose comments match no keyword strictly enough to count, the code pushes a chip with `freq` borrowed from the theme's own count — under the new denominator that renders a flat, meaningless **100%**. It's now flagged `synthetic` and the share is suppressed, with a tooltip explaining why it's there.
+
+Tooltips now state the denominator in words ("528 of the 1,962 comments in Food Quality & Preparation Issues mention it"), and the header carries "terms are % of their theme". tsc clean, suite 1657 green, zero lint delta.
