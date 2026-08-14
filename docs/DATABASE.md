@@ -172,7 +172,16 @@ sql/158 (2026-07-06) widened the five taxonomy read RPCs' axis allow-lists
 to accept the `emotion` axis and re-created `get_rows_by_filters` with a
 `p_sub_emotion` facet param (no table changes). sql/160–162 (2026-07-10/11)
 added the sampling stack for datasets above the 50K cap: the `idx_drf_sample`
-expression index + `sample_dataset_rows` (O(sample) keyset-paged bulk rows),
+expression index + `sample_dataset_rows` (O(sample) keyset-paged bulk rows;
+**sql/186** re-created it with a `p_drop_keys text[] DEFAULT '{}'` tail param and
+made it always strip the reserved `_tx`/`_txv`/`_sub` keys, so the bulk-row path
+stops shipping columns nobody reads — the route passes the schema's
+`ignore`/`hidden` fields, measured 9.45MB→5.76MB per 5,000-row page with a
+*faster* jsonb build, and it keeps ignored PII-ish columns like name/email/IP/
+card out of the client payload. The DEFAULT makes it deploy-order safe in both
+directions; `CREATE OR REPLACE` cannot add a parameter, hence DROP+CREATE inside
+the migration transaction. **⚠️ APPLIED TO TEST ONLY so far — prod migration and
+the `docs/db/schema.sql` refresh happen together on the authorised prod apply**),
 `count_nonempty_rows` (comma-safe non-empty count, field as bind param), and
 `sampled_signal_counts` (single-pass sampled records/per-theme/union counts
 over the same sample — replaces 1+themes+1 full scans per signal-stats

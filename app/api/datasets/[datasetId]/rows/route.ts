@@ -143,6 +143,34 @@ export async function GET(req: Request, props: Params) {
     // Effective cap = the smaller of the caller's sampleMax and the hard ceiling.
     const cap = Math.min(sampleMax ?? BULK_ROWS_HARD_CAP, BULK_ROWS_HARD_CAP)
 
+    // Fields the schema marks as excluded from analysis. EVERY analyze surface
+    // already filters these out client-side (TextMine's hiddenFields, Charts,
+    // Stats, Snapshot, FilteredCommentsPanel), so shipping them was pure waste
+    // — and worse than waste when they're the survey's name/email/IP/card
+    // columns, which had no business being written into a client payload at
+    // all. Dropped in SQL (sql/186) so the DB→server leg stops carrying them:
+    // measured 9.45MB → 5.76MB per 5,000-row page on a 32-field survey, with
+    // the jsonb build getting FASTER (803ms → 309ms).
+    //
+    // `type === 'id'` is deliberately NOT dropped: ChartsModule's column list
+    // keeps id fields (it filters only 'ignore' + hidden), so dropping them
+    // would break a live consumer. 'ignore' and hidden are excluded everywhere.
+    //
+    // An explicit ?fields=/?field= projection wins — if a caller names a field,
+    // honour it even when the schema ignores it, rather than silently returning
+    // a column they asked for as empty.
+    let dropKeys: string[] = []
+    {
+      const { data: stateRow } = await service
+        .from('dataset_state').select('schema_config').eq('dataset_id', params.datasetId).maybeSingle()
+      const sf = (stateRow as { schema_config?: { fields?: Array<{ field?: string; type?: string; hidden?: boolean }> } } | null)
+        ?.schema_config?.fields || []
+      dropKeys = sf
+        .filter(f => !!f.field && (f.type === 'ignore' || f.hidden === true))
+        .map(f => f.field as string)
+        .filter(f => !fieldSet || !fieldSet.has(f))
+    }
+
     // Above the cap: SQL-side deterministic O(sample) sample (sql/160). The
     // sample is the `cap` rows with the smallest uniform hash(id || dataset_id),
     // served by the idx_drf_sample expression index as an index range scan — only
@@ -163,7 +191,7 @@ export async function GET(req: Request, props: Params) {
           const r = projectRow(sr.data, fieldSet)
           if (withRowIds) r._rowId = sr.id
           rows.push(r)
-        })
+        }, dropKeys)
       } catch (sampleErr) {
         return serverError(sampleErr, 'datasets.rows.bulk', { orgId: auth.orgId })
       }
@@ -193,6 +221,13 @@ export async function GET(req: Request, props: Params) {
       for (let i = 0; i < flatRows.length; i++) {
         const fr = flatRows[i] as unknown as { id?: number; data: Record<string, unknown> }
         const r = projectRow(fr.data, fieldSet)
+        // Same exclusion as the sampled path above. This one can only drop the
+        // keys AFTER the fetch (PostgREST can't project inside jsonb), so it
+        // saves no transfer — but the point that matters is identical: the
+        // schema's ignored columns, which here include the survey's name/email/
+        // IP/card fields, must not end up in a client payload. A dataset under
+        // the cap is not a dataset that deserves weaker handling.
+        for (let k = 0; k < dropKeys.length; k++) delete r[dropKeys[k]]
         if (withRowIds) r._rowId = fr.id
         reservoir.push(r)
       }

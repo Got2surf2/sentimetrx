@@ -109,3 +109,35 @@ Three details that came with it:
 - **The synthetic placeholder chip no longer shows a percentage at all.** For a theme whose comments match no keyword strictly enough to count, the code pushes a chip with `freq` borrowed from the theme's own count — under the new denominator that renders a flat, meaningless **100%**. It's now flagged `synthetic` and the share is suppressed, with a tooltip explaining why it's there.
 
 Tooltips now state the denominator in words ("528 of the 1,962 comments in Food Quality & Preparation Issues mention it"), and the header carries "terms are % of their theme". tsc clean, suite 1657 green, zero lint delta.
+
+## Measuring the 65s row fetch: two good ideas that didn't survive contact (Aug 14, later²)
+
+The dev log showed `/rows?all=true&sampleMax=50000` taking **65 seconds**. Owner asked me to measure it properly rather than guess — fair, given I'd already guessed wrong once today about signal-stats.
+
+**Where the time is.** 21s warm, 36s cold (the 65s was dev overhead plus contention with the then-uncached theme-counts). Per 5,000-row page: **~0.9–1.2s of server think-time** (building a 9.5MB jsonb, gzipping it) against **~0.15–0.4s of transfer**. Node is noise — `projectRow` 491ms and `JSON.stringify` 324ms across all 50,000 rows. So the lever is building a smaller value, not moving it faster.
+
+**Rejected idea 1: parallel pages.** theme-counts was CPU-bound so parallelism bought only 28% there; this one looked I/O-shaped, so I expected better. It's worse, and then it's catastrophic:
+
+```
+concurrency 1: 20.9s  all ok      <- fastest AND safest
+concurrency 2: 29.6s  all ok
+concurrency 3: 25.1s  all ok
+concurrency 4: 28.8s  slowest page 11.9s
+concurrency 10:       EVERY page hit the statement timeout, 0 rows
+```
+
+Ten-wide doesn't degrade the load, it destroys it. The existing serial pager is already optimal. Worth remembering the shape of this: two superficially similar bottlenecks, opposite responses to the same intervention.
+
+**Rejected idea 2: columnar payload.** 62.8% of every row is the same 32 question-sentence keys, repeated 50,000 times — an obvious 4× win. Raw, it is exactly that: 8.12MB → 2.05MB. Gzipped it's **1.4×** (0.61 → 0.44 MB), because gzip already collapses repeated strings, and parse saves 8ms per page. A large invasive change for ~1.7MB and ~80ms. Killed it.
+
+**What shipped: stop sending fields nobody reads (sql/186).** 14 of the 32 fields are marked `ignore` in the schema, and *every* analyze surface already filters those out — TextMine's `hiddenFields`, Charts, Stats, Snapshot, FilteredCommentsPanel. `RowsProvider` sends no `fields` param, so `projectRow`'s fieldSet was null and only `_tx` was stripped — in Node, after the transfer. The route now reads `schema_config` and passes the ignored/hidden fields as `p_drop_keys`, dropped in SQL.
+
+**And the honest result, which is not the one the payload numbers imply.** Payload −34% (80 → 53 MB), but a fair alternating A/B gives **11% faster** (11.5s → 10.2s median), not the proportional cut I'd predicted to the owner. Two reasons: gzip had already absorbed most of the repetition, and a lot of the per-page cost is fixed round-trip and planning overhead that shrinking the payload doesn't touch. My first measurement of this looked like a *regression* (13.6s vs 28.1s) purely because I ran the new shape cold and the baseline warm — the alternating harness exists because of that.
+
+**The half that actually matters is privacy, not speed.** The ignored columns on this survey are **First Name, Last Name, Email Address, IP Address, Transaction ID, DR Card Number_Member**. They were being serialized, gzipped, transferred and parsed 50,000 times per page load into a client-side payload readable in devtools — for rows the UI never renders. That's the same class as the Town Hall RSC-payload lesson from July: what lands on the client is published whether or not anything renders it. 32 fields per row → 19.
+
+`type === 'id'` is deliberately left alone: `ChartsModule`'s column list filters only `ignore` + hidden, so it keeps id fields, and dropping them would break a live consumer. Only `ignore`/`hidden` — the ones excluded everywhere — are dropped. An explicit `?fields=` projection still wins over the drop.
+
+Verified against the real TEST database (`scripts/_verify_rows_dropkeys.ts`): same 50,000 ids **in the same order** so the deterministic sample is provably unchanged, every retained field byte-identical, 0 surviving ignored columns. The under-cap path drops the same keys in Node — no transfer saving there, since PostgREST can't project inside jsonb, but a smaller dataset shouldn't get weaker handling.
+
+sql/186 is **applied to TEST only**; the prod apply and the `docs/db/schema.sql` refresh go together when a prod migration is authorised. tsc clean, suite 1657 green, zero lint delta.
