@@ -1,5 +1,38 @@
 import { describe, it, expect } from 'vitest'
-import { computeCollocates, filterCooccurringRows, splitSentences } from '@/lib/collocations'
+import { computeCollocates, contextTokens, filterCooccurringRows, splitSentences } from '@/lib/collocations'
+
+describe('contextTokens', () => {
+  it('drops contractions the shared tokenizer lets through', () => {
+    // The bug: tokenize() keeps "we're" whole, and its stop list only has "we",
+    // so contractions dominated the top of the cloud on spoken corpora.
+    // Only the real adjective survives; every contraction is resolved away.
+    expect(contextTokens("We're going and it's fine and they're here and that's all"))
+      .toEqual(['fine'])
+  })
+
+  it('folds possessives into the base word so a name is not split', () => {
+    expect(contextTokens("Trump's executive order")).toEqual(['trump', 'executive', 'order'])
+  })
+
+  it('resolves negated contractions to their stopword base', () => {
+    expect(contextTokens("don't isn't can't won't wasn't")).toEqual([])
+  })
+
+  it('drops function words that survive the shared stop list', () => {
+    expect(contextTokens('because of a lot of other ways around here')).toEqual([])
+  })
+
+  it('KEEPS evaluative adjectives — they are the answer, not noise', () => {
+    // "what is food talked about with?" → good / great / delicious. The main
+    // WordCloud stops these; the Context view must not.
+    expect(contextTokens('good great delicious fresh')).toEqual(['good', 'great', 'delicious', 'fresh'])
+  })
+
+  it('keeps real content words untouched', () => {
+    expect(contextTokens('largest tax cut in American history saving billions of dollars'))
+      .toEqual(['largest', 'tax', 'cut', 'american', 'history', 'saving', 'billions', 'dollars'])
+  })
+})
 
 const F = 'comment'
 const rowsOf = (...texts: string[]) => texts.map(t => ({ comment: t }))
@@ -125,6 +158,18 @@ describe('filterCooccurringRows', () => {
     const drilled = filterCooccurringRows(rows, F, ['food'], 'delicious')
     expect(drilled.length).toBe(count)
     expect(drilled.length).toBe(2)
+  })
+
+  it('drill-down honours the possessive fold — "trump\'s" counts toward "trump"', () => {
+    // Guards the chip==drill-down contract across normalization: if the two
+    // passes disagreed about "trump's", the cloud would over- or under-count.
+    const rows = [
+      { comment: "The order mentions Trump's plan." },
+      { comment: 'The order mentions Trump directly.' },
+    ]
+    const r = computeCollocates(rows, F, ['order'], { minCount: 1 })
+    expect(r.byCount.find(c => c.word === 'trump')?.count).toBe(2)
+    expect(filterCooccurringRows(rows, F, ['order'], 'trump').length).toBe(2)
   })
 
   it('requires the same sentence, not merely the same comment', () => {

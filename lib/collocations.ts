@@ -24,6 +24,56 @@
 
 import { tokenize } from './trendingWords'
 
+// `tokenize` keeps contractions whole ("we're", "it's", "that's"), so they slip
+// past its stop list — which only carries the uncontracted "we" / "it" / "that".
+// On conversational or spoken corpora they dominate the top of the cloud.
+// Stripping the enclitic and re-testing fixes that, and folds possessives into
+// the base word ("trump's" → "trump") so a name isn't split across two entries.
+//   "don't" → "do" (stop) · "isn't" → "is" (stop) · "can't" → "ca" (too short)
+const ENCLITIC = /(?:n't|'(?:s|re|ve|ll|d|m))$/
+
+// Function words that survive trendingWords' list but carry no topic.
+//
+// DELIBERATELY NARROWER than the WordCloud stop set, which also drops
+// good/great/new/long/time/day. Those are legitimate ANSWERS here: "what is
+// food talked about with?" is good / great / delicious — the top of the
+// legacy Context view. A word that's noise as a cloud entry can be the whole
+// point as a collocate, so only unambiguous function words belong in here.
+const CONTEXT_STOPS = new Set([
+  'because', 'lot', 'lots', 'other', 'another', 'way', 'ways',
+  'out', 'back', 'off', 'own', 'due', 'per', 'such', 'here', 'there', 'same',
+  'even', 'ever', 'every', 'each', 'few', 'many', 'much', 'both',
+  'between', 'during', 'while', 'through', 'without', 'within', 'against',
+  'along', 'since', 'away', 'around', 'able',
+])
+
+/**
+ * Tokens eligible to appear as CONTEXT for a term. Layers contraction handling
+ * and the extra function-word stops on top of the shared tokenizer, and is used
+ * by BOTH passes so a candidate word and its corpus baseline count the same
+ * surface forms.
+ */
+export function contextTokens(text: string): string[] {
+  const out: string[] = []
+  for (const raw of tokenize(text)) {
+    const tok = normalizeToken(raw)
+    if (tok) out.push(tok)
+  }
+  return out
+}
+
+/** Normalize one already-tokenized word, or '' if it should be dropped. */
+function normalizeToken(raw: string): string {
+  let tok = raw
+  if (ENCLITIC.test(tok)) {
+    tok = tok.replace(ENCLITIC, '')
+    // Re-test: the contracted form dodged the stop list, the base may not.
+    if (tok.length < 3 || tokenize(tok).length === 0) return ''
+  }
+  if (tok.length < 3 || CONTEXT_STOPS.has(tok)) return ''
+  return tok
+}
+
 export interface Collocate {
   word: string
   /** Comments where this word shares a sentence with the target. */
@@ -81,7 +131,7 @@ function targetTokenSet(targets: string[]): Set<string> {
     const lower = String(t || '').trim().toLowerCase()
     if (!lower) continue
     set.add(lower)
-    for (const tok of tokenize(lower)) set.add(tok)
+    for (const tok of contextTokens(lower)) set.add(tok)
   }
   return set
 }
@@ -183,7 +233,7 @@ export function computeCollocates(
           if (re.test(sentence)) { hit = true; break }
         }
         if (!hit) continue
-        for (const tok of tokenize(sentence)) {
+        for (const tok of contextTokens(sentence)) {
           if (!selfTokens.has(tok)) near.add(tok)
         }
       }
@@ -210,7 +260,10 @@ export function computeCollocates(
         TOKEN_SCAN.lastIndex = 0
         let m: RegExpExecArray | null
         while ((m = TOKEN_SCAN.exec(lower)) !== null) {
-          const tok = m[0].replace(/^['-]+|['-]+$/g, '')
+          // Same normalization as pass 1 — otherwise "trump's" in the corpus
+          // wouldn't count toward the "trump" candidate and the baseline
+          // (hence the G² score) would be understated.
+          const tok = normalizeToken(m[0].replace(/^['-]+|['-]+$/g, ''))
           if (tok && candidateSet.has(tok)) seen.add(tok)
         }
       }
@@ -272,7 +325,9 @@ export function filterCooccurringRows(
           if (re.test(sentence)) { matchesTarget = true; break }
         }
         if (!matchesTarget) continue
-        if (tokenize(sentence).includes(word)) { hit = true; break }
+        // contextTokens, not tokenize — the drill-down must apply the exact
+        // normalization that produced the chip's count.
+        if (contextTokens(sentence).includes(word)) { hit = true; break }
       }
       if (hit) break
     }
