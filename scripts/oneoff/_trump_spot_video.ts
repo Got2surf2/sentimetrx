@@ -247,7 +247,7 @@ const spotSilence = (portrait: string | null, LOGO: string | null) => `<!doctype
   </div>
   <div class="scene" id="s1">
     <div class="kicker">Donald Trump talked about his ballroom</div>
-    <div class="big" id="n1">0</div><div class="mid" style="font-size:96px;color:#A8A8A8;margin-top:8px">times</div>
+    <div class="big"><span id="n1">0</span> <span class="run" style="font-size:104px;color:#A8A8A8">times</span></div>
     <div class="vs">He has never said</div>
     <div class="mid" style="color:${ORANGE}" id="w1">&ldquo;preschool&rdquo;</div>
   </div>
