@@ -35,6 +35,10 @@
  *
  * Every figure spoken on screen is script-verified; CDC and market numbers are
  * captioned as external on screen because they are not ours.
+ *
+ * BRANDING: these two spots close on BRAND POSITIONING DOCTORS, not Datanautix
+ * (owner, 2026-08-14). The scoping is deliberate — the PDFs and the PolitiFact
+ * outreach still carry Datanautix. Do not "harmonise" them.
  */
 
 import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'node:fs'
@@ -165,7 +169,7 @@ const BASE_CSS = `
   /* Closing card - the brand wordmark is one word, no separator. */
   .endcard{align-items:flex-start}
   .endcard .by{font-size:40px;color:#94a3b8;font-weight:600;margin-bottom:34px}
-  .endcard .wm{font-size:132px;font-weight:800;letter-spacing:-.03em}
+  .endcard .wm{font-size:104px;font-weight:800;letter-spacing:-.03em;line-height:1.02}
   .endcard .wm .a{color:#0F7173}.endcard .wm .b{color:${ORANGE}}
   .endcard .tag{font-size:52px;color:#fff;font-weight:700;margin-top:40px}
   .bar{position:absolute;left:0;bottom:0;height:8px;background:${ORANGE}}
@@ -198,7 +202,7 @@ const FINAL_HTML = `
   </div>
   <div class="scene endcard" id="se">
     <div class="by">Brought to you by</div>
-    <div class="wm"><span class="a">data</span><span class="b">nautix</span></div>
+    <div class="wm"><span class="a">Brand Positioning</span><br><span class="b">Doctors</span></div>
     <div class="tag">We make facts matter.</div>
   </div>`
 
@@ -390,7 +394,7 @@ async function render(name: string, html: string) {
   const levels = (vd.match(/(mean_volume|max_volume):.*/g) ?? []).join('  ')
   console.log(`  score levels → ${levels}`)
 
-  const out = path.join(DL, `Datanautix_${name}_30s.mp4`)
+  const out = path.join(DL, `BrandPositioningDoctors_${name}_30s.mp4`)
   execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error',
     '-framerate', String(FPS), '-i', path.join(TMP, 'f%05d.png'), '-i', wav,
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', 'medium',
