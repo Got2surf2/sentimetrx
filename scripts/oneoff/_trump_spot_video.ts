@@ -57,14 +57,19 @@ const FPS = 25, SECS = 30, TOTAL = FPS * SECS, W = 1920, H = 1080
  * chrome, not brand identity. A frequency count of a page's markup is not a
  * brand palette, and the logo is the authority.
  *
- * ⚠️ THE GREENS BELOW ARE EYEBALLED FROM THE LOGO IMAGE, not sampled from a
- * file — a pasted image cannot be read off disk. Save the logo to
- * ~/Downloads/bpd-logo.png and re-run: the end card will use the real mark and
- * these values can be sampled exactly.
+ * RESOLVED: the mark was found on their own site as a 269x94 GIF
+ * (BPD_website_home_01.gif) and the greens below are SAMPLED from it, not
+ * guessed. It is installed at ~/Downloads/bpd-logo.png, upscaled 4x with
+ * lanczos. ⚠️ 94px of source height is small for a 1080p frame, so the
+ * "IS YOUR BRAND VITAL?" tagline inside the mark is soft — if a vector or
+ * high-res original exists, drop it in the same place and re-run.
  */
-const ACCENT = '#45B649'   // brand green (approx — see note above)
-const SECOND = '#2E9E3C'   // deeper green, the dark end of the logo gradient
-const INK = '#141414'      // near-black ground, as the logo sits on
+const ACCENT = '#52D12A'   // brand green, SAMPLED from the logo (633px of it)
+const SECOND = '#309A62'   // the deeper green at the dark end of the gradient
+const INK = '#141414'      // near-black ground
+const PLATE = '#303030'    // the logo's OWN background grey — the end card uses
+                           // it full-bleed so the mark sits flush instead of
+                           // showing a grey rectangle against a darker ground
 const MUTED = '#8C8C8C'    // neutral grey
 const ORANGE = ACCENT      // legacy name still used throughout the templates
 
@@ -198,11 +203,11 @@ const BASE_CSS = `
   .attrib{font-size:34px;color:#A8A8A8;margin-top:52px;font-weight:600}
   .false{font-size:44px;color:${ORANGE};margin-top:44px;font-weight:800;letter-spacing:.02em}
   /* Closing card - the brand wordmark is one word, no separator. */
-  .endcard{align-items:flex-start}
+  .endcard{align-items:flex-start;background:${PLATE}}
   .endcard .by{font-size:40px;color:#A8A8A8;font-weight:600;margin-bottom:34px}
   .endcard .wm{font-size:88px;font-weight:800;white-space:nowrap;color:#fff;letter-spacing:-.01em}
   .endcard .wm .d{color:${ACCENT};letter-spacing:.14em;margin-left:.18em}
-  .endcard .logo{height:190px;margin:6px 0 4px}
+  .endcard .logo{height:290px;margin:2px 0 6px;image-rendering:auto}
   .endcard .tag{font-size:52px;color:#fff;font-weight:700;margin-top:40px}
   .bar{position:absolute;left:0;bottom:0;height:8px;background:${ORANGE}}
 `
