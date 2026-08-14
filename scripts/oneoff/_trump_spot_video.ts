@@ -48,7 +48,18 @@ import { execFileSync } from 'node:child_process'
 
 const DL = path.join(homedir(), 'Downloads')
 const FPS = 25, SECS = 30, TOTAL = FPS * SECS, W = 1920, H = 1080
-const ORANGE = '#E85A1A'
+/**
+ * Brand Positioning Doctors palette, taken from the page source of
+ * brandpositioningdoctors.com on 2026-08-14 (the site could not be opened in
+ * the browser pane, so colours were counted out of the markup). Frequency-
+ * ranked: #ffc700 x25, #414141 x25, #000000 x20, #a2c437 x6. The blues
+ * #116dff / #3899ec are Wix editor chrome, not brand, and are excluded.
+ */
+const ACCENT = '#FFC700'   // yellow — the one loud colour
+const SECOND = '#A2C437'   // green — supporting
+const INK = '#141414'      // near-black, matching their black/#414141 family
+const MUTED = '#8C8C8C'    // neutral grey, replaces the old slate blues
+const ORANGE = ACCENT      // legacy name still used throughout the templates
 
 const args = process.argv.slice(2)
 const which = (args[args.indexOf('--spot') + 1] ?? 'all').toLowerCase()
@@ -140,7 +151,7 @@ function writeScore(file: string) {
 // ── Shared page chrome ──────────────────────────────────────────────────────
 const BASE_CSS = `
   *{box-sizing:border-box;margin:0;padding:0}
-  html,body{width:${W}px;height:${H}px;background:#0b1220;overflow:hidden;
+  html,body{width:${W}px;height:${H}px;background:${INK};overflow:hidden;
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
   #stage{position:relative;width:100%;height:100%}
   #portrait{position:absolute;right:0;top:0;width:52%;height:100%;
@@ -148,29 +159,28 @@ const BASE_CSS = `
     filter:grayscale(1) contrast(.85) brightness(.62);opacity:.20;
     -webkit-mask-image:linear-gradient(to right,transparent 0%,rgba(0,0,0,.75) 45%,rgba(0,0,0,.9) 100%)}
   .scene{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 112px;opacity:0}
-  .kicker{font-size:36px;letter-spacing:.2em;text-transform:uppercase;color:#64748b;font-weight:700;margin-bottom:46px}
+  .kicker{font-size:36px;letter-spacing:.2em;text-transform:uppercase;color:${MUTED};font-weight:700;margin-bottom:46px}
   .big{font-size:268px;font-weight:800;color:#fff;line-height:.9;letter-spacing:-.045em}
   .big.o{color:${ORANGE}}
   /* Any inline run inside .big MUST reset tracking. em-based negative
      letter-spacing is recomputed at the span's own font-size and eats the word
      spaces - that is what turned "of those 565 days" into "ofthose565days". */
   .big .run{letter-spacing:normal;word-spacing:.12em}
-  .cap{font-size:48px;color:#cbd5e1;margin-top:38px;line-height:1.28;font-weight:500;max-width:1580px}
-  .vs{font-size:36px;color:#475569;letter-spacing:.2em;text-transform:uppercase;font-weight:700;margin:52px 0 40px}
+  .cap{font-size:48px;color:#D8D8D8;margin-top:38px;line-height:1.28;font-weight:500;max-width:1580px}
+  .vs{font-size:36px;color:#6E6E6E;letter-spacing:.2em;text-transform:uppercase;font-weight:700;margin:52px 0 40px}
   .mid{font-size:158px;font-weight:800;color:#fff;line-height:.94;letter-spacing:-.035em}
-  .src{font-size:26px;color:#475569;margin-top:30px;letter-spacing:.05em}
+  .src{font-size:26px;color:#6E6E6E;margin-top:30px;letter-spacing:.05em}
   .final{font-size:94px;font-weight:800;color:#fff;line-height:1.14;letter-spacing:-.022em;max-width:1680px}
   .final em{color:${ORANGE};font-style:normal}
   .cta{font-size:78px;font-weight:800;color:#fff;line-height:1.18;letter-spacing:-.022em}
   .cta span{color:${ORANGE}}
   .quote{font-size:80px;font-weight:700;color:#fff;line-height:1.2;letter-spacing:-.02em;max-width:1680px}
-  .attrib{font-size:34px;color:#94a3b8;margin-top:52px;font-weight:600}
+  .attrib{font-size:34px;color:#A8A8A8;margin-top:52px;font-weight:600}
   .false{font-size:44px;color:${ORANGE};margin-top:44px;font-weight:800;letter-spacing:.02em}
   /* Closing card - the brand wordmark is one word, no separator. */
   .endcard{align-items:flex-start}
-  .endcard .by{font-size:40px;color:#94a3b8;font-weight:600;margin-bottom:34px}
-  .endcard .wm{font-size:104px;font-weight:800;letter-spacing:-.03em;line-height:1.02}
-  .endcard .wm .a{color:#0F7173}.endcard .wm .b{color:${ORANGE}}
+  .endcard .by{font-size:40px;color:#A8A8A8;font-weight:600;margin-bottom:34px}
+  .endcard .wm{font-size:96px;font-weight:800;letter-spacing:-.03em;white-space:nowrap;color:${ACCENT}}
   .endcard .tag{font-size:52px;color:#fff;font-weight:700;margin-top:40px}
   .bar{position:absolute;left:0;bottom:0;height:8px;background:${ORANGE}}
 `
@@ -198,11 +208,11 @@ const FINAL_HTML = `
       Are they really who you want <em>controlling your future?</em></div>
   </div>
   <div class="scene" id="sc">
-    <div class="cta">Go out and <span>vote</span>.<br>Take charge of your own future.</div>
+    <div class="cta">Go out and <span>vote</span>.<br><span>Take charge</span> of your own future.</div>
   </div>
   <div class="scene endcard" id="se">
     <div class="by">Brought to you by</div>
-    <div class="wm"><span class="a">Brand Positioning</span><br><span class="b">Doctors</span></div>
+    <div class="wm">Brand Positioning Doctors</div>
     <div class="tag">We make facts matter.</div>
   </div>`
 
@@ -215,13 +225,13 @@ const spotSilence = (portrait: string | null) => `<!doctype html><html><head><me
   </div>
   <div class="scene" id="s1">
     <div class="kicker">Donald Trump talked about his ballroom</div>
-    <div class="big" id="n1">0</div><div class="mid" style="font-size:96px;color:#94a3b8;margin-top:8px">times</div>
+    <div class="big" id="n1">0</div><div class="mid" style="font-size:96px;color:#A8A8A8;margin-top:8px">times</div>
     <div class="vs">He has never said</div>
     <div class="mid" style="color:${ORANGE}" id="w1">&ldquo;preschool&rdquo;</div>
   </div>
   <div class="scene" id="s2">
     <div class="kicker">He called someone a name on</div>
-    <div class="big"><span id="n2">0</span> <span class="run" style="font-size:118px;color:#64748b">of those 565 days</span></div>
+    <div class="big"><span id="n2">0</span> <span class="run" style="font-size:118px;color:${MUTED}">of those 565 days</span></div>
     <div class="vs">He mentioned child care on</div>
     <div class="mid" style="color:${ORANGE}">7 days</div>
   </div>
@@ -230,7 +240,7 @@ const spotSilence = (portrait: string | null) => `<!doctype html><html><head><me
     <div class="big o" style="color:${ORANGE}">+<span id="n3">0</span>%</div>
     <div class="src">CDC &mdash; 285 cases in 2024, 2,289 in 2025</div>
     <div class="vs">Trump spent his time on</div>
-    <div class="mid" style="font-size:104px;white-space:nowrap">his ballroom &mdash; <span style="color:#94a3b8">15.6% of his days</span></div>
+    <div class="mid" style="font-size:104px;white-space:nowrap">his ballroom &mdash; <span style="color:#A8A8A8">15.6% of his days</span></div>
   </div>
   ${FINAL_HTML}
   <div class="bar" id="bar"></div>
@@ -265,12 +275,12 @@ const spotMeasles = (portrait: string | null) => `<!doctype html><html><head><me
   .chartwrap{position:absolute;inset:0;padding:78px 112px 74px;display:flex;flex-direction:column;opacity:0}
   .chead{font-size:70px;font-weight:800;color:#fff;line-height:1.1;letter-spacing:-.025em;margin-bottom:10px}
   .chead em{color:${ORANGE};font-style:normal}
-  .csub{font-size:28px;color:#64748b;margin-bottom:14px}
+  .csub{font-size:28px;color:${MUTED};margin-bottom:14px}
   svg{flex:1;width:100%}
-  .yrs{display:flex;justify-content:space-between;font-size:30px;color:#64748b;font-weight:600;margin-top:6px}
+  .yrs{display:flex;justify-content:space-between;font-size:30px;color:${MUTED};font-weight:600;margin-top:6px}
   .legend{display:flex;gap:76px;align-items:flex-end;margin-top:24px}
   .lg .v{font-size:82px;font-weight:800;line-height:1;letter-spacing:-.03em}
-  .lg .k{font-size:28px;color:#94a3b8;font-weight:600;margin-top:8px}
+  .lg .k{font-size:28px;color:#A8A8A8;font-weight:600;margin-top:8px}
 </style></head><body><div id="stage">
   ${portrait ? `<div id="portrait" style="background-image:url('${portrait}')"></div>` : ''}
   <div class="scene" id="m0">
@@ -288,24 +298,24 @@ const spotMeasles = (portrait: string | null) => `<!doctype html><html><head><me
           <stop offset="100%" stop-color="${ORANGE}" stop-opacity="0"/>
         </linearGradient>
       </defs>
-      <line x1="118" y1="510" x2="1696" y2="510" stroke="#243147" stroke-width="3"/>
-      <line x1="118" y1="356" x2="1696" y2="356" stroke="#151f33" stroke-width="2"/>
-      <line x1="118" y1="202" x2="1696" y2="202" stroke="#151f33" stroke-width="2"/>
-      <line x1="118" y1="48"  x2="1696" y2="48"  stroke="#151f33" stroke-width="2"/>
-      <text x="100" y="519" text-anchor="end" fill="#64748b" font-size="27" font-weight="600">0%</text>
-      <text x="100" y="365" text-anchor="end" fill="#64748b" font-size="27" font-weight="600">+300%</text>
-      <text x="100" y="211" text-anchor="end" fill="#64748b" font-size="27" font-weight="600">+600%</text>
-      <text x="100" y="57"  text-anchor="end" fill="#64748b" font-size="27" font-weight="600">+900%</text>
+      <line x1="118" y1="510" x2="1696" y2="510" stroke="#3A3A3A" stroke-width="3"/>
+      <line x1="118" y1="356" x2="1696" y2="356" stroke="#242424" stroke-width="2"/>
+      <line x1="118" y1="202" x2="1696" y2="202" stroke="#242424" stroke-width="2"/>
+      <line x1="118" y1="48"  x2="1696" y2="48"  stroke="#242424" stroke-width="2"/>
+      <text x="100" y="519" text-anchor="end" fill="${MUTED}" font-size="27" font-weight="600">0%</text>
+      <text x="100" y="365" text-anchor="end" fill="${MUTED}" font-size="27" font-weight="600">+300%</text>
+      <text x="100" y="211" text-anchor="end" fill="${MUTED}" font-size="27" font-weight="600">+600%</text>
+      <text x="100" y="57"  text-anchor="end" fill="${MUTED}" font-size="27" font-weight="600">+900%</text>
       <path id="aMea" fill="url(#fillMea)" stroke="none"/>
-      <path id="pMkt" fill="none" stroke="#64748b" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path id="pMkt" fill="none" stroke="${MUTED}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
       <path id="pMea" fill="none" stroke="${ORANGE}" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle id="dMkt" r="13" fill="#64748b" opacity="0"/>
+      <circle id="dMkt" r="13" fill="${MUTED}" opacity="0"/>
       <circle id="dMea" r="18" fill="${ORANGE}" opacity="0"/>
     </svg>
     <div class="yrs"><span style="margin-left:96px">2024</span><span>2025</span><span>2026 to date</span></div>
     <div class="legend">
       <div class="lg"><div class="v" style="color:${ORANGE}" id="mv">+0%</div><div class="k">Measles cases</div></div>
-      <div class="lg"><div class="v" style="color:#94a3b8" id="sv">+0%</div><div class="k">Stock market</div></div>
+      <div class="lg"><div class="v" style="color:#A8A8A8" id="sv">+0%</div><div class="k">Stock market</div></div>
     </div>
   </div>
 
