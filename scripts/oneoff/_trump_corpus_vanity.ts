@@ -34,7 +34,7 @@ import path from 'node:path'
 
 const DIR = path.join(homedir(), 'Downloads', 'trump-corpus')
 
-interface Item { source: string; trump_text: string }
+interface Item { source: string; trump_text: string; date: string }
 const rows = readFileSync(path.join(DIR, 'trump_corpus.ndjson'), 'utf-8')
   .split('\n').filter(Boolean).map((l) => JSON.parse(l) as Item)
 
