@@ -138,14 +138,19 @@ export default function DatasetAboutPopover({ datasetId, datasetName, open, anch
                   // Substantive rate = substantive comments as a % of ANSWERED
                   // (filled) — the "real feedback vs non-answers" signal.
                   const substPct = f.substantive != null && f.fill > 0 ? Math.round((f.substantive / f.fill) * 100) : null
+                  // Same guard as DatasetMetricStrip (2026-08-13): an unstamped
+                  // `substantive` flag reads as 0, and "0 substantive (0% of
+                  // answered)" asserts a verdict on the data that we haven't
+                  // actually measured. Suppress the clause instead.
+                  const substantiveCount = f.substantive != null && f.substantive > 0 ? f.substantive : null
                   return (
                     <div key={f.field} style={{ padding: '3px 0' }}>
                       <div style={{ color: '#111827', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={f.label}>{f.label}</div>
                       <div style={{ color: '#6b7280', fontSize: 11 }}>
                         {(data.sampled ? '≈' : '') + f.fill.toLocaleString()} filled ({fillPct}%)
-                        {f.substantive != null && (
+                        {substantiveCount != null && (
                           <span title={'Comments carrying usable feedback (the two-count base), and their share of answered. ' + SUBSTANTIVE_RULE_NOTE}>
-                            {' · '}<strong style={{ color: '#047857' }}>{(data.sampled ? '≈' : '') + f.substantive.toLocaleString()}</strong> substantive
+                            {' · '}<strong style={{ color: '#047857' }}>{(data.sampled ? '≈' : '') + substantiveCount.toLocaleString()}</strong> substantive
                             {substPct != null ? ' (' + substPct + '% of answered)' : ''}
                           </span>
                         )}

@@ -135,10 +135,19 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
   // before sql/179 lacks the substantive fields → fall back to the all-based
   // numbers so the strip never blanks during rollout.
   const hasSubstantive = typeof stats.themeFitPctSubstantive === 'number' && typeof stats.substantiveRecords === 'number'
-  const commentCount = hasSubstantive ? stats.substantiveRecords! : stats.records
-  const inThemes = hasSubstantive ? stats.inThemesSubstantive! : stats.inThemes
-  const fitPct = hasSubstantive ? stats.themeFitPctSubstantive! : stats.themeFitPct
-  const fitBand = (hasSubstantive ? stats.themeFitBandSubstantive : stats.themeFitBand) || stats.themeFitBand
+  // ...and a SECOND guard on the DATA, not just the cache shape. A dataset
+  // whose `substantive` flag was never stamped (ingested outside the stamping
+  // path — a direct-write script, a legacy import) counts zero substantive
+  // rows. Rendering that as "0 comments · 0% of 49,033 answered · Diffuse 0%"
+  // reads as a damning verdict on the data when the truth is a missing
+  // backfill, and it flatly contradicts the theme cards below, which count the
+  // same rows in the thousands (2026-08-13). Fall back to the all-based numbers
+  // and drop the substantive share rather than assert a zero we can't defend.
+  const substantiveUsable = hasSubstantive && stats.substantiveRecords! > 0
+  const commentCount = substantiveUsable ? stats.substantiveRecords! : stats.records
+  const inThemes = substantiveUsable ? stats.inThemesSubstantive! : stats.inThemes
+  const fitPct = substantiveUsable ? stats.themeFitPctSubstantive! : stats.themeFitPct
+  const fitBand = (substantiveUsable ? stats.themeFitBandSubstantive : stats.themeFitBand) || stats.themeFitBand
   const band = BAND_STYLES[fitBand]
   const barFill = Math.max(0, Math.min(100, fitPct))
   const outerStyle: CSSProperties = embedded
@@ -158,11 +167,15 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
   // Substantive share of answered comments — the "% substantive" the AI-mined
   // banner used to carry (now folded here so there's one comment count, not two).
   const answered = stats.records || 0
-  const substPct = answered > 0 ? Math.round((commentCount / answered) * 100) : null
+  // Null when the substantive breakdown isn't usable — showing "100% of N
+  // answered" off the fallback would imply we measured something we didn't.
+  const substPct = substantiveUsable && answered > 0 ? Math.round((commentCount / answered) * 100) : null
 
   return (
     <div style={outerStyle}>
-      <span title={commentCount.toLocaleString() + ' of ' + answered.toLocaleString() + ' answered comments carry usable feedback. ' + SUBSTANTIVE_RULE_NOTE + sampledNote}>
+      <span title={substantiveUsable
+        ? commentCount.toLocaleString() + ' of ' + answered.toLocaleString() + ' answered comments carry usable feedback. ' + SUBSTANTIVE_RULE_NOTE + sampledNote
+        : commentCount.toLocaleString() + ' answered comments. The usable-feedback breakdown isn’t available for this dataset, so this is the answered count.' + sampledNote}>
         <strong style={{ color: '#111827' }}>{approx}{commentCount.toLocaleString()}</strong>{' '}
         <span style={{ color: '#6b7280' }}>comments</span>
         {substPct != null && (
