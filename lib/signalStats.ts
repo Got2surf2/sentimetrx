@@ -496,4 +496,10 @@ export async function invalidateSignalStats(
   // clobber a concurrent writer of another analytics key. No-op if absent.
   await deleteDatasetAnalyticsKey(service, datasetId, 'signal_stats')
   await deleteDatasetAnalyticsKey(service, datasetId, 'signal_stats_by_field')
+  // theme_counts (lib/themeCountsCache) counts the same rows with the same
+  // theme model, so anything that staled the strip staled the theme cards too.
+  // Its own key covers theme-model and row-count changes, but NOT a change that
+  // moves the numbers without moving either — a substantive backfill, or a
+  // re-classify that shifts the per-theme Dimensions breakdown.
+  await deleteDatasetAnalyticsKey(service, datasetId, 'theme_counts')
 }

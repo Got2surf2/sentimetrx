@@ -10,6 +10,7 @@ import { memberRowCounts } from '@/lib/signalStats'
 import { kwPatternFragment } from '@/lib/themeUtils'
 import { sampledSignalCounts, SIGNAL_SAMPLE_CAP, type SampledSignalCounts } from '@/lib/sampledSignalCounts'
 import { sampledThemeCooccurrence, sampledThemeTopical, sampledThemeDimensions } from '@/lib/sampledThemeExtras'
+import { themeCountsKey, readThemeCountsCache, writeThemeCountsCache } from '@/lib/themeCountsCache'
 
 interface Props { params: Promise<{ datasetId: string }> }
 
@@ -130,6 +131,26 @@ export async function POST(req: Request, props: Props) {
       if (flatCount) rowCounts.set(did, flatCount)
       totalFlat += flatCount || 0
     }
+  }
+
+  // Server-side cache (2026-08-14). Above the sampling cap a cold request runs
+  // THREE independent 10-page keyset scans over the 50K sample — measured 33.4s
+  // on the 128,619-row Outback dataset (13.4 counts + 9.1 co-occurrence + 10.9
+  // dimensions). The only cache was the client's in-memory one, which dies on
+  // page reload, so every fresh TextMine load paid it again. Keyed on the theme
+  // model + fields + extras flags + row count, so a theme edit or a sync
+  // invalidates exactly as they already do for signal_stats.
+  //
+  // Filtered requests are deliberately NOT cached: the row-id set is per-view
+  // and the exact path over a bounded subset is cheap anyway.
+  const cacheKey = filterRowIds ? null : themeCountsKey({ themes, fields, cooccurrence, topical, dimensions })
+  let analyticsBlob: Record<string, unknown> | null = null
+  if (cacheKey) {
+    const { data: stateRow } = await service
+      .from('dataset_state').select('analytics').eq('dataset_id', params.datasetId).maybeSingle()
+    analyticsBlob = (stateRow as { analytics?: Record<string, unknown> | null } | null)?.analytics || null
+    const hit = readThemeCountsCache(analyticsBlob, cacheKey, totalFlat)
+    if (hit) return NextResponse.json(hit)
   }
 
   if (totalFlat > 0) {
@@ -372,7 +393,16 @@ export async function POST(req: Request, props: Props) {
       const s = sampledByMember.get(did)
       sampleSize += s ? s.scanned : (rowCounts.get(did) || 0)
     }
-    return NextResponse.json({ counts, totalNonEmpty, sampled: sampledByMember.size > 0, sampleSize, cooccurrence: cooccurrenceMatrix, topical: topicalWords, dimensions: themeDimensions })
+    const payload = {
+      counts, totalNonEmpty,
+      sampled: sampledByMember.size > 0, sampleSize,
+      cooccurrence: cooccurrenceMatrix, topical: topicalWords, dimensions: themeDimensions,
+    }
+    // Awaited, not fire-and-forget: on serverless the response ending can kill
+    // the invocation before a detached write lands, which would silently leave
+    // the cache empty and every load paying the full 33s again.
+    if (cacheKey) await writeThemeCountsCache(service, params.datasetId, analyticsBlob, cacheKey, totalFlat, payload)
+    return NextResponse.json(payload)
   }
 
   // No flat rows for this dataset/collection → nothing to count. (The legacy

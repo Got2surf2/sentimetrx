@@ -1111,6 +1111,16 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const [themeSource, setThemeSource] = useState<string | null>(savedThemeModel?.themeSource || (savedThemeModel as (ThemeModel & { source?: string | null }) | null)?.source || null)
   const [themeLibName, setThemeLibName] = useState<string | null>(savedThemeModel?.themeLibName || (savedThemeModel as (ThemeModel & { libName?: string | null }) | null)?.libName || null)
   const [samplingInfo, setSamplingInfo] = useState<{ sampled: number; total: number } | null>(null)
+  // The server's substantive comment base (theme-counts `totalNonEmpty`) — the
+  // exact denominator its per-theme counts are a share of. Held separately from
+  // samplingInfo (which counts ROWS SCANNED, not substantive comments) so the
+  // theme cards can show honest percentages before the client rows arrive.
+  // null = server counts not back yet.
+  const [serverTotalResp, setServerTotalResp] = useState<number | null>(null)
+  // True while the server theme-count scan is in flight. Any count on screen
+  // during that window is provisional — the saved model's stored numbers, or a
+  // client recount — so the cards label it rather than presenting it as final.
+  const [countsPending, setCountsPending] = useState(false)
   // Server-computed enrichment for theme cards:
   //   topicalWords[themeId]      → top topical words [word, count][] (currently unused)
   //   cooccurrence[themeIdA]     → { themeIdB: rowsMatchingBoth, ... }
@@ -1578,6 +1588,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     // re-enters its placeholder state until this fetch returns. Otherwise a
     // theme-model edit would briefly show stale chips during the refetch.
     setCooccurrenceLoaded(false)
+    // Counts on screen right now came from the saved model (or the client
+    // recount) and this request may replace them. Say so, so a number that is
+    // about to move doesn't read as final — on a cold cache this scan is a
+    // multi-second server job and the difference is visible.
+    setCountsPending(true)
     try {
       const body = JSON.stringify({
         themes: themeModel.themes.map(function(t) { return { id: t.id, keywords: t.keywords } }),
@@ -1621,6 +1636,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         }
       })
       setSamplingInfo(si)
+      if (typeof data.totalNonEmpty === 'number') setServerTotalResp(data.totalNonEmpty)
       if (data.topical) setServerTopical(data.topical)
       if (data.cooccurrence) setServerCoOccurrence(data.cooccurrence)
       if (data.dimensions) setServerThemeDimensions(data.dimensions)
@@ -1629,6 +1645,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       // even when a theme has no co-occurring siblings.
       setCooccurrenceLoaded(true)
     } catch { /* fallback to client-side counts silently */ }
+    // `finally`, not the end of the try: there is an early return above when
+    // the response carries no counts, and a failed scan must clear the marker
+    // too — otherwise the cards would say "calculating" forever.
+    finally { setCountsPending(false) }
   }, [datasetId, totalRows, dimensionsEnabled])
 
   // Trigger shared row fetch on mount
@@ -1636,27 +1656,51 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     triggerRowFetch()
   }, [])
 
-  // When rows load from shared context, update sampling info + server theme counts
+  // When rows load from shared context, update sampling info.
   useEffect(function() {
     if (!rowsLoaded || !rows.length) return
     if (rowsSampled) {
       setSamplingInfo({ sampled: sampledCount, total: rowsTotalRows || totalRows })
     }
-    // Fetch accurate server-side counts on the full dataset — only when the
-    // saved model belongs to the active Text selection (a restored session may
-    // open on a different field; the per-field swap effect below handles that
-    // field's own set instead, and enriching a non-active model would clobber
-    // the swapped-in themes).
-    if (savedThemeModel && savedThemeModel.themes) {
-      const field = savedThemeModel.fieldNames || savedThemeModel.fieldName
-      const fields = Array.isArray(field) ? field : (field ? [field] : [])
-      const activeKey = themeFieldKey(effectiveFields)
-      if (fields.length > 0 && (!activeKey || activeKey === themeModelKey(savedThemeModel))) {
-        void fetchServerThemeCounts(savedThemeModel, fields)
-        void enrichSearchInterest(savedThemeModel)
-      }
-    }
   }, [rowsLoaded])
+
+  // Server-side theme counts — fired as soon as the active Text selection
+  // settles, NOT after the row download (2026-08-14 progressive-load work).
+  //
+  // This used to hang off `rowsLoaded`, so the theme cards waited on a bulk
+  // payload of up to 50,000 rows (tens of MB) before a request that needs
+  // nothing from it: the saved theme model, the field list and the row total
+  // are all server-rendered props available at mount. On a large dataset that
+  // serialised two slow things that could have overlapped, and the whole tab
+  // sat behind one spinner. Now they run concurrently and the cards paint from
+  // the server counts while the rows are still streaming in behind them.
+  //
+  // The gate is the field SELECTION settling (one tick after mount), not the
+  // rows: firing before it settles would send a request for the wrong field on
+  // a restored session that opens on a different Text pill. `openFields` empty
+  // means the selection can never settle, so don't wait for it.
+  const serverCountsFor = useRef('')
+  useEffect(function() {
+    if (!savedThemeModel || !savedThemeModel.themes) return
+    if (effectiveFields.length === 0 && openFields.length > 0) return  // selection not settled yet
+    // Only when the saved model belongs to the active Text selection (a
+    // restored session may open on a different field; the per-field swap effect
+    // below handles that field's own set instead, and enriching a non-active
+    // model would clobber the swapped-in themes).
+    const field = savedThemeModel.fieldNames || savedThemeModel.fieldName
+    const fields = Array.isArray(field) ? field : (field ? [field] : [])
+    if (fields.length === 0) return
+    const activeKey = themeFieldKey(effectiveFields)
+    if (activeKey && activeKey !== themeModelKey(savedThemeModel)) return
+    // Fire once per (dataset, field set) — the effect now re-runs on selection
+    // changes, and these are multi-second server scans.
+    const token = datasetId + JSON.stringify(fields)
+    if (serverCountsFor.current === token) return
+    serverCountsFor.current = token
+    void fetchServerThemeCounts(savedThemeModel, fields)
+    void enrichSearchInterest(savedThemeModel)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchServerThemeCounts/enrichSearchInterest are stable per (datasetId, totalRows, dimensionsEnabled); adding them re-fires the scan on unrelated renders, and the token ref already dedupes.
+  }, [datasetId, savedThemeModel, effectiveFields.join(','), openFields.length])
 
   // Per-field theme sets: when the Text selection changes, show that
   // selection's own stored set — stash the current one first so nothing is
@@ -2297,6 +2341,15 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
   var hasThemes = themes && themes.themes && themes.themes.length > 0
   var canMine = rowsLoaded && effectiveFields.length > 0 && rows.length > 0
+  // Progressive paint (2026-08-14): the Themes tab used to render nothing until
+  // the whole 50K-row payload had downloaded. The server theme counts are an
+  // authoritative, filter-free view of the same numbers and arrive on their own
+  // schedule, so as soon as they're in we can paint the cards and let the rows
+  // finish behind them. `serverTotalResp` is the denominator those counts are a
+  // share of; without it every percentage would divide by a not-yet-loaded 0 —
+  // "0 comments · Diffuse 0%" reads as a verdict on the data rather than a
+  // loading state (the same trap the metric strip fell into on 2026-08-13).
+  var themesPaintable = !!hasThemes && serverTotalResp != null && serverTotalResp > 0
   // Row 1 — peer sections. Themes is always present; Dimensions / Entities /
   // Advanced gate exactly as before (taxonomy capability, a non-empty entity
   // catalog, and google_reviews + ≥5 outlets respectively).
@@ -2522,10 +2575,25 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   </div>
                 )}
 
-                {/* Rows still loading */}
-                {!rowsLoaded && rowsLoading && !rowsError && (
+                {/* Rows still loading, and nothing to show yet. Once the server
+                    theme counts land (`themesPaintable`) the cards below take
+                    over and this full-page loader steps aside — the rows keep
+                    streaming behind them under the slim banner instead. */}
+                {!rowsLoaded && rowsLoading && !rowsError && !themesPaintable && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, paddingTop: 60, paddingBottom: 60 }}>
                     <LottieLoader size={120} message={rowsProgressLabel ? 'Loading dataset rows... ' + rowsProgressLabel : 'Loading dataset rows...'} />
+                  </div>
+                )}
+
+                {/* Cards are up on server counts; rows are still arriving. Says
+                    what is and isn't live yet, so nobody reads the numbers as
+                    filtered when the filters haven't been applied to them. */}
+                {!rowsLoaded && rowsLoading && !rowsError && themesPaintable && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', marginBottom: 16, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: 12, color: '#92400e' }}>
+                    <LottieLoader size={16} />
+                    <span>
+                      Showing whole-dataset counts. Loading comments{rowsProgressLabel ? ' (' + rowsProgressLabel + ')' : ''} {'—'} filters, ratings and sample comments turn on when they finish.
+                    </span>
                   </div>
                 )}
 
@@ -2646,14 +2714,21 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 )}
 
                 {/* ─── Themes content (with Distribution/Cards toggle) ─── */}
-                {rowsLoaded && hasThemes && displayThemes && !loading && (function() {
+                {(rowsLoaded || themesPaintable) && hasThemes && displayThemes && !loading && (function() {
                   var sortedThemes = [...displayThemes.themes].sort(function(a, b) { return (b.count || 0) - (a.count || 0) })
                   // Two-count model (owner 2026-07-14): "comments" = SUBSTANTIVE
                   // answers only (a comment is substantive-or-blank). Every theme
                   // prevalence % divides by this base, in lockstep with the
                   // server's substantive numerator (t.count, sql/181). Matches the
                   // SQL substantive map (isSubstantiveText per field, any).
-                  var totalResp = filteredRows.filter(function(r) { return effectiveFields.some(function(f) { return isSubstantiveText(String(r[f] || '')) }) }).length
+                  //
+                  // Before the rows land there is nothing to count client-side, so
+                  // fall back to the SERVER's substantive base — the exact
+                  // denominator its per-theme counts came from, which keeps the
+                  // numerator and denominator from two different worlds.
+                  var totalResp = rowsLoaded
+                    ? filteredRows.filter(function(r) { return effectiveFields.some(function(f) { return isSubstantiveText(String(r[f] || '')) }) }).length
+                    : (serverTotalResp || 0)
                   var visibleThemes = showAllThemes ? sortedThemes : sortedThemes.filter(function(t) { return totalResp > 0 && (t.count / totalResp * 100) >= 3 })
                   if (!visibleThemes.length) visibleThemes = sortedThemes.slice(0, 5)
                   var topTone = sortedThemes[0] ? sortedThemes[0].sentiment : '\u2014'
@@ -2798,7 +2873,10 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                             return (
                               <div>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                                  <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase' }}>Theme Distribution {'\u2014'} click a bar to view comments</div>
+                                  <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.08em', textTransform: 'uppercase' }}>
+                                    Theme Distribution {'\u2014'} click a bar to view comments
+                                    {countsPending && <span style={{ marginLeft: 8, color: T.amber, textTransform: 'none', letterSpacing: 0 }}>{'counts calculating\u2026'}</span>}
+                                  </div>
                                   {hiddenCount > 0 && !showAllThemes && <span style={{ fontSize: 10, color: T.textFaint }}>{hiddenCount} theme{hiddenCount !== 1 ? 's' : ''} below 3% hidden</span>}
                                 </div>
                                 {/* Axis labels */}
@@ -3062,10 +3140,25 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                           <strong style={{ color: T.textMid }}>{(t.snippetCount || 0).toLocaleString()}</strong> snippets
                                         </>
                                       )}
+                                      {countsPending && (
+                                        <span title="Counting this theme across the whole dataset. The number shown is provisional until that finishes."
+                                          style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: T.amber, background: T.amberBg, border: '1px solid ' + T.amberMid, borderRadius: 10, padding: '1px 7px', whiteSpace: 'nowrap' }}>
+                                          {'calculating\u2026'}
+                                        </span>
+                                      )}
                                     </span>
                                     <span style={{ fontSize: 22, fontWeight: 800, color: cardBorder }}>{pct}%</span>
                                   </div>
-                                  <div style={{ fontSize: 10, color: T.textFaint, marginBottom: 6 }}>95% CI: {t.ciLow ?? 0}{'\u2013'}{t.ciHigh ?? 0}%</div>
+                                  {/* The interval is a client-side computation over the loaded
+                                      rows, so on a progressive paint it isn't known yet. It used
+                                      to fall back to `?? 0` and render "95% CI: 0\u20130%" \u2014 a
+                                      fabricated statistic sitting next to a real count. Say it's
+                                      still being worked out instead. */}
+                                  <div style={{ fontSize: 10, color: T.textFaint, marginBottom: 6 }}>
+                                    {t.ciLow != null && t.ciHigh != null
+                                      ? '95% CI: ' + t.ciLow + '\u2013' + t.ciHigh + '%'
+                                      : !rowsLoaded ? '95% CI: calculating\u2026' : ''}
+                                  </div>
                                   {t.avgRating != null && !useRatingColor && (
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                                       <span style={{ fontSize: 11, color: T.textMid }}>Avg Rating: <strong style={{ color: t.ratingDelta != null && t.ratingDelta > 0 ? '#059669' : t.ratingDelta != null && t.ratingDelta < -0.1 ? '#dc2626' : T.text }}>{t.avgRating.toFixed(2)}</strong></span>

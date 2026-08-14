@@ -561,6 +561,37 @@ static `industry-themes` — cleared on the theme-save events + a 5-min TTL. The
 catalog is deliberately NOT cached (Schema-tab entity management has no change event back
 to TextMine). `/aggregate` gained `maxDuration = 60` to match its peer dataset routes.
 
+**TextMine Themes paints progressively (2026-08-14).** The tab used to render nothing until
+the whole bulk row payload — up to 50,000 rows, tens of MB — had downloaded and parsed: one
+full-page loader for the entire wait. Two changes, per the owner's direction that the fix is
+progressive rendering rather than only a faster query:
+- **`fetchServerThemeCounts` no longer hangs off `rowsLoaded`.** It needs nothing from the
+  rows — the saved theme model, the field list and the row total are all server-rendered
+  props — so it now fires as soon as the active **Text selection settles** (one tick after
+  mount) and runs concurrently with the row download instead of after it. The gate is the
+  selection, not the rows, because firing before it settles would request the wrong field on
+  a restored session that opens on a different Text pill; a `useRef` token dedupes to one
+  scan per (dataset, field set).
+- **The cards render on the server counts, before the rows land.** `themesPaintable` =
+  themes exist **and** the server returned a positive `totalNonEmpty`; the responses base
+  falls back to that server figure until `rowsLoaded`, so numerator and denominator come
+  from the same computation. Requiring a **positive** base is load-bearing: dividing by a
+  not-yet-loaded 0 would render "0 comments · Diffuse 0%", which reads as a verdict on the
+  data rather than a loading state (the trap `DatasetMetricStrip` fell into on 2026-08-13).
+  A slim banner says the counts are whole-dataset and that filters, ratings and sample
+  comments turn on when the rows finish. Clouds and Comments stay row-gated (they tokenize
+  client-side) and keep their own loaders.
+
+**"calculating…" on provisional counts (2026-08-14).** `countsPending` is true while the
+server theme-count scan is in flight, and the theme cards + Distribution header label the
+counts with it. Any count on screen during that window is provisional — the saved model's
+stored numbers, or a client recount that the server scan is about to replace — so it is
+marked rather than presented as final. Cleared in a `finally`, since the fetch has an early
+return when the response carries no counts and a failed scan must clear the marker too. The
+same pass stopped the per-card confidence interval rendering **"95% CI: 0–0%"** before the
+rows load: the interval is a client-side computation over the loaded rows, and the old
+`?? 0` fallback put a fabricated statistic next to a real count.
+
 **`/aggregate` scalar ops — filter-aware + sampled at scale (2026-07-13, perf review §7 Brief C + Brief F escalation #1).** The five scalar chart/stat aggregates — `crosstab_counts`, `group_numeric_stats`, `date_series_stats`, `count_field_values`, `numeric_field_stats` — were full O(N) jsonb scans that **(a)** 57014'd at ~1M rows and **(b)** ignored active filters (full-dataset numbers under a filtered UI, while the sibling taxonomy family already honored them). Both closed in `sql/169` + `lib/sampledAggregate.ts`:
 - **Filter-awareness:** each exact RPC gained `p_row_ids bigint[] DEFAULT NULL` (`id = ANY(p_row_ids)`, the same predicate the tax family uses). `ChartsModule.useAggregation` now forwards the view's `filteredRowIds` to **every** spec (the `isTax`-only gate was dropped; `fieldKey` stays tax-only), so scalar charts reflect filters. The route appends `p_row_ids` and drops it on `PGRST202` (deploy-order safe — an un-migrated DB answers without filters, the pre-fix behavior).
 - **Sampling:** each RPC gained a keyset-paged `sampled_*` twin over `idx_drf_sample` (same 50K sample the bulk-rows route serves + the metric strip counts over). The route routes to the twin when `datasets.row_count > 50K`, scales **counts** by `total/scanned`, and reports **means/medians/stddev UNSCALED** (a uniform sample's mean/quantile is a direct population estimate; percentiles ride raw values to Node since they can't merge from partial aggregates). The twins also take `p_row_ids` so a filtered above-cap view narrows the numerators without touching the sample-walk denominator. Twin failure (incl. pre-migration `PGRST202`) falls back to the exact RPC. Charts carry a dataset-level "≈ Estimated from a 50,000-row sample" affordance (same "~" doctrine as the strip) when `totalRows > 50K`. Verified sampled-vs-exact within ±2% on proportions (56K/128K) and no-57014 on the 1M PERF TEST (`scripts/_verify_aggregate_sampled.mts`). StatsModule's scalar tests already compute client-side over the loaded sample (filter-applied); only its **dimension** tests hit `/aggregate` and were made filter-aware in Brief F. **Collections don't reach this route** — the client renders their charts from raw rows.
@@ -625,7 +656,31 @@ regex semantics as `count_theme_matches`; pager in `lib/sampledSignalCounts.ts`)
 at/under the cap stay exact; if the RPC isn't migrated yet the exact path is the
 fallback. `theme-counts` (TextMine/Charts) uses the same sampled pass above the
 cap (response gains `sampled` + `sampleSize`, surfaced as "N of M responses
-sampled"). Results are cached in `dataset_state.analytics.signal_stats`, keyed on **both**
+sampled").
+
+**`/theme-counts` gained the same server-side cache (2026-08-14).** It had none —
+only the per-tab-session `clientRequestCache`, which dies on page reload — so
+every fresh TextMine load of a dataset above the cap re-ran **three** independent
+10-page keyset scans over the sample. Measured cold on the 128,619-row Outback
+GuestLens dataset (6 themes, TEST): `sampledSignalCounts` **13.4s** +
+`sampledThemeCooccurrence` **9.1s** + `sampledThemeDimensions` **10.9s** =
+**33.4s per load, forever**. (Each page is ~1.6s of regex over 5,000 rows and the
+pages are CPU-bound in the database, not latency-bound: firing all ten
+concurrently with precomputed boundaries only takes 15.9s → 11.5s, so paging in
+parallel is not the fix — caching is.) `lib/themeCountsCache.ts` now stores the
+whole payload in `dataset_state.analytics.theme_counts`, a slot map keyed on a
+hash of the theme model (ids + lowercased, sorted keywords) + fields + the
+`cooccurrence`/`topical`/`dimensions` flags, with the row count checked for
+freshness — so a theme edit or a sync invalidates exactly as they already do for
+`signal_stats`, while a cosmetic reorder does not. Measured warm on the real
+endpoint: **~0.6–0.7s** (dev-mode overhead included) vs 33.4s. Bounded to 6 slots
+(LRU by `computed_at`) and skipped above 512KB, since the co-occurrence matrix is
+N×N in themes. Filtered requests (`p_row_ids`) are never cached — per-view by
+definition, and already bounded/cheap. `invalidateSignalStats` drops the
+`theme_counts` key too, for the changes the key can't see (a substantive backfill,
+a re-classify that moves the per-theme Dimensions breakdown).
+
+Signal-stats results are cached in `dataset_state.analytics.signal_stats`, keyed on **both**
 the theme-model hash **and** the current row count: editing/re-mining the themes
 flips the hash, and syncing rows in/out changes the count — either forces a
 recompute on the next read. **The freshness row count is the stored
