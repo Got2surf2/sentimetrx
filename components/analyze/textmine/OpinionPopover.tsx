@@ -11,6 +11,8 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { extractOpinions } from '@/lib/opinionMining'
+import { filterCooccurringRows } from '@/lib/collocations'
+import ContextCloud from './ContextCloud'
 import FrequencyChart, { detectDateField, frequencyBuckets } from './FrequencyChart'
 import TermInsights, { type InsightFilter } from './TermInsights'
 import { ratingPalette, ratingRange } from './ratingColor'
@@ -33,24 +35,39 @@ interface Props {
   onClose: () => void
 }
 
-// Highlight every case-insensitive occurrence of `word` in `text`.
-function highlightWord(text: string, word: string): React.ReactNode[] {
-  if (!word) return [text]
-  const re = new RegExp('(' + word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi')
+// Highlight every case-insensitive occurrence of any of `words` in `text`.
+// The aspect word is highlighted amber; a context word drilled in from the
+// Context tab is highlighted blue so the pair reads apart at a glance.
+function highlightWords(text: string, words: string[]): React.ReactNode[] {
+  const list = words.filter(Boolean)
+  if (list.length === 0) return [text]
+  const escaped = list.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const re = new RegExp('(' + escaped.join('|') + ')', 'gi')
   const parts = text.split(re)
+  const primary = list[0].toLowerCase()
   return parts.map(function(p, i) {
-    if (p.toLowerCase() === word.toLowerCase()) {
+    const lower = p.toLowerCase()
+    if (lower === primary) {
       return <mark key={i} style={{ background: '#fef3c7', color: '#92400e', padding: '0 2px', borderRadius: 2, fontWeight: 600 }}>{p}</mark>
+    }
+    if (list.some(w => w.toLowerCase() === lower)) {
+      return <mark key={i} style={{ background: '#dbeafe', color: '#1d4ed8', padding: '0 2px', borderRadius: 2, fontWeight: 600 }}>{p}</mark>
     }
     return <span key={i}>{p}</span>
   })
 }
 
 export default function OpinionPopover({ word, rows, fields, ratingField, hiddenFields, onClose }: Props) {
-  const [view, setView] = useState<'opinions' | 'comments' | 'insights'>('opinions')
+  const [view, setView] = useState<'opinions' | 'context' | 'comments' | 'insights'>('opinions')
   const [insightFilter, setInsightFilter] = useState<InsightFilter | null>(null)
+  // Context word drilled in from the Context tab — narrows the comments list
+  // to rows where it shares a sentence with the aspect word.
+  const [contextWord, setContextWord] = useState<string | null>(null)
 
-  const fieldArr = Array.isArray(fields) ? fields : [fields]
+  // Memoized: it feeds the Context tab's corpus-wide tokenization, which is far
+  // too expensive to redo on every render.
+  const fieldArr = useMemo(() => (Array.isArray(fields) ? fields : [fields]), [fields])
+  const contextTargets = useMemo(() => [word], [word])
   const insightsExclude = useMemo(
     () => Array.from(new Set([...fieldArr, ...(hiddenFields || [])])),
     [fieldArr, hiddenFields],
@@ -90,21 +107,30 @@ export default function OpinionPopover({ word, rows, fields, ratingField, hidden
     if (view !== 'comments') return [] as { text: string; rating: unknown }[]
     const target = word.toLowerCase()
     const out: { text: string; rating: unknown }[] = []
-    for (const row of rows) {
+    // A context word narrows to same-sentence co-occurrence, which is the same
+    // rule that produced the count on its chip — so the two always agree.
+    const pool = contextWord ? filterCooccurringRows(rows, fieldArr, contextTargets, contextWord) : rows
+    for (const row of pool) {
       if (insightFilter) {
         const rv = row[insightFilter.field]
         if (rv == null || String(rv).trim() !== insightFilter.value) continue
       }
+      // With a context word active, show the field carrying BOTH terms —
+      // otherwise a multi-field row could display the one field that happens
+      // to mention the aspect word without the context word.
+      let picked: string | null = null
+      let fallback: string | null = null
       for (const f of fieldArr) {
         const t = String(row[f] || '').trim()
-        if (t && t.toLowerCase().includes(target)) {
-          out.push({ text: t, rating: ratingField ? row[ratingField] : null })
-          break
-        }
+        if (!t || !t.toLowerCase().includes(target)) continue
+        if (!fallback) fallback = t
+        if (!contextWord || t.toLowerCase().includes(contextWord.toLowerCase())) { picked = t; break }
       }
+      const text = picked || fallback
+      if (text) out.push({ text, rating: ratingField ? row[ratingField] : null })
     }
     return out
-  }, [view, rows, fieldArr, word, insightFilter, ratingField])
+  }, [view, rows, fieldArr, word, insightFilter, ratingField, contextWord, contextTargets])
 
   const ratingScale = useMemo(() => ratingRange(rows, ratingField || null), [rows, ratingField])
 
@@ -117,7 +143,31 @@ export default function OpinionPopover({ word, rows, fields, ratingField, hidden
 
   if (view === 'insights') {
     content = <TermInsights rows={rows} textFields={insightsExclude} targets={[word]} termLabel={word} onDrillDown={handleDrillDown} />
+  } else if (view === 'context') {
+    content = (
+      <ContextCloud
+        rows={rows}
+        fields={fieldArr}
+        targets={contextTargets}
+        termLabel={word}
+        onSelect={function(w) { setContextWord(w); setView('comments') }}
+      />
+    )
   } else if (view === 'comments') {
+    const contextChip = contextWord && (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+        <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>Context</span>
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600,
+          padding: '3px 8px', borderRadius: 12, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe',
+        }}>
+          {word} + {contextWord}
+          <button onClick={() => setContextWord(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, fontSize: 14, lineHeight: 1 }}
+            title="Clear context word">×</button>
+        </span>
+      </div>
+    )
     const filterChip = insightFilter && (
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
         <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>Filter</span>
@@ -137,6 +187,7 @@ export default function OpinionPopover({ word, rows, fields, ratingField, hidden
     )
     content = matchingComments.length === 0 ? (
       <>
+        {contextChip}
         {filterChip}
         <p style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', padding: '20px 0' }}>
           No comments {insightFilter ? 'match this filter' : 'found containing "' + word + '"'}.
@@ -144,9 +195,10 @@ export default function OpinionPopover({ word, rows, fields, ratingField, hidden
       </>
     ) : (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {contextChip}
         {filterChip}
         <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>
-          {matchingComments.length.toLocaleString()} comment{matchingComments.length !== 1 ? 's' : ''} containing "{word}"{insightFilter ? ' · ' + (insightFilter.field === '_collection_label' ? 'Collection' : insightFilter.field) + '=' + insightFilter.value : ''}
+          {matchingComments.length.toLocaleString()} comment{matchingComments.length !== 1 ? 's' : ''} containing {contextWord ? '"' + word + '" + "' + contextWord + '"' : '"' + word + '"'}{insightFilter ? ' · ' + (insightFilter.field === '_collection_label' ? 'Collection' : insightFilter.field) + '=' + insightFilter.value : ''}
         </div>
         {matchingComments.map(function(c, i) {
           const pal = ratingPalette(c.rating, ratingScale)
@@ -154,7 +206,7 @@ export default function OpinionPopover({ word, rows, fields, ratingField, hidden
           return (
             <div key={i} style={{ padding: '10px 12px', background: pal.bg, borderRadius: 8, border: '1px solid ' + pal.border }}>
               <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.55, whiteSpace: 'pre-wrap' as const }}>
-                {highlightWord(c.text, word)}
+                {highlightWords(c.text, contextWord ? [word, contextWord] : [word])}
               </div>
               {ratingDisplay && (
                 <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 600, marginTop: 4 }}>★ {ratingDisplay}</div>
@@ -233,7 +285,9 @@ export default function OpinionPopover({ word, rows, fields, ratingField, hidden
             <h3 style={{ fontSize: 18, fontWeight: 800, color: '#111827', margin: 0 }}>
               {view === 'comments'
                 ? 'Comments mentioning "' + word + '"'
-                : (result.mode === 'nouns' ? 'What people call "' + word + '"' : 'Opinions about "' + word + '"')}
+                : view === 'context'
+                  ? 'What "' + word + '" is talked about with'
+                  : (result.mode === 'nouns' ? 'What people call "' + word + '"' : 'Opinions about "' + word + '"')}
               {totalCommentsWithText > 0 && result.totalMentions > 0 && (
                 <span style={{ fontSize: 14, fontWeight: 600, color: '#6b7280', marginLeft: 8 }}>
                   ({Math.round((result.totalMentions / totalCommentsWithText) * 100)}%)
@@ -245,10 +299,10 @@ export default function OpinionPopover({ word, rows, fields, ratingField, hidden
         </div>
 
         {/* Tabs — top of body. Close X is in the header, not here. */}
-        {result.opinions.length > 0 && (
+        {(result.opinions.length > 0 || result.totalMentions > 0) && (
           <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #e5e7eb', marginBottom: 14 }}>
-            {(['opinions', 'comments', 'insights'] as const).map(v => {
-              const labels = { opinions: 'Opinions', comments: 'Comments', insights: '✨ Insights' } as const
+            {(['opinions', 'context', 'comments', 'insights'] as const).map(v => {
+              const labels = { opinions: 'Opinions', context: 'Context', comments: 'Comments', insights: '✨ Insights' } as const
               const active = view === v
               return (
                 <button key={v} onClick={() => setView(v)}

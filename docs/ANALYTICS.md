@@ -47,6 +47,15 @@ TextMine is **four peer sections** in a persistent **two-row bar** — the share
 - Useful for spotting the exact language people use within a theme
 - On datasets with **Dimensions** enabled (`datasetSource==='google_reviews' || taxonomyEnabled`), each theme card **and Theme Cloud** also shows a **"Dimensions" chip row** — the top taxonomy sub-buckets (across all 7 axes) carried by the reviews that match the theme ("when people talk about *steak*, which Dimensions do they discuss?" → product·steak 1044 / touchpoint·server 418 / attribute·flavor 339 / …). This is the classification-side analog of "Items mentioned": computed **server-side** by the `theme_dimension_counts(dataset, fields, keywords)` RPC (regex match like `count_theme_matches` → read the matched rows' embedded `data._tx` axes, sql/151), requested by `fetchServerThemeCounts` via the `theme-counts` route's `dimensions` flag and summed across member datasets for collections. Top 6–8 per theme, axis-dot colored; renders only for themes whose matched rows carry tags (so an unclassified dataset shows nothing). Both the card and cloud chips are **drillable** into the Comments filter.
 
+**2a. Context view (word + theme modals, 2026-08-13)**
+- Clicking a cloud word opens the word modal (`OpinionPopover`); clicking a theme title opens the theme modal (`ThemePopover`). Both carry a **Context** tab — *"what is this term actually talked about with?"* — the legacy Ana right-click Context view, ported to a tab so it's reachable on touch and sits alongside Comments/Insights.
+- Distinct from the **Opinions** tab, which keeps only sentiment-lexicon words within a ±2-token window. Context keeps **every content word sharing a sentence** with the target, which is what surfaces polarity-free nouns ("quality", "portions", "notch") that carry the actual subject matter.
+- **Counting unit is the comment, not the token** — deliberately, so the number on a context word equals the number of comments the drill-down returns. Clicking a context word switches to the comments list scoped to the pair, aspect word highlighted amber and context word blue, with a clearable chip. `filterCooccurringRows` applies the identical sentence rule that produced the count, so chip and drill-down can't disagree.
+- Two rankings via a toggle: **Frequency** (legacy parity) and **Distinctive** (G² log-likelihood vs the corpus baseline, so words that are common everywhere in the dataset are demoted). G² over-rewards exclusivity on small selections, so the distinctive ranking is floored at 3 comments (or 2% of the target's comments, whichever is larger), falling back to the unfloored list only when the floor would empty the tab.
+- In the **theme** modal a context word narrows the **sample comments only** — never `matchedRows` — so the theme's headline mention count and % keep meaning one thing regardless of what's been clicked.
+- `lib/collocations.ts` runs two passes shaped by the 50K client-side row cap: pass 1 tokenizes only rows that mention a target; pass 2 scans every row for just the ~150 candidate words pass 1 surfaced, so it never tokenizes the whole corpus. Measured ~310ms per target over 18.6K comments; the tab defers compute one tick past mount and shows the Lottie loader rather than freezing mid-switch.
+- Supersedes the unwired `trendingWords.contextTermsFor` (whole-comment scoped, token-counted, no drill-down).
+
 **3. Compare**
 - Cross-group analysis by a categorical breakdown field (region, channel, age bracket, etc.)
 - Stacked bar distributions, by-group / by-theme views
@@ -1653,6 +1662,8 @@ open-ended / date / id / ignore).
 | `components/analyze/FiltersModal.tsx` | Filter UI (~480 lines) |
 | `components/analyze/EntitiesCard.tsx` | Entity catalog — the Entities×Overview home (also shown on Themes×Overview) |
 | `components/analyze/textmine/WordCloud.tsx` | Themes×Clouds (and Entities×Clouds) view content |
+| `components/analyze/textmine/ContextCloud.tsx` | Context tab — same-sentence collocates as a cloud, Frequency/Distinctive toggle, click-to-drill |
+| `lib/collocations.ts` | `computeCollocates` (two-pass, comment-counted, G²-scored) + `filterCooccurringRows` (the matching drill-down) |
 | `components/analyze/textmine/BreakdownDist.tsx` | Breakdown visualization |
 | `components/analyze/textmine/CommentsPanel.tsx` | Theme comment browser (themes-only, client-side) |
 | `components/analyze/textmine/FilteredCommentsPanel.tsx` | Unified filter results (theme + entity + dimension, server-filtered) |

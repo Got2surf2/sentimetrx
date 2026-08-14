@@ -161,8 +161,12 @@ export function trendingTerms(
 
 /**
  * Top phrases that co-occur with a given term across a set of texts.
- * Used by the dataset modal's "Context" tag list (e.g. clicking "friendly"
- * shows that it most often appears alongside "server", "service", "staff").
+ *
+ * SUPERSEDED and currently unwired — the shipped Context view is
+ * lib/collocations.computeCollocates, which scopes co-occurrence to the
+ * SENTENCE (not the whole comment), counts comments rather than tokens so the
+ * number matches its drill-down, and ranks by G² as well as raw frequency.
+ * Prefer that for anything new; this is kept only in case a caller appears.
  */
 export function contextTermsFor(
   term: string,

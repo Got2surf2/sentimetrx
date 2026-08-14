@@ -302,6 +302,13 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 - Run history logged to `entity_catalog_refresh` (before/after counts, sample size, schema-field selection)
 - See `docs/ANALYTICS.md § Entity Discovery & Catalog`
 
+### Context view (word/theme collocates)
+- **Shipped 2026-08-13** — the legacy Ana right-click "Context" view, ported. A **Context** tab in the word modal and the theme modal answers *"what is this term actually talked about with?"*: every content word sharing a **sentence** with the target, as a cloud sized by how many comments carry the pair
+- Wider than the Opinions tab (sentiment-lexicon words in a ±2-token window) — Context keeps polarity-free nouns like "quality" / "portions" / "notch" that carry the subject matter
+- **Counted per comment, so the chip number equals the drill-down.** Clicking a context word opens the comments carrying both terms, aspect amber + context blue, clearable chip. In the theme modal it narrows the samples only, never the theme's headline %
+- **Frequency** (legacy parity) / **Distinctive** (G² log-likelihood vs the corpus baseline, floored at 3 comments so exclusivity on tiny selections can't top the list) toggle
+- See `docs/ANALYTICS.md § Core Features → Context view`
+
 ### Dimensions (taxonomy)
 - 7-axis ABSA classifier (touchpoint, attribute, product, beverage, ambiance, context, outcome) with severity flag {normal, alert, crisis}; closed-vocab keyword tier (no AI cost), per-row assertions
 - **In-app "Dimensions" section in TextMine** (shipped 2026-06-07; a peer lens section with Overview/Clouds/Compare/Comments views since the Target B IA 2026-06-25): Entities-style axis pills → theme-card-family sub-dimension cards (★ rating + pos/neg sentiment + % of dimension); ⚠ Severity as an 8th pill opening alert cards; drill into the comments behind any sub-dimension; min-35 floor on sub-dimensions

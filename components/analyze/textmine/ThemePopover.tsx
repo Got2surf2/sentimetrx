@@ -10,6 +10,8 @@
 
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { filterCooccurringRows } from '@/lib/collocations'
+import ContextCloud from './ContextCloud'
 import FrequencyChart, { detectDateField, frequencyBuckets } from './FrequencyChart'
 import TermInsights, { type InsightFilter } from './TermInsights'
 import { ratingPalette, ratingRange } from './ratingColor'
@@ -36,30 +38,43 @@ interface Props {
   onClose: () => void
 }
 
-function highlightKeywords(text: string, keywords: string[]): React.ReactNode[] {
+// Theme keywords highlight amber; an active context word highlights blue so
+// the pair reads apart at a glance (same convention as OpinionPopover).
+function highlightKeywords(text: string, keywords: string[], contextWord?: string | null): React.ReactNode[] {
   const kw = keywords.filter(Boolean).map(k => k.toLowerCase())
-  if (kw.length === 0) return [text]
-  const escaped = kw.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const ctx = contextWord ? contextWord.toLowerCase() : null
+  const all = ctx ? kw.concat([ctx]) : kw
+  if (all.length === 0) return [text]
+  const escaped = all.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
   const re = new RegExp('(' + escaped.join('|') + ')', 'gi')
   const parts = text.split(re)
   return parts.map((p, i) => {
-    if (kw.includes(p.toLowerCase())) {
+    const lower = p.toLowerCase()
+    if (kw.includes(lower)) {
       return <mark key={i} style={{ background: '#fef3c7', color: '#92400e', padding: '0 2px', borderRadius: 2, fontWeight: 600 }}>{p}</mark>
+    }
+    if (ctx && lower === ctx) {
+      return <mark key={i} style={{ background: '#dbeafe', color: '#1d4ed8', padding: '0 2px', borderRadius: 2, fontWeight: 600 }}>{p}</mark>
     }
     return <span key={i}>{p}</span>
   })
 }
 
 export default function ThemePopover({ theme, rows, fields, color, ratingField, hiddenFields, onClose }: Props) {
-  const fieldArr = Array.isArray(fields) ? fields : [fields]
+  // Memoized: it feeds the Context tab's corpus-wide tokenization, which is far
+  // too expensive to redo on every render.
+  const fieldArr = useMemo(() => (Array.isArray(fields) ? fields : [fields]), [fields])
   const insightsExclude = useMemo(
     () => Array.from(new Set([...fieldArr, ...(hiddenFields || [])])),
     [fieldArr, hiddenFields],
   )
   const keywords = useMemo(() => (theme.keywords || []).filter(Boolean), [theme.keywords])
   const dateField = useMemo(() => detectDateField(rows), [rows])
-  const [view, setView] = useState<'overview' | 'insights'>('overview')
+  const [view, setView] = useState<'overview' | 'context' | 'insights'>('overview')
   const [insightFilter, setInsightFilter] = useState<InsightFilter | null>(null)
+  // Context word drilled in from the Context tab — narrows the sample comments
+  // to rows where it shares a sentence with one of the theme's keywords.
+  const [contextWord, setContextWord] = useState<string | null>(null)
 
   // CANONICAL keyword-match regexes: word-boundary, case-insensitive — same
   // logic as themeUtils.buildKwRegex / WordCloud / OpinionPopover so the
@@ -125,9 +140,17 @@ export default function ThemePopover({ theme, rows, fields, color, ratingField, 
   // 25 sample comments. Prefer mid-length sentences (40-200 chars) — fully
   // long ones are unreadable, very short ones are useless. Pair each with its
   // rating value so cards can be color-coded.
+  // A context word narrows the SAMPLES only — never matchedRows, so the theme's
+  // headline mention count and % keep meaning the same thing whether or not a
+  // context word is active.
+  const sampleRows = useMemo(
+    () => (contextWord ? filterCooccurringRows(matchedRows, fieldArr, keywords, contextWord) : matchedRows),
+    [matchedRows, fieldArr, keywords, contextWord],
+  )
+
   const samples = useMemo(() => {
     const out: { text: string; rating: unknown }[] = []
-    for (const row of matchedRows) {
+    for (const row of sampleRows) {
       for (const f of fieldArr) {
         const t = String(row[f] || '').trim()
         if (t) {
@@ -139,7 +162,7 @@ export default function ThemePopover({ theme, rows, fields, color, ratingField, 
     const inRange = out.filter(o => o.text.length >= 40 && o.text.length <= 200)
     const outRange = out.filter(o => o.text.length < 40 || o.text.length > 200)
     return inRange.concat(outRange).slice(0, 25)
-  }, [matchedRows, fieldArr, ratingField])
+  }, [sampleRows, fieldArr, ratingField])
 
   const modal = (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
@@ -178,8 +201,8 @@ export default function ThemePopover({ theme, rows, fields, color, ratingField, 
 
         {/* Tabs — top of body. Close X is in the header, not here. */}
         <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #e5e7eb', marginBottom: 14 }}>
-          {(['overview', 'insights'] as const).map(v => {
-            const labels = { overview: 'Overview', insights: '✨ Insights' } as const
+          {(['overview', 'context', 'insights'] as const).map(v => {
+            const labels = { overview: 'Overview', context: 'Context', insights: '✨ Insights' } as const
             const active = view === v
             return (
               <button key={v} onClick={() => setView(v)}
@@ -202,8 +225,31 @@ export default function ThemePopover({ theme, rows, fields, color, ratingField, 
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           {view === 'insights' ? (
             <TermInsights rows={rows} textFields={insightsExclude} targets={keywords} termLabel={theme.name} onDrillDown={handleDrillDown} />
+          ) : view === 'context' ? (
+            <ContextCloud
+              rows={rows}
+              fields={fieldArr}
+              targets={keywords}
+              termLabel={theme.name}
+              onSelect={w => { setContextWord(w); setView('overview') }}
+            />
           ) : (
             <>
+          {contextWord && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+              <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>Context</span>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600,
+                padding: '3px 8px', borderRadius: 12, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe',
+              }}>
+                {theme.name} + {contextWord}
+                <button onClick={() => setContextWord(null)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, fontSize: 14, lineHeight: 1 }}
+                  title="Clear context word">×</button>
+              </span>
+              <span style={{ fontSize: 11, color: '#9ca3af' }}>{sampleRows.length.toLocaleString()} comment{sampleRows.length === 1 ? '' : 's'}</span>
+            </div>
+          )}
           {insightFilter && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
               <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>Filter</span>
@@ -251,7 +297,7 @@ export default function ThemePopover({ theme, rows, fields, color, ratingField, 
                   return (
                     <div key={i} style={{ padding: '10px 12px', background: pal.bg, borderRadius: 8, border: '1px solid ' + pal.border }}>
                       <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.55, whiteSpace: 'pre-wrap' as const }}>
-                        {highlightKeywords(s.text, keywords)}
+                        {highlightKeywords(s.text, keywords, contextWord)}
                       </div>
                       {ratingDisplay && (
                         <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 600, marginTop: 4 }}>★ {ratingDisplay}</div>
