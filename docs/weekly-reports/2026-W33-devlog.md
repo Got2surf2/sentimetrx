@@ -292,3 +292,26 @@ Same theme-counts-style scan over a 50,000-row sample:
 Worth recording honestly: the match count came out 1,381 (hash) vs 1,180 (stratified), 15% apart, against 1.8% on the real 128K dataset. That gap is an artifact of the test fixture — the synthetic set is eight identical copies of the source, making it perfectly periodic, which is precisely the adversarial case for stratified sampling I flagged when proposing it. Real, non-periodic data is the 1.8% figure. The fixture accidentally became the worst case and stratified still held up.
 
 ⚠️ The `[SCALE TEST]` dataset (`dddddddd-…-cafe`, 1M rows, TEST at 3,866 MB) is being **kept** until the conversion is verified against it, then dropped with `bash scripts/_seed_scale_test.sh drop` (batched delete + VACUUM — a single DELETE of 1M rows blows the statement timeout, the same 57014 the Trump re-ingest hit). The previous 1M perf dataset had to be cleaned up for the same reason on 2026-07-14.
+
+## Audit score drop: two of three drivers were already fixed, one was real (Aug 15)
+
+Owner flagged that the health score dropped last Sunday and asked what's addressable before tomorrow's run. W33 (PR #28, still open) scored **77.0, −4.5 vs W31's 81.5**, naming three drivers. Checked each against the actual tree rather than taking the report at face value:
+
+1. **`docs/TESTING.md` spec drift** — fixed. Three local commits update it.
+2. **ESLint ceiling at 252/252 with no burndown** — fixed. Local `package.json` is at 251.
+3. **`chatCore` multi-tenancy MEDIUM carried a second week** — the W31 fix (`d200d9fe`, pairing `org_id` on the `last_session_at` update) *is* in `origin/main` and line 1872 pairs correctly. But the finding wasn't stale: sweeping every service-role query in the file turned up **four others that don't pair `org_id`** while their siblings do.
+
+**⭐ The first two are only "fixed" locally.** The audit scores `origin/main`, and there are 44 unpushed commits. Tomorrow's run will report the same two drivers again unless this work is pushed — the same trap noted in W31 ("score reflects origin/main only; a flat W32 means *unpushed*, not that the fixes failed").
+
+**The real finding, now fixed.** `lib/chatCore.ts` had four service-role reads scoped only by `bot_id`/`session_id`/`conversation_id`:
+
+```
+ 266  conversation_turns   (join on conversations.bot_id + session_id)
+1099  conversations        (bot_id + session_id)
+1107  conversation_turns   (conversation_id from the above)
+1892  conversation_turns   (join on conversations.bot_id + session_id)
+```
+
+All four are reachable only through a `bot` that was already org-resolved upstream, so these are **defence-in-depth gaps rather than live leaks** — no cross-tenant read is possible today. They matter because the invariant exists precisely so that a later change to how `bot` is resolved cannot silently open a path, and because their direct siblings at 379/445/1872 *do* pair, which is the inconsistency the audit keeps flagging. `conversation_turns` carries its own `org_id`, so all four pair directly. Re-swept: 7/7 org-scoped queries in the file now pair. tsc clean, 1657 green, no lint delta.
+
+This is a security fix in the frozen PulseIQ path, which CLAUDE.md explicitly permits ("bug/security fixes there are fine").

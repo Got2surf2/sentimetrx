@@ -266,6 +266,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
       const { data, error: turnsErr } = await service
         .from('conversation_turns')
         .select('content_flags, source, turn_number, conversations!inner(session_id, bot_id)')
+        .eq('org_id', bot.org_id)
         .eq('conversations.bot_id', bot.id)
         .eq('conversations.session_id', session_id)
         .order('turn_number', { ascending: true })
@@ -1100,6 +1101,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
             .from('conversations')
             .select('id')
             .eq('bot_id', bot.id)
+            .eq('org_id', bot.org_id)
             .eq('session_id', session_id)
             .maybeSingle()
           if (thisConvErr) void logError('chatCore.handleChatTurn', thisConvErr, { orgId: bot.org_id })
@@ -1107,6 +1109,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
             const { data: thisTurns, error: thisTurnsErr } = await service
               .from('conversation_turns')
               .select('topic_id, role, content, source, turn_number')
+              .eq('org_id', bot.org_id)
               .eq('conversation_id', thisConv.id)
               .order('turn_number', { ascending: true })
             if (thisTurnsErr) void logError('chatCore.handleChatTurn', thisTurnsErr, { orgId: bot.org_id })
@@ -1892,6 +1895,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
           const { data, error: maxTurnErr } = await service
             .from('conversation_turns')
             .select('turn_number, conversations!inner(session_id, bot_id)')
+            .eq('org_id', bot.org_id)
             .eq('conversations.bot_id', bot.id)
             .eq('conversations.session_id', session_id)
             .order('turn_number', { ascending: false })
