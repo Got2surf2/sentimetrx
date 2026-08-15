@@ -275,3 +275,20 @@ Sanity check on equivalence: the theme match count came out 1,426 (hash) vs 1,40
 The argument for doing it anyway is the **curve, not the constant**: at 1M rows the hash sample is 50,000 rows scattered across ~900,000 heap pages (nearly pure random I/O, degrading with every row added), while the stratified sample is ~50 sequential runs of ~250 pages each regardless of dataset size. The gap should widen substantially. **But I have not verified that, and I have now been wrong twice this session extrapolating scaling behaviour** — first predicting parallel pages would be ~9× (got 28%, then a total failure at concurrency 10), then predicting the field-drop would cut time proportionally to payload (34% payload, 11% time).
 
 So the next step is to measure the curve rather than assume it: build a ~1M-row dataset on TEST and compare hash vs stratified there. If the gap widens to 5-10× the migration justifies itself; if it stays ~2× it probably doesn't. `sql/188` is committed and applied to TEST but **nothing calls it** — no behaviour change, no numbers moved.
+
+## The 1M test settles the sampling question (Aug 15, later⁴)
+
+Built a 1,000,000-row dataset on TEST (`scripts/_seed_scale_test.sh`, untracked — cycles the real 128K Outback rows so field names, row width, text content and keyword density are realistic; a narrower synthetic row would understate the very penalty being measured). Page layout came out comparable to real data, 4.7 rows/page vs 3.4, so if anything the synthetic is denser and understates it further.
+
+Same theme-counts-style scan over a 50,000-row sample:
+
+| dataset | hash (today) | stratified blocks | |
+|---|---|---|---|
+| 128,619 rows | 10,456ms | 4,498ms | 2.3× |
+| **1,000,000 rows** | **36,585ms** | **4,774ms** | **7.7×** |
+
+**Stratified is flat — 4,498ms → 4,774ms while the dataset grows 7.8×.** That is the O(sample) property sql/160's header always claimed and never actually delivered. Hash degrades from 10.5s to 36.6s, and theme-counts performs two such scans, so a cold load on a 1M-row dataset would spend over a minute in the database alone — worsening with every sync. This is the blocker for the 1M target and the justification for converting all 20 sampled functions.
+
+Worth recording honestly: the match count came out 1,381 (hash) vs 1,180 (stratified), 15% apart, against 1.8% on the real 128K dataset. That gap is an artifact of the test fixture — the synthetic set is eight identical copies of the source, making it perfectly periodic, which is precisely the adversarial case for stratified sampling I flagged when proposing it. Real, non-periodic data is the 1.8% figure. The fixture accidentally became the worst case and stratified still held up.
+
+⚠️ The `[SCALE TEST]` dataset (`dddddddd-…-cafe`, 1M rows, TEST at 3,866 MB) is being **kept** until the conversion is verified against it, then dropped with `bash scripts/_seed_scale_test.sh drop` (batched delete + VACUUM — a single DELETE of 1M rows blows the statement timeout, the same 57014 the Trump re-ingest hit). The previous 1M perf dataset had to be cleaned up for the same reason on 2026-07-14.
