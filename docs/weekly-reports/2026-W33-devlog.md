@@ -141,3 +141,33 @@ Ten-wide doesn't degrade the load, it destroys it. The existing serial pager is 
 Verified against the real TEST database (`scripts/_verify_rows_dropkeys.ts`): same 50,000 ids **in the same order** so the deterministic sample is provably unchanged, every retained field byte-identical, 0 surviving ignored columns. The under-cap path drops the same keys in Node — no transfer saving there, since PostgREST can't project inside jsonb, but a smaller dataset shouldn't get weaker handling.
 
 sql/186 is **applied to TEST only**; the prod apply and the `docs/db/schema.sql` refresh go together when a prod migration is authorised. tsc clean, suite 1657 green, zero lint delta.
+
+## End-to-end A/B: what the TextMine work actually netted out to (Aug 15)
+
+Owner asked for a real before/after rather than per-call numbers multiplied together. Ran an alternating A/B on the 128,619-row Outback dataset: baseline = the six code files reverted to `d4dfefdd`, treatment = current `main`, same dev server, same TEST database, three measured loads per arm after a discarded warm-up so webpack route compilation isn't counted. Timings come from the browser's Resource Timing API plus a `MutationObserver` recording first paint of `.theme-card`, so nothing depends on my polling latency.
+
+**Time to theme cards — 20.4s → 2.6s (7.8×).** Baseline runs: 22.0 / 20.4 / 19.5s. Treatment warm: 3.0 / 2.6 / 2.2s.
+
+**Time to fully settled — 58.0s → 16.0s (3.6×).**
+
+The traces show the structure better than the medians do. Baseline run 2:
+
+```
+rows          1,505 -> 19,978     cards appear 20,354
+theme-counts 20,355 -> 57,973     <- only STARTS once rows finish
+```
+
+Treatment, warm:
+
+```
+theme-counts  1,319 ->  2,148     cards appear  2,624
+rows          1,306 -> 16,036     <- concurrent, behind the banner
+```
+
+Two slow calls in series became two concurrent calls, one of which is now a cache read. Both halves of the change are load-bearing: the cache alone would still have left theme-counts waiting on `rowsLoaded`, and the unblocking alone would still have paid 37s for the counts.
+
+**The part worth being honest about: the first-ever load barely moves.** Cold cache — a new dataset, or any load right after a theme edit — measured theme-counts 1,320→48,987 against rows 1,305→24,109, so the cards still appear at ~24s because theme-counts loses the race and the paint falls back to `rowsLoaded`. That is baseline-equivalent within noise. Settled time does improve (49s vs 58s) purely from the overlap. So the headline 7.8× is a statement about **every load after the first**, which is the case that matters day to day, not about first contact with a dataset.
+
+Caveats that belong next to the numbers: dev mode on the TEST instance, so absolute seconds are pessimistic versus production; the bulk row fetch alone varied 15–24s run to run, so ±25% is noise, not signal; three iterations per arm, not thirty. The ratios are solid, the absolute seconds are indicative.
+
+Also worth recording for whoever measures this next: my first attempt read as a *regression* because I ran the new shape cold against a warm baseline. Alternate the arms, or don't bother.
