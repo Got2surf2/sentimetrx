@@ -315,3 +315,17 @@ Owner flagged that the health score dropped last Sunday and asked what's address
 All four are reachable only through a `bot` that was already org-resolved upstream, so these are **defence-in-depth gaps rather than live leaks** — no cross-tenant read is possible today. They matter because the invariant exists precisely so that a later change to how `bot` is resolved cannot silently open a path, and because their direct siblings at 379/445/1872 *do* pair, which is the inconsistency the audit keeps flagging. `conversation_turns` carries its own `org_id`, so all four pair directly. Re-swept: 7/7 org-scoped queries in the file now pair. tsc clean, 1657 green, no lint delta.
 
 This is a security fix in the frozen PulseIQ path, which CLAUDE.md explicitly permits ("bug/security fixes there are fine").
+
+## There is no Sentry log — it was never switched on (Aug 15)
+
+Owner asked me to review the Sentry log for fixable errors before tomorrow's audit run. There is nothing to review, and that is the finding.
+
+All five Sentry env vars are present in **Vercel production as empty strings**: `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG_SLUG`, `SENTRY_PROJECT_SLUG`, `SENTRY_ALERT_TO`. (Confirmed by pulling the production env to a temp file, reading only the Sentry keys, and deleting it.) All three SDK configs guard initialisation on `if (dsn)`, and an empty string is falsy — so **`Sentry.init()` has never run in production and no event has ever been captured.**
+
+Everything downstream is consequently hollow: the `/admin/sentry` triage page lists nothing, the daily `sentry-digest` cron reports on an empty project, and `lib/sentryScrub.ts` — a genuinely careful PII scrubber with its own test suite — has never scrubbed a real event. The build is complete and correct; it is simply not switched on.
+
+`docs/ENGINEERING.md` described this as live ("catches uncaught exceptions", "lists live unresolved issues"), which is how it went unnoticed. Corrected in the same commit with an explicit status warning rather than deleting the description, since the wiring is real.
+
+**This needs the owner.** Turning it on requires a Sentry project, its DSN, and an org auth token with `event:read` + `project:read` — dashboard actions the CLI cannot provision. Once those exist: set the five vars in Vercel production, redeploy (env vars apply at deploy time — the same gotcha the Deepgram/Twilio service-health rows hit on 7/30), and the digest starts populating.
+
+Worth stating plainly for the audit: **production has had no error visibility.** Every "no errors reported" observation this project has made was measuring an unplugged sensor.

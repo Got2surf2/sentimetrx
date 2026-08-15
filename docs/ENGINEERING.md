@@ -265,6 +265,16 @@ its corresponding entry.
 - **PII redaction** is the caller's responsibility today
   (Section 5 of SECURITY.md). When the logger lands, redaction
   moves to the logger boundary.
+- ⚠️ **Sentry is BUILT BUT NOT SWITCHED ON IN PRODUCTION (verified 2026-08-15).**
+  All five env vars — `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`,
+  `SENTRY_ORG_SLUG`, `SENTRY_PROJECT_SLUG`, `SENTRY_ALERT_TO` — exist in Vercel
+  production as **empty strings**. All three SDK configs guard on `if (dsn)`, so
+  with an empty DSN `Sentry.init()` never runs: **no events have ever been
+  captured**, the `/admin/sentry` digest has nothing to list, and the daily cron
+  digest reports on an empty project. The code below is accurate about what the
+  wiring *does*; it is simply inert until the DSN is set. Turning it on needs a
+  Sentry project + DSN + an org token with `event:read`/`project:read`, which
+  only the owner can create — it is not something the CLI can provision.
 - **Sentry** (`sentry.client/edge/server.config.ts`) catches
   uncaught exceptions. All three configs wire `beforeSend` to
   `lib/sentryScrub.ts`, which redacts `request.{data,body,cookies}`
