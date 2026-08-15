@@ -252,3 +252,26 @@ The fiddly part is the release paths. A dataset with no mined themes issues no c
 Lint dropped 20 → 19 on the touched files (the removed mount effect took an `exhaustive-deps` warning with it), so the `lint:ci` ceiling goes 252 → 251 per the ratchet rule. ⚠️ Verified per-file only — `eslint .` OOMs locally, and another session is committing to this repo concurrently, so CI is the arbiter on the true total.
 
 tsc clean, suite 1657 green.
+
+## Stratified sampling: the primitive works, the payoff is 2.3x not 55x (Aug 15, later³)
+
+Owner picked option 1 — swap the sampling basis wholesale, bump a version, accept that numbers move once. Built the primitive (`sql/188`), verified it, and measured it properly. The headline is that **I oversold this last message and need to correct it.**
+
+**The primitive is sound.** `dataset_sample_blocks(dataset, cap, blocks)` returns K contiguous `row_index` runs spread evenly across a dataset's actual range — 50 blocks on the 128K dataset, non-overlapping, widths 2,572–2,573, collapsing to a single block when the dataset is under the cap. Deterministic (two runs share 50,000/50,000 ids) and gap-tolerant. Coverage checked in SQL across 20 slices: every slice populated, alternating 3,003 / 2,002 against an even 2,500 — the mild ripple you get when 50 blocks don't divide into 20 buckets, statistically fine. (My first harness reported "17/20 slices, 100% deviation" — that was a bug in the harness's bucket maths, not the sampler. Checked against SQL before believing it.)
+
+**But the payoff is much smaller than the microbenchmark promised.** I quoted ~55× off a 5,000-row read that returned only a count. Measured over the real 50,000-row workload:
+
+| path | hash (today) | stratified | |
+|---|---|---|---|
+| theme-counts style scan (read-bound) | 10,456ms | 4,498ms | **2.3×** |
+| bulk row fetch (transfer-bound) | 17,909ms | 13,744ms | **1.3×** |
+
+The 55× was a warm-cache microbenchmark with no payload. Across the full sample both approaches touch enough pages to spill, and the bulk path is dominated by shipping 87MB regardless of how the rows were chosen. Same mistake shape as the columnar experiment: an isolated measurement that didn't survive contact with the real workload.
+
+Sanity check on equivalence: the theme match count came out 1,426 (hash) vs 1,401 (stratified), 1.8% apart — the expected variation between two different 50,000-row samples of the same population, which is also a preview of how much published figures would move.
+
+**So the decision changed shape.** The cost is fixed and large: **20 SQL functions** and **5+ client pagers** all page on the `(hash, id)` cursor and must convert together — a partial swap would leave the client's rows and the server's counts describing different samples, which is exactly the numerator/denominator class of bug we've been fighting. Plus every cached analytic invalidated and every published number shifting ~2%. Paying that for 2.3× on one path and 1.3× on another is not obviously right.
+
+The argument for doing it anyway is the **curve, not the constant**: at 1M rows the hash sample is 50,000 rows scattered across ~900,000 heap pages (nearly pure random I/O, degrading with every row added), while the stratified sample is ~50 sequential runs of ~250 pages each regardless of dataset size. The gap should widen substantially. **But I have not verified that, and I have now been wrong twice this session extrapolating scaling behaviour** — first predicting parallel pages would be ~9× (got 28%, then a total failure at concurrency 10), then predicting the field-drop would cut time proportionally to payload (34% payload, 11% time).
+
+So the next step is to measure the curve rather than assume it: build a ~1M-row dataset on TEST and compare hash vs stratified there. If the gap widens to 5-10× the migration justifies itself; if it stays ~2× it probably doesn't. `sql/188` is committed and applied to TEST but **nothing calls it** — no behaviour change, no numbers moved.
