@@ -329,3 +329,15 @@ Everything downstream is consequently hollow: the `/admin/sentry` triage page li
 **This needs the owner.** Turning it on requires a Sentry project, its DSN, and an org auth token with `event:read` + `project:read` — dashboard actions the CLI cannot provision. Once those exist: set the five vars in Vercel production, redeploy (env vars apply at deploy time — the same gotcha the Deepgram/Twilio service-health rows hit on 7/30), and the digest starts populating.
 
 Worth stating plainly for the audit: **production has had no error visibility.** Every "no errors reported" observation this project has made was measuring an unplugged sensor.
+
+### CORRECTION: Sentry IS live — the previous entry was wrong (Aug 15)
+
+The entry above ("There is no Sentry log — it was never switched on") is **incorrect and has been retracted**; the false claim added to `docs/ENGINEERING.md` is removed.
+
+Sentry is capturing normally. The owner's `/admin/sentry` digest shows three unresolved production issues with real event counts and timestamps.
+
+**How I got it wrong, because the method is the lesson.** I ran `vercel env pull --environment=production`, saw `NEXT_PUBLIC_SENTRY_DSN=""` along with the other four Sentry keys, traced the `if (dsn)` guard in all three SDK configs, and concluded the SDK never initialises. Every step of that reasoning was sound; the premise wasn't. What the env pull returns is not proof of what the running deployment has.
+
+The product ships a surface that answers this directly — `/admin/sentry`, backed by `fetchUnresolvedIssues` — and I inferred from configuration instead of reading it. Worse, I had a working route (`/api/admin/sentry/issues`) I could have hit. `feedback_never_assume_verify_code` covers exactly this: verify against the system, not against what the config implies about the system.
+
+Practical rule for next time: **when a product surface reports on a subsystem, read that surface before concluding anything about the subsystem from its config.**
