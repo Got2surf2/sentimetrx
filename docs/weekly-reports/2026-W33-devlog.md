@@ -224,3 +224,31 @@ Also answered two questions from the same message, both worth recording because 
 **Is the sample deterministic?** Yes for a fixed row set — same rows in, same sample out, and the sql/186 field-drop was verified to return the same 50,000 ids in the same order. On append it *evolves* rather than reshuffles: a new row joins only if its hash falls below the current 50,000th, so new data participates proportionally. ⚠️ **One edge case worth knowing: the cache key is theme-model hash + row COUNT.** A sync that deletes N rows and adds N leaves the count unchanged while the sample genuinely changes, so the cache would serve numbers computed over a sample that no longer exists. Narrow, but real for any sync path that replaces rather than appends.
 
 tsc clean, suite 1657 green, zero lint delta.
+
+## Rows wait for counts; unfinished tabs go dark (Aug 15, later²)
+
+Owner: "let's do the row fetch followed by the clouds etc. pulsating dot showing the fetch is in progress — ideally i would make the pills unclickable until the fetch is complete."
+
+**The deferral fixes the cold regression I reported.** The bulk row fetch used to start on mount, concurrently with the counts scan, and they contend: counts is 13.4s alone but measured **24s** alongside the 50K-row fetch, which is why cold time-to-cards had gone to 26.1s — worse than the 20.4s baseline it replaced. Every time concurrency against this instance has been measured it has lost (ten parallel sample pages made *every* page hit the statement timeout), and I should have expected this one too.
+
+Rows now wait for phase 1. Measured cold:
+
+```
+counts   2,483 -> 19,733     cards appear 19,766
+rows    19,737 -> 44,455
+extras  19,738 -> 45,351
+```
+
+**Cold time-to-cards 26.1s → 19.8s**, now marginally ahead of the pre-change baseline, with settle unchanged (~45s). Warm is 2.2s. The contention didn't vanish — rows and extras now overlap instead — but that pair costs nothing visible, because the cards are already up by then.
+
+The fiddly part is the release paths. A dataset with no mined themes issues no counts request at all, so every *terminal* bail-out in the counts effect has to release the fetch or it would load no rows whatsoever; the one return that must NOT release is "the Text selection hasn't settled yet", which is transient and re-runs a tick later. `startRowFetch` is a one-shot ref so the paths can't double-fire.
+
+**Unfinished tabs are now disabled rather than just flagged.** Clouds / Compare / Comments show the pulsing dot and are inert until the rows land — landing on a bare loader is a worse experience than a moment's wait. Two details that matter more than they look:
+
+- Gated on **`!rowsLoaded`**, not `rowsLoading`. With the fetch deferred there is now a window where it hasn't *started* and `rowsLoading` is still false — exactly when a click would strand someone. My first pass used `rowsLoading` and left the pills live for that ~1.2s; the browser timeline caught it (`t=1,142ms: 0 disabled` → `t=2,372ms: 3 disabled`). After the fix: disabled from the first render at t=1,278ms straight through to t=24,411ms.
+- **`!rowsError`**, so a failed fetch re-enables them instead of locking the tabs forever — the Overview carries the retry button.
+- The **active** view is never disabled. A deep link straight to `?view=clouds` must still render (its own loader covers it); disabling the tab you're standing on would strand the user with nowhere to go.
+
+Lint dropped 20 → 19 on the touched files (the removed mount effect took an `exhaustive-deps` warning with it), so the `lint:ci` ceiling goes 252 → 251 per the ratchet rule. ⚠️ Verified per-file only — `eslint .` OOMs locally, and another session is committing to this repo concurrently, so CI is the arbiter on the true total.
+
+tsc clean, suite 1657 green.

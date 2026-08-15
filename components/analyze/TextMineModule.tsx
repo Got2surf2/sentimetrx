@@ -1582,6 +1582,29 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
   // Server-side theme counting for accurate full-dataset counts (avoids sampling bias).
   // Falls back silently to client-side counts if the endpoint fails.
+  // ── When the bulk row fetch is allowed to start (2026-08-15) ──────────────
+  // It used to fire on mount, concurrently with the server theme counts. Both
+  // hit the same database instance and they CONTEND: the counts scan is 13.4s
+  // in isolation but measured 24s running alongside the 50K-row fetch, which
+  // pushed cold time-to-cards to 26.1s — worse than the 20.4s it replaced.
+  // Concurrency on this instance has lost every time it has been measured (10
+  // parallel sample pages made every page hit the statement timeout).
+  //
+  // So the rows now WAIT for the counts phase. Counts alone paints the cards,
+  // then the rows load and unlock Clouds / Compare / Comments. The trade is
+  // deliberate: cards much sooner, those three tabs somewhat later.
+  const rowsRequested = useRef(false)
+  // triggerRowFetch's identity changes with rowsLoaded/rowsLoading, and
+  // fetchServerThemeCounts must not be rebuilt on that — hold the latest in a
+  // ref so the one-shot below always calls a current copy.
+  const triggerRowFetchRef = useRef(triggerRowFetch)
+  triggerRowFetchRef.current = triggerRowFetch
+  const startRowFetch = useCallback(function() {
+    if (rowsRequested.current) return
+    rowsRequested.current = true
+    triggerRowFetchRef.current()
+  }, [])
+
   const fetchServerThemeCounts = useCallback(async function(themeModel: ThemeModel, fields: string[]) {
     if (!themeModel?.themes?.length || !fields.length) return
     // Reset loaded flag so the theme card's "Co-occurs with themes" section
@@ -1662,14 +1685,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     // final at this point, so the marker clears here rather than after phase 2.
     finally {
       setCountsPending(false)
+      // Counts are done with the database — let the bulk row fetch go. Before
+      // loadExtras() so the rows aren't queued behind the extras scan too.
+      startRowFetch()
       void loadExtras()
     }
-  }, [datasetId, totalRows, dimensionsEnabled])
+  }, [datasetId, totalRows, dimensionsEnabled, startRowFetch])
 
-  // Trigger shared row fetch on mount
-  useEffect(function() {
-    triggerRowFetch()
-  }, [])
 
   // When rows load from shared context, update sampling info.
   useEffect(function() {
@@ -1696,17 +1718,22 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // means the selection can never settle, so don't wait for it.
   const serverCountsFor = useRef('')
   useEffect(function() {
-    if (!savedThemeModel || !savedThemeModel.themes) return
-    if (effectiveFields.length === 0 && openFields.length > 0) return  // selection not settled yet
+    // Every terminal bail-out below has to release the row fetch, or a dataset
+    // that will never issue a counts request (no themes mined yet, a Text pill
+    // with no saved set) would sit waiting for a phase that never runs and load
+    // no rows at all. The ONE case that must NOT release is the selection not
+    // having settled yet — that is transient and the effect re-runs a tick later.
+    if (!savedThemeModel || !savedThemeModel.themes) { startRowFetch(); return }
+    if (effectiveFields.length === 0 && openFields.length > 0) return  // selection not settled yet — transient, do NOT release
     // Only when the saved model belongs to the active Text selection (a
     // restored session may open on a different field; the per-field swap effect
     // below handles that field's own set instead, and enriching a non-active
     // model would clobber the swapped-in themes).
     const field = savedThemeModel.fieldNames || savedThemeModel.fieldName
     const fields = Array.isArray(field) ? field : (field ? [field] : [])
-    if (fields.length === 0) return
+    if (fields.length === 0) { startRowFetch(); return }
     const activeKey = themeFieldKey(effectiveFields)
-    if (activeKey && activeKey !== themeModelKey(savedThemeModel)) return
+    if (activeKey && activeKey !== themeModelKey(savedThemeModel)) { startRowFetch(); return }
     // Fire once per (dataset, field set) — the effect now re-runs on selection
     // changes, and these are multi-second server scans.
     const token = datasetId + JSON.stringify(fields)
@@ -2393,7 +2420,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     // dataset. Since the Overview now paints early (2026-08-15 progressive load),
     // those tabs look ready when they aren't; clicking one drops you on a bare
     // loader with no explanation. Mark them while the rows are in flight.
-    const pending = !locked && rowsLoading && (st === 'clouds' || st === 'compare' || st === 'comments')
+    // `!rowsLoaded`, not `rowsLoading` — the fetch is now deferred until the
+    // counts phase releases it, so there is a window where it hasn't STARTED
+    // and rowsLoading is still false. Gating on "loading" left the pills live
+    // during that window, which is exactly when a click would strand someone.
+    // `!rowsError` so a failed fetch re-enables them instead of locking the
+    // tabs forever — the Overview carries the retry.
+    const pending = !locked && !rowsLoaded && !rowsError && (st === 'clouds' || st === 'compare' || st === 'comments')
     return { id: v, label: VIEW_LABEL[v], locked: locked, pending: pending }
   })
   // Cells without a real renderer yet (later-phase builds) show a graceful

@@ -15,9 +15,9 @@ import { type Section } from '@/lib/textmineNav'
 export interface NavSectionItem { id: Section; label: string; help?: string; href?: string }
 export interface NavViewItem {
   id: string; label: string; locked?: boolean; href?: string
-  /** The data this view needs is still loading. Unlike `locked` the item stays
-   *  fully clickable — the point is that a user who clicks through lands on a
-   *  loader and should already know why, not be told they may not go. */
+  /** The data this view needs is still loading: shown with a pulsing dot and
+   *  disabled, so nobody lands on a bare loader. Distinct from `locked`, which
+   *  means "not possible until you mine themes" rather than "not yet". */
   pending?: boolean
 }
 
@@ -70,17 +70,28 @@ export default function TextMineNav({ sections, activeSection, views, activeView
             if (v.locked) {
               return <button key={v.id} disabled title="Run a theme model first" style={{ ...base, border: 'none', cursor: 'not-allowed', opacity: 0.4 }}>{v.label}</button>
             }
-            // A view whose data is still arriving keeps its label and stays
-            // clickable; the dot is the only affordance. Deliberately not a
-            // spinner — several of these can be pending at once and a row of
-            // spinning glyphs reads as an error state rather than progress.
+            // A view whose data is still arriving shows a pulsing dot and is
+            // NOT clickable — landing on a bare loader is a worse experience
+            // than a moment's wait, and the dot explains why the tab is inert.
+            // Deliberately a dot, not a spinner: three can be pending at once
+            // and a row of spinning glyphs reads as an error, not progress.
             var dot = v.pending
               ? <span key="d" aria-hidden className="tm-nav-pending" style={{ width: 5, height: 5, borderRadius: 3, background: T.amber, marginLeft: 6, flexShrink: 0, display: 'inline-block' }} />
               : null
-            var title = v.pending ? 'Still loading — you can open it, it will fill in' : undefined
-            if (isActive) return <span key={v.id} style={base} title={title}>{v.label}{dot}</span>
-            if (v.href) return <Link key={v.id} href={v.href} style={base} title={title}>{v.label}{dot}</Link>
-            return <button key={v.id} onClick={function() { if (onSelectView) onSelectView(v.id) }} title={title} style={{ ...base, border: 'none', cursor: 'pointer' }}>{v.label}{dot}</button>
+            // The ACTIVE view is never disabled even while pending — a deep link
+            // straight to Clouds must still render (its own loader covers it);
+            // disabling the tab you are standing on would strand the user.
+            if (v.pending && !isActive) {
+              return (
+                <button key={v.id} disabled title="Loading the comments this view needs — available in a moment"
+                  style={{ ...base, border: 'none', cursor: 'wait', opacity: 0.45 }}>
+                  {v.label}{dot}
+                </button>
+              )
+            }
+            if (isActive) return <span key={v.id} style={base}>{v.label}{dot}</span>
+            if (v.href) return <Link key={v.id} href={v.href} style={base}>{v.label}</Link>
+            return <button key={v.id} onClick={function() { if (onSelectView) onSelectView(v.id) }} style={{ ...base, border: 'none', cursor: 'pointer' }}>{v.label}</button>
           })}
           {viewsExtra && (
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, paddingRight: 16 }}>
