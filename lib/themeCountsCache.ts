@@ -72,6 +72,9 @@ export function themeCountsKey(input: {
   cooccurrence?: boolean
   topical?: boolean
   dimensions?: boolean
+  /** Two-phase load: an extras-only response has a different SHAPE (no counts),
+   *  so it must never be served to a caller asking for counts, or vice versa. */
+  extrasOnly?: boolean
 }): string {
   const sig = {
     themes: input.themes
@@ -82,6 +85,7 @@ export function themeCountsKey(input: {
       .sort((a, b) => a.id.localeCompare(b.id)),
     fields: [...input.fields].sort(),
     extras: [!!input.cooccurrence, !!input.topical, !!input.dimensions],
+    extrasOnly: !!input.extrasOnly,
     v: THEME_COUNTS_VERSION,
   }
   return createHash('md5').update(JSON.stringify(sig)).digest('hex').slice(0, 16)

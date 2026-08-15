@@ -9,7 +9,7 @@ import { countNonEmptyRows } from '@/lib/nonEmptyCount'
 import { memberRowCounts } from '@/lib/signalStats'
 import { kwPatternFragment } from '@/lib/themeUtils'
 import { sampledSignalCounts, SIGNAL_SAMPLE_CAP, type SampledSignalCounts } from '@/lib/sampledSignalCounts'
-import { sampledThemeCooccurrence, sampledThemeTopical, sampledThemeDimensions } from '@/lib/sampledThemeExtras'
+import { sampledThemeCooccurrence, sampledThemeTopical, sampledThemeDimensions, sampledThemeExtras } from '@/lib/sampledThemeExtras'
 import { themeCountsKey, readThemeCountsCache, writeThemeCountsCache } from '@/lib/themeCountsCache'
 
 interface Props { params: Promise<{ datasetId: string }> }
@@ -59,6 +59,15 @@ export async function POST(req: Request, props: Props) {
     topical?: boolean           // when true, also extract topical-word lists per theme
     dimensions?: boolean        // when true, also compute the per-theme Dimensions (taxonomy) breakdown
     rowIds?: unknown            // filtered-view flat row ids → prevalence bars honor active filters (sql/170)
+    // Two-phase load (2026-08-15). The theme CARDS need only `counts` +
+    // `totalNonEmpty`; co-occurrence and Dimensions fill chip rows that already
+    // render skeleton placeholders. Cold, the counts scan is ~13s and the extras
+    // are ~18s more, so bundling them made the cards wait ~33s for data they
+    // don't use. The client now asks for counts first (cooccurrence/dimensions
+    // false) and the extras second with this flag, which skips the counts work
+    // entirely instead of recomputing it. Absent = the original single-request
+    // behaviour, so any other caller is unaffected.
+    extrasOnly?: boolean
   }
   try {
     body = await req.json()
@@ -67,6 +76,7 @@ export async function POST(req: Request, props: Props) {
   }
 
   const { themes, fields, cooccurrence, topical, dimensions } = body
+  const extrasOnly = body.extrasOnly === true
   if (!themes?.length || !fields?.length) {
     return NextResponse.json({ error: 'Provide themes and fields' }, { status: 400 })
   }
@@ -143,7 +153,7 @@ export async function POST(req: Request, props: Props) {
   //
   // Filtered requests are deliberately NOT cached: the row-id set is per-view
   // and the exact path over a bounded subset is cheap anyway.
-  const cacheKey = filterRowIds ? null : themeCountsKey({ themes, fields, cooccurrence, topical, dimensions })
+  const cacheKey = filterRowIds ? null : themeCountsKey({ themes, fields, cooccurrence, topical, dimensions, extrasOnly })
   let analyticsBlob: Record<string, unknown> | null = null
   if (cacheKey) {
     const { data: stateRow } = await service
@@ -168,7 +178,9 @@ export async function POST(req: Request, props: Props) {
     // path with p_row_ids is cheap and correct — skip sampling entirely (a
     // sampled scaling denominator would be wrong for a filtered subset).
     const sampledByMember = new Map<string, SampledSignalCounts>()
-    if (!filterRowIds) {
+    // extrasOnly skips this scan outright — it is ~13s cold and produces only
+    // the counts/denominator, which that phase does not return.
+    if (!filterRowIds && !extrasOnly) {
       await Promise.all(datasetIds.map(async did => {
         if ((rowCounts.get(did) || 0) <= SIGNAL_SAMPLE_CAP) return
         try {
@@ -198,7 +210,7 @@ export async function POST(req: Request, props: Props) {
     // Total SUBSTANTIVE comments (denominator), summed across members — the
     // two-count-model base for every theme prevalence % (sql/178/179/181).
     let totalNonEmpty = 0
-    for (const [fi, f] of fields.entries()) {
+    for (const [fi, f] of (extrasOnly ? [] : fields.entries())) {
       let fieldTotal = 0
       for (const did of datasetIds) {
         const s = sampledByMember.get(did)
@@ -219,7 +231,7 @@ export async function POST(req: Request, props: Props) {
       totalNonEmpty = Math.max(totalNonEmpty, fieldTotal)
     }
 
-    const counts = await runPool(themes.map((t, ti) => async () => {
+    const counts = extrasOnly ? [] : await runPool(themes.map((t, ti) => async () => {
       const kws = (t.keywords || []).filter(Boolean)
       if (!kws.length) return { id: t.id, count: 0, percentage: 0 }
 
@@ -252,6 +264,35 @@ export async function POST(req: Request, props: Props) {
     // row scan. Sum the per-member matrices for collections. ~10× faster
     // than the older pairwise count_theme_intersection loop (Capital
     // Grille: 1.8s for the matrix vs ~9s pairwise).
+    // ── One walk for BOTH extras (sql/187) ───────────────────────────────
+    // Co-occurrence and Dimensions used to page the same 50,000 scattered rows
+    // independently. That walk IS the cost: the sample is hash-ordered so it's
+    // physically scattered, and its price is buffer-cache residency — measured
+    // 2,967 disk reads / 1,895ms for one 5,000-row page on the 128K dataset vs
+    // 11 reads / 28ms on the 56K one, same rows, same buffers touched. Merging
+    // the walks measured 29% off the extras phase with byte-identical output.
+    // Anything not covered here (below the cap, a collection member, a
+    // pre-migration database) still falls through to the per-extra pagers.
+    const oneWalk = new Map<string, {
+      cooccurrence: Record<string, Record<string, number>>
+      dimensions: Record<string, Record<string, { axis: string; sub: string; count: number }>>
+    }>()
+    if (!filterRowIds && (cooccurrence || dimensions)) {
+      const walkThemes = themes
+        .filter(t => (t.keywords || []).filter(Boolean).length > 0)
+        .map(t => ({ id: t.id, keywords: (t.keywords || []).filter(Boolean).map(kwPatternFragment) }))
+      if (walkThemes.length) {
+        await Promise.all(datasetIds.map(async did => {
+          if ((rowCounts.get(did) || 0) <= SIGNAL_SAMPLE_CAP) return
+          try {
+            oneWalk.set(did, await sampledThemeExtras(
+              service, did, fields, walkThemes, rowCounts.get(did) || 0,
+              { cooccurrence: !!cooccurrence, dimensions: !!dimensions }))
+          } catch { /* per-extra pagers below */ }
+        }))
+      }
+    }
+
     let cooccurrenceMatrix: Record<string, Record<string, number>> | undefined
     if (cooccurrence) {
       cooccurrenceMatrix = {}
@@ -262,6 +303,8 @@ export async function POST(req: Request, props: Props) {
       // Above the 50K cap the exact matrix full-scans and 57014s → sampled twin
       // (sql/173) keyset-pages idx_drf_sample + scales; below the cap, exact.
       const memberMatrices = await runPool(datasetIds.map(did => async () => {
+        const walked = oneWalk.get(did)
+        if (walked) return walked.cooccurrence
         if ((rowCounts.get(did) || 0) > SIGNAL_SAMPLE_CAP) {
           try { return await sampledThemeCooccurrence(service, did, fields, themesPayload, rowCounts.get(did) || 0) }
           catch { /* fall through to exact (pre-sql/173) */ }
@@ -346,6 +389,8 @@ export async function POST(req: Request, props: Props) {
         .filter(t => t.keywords.length > 0)
       // Per member → { themeId: { "axis:sub": {axis,sub,count} } }.
       const memberMaps = await runPool(datasetIds.map(did => async (): Promise<Record<string, Record<string, { axis: string; sub: string; count: number }>>> => {
+        const walked = oneWalk.get(did)
+        if (walked) return walked.dimensions
         if ((rowCounts.get(did) || 0) > SIGNAL_SAMPLE_CAP) {
           try { return await sampledThemeDimensions(service, did, fields, dimThemes, rowCounts.get(did) || 0) }
           catch { /* fall through to exact */ }

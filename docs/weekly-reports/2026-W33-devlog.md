@@ -171,3 +171,38 @@ Two slow calls in series became two concurrent calls, one of which is now a cach
 Caveats that belong next to the numbers: dev mode on the TEST instance, so absolute seconds are pessimistic versus production; the bulk row fetch alone varied 15–24s run to run, so ±25% is noise, not signal; three iterations per arm, not thirty. The ratios are solid, the absolute seconds are indicative.
 
 Also worth recording for whoever measures this next: my first attempt read as a *regression* because I ran the new shape cold against a warm baseline. Alternate the arms, or don't bother.
+
+## Cold loads: one walk instead of two, counts before extras — and a result that isn't flattering (Aug 15)
+
+Owner pushed back on two things, both correctly. First: "most loads will be cold cache" — the cache key includes row count, so any sync invalidates it, and a nightly-syncing reviews dataset is cold every morning. I'd leaned on "every load after the first" without checking whether that matches real usage. Second: "does sampling make a 200K and a 500K dataset load in the same time?"
+
+**Answer to the second, measured: no, and the reason matters.** Two above-cap datasets, both scanning exactly 50,000 rows:
+
+```
+Outback    (128,619 rows)  shared hit=2096 read=2967   1,895ms
+Carrabba's  (56,117 rows)  shared hit=5052 read=11        28ms
+```
+
+Same rows, same ~5,060 buffers touched, **67× apart** — purely buffer-cache residency. The sample is the 50K rows with the smallest `hash(id‖dataset_id)`, and hash order is uncorrelated with physical order, so the sample is scattered at random across a ~922MB heap (2GB with TOAST). The bigger the dataset, the less of that footprint stays cached and the more of the walk becomes random disk I/O. End-to-end that showed as **1.68× slower for a 2.3× bigger dataset**. So `sql/160`'s "cost is independent of dataset size" is true about rows scanned and false about time. It also retro-explains the 15–24s spread I kept seeing on identical queries and dismissed as noise — that was cache residency, and I should have chased it.
+
+**The corollary drove the fix: the number of WALKS matters more than the work per row.** A cold `/theme-counts` walked the same scattered 50,000 rows three times — counts 13.4s, co-occurrence 9.1s, dimensions 10.9s. `sql/187` merges the two extras into one page function (`sampled_theme_extras_page`), each half keeping its original matching semantics verbatim so no number moves. Verified against the real TEST database: co-occurrence matrix and dimensions breakdown **byte-identical** to the two-walk path, and **29% faster** (25.0s → 17.7s). Not 50%, because the second walk was already benefiting from the first's cache warming.
+
+**Two-phase load.** The cards need `counts` + `totalNonEmpty`; the co-occurrence and Dimensions chip rows have their own skeletons. The client now asks for counts alone, then fetches extras with a new `extrasOnly` flag that skips the counts scan rather than recomputing it. Sequential, not concurrent — the two scans contend on the same instance, and concurrency there was already measured to make things worse.
+
+**And the result that isn't flattering.** Measured cold, end to end:
+
+```
+counts   2,073 -> 26,037     cards appear 26,126
+rows     2,061 -> 25,870
+extras  26,222 -> 44,314
+```
+
+Cards at **26.1s**, against a **20.4s** baseline. The counts phase alone is 13.4s in isolation but took **24s** here, because it now runs concurrently with the 50K-row bulk fetch and the two contend for the same instance. That concurrency came from `0760187a` (moving the counts fetch off `rowsLoaded`), not from today's split — and my earlier cold measurement of 24.1s vs 20.4s, which I wrote off as "baseline-equivalent within noise", was the same effect showing up consistently.
+
+It is not purely a regression, which is why it needs stating carefully rather than either hiding or over-claiming. Baseline showed cards at 20.4s carrying **provisional client recounts** that were then replaced 38s later when the server counts landed at 58s. Now the cards appear 5.7s later carrying **final server counts**, and the whole tab settles at 44.3s instead of 58.0s. Warm is unaffected (cards 3.2s).
+
+So the honest scorecard, cold: **time-to-cards 20.4s → 26.1s (worse), time-to-settled 58.0s → 44.3s (better), and the numbers on screen are correct on arrival instead of changing under the user.** Whether that trade is right is a product call, not mine to make silently.
+
+The obvious next experiment is to stop the contention rather than accept it: fire the counts request and hold the bulk row fetch until it returns. Counts alone is ~13s, so cards would land ~13s cold — better than baseline on both axes — at the cost of delaying Clouds and Comments, which need the rows. Not built; it changes load order in a user-visible way and should be a deliberate decision.
+
+`sql/186` and `sql/187` are both applied to TEST only. tsc clean, suite 1657 green, zero lint delta.

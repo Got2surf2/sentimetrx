@@ -1593,20 +1593,25 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     // about to move doesn't read as final — on a cold cache this scan is a
     // multi-second server job and the difference is visible.
     setCountsPending(true)
-    try {
-      const body = JSON.stringify({
-        themes: themeModel.themes.map(function(t) { return { id: t.id, keywords: t.keywords } }),
-        fields: fields,
-        cooccurrence: true,   // pairwise theme intersection counts
-        dimensions: dimensionsEnabled,   // per-theme Dimensions (taxonomy) breakdown — only when classified
-        // topical: false — extract_theme_topical_words SQL times out on
-        // large collections with the ±2 window; the no-window version
-        // surfaces too much boilerplate. Section dropped from the card.
-      })
-      // Cached across module remounts (tab bounces) — the server recomputes
-      // per-theme SQL scans on every request, and the body captures every
-      // input so a theme/field change is a different key.
-      const data = await cachedRequest('theme-counts:' + datasetId + ':' + body, async function() {
+    // Two-phase (2026-08-15). The cards need `counts` + `totalNonEmpty`; the
+    // co-occurrence and Dimensions chip rows have their own skeletons and are
+    // NOT needed to paint. Cold, the counts scan is ~13s and the extras add
+    // ~18s more, so one bundled request made the cards wait on data they don't
+    // use. Phase 1 asks for counts alone; phase 2 fetches the extras and fills
+    // the chips in. Sequential, not concurrent — the two scans contend on the
+    // same instance, and concurrency there was measured to make things worse,
+    // not better.
+    const themePayload = themeModel.themes.map(function(t) { return { id: t.id, keywords: t.keywords } })
+    // topical: false — extract_theme_topical_words SQL times out on large
+    // collections with the ±2 window; the no-window version surfaces too much
+    // boilerplate. Section dropped from the card.
+    const countsBody = JSON.stringify({ themes: themePayload, fields: fields, cooccurrence: false, dimensions: false })
+    const extrasBody = JSON.stringify({ themes: themePayload, fields: fields, cooccurrence: true, dimensions: dimensionsEnabled, extrasOnly: true })
+    // Cached across module remounts (tab bounces) — the server recomputes
+    // per-theme SQL scans on every request, and the body captures every
+    // input so a theme/field change is a different key.
+    function post(body: string) {
+      return cachedRequest('theme-counts:' + datasetId + ':' + body, async function() {
         const res = await fetch('/api/datasets/' + datasetId + '/theme-counts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1615,6 +1620,19 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         if (!res.ok) throw new Error('theme-counts ' + res.status)
         return res.json()
       })
+    }
+    // Phase 2 runs even if phase 1 threw — the chips are independent of the
+    // counts, and failing both because one failed helps nobody.
+    async function loadExtras() {
+      try {
+        const ex = await post(extrasBody)
+        if (ex.cooccurrence) setServerCoOccurrence(ex.cooccurrence)
+        if (ex.dimensions) setServerThemeDimensions(ex.dimensions)
+      } catch { /* chips stay in their placeholder state */ }
+      finally { setCooccurrenceLoaded(true) }
+    }
+    try {
+      const data = await post(countsBody)
       if (!data.counts) return
       const countMap: Record<string, { count: number; percentage: number }> = {}
       for (const c of data.counts) countMap[c.id] = { count: c.count, percentage: c.percentage }
@@ -1637,18 +1655,15 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       })
       setSamplingInfo(si)
       if (typeof data.totalNonEmpty === 'number') setServerTotalResp(data.totalNonEmpty)
-      if (data.topical) setServerTopical(data.topical)
-      if (data.cooccurrence) setServerCoOccurrence(data.cooccurrence)
-      if (data.dimensions) setServerThemeDimensions(data.dimensions)
-      // Mark loaded whether or not cooccurrence is present, so the theme
-      // card stops showing the placeholder once the fetch resolves —
-      // even when a theme has no co-occurring siblings.
-      setCooccurrenceLoaded(true)
     } catch { /* fallback to client-side counts silently */ }
     // `finally`, not the end of the try: there is an early return above when
     // the response carries no counts, and a failed scan must clear the marker
-    // too — otherwise the cards would say "calculating" forever.
-    finally { setCountsPending(false) }
+    // too — otherwise the cards would say "calculating" forever. The counts are
+    // final at this point, so the marker clears here rather than after phase 2.
+    finally {
+      setCountsPending(false)
+      void loadExtras()
+    }
   }, [datasetId, totalRows, dimensionsEnabled])
 
   // Trigger shared row fetch on mount
