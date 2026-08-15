@@ -206,3 +206,21 @@ So the honest scorecard, cold: **time-to-cards 20.4s → 26.1s (worse), time-to-
 The obvious next experiment is to stop the contention rather than accept it: fire the counts request and hold the bulk row fetch until it returns. Counts alone is ~13s, so cards would land ~13s cold — better than baseline on both axes — at the cost of delaying Clouds and Comments, which need the rows. Not built; it changes load order in a user-visible way and should be a deliberate decision.
 
 `sql/186` and `sql/187` are both applied to TEST only. tsc clean, suite 1657 green, zero lint delta.
+
+## Telling the user what's still coming (Aug 15, later)
+
+Owner, on the two-phase load: "we should just indicate things are getting completed in case the user clicks on something that is still being progressively completed." Right — and checking it turned up a hole I'd opened an hour earlier.
+
+**The Dimensions chip row had no loading state.** It rendered from `serverThemeDimensions[t.id] || []` and drew nothing when empty. That was harmless while counts and extras arrived in one response. After the split, Dimensions land in phase 2 — up to **~18s later on a cold load** — so the row silently disappeared for that entire window. An empty panel isn't neutral; it's a claim. A user clicking through would reasonably conclude the dataset has no dimensions. It now shows the same placeholder-chips-plus-loader treatment the co-occurrence row has always had, gated on `extrasLoaded` (renamed from `cooccurrenceLoaded`, since it now governs both halves), so a theme with genuinely no tagged rows still collapses to nothing once the phase finishes.
+
+**Nav views whose data is still arriving carry a pulsing dot.** Clouds, Compare and Comments all tokenize or filter the loaded rows client-side, so they cannot render until the bulk fetch lands. Now that Overview paints early they *look* ready when they aren't, and clicking one drops you on a bare loader with no explanation. `NavViewItem.pending` marks them; the dot reuses the existing `pulse-dot` keyframe. They stay fully clickable — the goal is that someone who clicks through already knows why they're waiting, not that they're blocked. A dot rather than a spinner on purpose: three can be pending simultaneously and a row of spinning glyphs reads as an error, not as progress.
+
+Verified in the browser on a cold load: at t=1.4s the nav reported `pendingLabels: ["Clouds","Compare","Comments"]` with `rowsDone:false`, and they cleared once the rows landed at ~25.9s. At t=31.7s — phase 1 complete, phase 2 still in flight — all five cards showed the Dimensions block with placeholder chips, where before the fix they showed nothing at all.
+
+Also answered two questions from the same message, both worth recording because the answers aren't symmetrical:
+
+**Does filtering cause database passes?** Depends on the surface. **TextMine: no** — its theme-counts body carries no `rowIds`, so filtering recounts client-side over the already-loaded 50K rows. That is the payoff for the expensive bulk fetch. **Charts: yes** — `ChartsModule` sends `rowIds`, and the route deliberately bypasses the cache whenever they're present, since a filtered result is per-view. It also switches to the exact path bounded to the ≤50K id set, so it is O(filtered rows) rather than O(dataset) and shouldn't degrade with size the way the sample walk does. Unmeasured; that's where to look if Charts filtering feels slow.
+
+**Is the sample deterministic?** Yes for a fixed row set — same rows in, same sample out, and the sql/186 field-drop was verified to return the same 50,000 ids in the same order. On append it *evolves* rather than reshuffles: a new row joins only if its hash falls below the current 50,000th, so new data participates proportionally. ⚠️ **One edge case worth knowing: the cache key is theme-model hash + row COUNT.** A sync that deletes N rows and adds N leaves the count unchanged while the sample genuinely changes, so the cache would serve numbers computed over a sample that no longer exists. Narrow, but real for any sync path that replaces rather than appends.
+
+tsc clean, suite 1657 green, zero lint delta.

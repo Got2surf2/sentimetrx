@@ -51,6 +51,11 @@
   animation: pulse-dot 2s infinite; display: inline-block;
 }
 
+/* TextMine nav: a view whose data is still arriving. Reuses pulse-dot rather
+   than a spinner — several views can be pending at once, and a row of spinning
+   glyphs reads as an error state. Colour is set inline by the component. */
+.tm-nav-pending { animation: pulse-dot 2s infinite; }
+
 /* LottieLoader spinner */
 @keyframes lspin {
   to { transform: rotate(360deg); }

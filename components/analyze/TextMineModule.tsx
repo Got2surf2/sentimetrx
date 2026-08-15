@@ -1124,13 +1124,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // Server-computed enrichment for theme cards:
   //   topicalWords[themeId]      → top topical words [word, count][] (currently unused)
   //   cooccurrence[themeIdA]     → { themeIdB: rowsMatchingBoth, ... }
-  //   cooccurrenceLoaded         → true once the fetch has returned (so the card
+  //   extrasLoaded         → true once the fetch has returned (so the card
   //                                can distinguish "pre-fetch placeholder" from
   //                                "fetch returned, theme has no co-occurrences").
   // Fetched from /api/datasets/[id]/theme-counts with the cooccurrence flag.
   const [serverTopical, setServerTopical] = useState<Record<string, [string, number][]>>({})
   const [serverCoOccurrence, setServerCoOccurrence] = useState<Record<string, Record<string, number>>>({})
-  const [cooccurrenceLoaded, setCooccurrenceLoaded] = useState(false)
+  const [extrasLoaded, setExtrasLoaded] = useState(false)
   // Per-theme Dimensions (taxonomy) breakdown: themeId → top {axis, sub, count}.
   // Populated by fetchServerThemeCounts when the dataset has Dimensions enabled.
   const [serverThemeDimensions, setServerThemeDimensions] = useState<Record<string, { axis: string; sub: string; count: number }[]>>({})
@@ -1587,7 +1587,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     // Reset loaded flag so the theme card's "Co-occurs with themes" section
     // re-enters its placeholder state until this fetch returns. Otherwise a
     // theme-model edit would briefly show stale chips during the refetch.
-    setCooccurrenceLoaded(false)
+    setExtrasLoaded(false)
     // Counts on screen right now came from the saved model (or the client
     // recount) and this request may replace them. Say so, so a number that is
     // about to move doesn't read as final — on a cold cache this scan is a
@@ -1629,7 +1629,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         if (ex.cooccurrence) setServerCoOccurrence(ex.cooccurrence)
         if (ex.dimensions) setServerThemeDimensions(ex.dimensions)
       } catch { /* chips stay in their placeholder state */ }
-      finally { setCooccurrenceLoaded(true) }
+      finally { setExtrasLoaded(true) }
     }
     try {
       const data = await post(countsBody)
@@ -2388,7 +2388,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const navViews = activeSection === 'advanced' ? [] : viewsFor(activeSection).map(function(v) {
     const st = deriveLegacy(activeSection, v).subTab
     const locked = (st === 'clouds' || st === 'compare' || st === 'comments') && !hasThemes
-    return { id: v, label: VIEW_LABEL[v], locked: locked }
+    // Clouds / Compare / Comments tokenize and filter the loaded rows client-side,
+    // so they cannot render until the bulk fetch lands — up to ~20s on a large
+    // dataset. Since the Overview now paints early (2026-08-15 progressive load),
+    // those tabs look ready when they aren't; clicking one drops you on a bare
+    // loader with no explanation. Mark them while the rows are in flight.
+    const pending = !locked && rowsLoading && (st === 'clouds' || st === 'compare' || st === 'comments')
+    return { id: v, label: VIEW_LABEL[v], locked: locked, pending: pending }
   })
   // Cells without a real renderer yet (later-phase builds) show a graceful
   // placeholder instead of mis-rendering the section's Overview.
@@ -3021,11 +3027,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                     placeholder + Lottie spinner stands in — the matrix RPC
                                     takes ~1–2s per dataset (per member for collections), and
                                     the card looks lifeless without a hint that something's
-                                    coming. cooccurrenceLoaded flips to true on response so we
+                                    coming. extrasLoaded flips to true on response so we
                                     can suppress the section entirely when a theme genuinely
                                     has no co-occurring siblings. */}
                                 {(function() {
-                                  if (!cooccurrenceLoaded) {
+                                  if (!extrasLoaded) {
                                     return (
                                       <div style={{ marginBottom: 10 }}>
                                         <div style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }}>
@@ -3115,6 +3121,31 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                     (theme_dimension_counts RPC); only shown when the dataset is
                                     classified into Dimensions and this theme has tagged rows. */}
                                 {dimensionsEnabled && (function() {
+                                  // Same placeholder contract as "Co-occurs with themes" above,
+                                  // and for a sharper reason since the two-phase split (2026-08-15):
+                                  // Dimensions now arrive in the SECOND request, up to ~18s after
+                                  // the card paints on a cold load. Rendering nothing during that
+                                  // window reads as "this dataset has no dimensions" rather than
+                                  // "not here yet" — a silent absence a user can act on wrongly.
+                                  // extrasLoaded gates it, so a theme with genuinely no tagged
+                                  // rows still collapses to nothing once the phase completes.
+                                  if (!extrasLoaded) {
+                                    return (
+                                      <div style={{ marginBottom: 10 }}>
+                                        <div style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }}>
+                                          Dimensions
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1 }}>
+                                            {[1, 2, 3].map(function(i) {
+                                              return <span key={i} style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, background: T.border, color: 'transparent', minWidth: 54, height: 14 }}>{'—'}</span>
+                                            })}
+                                          </div>
+                                          <LottieLoader size={18} />
+                                        </div>
+                                      </div>
+                                    )
+                                  }
                                   var dimList = serverThemeDimensions[t.id] || []
                                   if (!dimList.length) return null
                                   return (

@@ -594,6 +594,10 @@ progressive rendering rather than only a faster query:
   comments turn on when the rows finish. Clouds and Comments stay row-gated (they tokenize
   client-side) and keep their own loaders.
 
+**In-progress affordances for the two-phase load (2026-08-15).** Splitting counts from extras created a window where a panel is genuinely absent rather than merely empty, and an absent panel is a claim: a user who clicks through during it can reasonably conclude the data doesn't exist.
+- **The Dimensions chip row gained the same skeleton the co-occurrence row already had.** It rendered on `serverThemeDimensions[t.id] || []` and drew nothing when empty. That was fine when counts and extras arrived together; with the split, Dimensions land in phase 2 up to **~18s later on a cold load**, so the row silently vanished for that whole window — reading as "this dataset has no dimensions" rather than "not here yet". Now gated on `extrasLoaded`, so a theme with genuinely no tagged rows still collapses to nothing once the phase completes. The flag was renamed `cooccurrenceLoaded` → `extrasLoaded` because it now governs both.
+- **Nav views whose data is still arriving carry a pulsing dot** (`NavViewItem.pending`, `.tm-nav-pending` reusing the existing `pulse-dot` keyframe). Clouds / Compare / Comments tokenize and filter the loaded rows client-side, so they can't render until the bulk fetch lands — and now that Overview paints early, they *look* ready when they aren't. They stay fully clickable: the point is that someone who clicks through lands on a loader already knowing why, not that they're forbidden. Deliberately a dot rather than a spinner — three can be pending at once, and a row of spinning glyphs reads as an error state.
+
 **"calculating…" on provisional counts (2026-08-14).** `countsPending` is true while the
 server theme-count scan is in flight, and the theme cards + Distribution header label the
 counts with it. Any count on screen during that window is provisional — the saved model's
