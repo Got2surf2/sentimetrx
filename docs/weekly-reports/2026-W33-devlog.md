@@ -355,3 +355,19 @@ The good news is that `countNonEmptyRows` **throws** rather than swallowing the 
 Three tests pin it: timeout degrades and is flagged, a non-timeout error still throws, and the healthy exact path is untouched and *not* flagged as sampled. Suite 1660 green.
 
 Note this is a different fix from the sampling work: stratified blocks (sql/188) only help above the cap, where the sampled path already runs. This dataset is below it, so the exact path is what needed a safety net.
+
+## Sentry issue 2 of 3: entity counts never sampled for collections (Aug 15)
+
+`entityFilter.computeEntityCounts: canceling statement due to statement timeout | 57014` from `GET /api/cron/entity-discovery` — **12 events, the most frequent production error in the digest.**
+
+The sampled path was gated on `singleDataset && total > ENTITY_SAMPLE_CAP`, with the assumption written into the comment: *"Multi-member collections stay on the live path (many small member datasets, not 1M-row ones)."* Sentry disproved it. A collection whose members **sum** above the cap took the exact `count_entity_terms` path and blew the statement timeout.
+
+Two things made it worse than a plain failure. The error is logged-and-swallowed (`if (countsErr) void logError(...)`, then the empty map returns), so a failed run produced **empty counts rather than an error** — entities silently showing zero mentions, which reads as a real measurement. And it ran on a **cron**, so nobody was watching it fail; it accumulated 12 events over six days.
+
+Fixed by dropping the `singleDataset` gate: anything above the cap samples now. Members split `ENTITY_SAMPLE_CAP` proportionally through `allocateSampleShares` — the allocator the bulk-row path already uses for exactly this — and each member's counts scale by **its own** row total before summing, so a large member can't distort a small one's share. `sampledEntityTermCounts` gained a per-member `cap` parameter (defaulting to the old behaviour) to make that split possible.
+
+⏭ Left in place deliberately: the logged-and-swallowed empty-count path. It's documented as best-effort so it "never breaks its caller", which is a defensible choice for a cron — but an empty count is indistinguishable from a measured zero, which is the same class of problem as the metric strip's "0 comments" and the "95% CI: 0–0%". Worth a separate decision rather than a drive-by change.
+
+Suite 1660 green, tsc clean, no lint delta.
+
+**Issue 3 of 3 not yet investigated:** `org-snapshot hop 0: 1/9 orgs failed` (`GET /api/cron/org-snapshot`, 1 event, 7d ago) — one org out of nine, a week old, lowest frequency of the three.

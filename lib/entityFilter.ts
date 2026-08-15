@@ -18,6 +18,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { SchemaConfig } from '@/lib/analyzeTypes'
 import { logError } from '@/lib/log'
+import { allocateSampleShares } from '@/lib/bulkRowSample'
 
 // ── slugify — JS mirror of sql/060 public.slugify() ────────────────────────
 // Must stay byte-for-byte equivalent: it's the join key between catalog
@@ -227,12 +228,15 @@ async function scopeRowTotal(service: SupabaseClient, datasetIds: string[]): Pro
 async function sampledEntityTermCounts(
   service: SupabaseClient, datasetId: string, terms: string[],
   themeQuery: string | null, textFields: string[], total: number,
+  // Per-member scan budget. A multi-member collection splits ENTITY_SAMPLE_CAP
+  // proportionally across its members rather than giving each the whole cap.
+  cap: number = ENTITY_SAMPLE_CAP,
 ): Promise<Map<string, number>> {
   const raw = new Map<string, number>()
   if (terms.length === 0) return raw
   const pageSize = Math.min(5000, Math.max(500, Math.round(ENTITY_PAGE_TERMROW_BUDGET / terms.length)))
   let scanned = 0, afterHash = -1, afterId = -1
-  while (scanned < ENTITY_SAMPLE_CAP) {
+  while (scanned < cap) {
     const { data, error } = await service.rpc('sampled_count_entity_terms', {
       p_dataset_id: datasetId,
       p_terms: terms,
@@ -240,7 +244,7 @@ async function sampledEntityTermCounts(
       p_text_fields: textFields.length ? textFields : null,
       p_after_hash: afterHash,
       p_after_id: afterId,
-      p_limit: Math.min(pageSize, ENTITY_SAMPLE_CAP - scanned),
+      p_limit: Math.min(pageSize, cap - scanned),
     })
     if (error) throw new Error('sampled_count_entity_terms: ' + error.message)
     const page = data as { n_scanned?: number; counts?: [string, number][]; last_hash?: number | null; last_id?: number | null } | null
@@ -286,11 +290,38 @@ async function computeEntityCounts(
   // plain datasets and single-member brand collections (a branded upload with
   // no siblings still resolves to collection scope). Multi-member collections
   // stay on the live path (many small member datasets, not 1M-row ones).
-  const singleDataset = scope.memberDatasetIds.length === 1
-  if (singleDataset && total > ENTITY_SAMPLE_CAP) {
-    const dsId = scope.memberDatasetIds[0]
-    const scaled = await sampledEntityTermCounts(service, dsId, terms, themeQuery, textFields[dsId] || [], total)
-    for (const [term, n] of scaled) countByTerm.set(term, n)
+  // Anything above the cap samples — single dataset OR collection.
+  //
+  // This used to be single-dataset only, on the assumption that a collection is
+  // "many small member datasets, not 1M-row ones". Sentry disproved it: 12
+  // events of `entityFilter.computeEntityCounts: canceling statement due to
+  // statement timeout | 57014` from GET /api/cron/entity-discovery. A
+  // collection whose members SUM above the cap took the exact path and 57014'd,
+  // and because the error is logged-and-swallowed below, the run silently
+  // produced empty counts rather than failing loudly.
+  //
+  // Members split the cap proportionally (allocateSampleShares — the same
+  // allocator the bulk-row path already uses for collections), and each
+  // member's counts scale by ITS own row total before summing, so a big member
+  // can't dominate a small one's contribution.
+  if (total > ENTITY_SAMPLE_CAP) {
+    const { data: memberRows } = await service
+      .from('datasets').select('id, row_count').in('id', scope.memberDatasetIds)
+    const perMember = new Map<string, number>(
+      ((memberRows || []) as Array<{ id: string; row_count: number | null }>)
+        .map(r => [r.id, Number(r.row_count) || 0]),
+    )
+    const shares = allocateSampleShares(perMember, ENTITY_SAMPLE_CAP)
+    for (const dsId of scope.memberDatasetIds) {
+      const memberTotal = perMember.get(dsId) || 0
+      if (memberTotal === 0) continue
+      const share = shares.get(dsId) || 0
+      const scaled = await sampledEntityTermCounts(
+        service, dsId, terms, themeQuery, textFields[dsId] || [], memberTotal,
+        share > 0 ? share : ENTITY_SAMPLE_CAP,
+      )
+      for (const [term, n] of scaled) countByTerm.set(term, (countByTerm.get(term) || 0) + n)
+    }
     return { countByTerm, sampled: true }
   }
 
