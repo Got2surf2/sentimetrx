@@ -81,6 +81,17 @@ export function themeModelHash(tm: ThemeModel | null | undefined): string {
   return createHash('md5').update(JSON.stringify(sig)).digest('hex').slice(0, 12)
 }
 
+/**
+ * Did this fail because the database killed the statement? Postgres reports
+ * 57014; PostgREST surfaces it as a message rather than a code, so match both.
+ */
+function isStatementTimeout(err: unknown): boolean {
+  const e = err as { code?: string; message?: string } | null
+  if (!e) return false
+  if (e.code === '57014') return true
+  return typeof e.message === 'string' && /statement timeout|57014/i.test(e.message)
+}
+
 function emptyStats(themeCount: number): SignalStats {
   return {
     records: 0, signals: 0, inThemes: 0,
@@ -256,6 +267,36 @@ export async function computeSignalStatsRaw(
       }
     }
 
+    // Below the cap the EXACT path runs — but "below the cap" is not the same
+    // as "safe". Sentry caught this on a 27,234-row dataset in production
+    // (`count_nonempty_rows failed … canceling statement due to statement
+    // timeout`, GET /signal-stats): the exact count measured 2,431ms on TEST,
+    // and prod runs this RPC roughly 2.5x slower (7,981ms vs 3,171ms on the
+    // same Carrabba's call), which puts a mid-size dataset at ~6s against an 8s
+    // ceiling. Any contention tips it over. countNonEmptyRows correctly THROWS
+    // rather than swallowing to 0 — so no cache poisoning — but the throw
+    // propagated out of the route and blanked the entire metric strip.
+    //
+    // A labelled estimate beats a 500. On a statement timeout, fall back to the
+    // same sampled path used above the cap; the "Sampled" chip is already the
+    // disclosure, so the degradation is visible rather than silent.
+    try {
+      return await exactCounts()
+    } catch (err) {
+      if (!isStatementTimeout(err)) throw err
+      void logError('signalStats.exactTimedOut', err, { datasetId: did })
+      const s = await sampledSignalCounts(service, did, fields, themes)
+      return {
+        recordsPerField: s.recordsPerField,
+        recordsSubstantivePerField: s.recordsSubstantivePerField,
+        perTheme: s.perTheme,
+        union: s.union,
+        unionSubstantive: s.unionSubstantive,
+        sampled: true,
+      }
+    }
+
+    async function exactCounts() {
     // records — one promise per field. countNonEmptyRows is comma-safe
     // (sql/161) — the raw PostgREST filter this used to build silently
     // matched nothing for question-sentence column names. (Its legacy
@@ -299,6 +340,7 @@ export async function computeSignalStatsRaw(
       union: Number(inThemesResult.data) || 0,
       unionSubstantive: Number(inThemesSubstantiveResult.data) || 0,
       sampled: false,
+    }
     }
   }))
 

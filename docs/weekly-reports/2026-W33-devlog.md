@@ -341,3 +341,17 @@ Sentry is capturing normally. The owner's `/admin/sentry` digest shows three unr
 The product ships a surface that answers this directly — `/admin/sentry`, backed by `fetchUnresolvedIssues` — and I inferred from configuration instead of reading it. Worse, I had a working route (`/api/admin/sentry/issues`) I could have hit. `feedback_never_assume_verify_code` covers exactly this: verify against the system, not against what the config implies about the system.
 
 Practical rule for next time: **when a product surface reports on a subsystem, read that surface before concluding anything about the subsystem from its config.**
+
+## Sentry issue 1 of 3: signal-stats 500s when the exact count times out (Aug 15)
+
+`Error: count_nonempty_rows failed for 0aca432b… : canceling statement due to statement timeout` on `GET /api/datasets/[datasetId]/signal-stats`, 1 event, 1 day ago. The dataset is **Ruths Chris Reviews, 27,234 rows** — comfortably *below* the 50K sampling cap, so it runs the exact path.
+
+**Below the cap is not the same as safe.** Timed the exact count on TEST: **2,431ms** for those 27,234 rows. Prod runs this RPC about **2.5× slower** than TEST — 7,981ms vs 3,171ms on the same Carrabba's call, recorded back in the 8/13 diagnosis — which puts a mid-size dataset near **6s against an 8s statement-timeout ceiling**. It doesn't need anything unusual to fail; it needs a busy moment.
+
+The good news is that `countNonEmptyRows` **throws** rather than swallowing the error into `0`. That means this is *not* the Rubio's/BareBurger cache-poisoning class — no "Diffuse 0%" was ever cached from it. The bad news is the throw propagated straight out of the route, so the whole metric strip 500s and shows nothing.
+
+`computeSignalStatsRaw` now catches a statement timeout on the exact path (57014, or the message PostgREST surfaces, since it reports one and not the other depending on path) and falls back to the sampled path already used above the cap, flagged `sampled: true` so the existing "Sampled" chip discloses it. Non-timeout errors still throw — only timeouts degrade, so a permissions or schema fault stays loud. **A labelled estimate beats a 500.**
+
+Three tests pin it: timeout degrades and is flagged, a non-timeout error still throws, and the healthy exact path is untouched and *not* flagged as sampled. Suite 1660 green.
+
+Note this is a different fix from the sampling work: stratified blocks (sql/188) only help above the cap, where the sampled path already runs. This dataset is below it, so the exact path is what needed a safety net.

@@ -676,6 +676,8 @@ fallback. `theme-counts` (TextMine/Charts) uses the same sampled pass above the
 cap (response gains `sampled` + `sampleSize`, surfaced as "N of M responses
 sampled").
 
+**Signal stats degrade to the sample when the exact path times out (2026-08-15, from Sentry).** Production reported `count_nonempty_rows failed … canceling statement due to statement timeout` on `GET /signal-stats` for a **27,234-row** dataset — comfortably *below* the 50K cap, so on the exact path. Being under the cap is not the same as being safe: the exact count measured **2,431ms on TEST**, and prod runs this RPC roughly **2.5× slower** (7,981ms vs 3,171ms on the same Carrabba's call), which puts a mid-size dataset around 6s against an 8s statement-timeout ceiling — any contention tips it over. `countNonEmptyRows` correctly **throws** rather than swallowing to `0` (so the Rubio's/BareBurger cache-poisoning class does not fire here), but the throw propagated out of the route and blanked the entire metric strip. `computeSignalStatsRaw` now catches a statement timeout (57014, or the message PostgREST surfaces) on the exact path and falls back to the same sampled path used above the cap, flagged `sampled: true` so the existing "Sampled" chip discloses it. Non-timeout errors still throw — only timeouts degrade. A labelled estimate beats a 500.
+
 **`/theme-counts` gained the same server-side cache (2026-08-14).** It had none —
 only the per-tab-session `clientRequestCache`, which dies on page reload — so
 every fresh TextMine load of a dataset above the cap re-ran **three** independent
