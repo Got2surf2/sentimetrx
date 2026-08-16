@@ -1342,6 +1342,36 @@ Panel list lives in `ANALYSIS_TYPES` in `components/analyze/StatsModule.tsx`.
 
 > **Navigation (Target B IA, 2026-06-25 — supersedes the 2026-06-23 consolidation):** the three multi-location views — **Brand Health** (`improvement-plan`), **Leaderboard** (`outlet-leaderboard`), and **Outlet Deep-Dive** (`outlet-report`) — are the **row-2 views of the "Advanced Analytics" peer section** of TextMine. All three server routes render **`AnalyticsNav`** (`app/analyze/[datasetId]/AnalyticsNav.tsx`), which now renders the **shared two-row `TextMineNav`**: row 1 = the four sections (Advanced active; the lens sections deep-link back to `/textmine?section=…&view=overview`), row 2 = Brand Health · Leaderboard · Outlet Deep-Dive. The old "← TextMine" back link is gone; you no longer lose the section bar on the Advanced pages. They stay separate server routes (no recompute). Same gate: `google_reviews` + `outletCount >= 5`. Where older text below says "Outlets sub-tab" / "Leaderboard sub-tab" / "Improvement plan button on the Leaderboard," read it as a row-2 view of the Advanced Analytics section.
 
+## Client-defined hierarchy (`lib/hierarchy.ts`)
+
+**Foundation landed 2026-08-16; the rolled-up outlet views are the next step.**
+
+A dataset's schema can designate existing columns as hierarchy **levels** —
+`SchemaFieldConfig.hierarchyLevel`, 1-based with 1 broadest (Region 1 -> District
+2 -> Store 3). The tree is **derived from those columns' values**, so there is no
+org-structure table to hand-maintain and nothing to drift as rows sync: a client
+who already carries their structure in the data gets the hierarchy for free.
+(Owner direction 2026-07-15; supersedes the earlier org-structure-table design.)
+
+`hierarchyLevel` is deliberately a **marker on an ordinary categorical field**,
+not a new `AnaFieldType` — the column stays a normal categorical for charts,
+filters and breakdowns, it just also names a rung.
+
+Two correctness properties the roll-ups depend on, both pinned by
+`tests/unit/hierarchy.test.ts`:
+
+- **Nodes are keyed by full PATH, never by value.** "Downtown" under East and
+  "Downtown" under West are different districts; a name-keyed tree would merge
+  them and every number below would be wrong.
+- **No row is ever dropped.** A blank at any level buckets as `(unassigned)`
+  rather than vanishing, so leaf counts sum to the dataset total and a roll-up
+  always reconciles with the flat numbers. `(unassigned)` sorts last regardless
+  of size, so it never leads a list.
+
+API: `hierarchyLevels` / `hasHierarchy` (needs >=2 levels — one is just a
+breakdown) / `buildHierarchy` / `findNode` / `breadcrumb` / `rowsUnder` (what a
+rolled-up snapshot is computed over) / `nodesAtDepth`.
+
 ## Outlet Report (Advanced Analytics ▸ Outlet Deep-Dive)
 
 > **Added 2026-06-17.** A one-page **per-outlet vs. peer-group** summary for multi-location review brands. Answers "what does *this* location excel at / need to work on, relative to its sibling outlets?" — the building block was missing before (per-location aggregation and taxonomy existed, but nothing compared one outlet to the group).

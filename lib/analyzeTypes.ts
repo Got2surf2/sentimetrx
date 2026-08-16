@@ -38,6 +38,15 @@ export interface SchemaFieldConfig {
   // the tag records WHY the column isn't open-ended and feeds future PII
   // handling. See computeFieldStats/analyzeTextContent (lib/datasetUtils).
   semantic?: 'email' | 'url' | 'phone' | 'identifier' | 'name' | 'address'
+  // Client-defined org hierarchy (2026-08-16, owner direction 2026-07-15).
+  // 1-based level, 1 = broadest: Region 1 → District 2 → Store 3. Absent = not
+  // part of the hierarchy. Deliberately a MARKER on an ordinary categorical
+  // field rather than a new AnaFieldType — the column is still a normal
+  // categorical everywhere else (charts, filters, breakdowns), it just also
+  // names a rung. The tree is DERIVED from these columns' values, so there is
+  // no org-structure table to hand-maintain and nothing to drift as rows sync.
+  // See lib/hierarchy.ts.
+  hierarchyLevel?: number
   nonNullCount?:  number
   avgLen?:        string
   avgWords?:      string
