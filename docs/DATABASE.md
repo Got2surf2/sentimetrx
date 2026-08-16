@@ -372,9 +372,9 @@ they LEFT JOIN the sidecar tables sql/152 removed). Both functions were also
 `GRANT`ed to **anon** despite being SECURITY DEFINER over raw tenant rows;
 sql/189 revokes anon/authenticated and grants service_role only, matching the
 posture sql/180 documents for their sibling. See SECURITY.md §2 — this is one
-instance of a much larger class still open. **⚠️ APPLIED TO TEST ONLY so far —
-the prod migration and the `docs/db/schema.sql` refresh happen together on the
-authorised prod apply.** Verified by `scripts/_verify_sql189.mts`.
+instance of a much larger class still open. **✅ APPLIED TO PROD 2026-08-16** (ledger + snapshot refreshed in the same
+commit). Verified by `scripts/_verify_sql189.mts` on TEST and by direct catalog
++ anon-probe checks against prod.
 
 sql/190 (2026-08-16) is a **grants-only** migration: it locks every SECURITY
 DEFINER function in `public` to `service_role`. Postgres grants EXECUTE to
@@ -397,10 +397,11 @@ The lockdown loop is catalog-driven rather than a hand-typed list of signatures,
 because a typo in a hand-written signature is the one failure mode that silently
 leaves a hole open. It is idempotent, so the end state is deterministic. The
 verification query is in the migration footer and in SECURITY.md §2.
-**⚠️ APPLIED TO TEST ONLY so far** — same as sql/189, the prod apply and the
-`docs/db/schema.sql` refresh happen together on the authorised prod migrate.
-Verified by `scripts/_verify_sql190.mts` plus `test:rls`/`test:egress`/
-`test:auth-flows`.
+**✅ APPLIED TO PROD 2026-08-16.** Verified by `scripts/_verify_sql190.mts` plus
+`test:rls`/`test:egress`/`test:auth-flows` on TEST, and on prod by catalog checks
+(0 anon-executable outside the 3 helpers; the 3 helpers still anon+authenticated;
+all 111 policies intact; every function still service_role-callable) plus a live
+anon probe of 9 of the worst offenders — all 401.
 
 ---
 

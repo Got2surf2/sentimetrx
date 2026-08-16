@@ -457,7 +457,7 @@ Owner said fix both. Neither is a collections bug; both were found while buildin
 
 Verified with `scripts/_verify_sql189.mts` (14 checks, exits non-zero) — including that anon now gets a 401 on both, that an *empty* row with no `_tx` still stays out of the queue (the fix must not resurrect the un-clearable nudge), and that the multifield count is a UNION not a sum. `_verify_collection_dimensions.mts` re-run green, tsc clean, suite 1661 green.
 
-**⚠️ APPLIED TO TEST ONLY.** The prod apply (`npm run migrate sql/189_…`) and the `docs/db/schema.sql` refresh happen together, on the owner's word. Order is migrate-then-push, but no code change ships with this — the fix is entirely in the database.
+**✅ APPLIED TO PROD 2026-08-16**, owner-authorised, together with sql/190. Ledger + snapshot committed alongside. No code shipped — the fix is entirely in the database, so it takes effect without a deploy.
 
 ### sql/190 — the SECURITY DEFINER sweep (Aug 16)
 
@@ -479,4 +479,10 @@ The lockdown is a catalog-driven `DO` loop rather than 43 hand-typed signatures 
 
 ✅ **Browser QC done** (owner logged in after the first pass found the session expired). `/dashboard` — the surface that depends on the two RPCs keeping `authenticated` — renders **real** per-study stats: BareBurger 181 responses (99%) / 46% + / 3.1 avg / last response Jul 4; Outback 5 responses (80%) / 3.2 avg. If either grant had broken, every card would read 0 responses and 0.0 avg. The collection's Dimensions Overview and Compare both still render (service-role paths), and Compare still reads Flemings 17,764 vs Capital Grille 11,883. **No permission-denied / PGRST / 401 anywhere in the console** on either page — as expected, since the app makes no browser-side RPC calls. Also visible: the Dimensions header now reads **"11,126 rows with text"**, which is sql/189's `rowsWithText` finally being populated instead of falling back to `classifiedRows`.
 
-**⚠️ APPLIED TO TEST ONLY.** Prod: `npm run migrate sql/190_secdef_lockdown.sql`, which also refreshes `docs/db/schema.sql`. Grants-only — no application code ships with it. Apply 189 before 190.
+**✅ APPLIED TO PROD 2026-08-16**, after 189.
+
+⭐ **The apply itself had a scare worth recording: `npm run migrate` for 190 died on a `502 Bad gateway` from `api.supabase.com`** (Cloudflare reporting the host errored — transient, on their side). The danger is that a 502 is ambiguous: the request may never have reached the database, or it may have executed with the response lost. **Do not blind-retry a migration after one — check the catalog first.** Here the DDL *had* executed (0 anon-executable functions, `study_stats_for_ids` already carried the org filter) but the ledger row and the snapshot refresh — both of which happen *after* the query in `apply-migration.ts` — had not. Re-running was safe only because the migration is idempotent by construction (REVOKE/GRANT + CREATE OR REPLACE), and it completed the ledger + snapshot. **Idempotency is what made this recoverable; write migrations that way.**
+
+Prod verified after: 0 anon-executable SECURITY DEFINER functions outside the 3 RLS helpers, the 3 helpers still `anon`+`authenticated`, both dashboard RPCs `anon=false`/`authenticated=true`, every function still service_role-callable, all 111 policies intact — plus a live anon probe against production of nine of the worst offenders (raw-row readers, the write, `archive_dataset`, `transfer_recording_org`, the email oracle): **all 401**.
+
+⚠️ **One live behaviour change to expect on prod, by design:** the pending-rows fix means reviewSync's auto-classify will now actually classify freshly-synced reviews on the next sync of any already-classified dataset (it had been a silent no-op). That is the point of the fix, but it is the first time that path has done real work.

@@ -571,30 +571,6 @@ $$;
 ALTER FUNCTION "public"."dataset_field_values"("p_dataset_id" "uuid", "p_field" "text", "p_ids" bigint[]) OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field" "text", "p_limit" integer DEFAULT 1000) RETURNS TABLE("id" bigint, "data" "jsonb")
-    LANGUAGE "sql" STABLE SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-  SELECT f.id, f.data
-    FROM dataset_rows_flat f
-    LEFT JOIN dataset_row_field_taxonomy t
-      ON t.dataset_id = f.dataset_id AND t.row_id = f.id AND t.field = p_field
-   WHERE f.dataset_id = p_dataset_id
-     AND t.row_id IS NULL
-     -- "Has real text" must match the keyword classifier, which strips control
-     -- chars + whitespace before deciding a row is empty. A plain btrim (spaces
-     -- only) counts tab/newline/control-only rows as text → they'd be "pending"
-     -- forever (the classifier writes no row for them). Strip all whitespace +
-     -- control chars and check what's left.
-     AND COALESCE(regexp_replace(f.data ->> p_field, '[[:space:][:cntrl:]]+', '', 'g'), '') <> ''
-   ORDER BY f.row_index
-   LIMIT p_limit;
-$$;
-
-
-ALTER FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field" "text", "p_limit" integer) OWNER TO "postgres";
-
-
 CREATE OR REPLACE FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer DEFAULT 1000, "p_after_id" bigint DEFAULT NULL::bigint) RETURNS TABLE("id" bigint, "data" "jsonb")
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -603,18 +579,25 @@ CREATE OR REPLACE FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dat
     FROM dataset_rows_flat f
    WHERE f.dataset_id = p_dataset_id
      AND (p_after_id IS NULL OR f.id > p_after_id)
-     AND NOT ((f.data -> '_tx' -> 'f') ? p_field_key)
+     -- COALESCE is load-bearing (sql/189). `?` is STRICT, so on a row with no
+     -- `_tx` key the test is NULL and `NOT NULL` silently drops it — which made
+     -- a never-classified dataset report ZERO pending rows.
+     AND NOT COALESCE((f.data -> '_tx' -> 'f') ? p_field_key, false)
      AND EXISTS (
        SELECT 1 FROM unnest(p_fields) AS fld
         WHERE COALESCE(regexp_replace(f.data ->> fld, '[[:space:][:cntrl:]]+', '', 'g'), '') <> ''
      )
-   -- legacy calls keep row_index order; keyset calls page by id
+   -- legacy calls keep row_index order; keyset calls page by id (sql/155)
    ORDER BY CASE WHEN p_after_id IS NULL THEN f.row_index END, f.id
    LIMIT p_limit;
 $$;
 
 
 ALTER FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer, "p_after_id" bigint) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer, "p_after_id" bigint) IS 'Rows with text in any selected field that lack an embedded taxonomy block for the combined field key — drives the auto-classify safety net (reviewSync, autoEnableDimensions) and the "classify the new rows" drift nudge. sql/189 made a MISSING _tx count as pending (the strict jsonb ? operator returned NULL, so never-classified and freshly-synced rows were invisible) and locked execution to service_role.';
+
 
 
 CREATE OR REPLACE FUNCTION "public"."dataset_rows_pending_taxonomy"("p_dataset_id" "uuid", "p_text_field" "text", "p_limit" integer DEFAULT 1000) RETURNS TABLE("id" bigint, "data" "jsonb")
@@ -654,21 +637,29 @@ COMMENT ON FUNCTION "public"."dataset_rows_with_substantive_count"("p_dataset_id
 
 
 
-CREATE OR REPLACE FUNCTION "public"."dataset_rows_with_text_count"("p_dataset_id" "uuid", "p_field" "text") RETURNS bigint
+CREATE OR REPLACE FUNCTION "public"."dataset_rows_with_text_count"("p_dataset_id" "uuid", "p_fields" "text"[]) RETURNS bigint
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
   SELECT count(*)
     FROM dataset_rows_flat f
    WHERE f.dataset_id = p_dataset_id
-     -- Same "has real text" test as the classifier (strip whitespace + control),
-     -- so this denominator == rows the classifier actually tags. Avoids a
-     -- perpetual "N rows aren't tagged" drift nudge for whitespace-only rows.
-     AND COALESCE(regexp_replace(f.data ->> p_field, '[[:space:][:cntrl:]]+', '', 'g'), '') <> '';
+     -- Same "has real text" test as the classifier (strip whitespace + control
+     -- chars), so this denominator == the rows the classifier actually tags.
+     -- A plain btrim would count tab/newline-only rows as text and leave them
+     -- permanently "untagged".
+     AND EXISTS (
+       SELECT 1 FROM unnest(p_fields) AS fld
+        WHERE COALESCE(regexp_replace(f.data ->> fld, '[[:space:][:cntrl:]]+', '', 'g'), '') <> ''
+     );
 $$;
 
 
-ALTER FUNCTION "public"."dataset_rows_with_text_count"("p_dataset_id" "uuid", "p_field" "text") OWNER TO "postgres";
+ALTER FUNCTION "public"."dataset_rows_with_text_count"("p_dataset_id" "uuid", "p_fields" "text"[]) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."dataset_rows_with_text_count"("p_dataset_id" "uuid", "p_fields" "text"[]) IS 'Rows with real text in ANY of the selected fields — the "N rows with text" denominator the Dimensions header reconciles against. Written for sql/117 but actually created only in sql/189 (117 was never applied), which is why rowsWithText was undefined on every dataset until then. Twin of dataset_rows_with_substantive_count (sql/180).';
+
 
 
 CREATE OR REPLACE FUNCTION "public"."dataset_sample_blocks"("p_dataset_id" "uuid", "p_cap" integer, "p_blocks" integer DEFAULT 50) RETURNS TABLE("lo" bigint, "hi" bigint)
@@ -2734,23 +2725,39 @@ CREATE OR REPLACE FUNCTION "public"."study_stats_for_ids"("p_study_ids" "uuid"[]
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
-  SELECT
-    r.study_id,
-    count(*)::bigint AS total_responses,
-    count(*) FILTER (WHERE r.status = 'complete' OR r.status IS NULL)::bigint AS complete_count,
-    count(*) FILTER (WHERE r.sentiment IN ('positive', 'promoter'))::bigint AS promoters,
-    count(*) FILTER (WHERE r.sentiment IN ('neutral',  'passive' ))::bigint AS passives,
-    count(*) FILTER (WHERE r.sentiment IN ('negative', 'detractor'))::bigint AS detractors,
-    avg(r.experience_score) FILTER (WHERE r.experience_score IS NOT NULL) AS avg_experience,
-    avg(r.nps_score)        FILTER (WHERE r.nps_score        IS NOT NULL) AS avg_nps,
-    max(r.completed_at) AS last_response_at
-  FROM responses r
-  WHERE r.study_id = ANY(p_study_ids)
-  GROUP BY r.study_id;
+  SELECT r.study_id,
+         count(*)::bigint,
+         count(*) FILTER (WHERE r.status = 'complete' OR r.status IS NULL)::bigint,
+         count(*) FILTER (WHERE r.sentiment IN ('positive', 'promoter'))::bigint,
+         count(*) FILTER (WHERE r.sentiment IN ('neutral',  'passive' ))::bigint,
+         count(*) FILTER (WHERE r.sentiment IN ('negative', 'detractor'))::bigint,
+         avg(r.experience_score) FILTER (WHERE r.experience_score IS NOT NULL),
+         avg(r.nps_score)        FILTER (WHERE r.nps_score        IS NOT NULL),
+         max(r.completed_at)
+    FROM responses r
+   WHERE r.study_id = ANY(p_study_ids)
+     -- sql/190: same org gate as get_study_response_stats_for_user. Under the
+     -- service role auth.uid() is NULL and no study matches, which is correct —
+     -- this function has no service-role caller, and a future one should use
+     -- an explicitly org-gated path rather than inherit a silent bypass.
+     AND r.study_id IN (
+       SELECT s.id FROM studies s
+        WHERE s.org_id = (SELECT u.org_id FROM users u WHERE u.id = auth.uid())
+           OR EXISTS (
+             SELECT 1 FROM users u2
+               JOIN organizations o ON o.id = u2.org_id
+              WHERE u2.id = auth.uid() AND o.is_admin_org
+           )
+     )
+   GROUP BY r.study_id;
 $$;
 
 
 ALTER FUNCTION "public"."study_stats_for_ids"("p_study_ids" "uuid"[]) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."study_stats_for_ids"("p_study_ids" "uuid"[]) IS 'Per-study response aggregates for the studies dashboard fallback. sql/190 added the caller-org filter (it previously accepted ANY study id from ANY authenticated tenant) and dropped anon EXECUTE.';
+
 
 
 CREATE OR REPLACE FUNCTION "public"."sync_brand_collection_members"() RETURNS "trigger"
@@ -8172,59 +8179,47 @@ GRANT ALL ON FUNCTION "public"."apply_entity_mention_counts"("p_scope_type" "tex
 
 
 
-GRANT ALL ON FUNCTION "public"."apply_substantive_flags"("p_dataset_id" "uuid", "p_items" "jsonb") TO "anon";
-GRANT ALL ON FUNCTION "public"."apply_substantive_flags"("p_dataset_id" "uuid", "p_items" "jsonb") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."apply_substantive_flags"("p_dataset_id" "uuid", "p_items" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."apply_substantive_flags"("p_dataset_id" "uuid", "p_items" "jsonb") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."apply_taxonomy_verdicts"("p_dataset_id" "uuid", "p_field_key" "text", "p_items" "jsonb") TO "anon";
-GRANT ALL ON FUNCTION "public"."apply_taxonomy_verdicts"("p_dataset_id" "uuid", "p_field_key" "text", "p_items" "jsonb") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."apply_taxonomy_verdicts"("p_dataset_id" "uuid", "p_field_key" "text", "p_items" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."apply_taxonomy_verdicts"("p_dataset_id" "uuid", "p_field_key" "text", "p_items" "jsonb") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."archive_dataset"("p_dataset_id" "uuid", "p_user_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."archive_dataset"("p_dataset_id" "uuid", "p_user_id" "uuid") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."archive_dataset"("p_dataset_id" "uuid", "p_user_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."archive_dataset"("p_dataset_id" "uuid", "p_user_id" "uuid") TO "service_role";
 
 
 
 REVOKE ALL ON FUNCTION "public"."bot_session_counts_for_ids"("p_bot_ids" "uuid"[]) FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."bot_session_counts_for_ids"("p_bot_ids" "uuid"[]) TO "anon";
-GRANT ALL ON FUNCTION "public"."bot_session_counts_for_ids"("p_bot_ids" "uuid"[]) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."bot_session_counts_for_ids"("p_bot_ids" "uuid"[]) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."campaign_unsubscribe"("p_token" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."campaign_unsubscribe"("p_token" "text") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."campaign_unsubscribe"("p_token" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."campaign_unsubscribe"("p_token" "text") TO "service_role";
 
 
 
 REVOKE ALL ON FUNCTION "public"."check_rate_limit"("p_key" "text", "p_max_requests" integer, "p_window_ms" integer) FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."check_rate_limit"("p_key" "text", "p_max_requests" integer, "p_window_ms" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."check_rate_limit"("p_key" "text", "p_max_requests" integer, "p_window_ms" integer) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."check_rate_limit"("p_key" "text", "p_max_requests" integer, "p_window_ms" integer) TO "service_role";
 
 
 
 REVOKE ALL ON FUNCTION "public"."cleanup_rate_limit_buckets"() FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."cleanup_rate_limit_buckets"() TO "anon";
-GRANT ALL ON FUNCTION "public"."cleanup_rate_limit_buckets"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."cleanup_rate_limit_buckets"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."compute_theme_cooccurrence_matrix"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb") TO "anon";
-GRANT ALL ON FUNCTION "public"."compute_theme_cooccurrence_matrix"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."compute_theme_cooccurrence_matrix"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."compute_theme_cooccurrence_matrix"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."count_entity_terms"("p_dataset_ids" "uuid"[], "p_terms" "text"[], "p_theme_query" "text", "p_text_fields" "jsonb") TO "anon";
-GRANT ALL ON FUNCTION "public"."count_entity_terms"("p_dataset_ids" "uuid"[], "p_terms" "text"[], "p_theme_query" "text", "p_text_fields" "jsonb") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."count_entity_terms"("p_dataset_ids" "uuid"[], "p_terms" "text"[], "p_theme_query" "text", "p_text_fields" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."count_entity_terms"("p_dataset_ids" "uuid"[], "p_terms" "text"[], "p_theme_query" "text", "p_text_fields" "jsonb") TO "service_role";
 
 
@@ -8239,8 +8234,7 @@ GRANT ALL ON FUNCTION "public"."count_nonempty_rows"("p_dataset_id" "uuid", "p_f
 
 
 
-GRANT ALL ON FUNCTION "public"."count_theme_intersection"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords_a" "text"[], "p_keywords_b" "text"[]) TO "anon";
-GRANT ALL ON FUNCTION "public"."count_theme_intersection"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords_a" "text"[], "p_keywords_b" "text"[]) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."count_theme_intersection"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords_a" "text"[], "p_keywords_b" "text"[]) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."count_theme_intersection"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords_a" "text"[], "p_keywords_b" "text"[]) TO "service_role";
 
 
@@ -8267,26 +8261,17 @@ GRANT ALL ON FUNCTION "public"."current_org_id"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."dataset_field_values"("p_dataset_id" "uuid", "p_field" "text", "p_ids" bigint[]) TO "anon";
-GRANT ALL ON FUNCTION "public"."dataset_field_values"("p_dataset_id" "uuid", "p_field" "text", "p_ids" bigint[]) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."dataset_field_values"("p_dataset_id" "uuid", "p_field" "text", "p_ids" bigint[]) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."dataset_field_values"("p_dataset_id" "uuid", "p_field" "text", "p_ids" bigint[]) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field" "text", "p_limit" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field" "text", "p_limit" integer) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field" "text", "p_limit" integer) TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer, "p_after_id" bigint) TO "anon";
-GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer, "p_after_id" bigint) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer, "p_after_id" bigint) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."dataset_rows_pending_field_taxonomy"("p_dataset_id" "uuid", "p_field_key" "text", "p_fields" "text"[], "p_limit" integer, "p_after_id" bigint) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."dataset_rows_pending_taxonomy"("p_dataset_id" "uuid", "p_text_field" "text", "p_limit" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."dataset_rows_pending_taxonomy"("p_dataset_id" "uuid", "p_text_field" "text", "p_limit" integer) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."dataset_rows_pending_taxonomy"("p_dataset_id" "uuid", "p_text_field" "text", "p_limit" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."dataset_rows_pending_taxonomy"("p_dataset_id" "uuid", "p_text_field" "text", "p_limit" integer) TO "service_role";
 
 
@@ -8296,9 +8281,8 @@ GRANT ALL ON FUNCTION "public"."dataset_rows_with_substantive_count"("p_dataset_
 
 
 
-GRANT ALL ON FUNCTION "public"."dataset_rows_with_text_count"("p_dataset_id" "uuid", "p_field" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."dataset_rows_with_text_count"("p_dataset_id" "uuid", "p_field" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."dataset_rows_with_text_count"("p_dataset_id" "uuid", "p_field" "text") TO "service_role";
+REVOKE ALL ON FUNCTION "public"."dataset_rows_with_text_count"("p_dataset_id" "uuid", "p_fields" "text"[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."dataset_rows_with_text_count"("p_dataset_id" "uuid", "p_fields" "text"[]) TO "service_role";
 
 
 
@@ -8336,20 +8320,17 @@ GRANT ALL ON FUNCTION "public"."drf_tsv_trigger"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."extract_theme_topical_words"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[], "p_extra_excludes" "text"[], "p_max_results" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."extract_theme_topical_words"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[], "p_extra_excludes" "text"[], "p_max_results" integer) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."extract_theme_topical_words"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[], "p_extra_excludes" "text"[], "p_max_results" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."extract_theme_topical_words"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[], "p_extra_excludes" "text"[], "p_max_results" integer) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."field_aliased_avg"("p_dataset_id" "uuid", "p_field" "text", "p_present_field" "text", "p_aliases" "jsonb") TO "anon";
-GRANT ALL ON FUNCTION "public"."field_aliased_avg"("p_dataset_id" "uuid", "p_field" "text", "p_present_field" "text", "p_aliases" "jsonb") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."field_aliased_avg"("p_dataset_id" "uuid", "p_field" "text", "p_present_field" "text", "p_aliases" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."field_aliased_avg"("p_dataset_id" "uuid", "p_field" "text", "p_present_field" "text", "p_aliases" "jsonb") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."find_or_create_brand_collection"("p_org_id" "uuid", "p_brand_tag" "text", "p_created_by" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."find_or_create_brand_collection"("p_org_id" "uuid", "p_brand_tag" "text", "p_created_by" "uuid") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."find_or_create_brand_collection"("p_org_id" "uuid", "p_brand_tag" "text", "p_created_by" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."find_or_create_brand_collection"("p_org_id" "uuid", "p_brand_tag" "text", "p_created_by" "uuid") TO "service_role";
 
 
@@ -8359,19 +8340,17 @@ GRANT ALL ON FUNCTION "public"."get_auth_user_id_by_email"("p_email" "text") TO 
 
 
 
-GRANT ALL ON FUNCTION "public"."get_rows_by_entity"("p_dataset_ids" "uuid"[], "p_query" "text", "p_text_fields" "jsonb", "p_limit" integer, "p_offset" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."get_rows_by_entity"("p_dataset_ids" "uuid"[], "p_query" "text", "p_text_fields" "jsonb", "p_limit" integer, "p_offset" integer) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."get_rows_by_entity"("p_dataset_ids" "uuid"[], "p_query" "text", "p_text_fields" "jsonb", "p_limit" integer, "p_offset" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."get_rows_by_entity"("p_dataset_ids" "uuid"[], "p_query" "text", "p_text_fields" "jsonb", "p_limit" integer, "p_offset" integer) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "p_text_fields" "jsonb", "p_theme_query" "text", "p_entity_query" "text", "p_sub_touchpoint" "text"[], "p_sub_attribute" "text"[], "p_sub_product" "text"[], "p_sub_beverage" "text"[], "p_sub_ambiance" "text"[], "p_sub_context" "text"[], "p_sub_outcome" "text"[], "p_sub_emotion" "text"[], "p_has_dim" boolean, "p_limit" integer, "p_offset" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "p_text_fields" "jsonb", "p_theme_query" "text", "p_entity_query" "text", "p_sub_touchpoint" "text"[], "p_sub_attribute" "text"[], "p_sub_product" "text"[], "p_sub_beverage" "text"[], "p_sub_ambiance" "text"[], "p_sub_context" "text"[], "p_sub_outcome" "text"[], "p_sub_emotion" "text"[], "p_has_dim" boolean, "p_limit" integer, "p_offset" integer) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "p_text_fields" "jsonb", "p_theme_query" "text", "p_entity_query" "text", "p_sub_touchpoint" "text"[], "p_sub_attribute" "text"[], "p_sub_product" "text"[], "p_sub_beverage" "text"[], "p_sub_ambiance" "text"[], "p_sub_context" "text"[], "p_sub_outcome" "text"[], "p_sub_emotion" "text"[], "p_has_dim" boolean, "p_limit" integer, "p_offset" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "p_text_fields" "jsonb", "p_theme_query" "text", "p_entity_query" "text", "p_sub_touchpoint" "text"[], "p_sub_attribute" "text"[], "p_sub_product" "text"[], "p_sub_beverage" "text"[], "p_sub_ambiance" "text"[], "p_sub_context" "text"[], "p_sub_outcome" "text"[], "p_sub_emotion" "text"[], "p_has_dim" boolean, "p_limit" integer, "p_offset" integer) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."get_study_response_stats_for_user"("p_study_ids" "uuid"[]) TO "anon";
+REVOKE ALL ON FUNCTION "public"."get_study_response_stats_for_user"("p_study_ids" "uuid"[]) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."get_study_response_stats_for_user"("p_study_ids" "uuid"[]) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_study_response_stats_for_user"("p_study_ids" "uuid"[]) TO "service_role";
 
@@ -8429,47 +8408,37 @@ GRANT ALL ON FUNCTION "public"."numeric_field_stats"("p_dataset_id" "uuid", "p_f
 
 
 
-GRANT ALL ON FUNCTION "public"."numeric_field_stats_present"("p_dataset_id" "uuid", "p_field_key" "text", "p_present_field" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."numeric_field_stats_present"("p_dataset_id" "uuid", "p_field_key" "text", "p_present_field" "text") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."numeric_field_stats_present"("p_dataset_id" "uuid", "p_field_key" "text", "p_present_field" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."numeric_field_stats_present"("p_dataset_id" "uuid", "p_field_key" "text", "p_present_field" "text") TO "service_role";
 
 
 
 REVOKE ALL ON FUNCTION "public"."org_stats_for_ids"("p_org_ids" "uuid"[]) FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."org_stats_for_ids"("p_org_ids" "uuid"[]) TO "anon";
-GRANT ALL ON FUNCTION "public"."org_stats_for_ids"("p_org_ids" "uuid"[]) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."org_stats_for_ids"("p_org_ids" "uuid"[]) TO "service_role";
 
 
 
 REVOKE ALL ON FUNCTION "public"."public_policy_qualifiers"() FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."public_policy_qualifiers"() TO "anon";
-GRANT ALL ON FUNCTION "public"."public_policy_qualifiers"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."public_policy_qualifiers"() TO "service_role";
 
 
 
 REVOKE ALL ON FUNCTION "public"."public_tables_rls_status"() FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."public_tables_rls_status"() TO "anon";
-GRANT ALL ON FUNCTION "public"."public_tables_rls_status"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."public_tables_rls_status"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."refresh_study_response_stats"() TO "anon";
-GRANT ALL ON FUNCTION "public"."refresh_study_response_stats"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."refresh_study_response_stats"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."refresh_study_response_stats"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."restore_dataset"("p_dataset_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."restore_dataset"("p_dataset_id" "uuid") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."restore_dataset"("p_dataset_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."restore_dataset"("p_dataset_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "anon";
-GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."rls_auto_enable"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "service_role";
 
 
@@ -8484,8 +8453,7 @@ GRANT ALL ON FUNCTION "public"."sample_dataset_rows_blocks"("p_dataset_id" "uuid
 
 
 
-GRANT ALL ON FUNCTION "public"."sample_row_pairs"("p_dataset_id" "uuid", "p_fields" "text"[], "p_limit" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."sample_row_pairs"("p_dataset_id" "uuid", "p_fields" "text"[], "p_limit" integer) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."sample_row_pairs"("p_dataset_id" "uuid", "p_fields" "text"[], "p_limit" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."sample_row_pairs"("p_dataset_id" "uuid", "p_fields" "text"[], "p_limit" integer) TO "service_role";
 
 
@@ -8585,20 +8553,17 @@ GRANT ALL ON FUNCTION "public"."sampled_theme_topical_page"("p_dataset_id" "uuid
 
 
 
-GRANT ALL ON FUNCTION "public"."search_dataset_rows"("p_dataset_id" "uuid", "p_query" "text", "p_limit" integer, "p_offset" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."search_dataset_rows"("p_dataset_id" "uuid", "p_query" "text", "p_limit" integer, "p_offset" integer) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."search_dataset_rows"("p_dataset_id" "uuid", "p_query" "text", "p_limit" integer, "p_offset" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."search_dataset_rows"("p_dataset_id" "uuid", "p_query" "text", "p_limit" integer, "p_offset" integer) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."search_knowledge_chunks"("p_bot_id" "uuid", "p_query" "text", "p_limit" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."search_knowledge_chunks"("p_bot_id" "uuid", "p_query" "text", "p_limit" integer) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."search_knowledge_chunks"("p_bot_id" "uuid", "p_query" "text", "p_limit" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."search_knowledge_chunks"("p_bot_id" "uuid", "p_query" "text", "p_limit" integer) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."search_knowledge_semantic"("p_bot_id" "uuid", "p_query" "text", "p_embedding" "public"."vector", "p_limit" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."search_knowledge_semantic"("p_bot_id" "uuid", "p_query" "text", "p_embedding" "public"."vector", "p_limit" integer) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."search_knowledge_semantic"("p_bot_id" "uuid", "p_query" "text", "p_embedding" "public"."vector", "p_limit" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."search_knowledge_semantic"("p_bot_id" "uuid", "p_query" "text", "p_embedding" "public"."vector", "p_limit" integer) TO "service_role";
 
 
@@ -8621,7 +8586,6 @@ GRANT ALL ON FUNCTION "public"."srs_apply_delta"("p_study_id" "uuid", "p_sign" i
 
 
 REVOKE ALL ON FUNCTION "public"."study_stats_for_ids"("p_study_ids" "uuid"[]) FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."study_stats_for_ids"("p_study_ids" "uuid"[]) TO "anon";
 GRANT ALL ON FUNCTION "public"."study_stats_for_ids"("p_study_ids" "uuid"[]) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."study_stats_for_ids"("p_study_ids" "uuid"[]) TO "service_role";
 
@@ -8633,74 +8597,62 @@ GRANT ALL ON FUNCTION "public"."sync_brand_collection_members"() TO "service_rol
 
 
 
-GRANT ALL ON FUNCTION "public"."taxonomy_axis_crosstab"("p_dataset_id" "uuid", "p_field" "text", "p_row_ids" bigint[], "p_field_key" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."taxonomy_axis_crosstab"("p_dataset_id" "uuid", "p_field" "text", "p_row_ids" bigint[], "p_field_key" "text") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."taxonomy_axis_crosstab"("p_dataset_id" "uuid", "p_field" "text", "p_row_ids" bigint[], "p_field_key" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."taxonomy_axis_crosstab"("p_dataset_id" "uuid", "p_field" "text", "p_row_ids" bigint[], "p_field_key" "text") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."taxonomy_counts"("p_dataset_id" "uuid", "p_field_key" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."taxonomy_counts"("p_dataset_id" "uuid", "p_field_key" "text") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."taxonomy_counts"("p_dataset_id" "uuid", "p_field_key" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."taxonomy_counts"("p_dataset_id" "uuid", "p_field_key" "text") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."taxonomy_date_series"("p_dataset_id" "uuid", "p_axis" "text", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_row_ids" bigint[], "p_field_key" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."taxonomy_date_series"("p_dataset_id" "uuid", "p_axis" "text", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_row_ids" bigint[], "p_field_key" "text") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."taxonomy_date_series"("p_dataset_id" "uuid", "p_axis" "text", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_row_ids" bigint[], "p_field_key" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."taxonomy_date_series"("p_dataset_id" "uuid", "p_axis" "text", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_row_ids" bigint[], "p_field_key" "text") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."taxonomy_drill_rows"("p_dataset_id" "uuid", "p_field_key" "text", "p_axis" "text", "p_sub" "text", "p_alert" "text", "p_limit" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."taxonomy_drill_rows"("p_dataset_id" "uuid", "p_field_key" "text", "p_axis" "text", "p_sub" "text", "p_alert" "text", "p_limit" integer) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."taxonomy_drill_rows"("p_dataset_id" "uuid", "p_field_key" "text", "p_axis" "text", "p_sub" "text", "p_alert" "text", "p_limit" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."taxonomy_drill_rows"("p_dataset_id" "uuid", "p_field_key" "text", "p_axis" "text", "p_sub" "text", "p_alert" "text", "p_limit" integer) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."taxonomy_field_in_blob"("p_dataset_id" "uuid", "p_field_key" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."taxonomy_field_in_blob"("p_dataset_id" "uuid", "p_field_key" "text") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."taxonomy_field_in_blob"("p_dataset_id" "uuid", "p_field_key" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."taxonomy_field_in_blob"("p_dataset_id" "uuid", "p_field_key" "text") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."taxonomy_field_or_primary"("p_dataset_id" "uuid", "p_field_key" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."taxonomy_field_or_primary"("p_dataset_id" "uuid", "p_field_key" "text") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."taxonomy_field_or_primary"("p_dataset_id" "uuid", "p_field_key" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."taxonomy_field_or_primary"("p_dataset_id" "uuid", "p_field_key" "text") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."taxonomy_group_stats"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_row_ids" bigint[], "p_field_key" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."taxonomy_group_stats"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_row_ids" bigint[], "p_field_key" "text") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."taxonomy_group_stats"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_row_ids" bigint[], "p_field_key" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."taxonomy_group_stats"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_row_ids" bigint[], "p_field_key" "text") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."taxonomy_primary_field"("p_dataset_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."taxonomy_primary_field"("p_dataset_id" "uuid") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."taxonomy_primary_field"("p_dataset_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."taxonomy_primary_field"("p_dataset_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text", "p_date_field" "text", "p_offset" integer, "p_limit" integer, "p_after_id" bigint) TO "anon";
-GRANT ALL ON FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text", "p_date_field" "text", "p_offset" integer, "p_limit" integer, "p_after_id" bigint) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text", "p_date_field" "text", "p_offset" integer, "p_limit" integer, "p_after_id" bigint) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."taxonomy_rows_for_field"("p_dataset_id" "uuid", "p_field_key" "text", "p_rating_field" "text", "p_date_field" "text", "p_offset" integer, "p_limit" integer, "p_after_id" bigint) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."taxonomy_sub_counts"("p_dataset_id" "uuid", "p_axis" "text", "p_row_ids" bigint[], "p_field_key" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."taxonomy_sub_counts"("p_dataset_id" "uuid", "p_axis" "text", "p_row_ids" bigint[], "p_field_key" "text") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."taxonomy_sub_counts"("p_dataset_id" "uuid", "p_axis" "text", "p_row_ids" bigint[], "p_field_key" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."taxonomy_sub_counts"("p_dataset_id" "uuid", "p_axis" "text", "p_row_ids" bigint[], "p_field_key" "text") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."theme_dimension_counts"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[], "p_limit" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."theme_dimension_counts"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[], "p_limit" integer) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."theme_dimension_counts"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[], "p_limit" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."theme_dimension_counts"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_keywords" "text"[], "p_limit" integer) TO "service_role";
 
 
@@ -8716,8 +8668,7 @@ GRANT ALL ON FUNCTION "public"."touch_updated_at"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."transfer_agent_org"("p_agent_id" "uuid", "p_to_org" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."transfer_agent_org"("p_agent_id" "uuid", "p_to_org" "uuid") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."transfer_agent_org"("p_agent_id" "uuid", "p_to_org" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."transfer_agent_org"("p_agent_id" "uuid", "p_to_org" "uuid") TO "service_role";
 
 
