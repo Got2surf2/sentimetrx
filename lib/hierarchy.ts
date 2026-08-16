@@ -44,6 +44,15 @@ export interface HierarchyNode {
 
 const SEP = '\u001E'
 
+/** Plural of a level label, for headings and rank copy ("City" → "Cities").
+ *  Deliberately dumb: the label is the CLIENT'S own column name, and a clever
+ *  rule guessing wrong on their vocabulary reads worse than a plain "s". */
+export function pluralLevel(label: string): string {
+  if (/(s|x|z|ch|sh)$/i.test(label)) return label + 'es'
+  if (/[^aeiouAEIOU]y$/.test(label)) return label.slice(0, -1) + 'ies'
+  return label + 's'
+}
+
 /** The designated levels, in order. Absent `hierarchyLevel` = not part of it. */
 export function hierarchyLevels(fields: SchemaFieldConfig[] | undefined): HierarchyLevel[] {
   return (fields || [])
@@ -129,19 +138,37 @@ export function findNode(root: HierarchyNode, path: string[]): HierarchyNode | n
   return node
 }
 
-/** Breadcrumb trail from the root down to `path`, each entry linkable. */
+export type Crumb = { label: string; levelLabel: string; path: string[] }
+
+/** Breadcrumb trail for a path, WITHOUT needing the tree. For callers that
+ *  already know the path is valid (e.g. it came from a link we rendered) and
+ *  shouldn't pay for a full scan just to draw a trail. */
+export function crumbsForPath(path: string[], levels: HierarchyLevel[]): Crumb[] {
+  return [
+    { label: 'Network', levelLabel: 'All', path: [] },
+    ...path.map((key, i) => ({
+      label: key,
+      levelLabel: levels[i]?.label || ('Level ' + (i + 1)),
+      path: path.slice(0, i + 1),
+    })),
+  ]
+}
+
+/** Breadcrumb trail from the root down to `path`, each entry linkable. Stops at
+ *  the first key that isn't in the tree, so a stale link degrades to the trail
+ *  that does exist rather than inventing nodes. */
 export function breadcrumb(
   root: HierarchyNode, path: string[], levels: HierarchyLevel[],
-): { label: string; levelLabel: string; path: string[] }[] {
-  const out = [{ label: 'Network', levelLabel: 'All', path: [] as string[] }]
+): Crumb[] {
   let node: HierarchyNode = root
-  for (let i = 0; i < path.length; i++) {
-    const next = node.children.find(c => c.key === path[i])
+  const valid: string[] = []
+  for (const key of path) {
+    const next = node.children.find(c => c.key === key)
     if (!next) break
     node = next
-    out.push({ label: next.key, levelLabel: levels[i]?.label || ('Level ' + (i + 1)), path: next.path.slice() })
+    valid.push(key)
   }
-  return out
+  return crumbsForPath(valid, levels)
 }
 
 /** The rows under a node — what a rolled-up snapshot is computed over. */

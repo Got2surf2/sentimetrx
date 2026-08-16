@@ -284,6 +284,7 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 - Manual CSV upload with schema auto-detection
 - Schema configuration: column types (open-ended, categorical, numeric, date, ID, ignore)
 - Custom field labels and export names
+- **Org hierarchy**: designate categorical columns as levels (Region → District → Store) in the Schema tab; the tree is derived from those columns' values, so there's no org-structure table to maintain and nothing drifts as rows sync. The Outlet Deep-Dive then opens at the **Network** rung with breadcrumb drill-down, rolling the *same* location snapshot up each level (weakest branch listed first) rather than inventing per-level metrics
 - Collections group datasets for cross-dataset analysis; brand-collections (auto-curated by a dataset's brand tag) show as a distinct Brand card with drill-in to member datasets
 
 ### Text Mining (AI-Powered Theme Extraction)

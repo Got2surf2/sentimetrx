@@ -77,9 +77,18 @@ function DistributionRow({ b }: { b: RatingBucket }) {
 
 export default function OutletSnapshotView({
   brand, name, address, reviews, rating, rank, outletCount, networkSize, snapshot: s,
+  unitLabel = 'Location', subtitle, rankNoun = '', fleetEmptySub = 'Under 200 reviews',
 }: {
   brand: string; name: string; address: string; reviews: number; rating: number
   rank: number; outletCount: number; networkSize: number; snapshot: OutletSnapshot
+  // Rolled-up rungs reuse this component verbatim — only the nouns change, so a
+  // region's snapshot can never drift from a store's. `rank: 0` hides the pill
+  // (the Network root has nothing to be ranked against).
+  unitLabel?: string
+  subtitle?: React.ReactNode
+  rankNoun?: string
+  // Shown on the Fleet Position tile when there is no rank to give.
+  fleetEmptySub?: string
 }) {
   const arrow = s.recent?.direction === 'up' ? '▲' : s.recent?.direction === 'down' ? '▼' : ''
   const arrowColor = s.recent?.direction === 'up' ? 'text-emerald-600' : s.recent?.direction === 'down' ? 'text-rose-600' : 'text-gray-400'
@@ -90,7 +99,7 @@ export default function OutletSnapshotView({
       <div className="flex items-center justify-between border-b border-gray-200 pb-3">
         <Datanautix />
         <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400">
-          Location Performance Snapshot{s.asOf ? ` · ${s.asOf}` : ''}
+          {unitLabel} Performance Snapshot{s.asOf ? ` · ${s.asOf}` : ''}
         </div>
       </div>
 
@@ -100,12 +109,16 @@ export default function OutletSnapshotView({
           <h1 className="text-2xl font-bold text-gray-900">
             {brand} <span className="text-gray-400">·</span> {name}
           </h1>
-          <span className="rounded-full border border-gray-300 px-2.5 py-0.5 text-xs font-semibold text-gray-600">
-            Rank #{rank} of {outletCount}
-          </span>
+          {rank > 0 && (
+            <span className="rounded-full border border-gray-300 px-2.5 py-0.5 text-xs font-semibold text-gray-600">
+              Rank #{rank} of {outletCount}{rankNoun ? ` ${rankNoun}` : ''}
+            </span>
+          )}
         </div>
         <div className="mt-1 text-sm text-gray-500">
-          {address ? `${address} · ` : ''}{reviews.toLocaleString()} Google reviews{s.dateRange ? ` (${s.dateRange})` : ''} · full {networkSize}-store network
+          {subtitle != null ? subtitle : <>
+            {address ? `${address} · ` : ''}{reviews.toLocaleString()} Google reviews{s.dateRange ? ` (${s.dateRange})` : ''} · full {networkSize}-store network
+          </>}
         </div>
       </div>
 
@@ -126,7 +139,7 @@ export default function OutletSnapshotView({
         <Kpi
           label="Fleet Position"
           value={s.fleet ? s.fleet.band : '—'}
-          sub={s.fleet ? `#${s.fleet.rank} of ${s.fleet.total} stores ≥200 reviews` : 'Under 200 reviews'}
+          sub={s.fleet ? `#${s.fleet.rank} of ${s.fleet.total} ${s.fleet.peerNoun}` : fleetEmptySub}
         />
       </div>
 

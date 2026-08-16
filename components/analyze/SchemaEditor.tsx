@@ -7,6 +7,7 @@
 import { useState, useRef } from 'react'
 import type { SchemaConfig, SchemaFieldConfig, AnaFieldType, AnaFieldSqt } from '@/lib/analyzeTypes'
 import { suggestMapping } from '@/lib/scaleUtils'
+import { hierarchyLevels } from '@/lib/hierarchy'
 import ExtractEntitiesPanel from '@/components/analyze/ExtractEntitiesPanel'
 
 function suggestMappingForField(values: string[]): Record<string, number> | null {
@@ -105,7 +106,7 @@ function ValuePills({ values }: { values: string[] }) {
 }
 
 // Expanded inline editor
-function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRemappingChange, onEntityExtractionToggle, isPrimaryDate, onSetPrimaryDate }: {
+function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRemappingChange, onEntityExtractionToggle, isPrimaryDate, onSetPrimaryDate, onHierarchyToggle }: {
   f:             SchemaFieldConfig
   onTypeChange:  (field: string, baseType: AnaFieldType, sqt: AnaFieldSqt) => void
   onAliasChange: (field: string, alias: string) => void
@@ -114,8 +115,10 @@ function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRem
   onEntityExtractionToggle: (field: string) => void
   isPrimaryDate: boolean
   onSetPrimaryDate: (field: string) => void
+  onHierarchyToggle: (field: string) => void
 }) {
   const entityOn = f.entityExtraction !== false
+  const hierOn = typeof f.hierarchyLevel === 'number' && f.hierarchyLevel > 0
   const ut     = getActiveType(f)
   const isAuto = !f.sqt
   const vals   = f.values || []
@@ -198,6 +201,29 @@ function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRem
               color: entityOn ? '#dc2626' : P.textMid,
               border: '1px solid ' + (entityOn ? '#dc262630' : P.borderMid), fontFamily: 'inherit' }}>
             {entityOn ? 'Disable' : 'Enable'}
+          </button>
+        </div>
+      )}
+
+      {/* Org hierarchy — mark this column as a rung (Region → District → Store).
+          Categorical only: a rung is a grouping of rows by a repeated value, so a
+          free-text or numeric column has no tree to derive. See lib/hierarchy.ts. */}
+      {f.type === 'categorical' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, padding: '7px 10px', borderRadius: 8, background: hierOn ? '#f5f3ff' : P.bg, border: '1px solid ' + (hierOn ? '#ddd6fe' : P.border) }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: hierOn ? '#7c3aed' : P.textFaint, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>
+              {hierOn ? '✓ Hierarchy level ' + f.hierarchyLevel : 'Org Hierarchy'}
+            </div>
+            <div style={{ fontSize: 10, color: P.textFaint, marginTop: 2, lineHeight: 1.4 }}>
+              Group locations by this column, e.g. Region {'→'} District {'→'} Store. Reports roll up to each level.
+            </div>
+          </div>
+          <button onClick={function() { onHierarchyToggle(f.field) }}
+            style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 12, cursor: 'pointer', flexShrink: 0,
+              background: hierOn ? 'transparent' : P.white,
+              color: hierOn ? '#dc2626' : P.textMid,
+              border: '1px solid ' + (hierOn ? '#dc262630' : P.borderMid), fontFamily: 'inherit' }}>
+            {hierOn ? 'Remove' : 'Add as level'}
           </button>
         </div>
       )}
@@ -332,7 +358,7 @@ function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRem
 }
 
 // Full-width row card
-function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAliasChange, onRemappingChange, onEntityExtractionToggle, isPrimaryDate, onSetPrimaryDate, readOnly, index }: {
+function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAliasChange, onRemappingChange, onEntityExtractionToggle, isPrimaryDate, onSetPrimaryDate, onHierarchyToggle, readOnly, index }: {
   f:             SchemaFieldConfig
   onTypeChange:  (field: string, baseType: AnaFieldType, sqt: AnaFieldSqt) => void
   onAliasChange: (field: string, alias: string) => void
@@ -342,6 +368,7 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAlias
   onEntityExtractionToggle: (field: string) => void
   isPrimaryDate: boolean
   onSetPrimaryDate: (field: string) => void
+  onHierarchyToggle: (field: string) => void
   readOnly?:     boolean
   index:         number
 }) {
@@ -462,6 +489,14 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAlias
         )}
         {!f.values && !f.nonNullCount && <div style={{ flex: 1 }} />}
 
+        {/* Hierarchy-level pill — visible without expanding, so the rungs are
+            readable off the field grid at a glance. */}
+        {typeof f.hierarchyLevel === 'number' && f.hierarchyLevel > 0 && (
+          <span title={'Org hierarchy level ' + f.hierarchyLevel} style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe', whiteSpace: 'nowrap', flexShrink: 0, marginRight: 4 }}>
+            Lv {f.hierarchyLevel}
+          </span>
+        )}
+
         {/* Mapped pill */}
         {f.remapping && Object.keys(f.remapping).length > 0 && (
           <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', whiteSpace: 'nowrap', flexShrink: 0, marginRight: 4 }}>
@@ -536,7 +571,7 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAlias
           </div>
           {/* Scrollable body */}
           <div style={{ padding: '16px 20px', overflowY: 'auto', flex: 1 }}>
-            <FieldEditor f={f} onTypeChange={onTypeChange} onAliasChange={onAliasChange} onValueAliasChange={onValueAliasChange} onRemappingChange={onRemappingChange} onEntityExtractionToggle={onEntityExtractionToggle} isPrimaryDate={isPrimaryDate} onSetPrimaryDate={onSetPrimaryDate} />
+            <FieldEditor f={f} onTypeChange={onTypeChange} onAliasChange={onAliasChange} onValueAliasChange={onValueAliasChange} onRemappingChange={onRemappingChange} onEntityExtractionToggle={onEntityExtractionToggle} isPrimaryDate={isPrimaryDate} onSetPrimaryDate={onSetPrimaryDate} onHierarchyToggle={onHierarchyToggle} />
           </div>
         </div>
       </div>
@@ -593,6 +628,41 @@ export default function SchemaEditor({ schema, datasetId, onChange, onSave, read
           ? { ...f, entityExtraction: f.entityExtraction === false ? undefined : false }
           : f
       }) })
+  }
+
+  // Org hierarchy: add a field as the next rung, or drop it. Levels are kept
+  // CONTIGUOUS from 1 (renumbering on every change) so the saved schema can
+  // never carry a gap or a duplicate — hierarchyLevels() sorts by the number, so
+  // two fields sharing a level would order arbitrarily and the tree would depend
+  // on field order rather than on what the user chose.
+  function renumber(order: string[]): SchemaConfig {
+    return { ...schema,
+      fields: schema.fields.map(function(f) {
+        var i = order.indexOf(f.field)
+        return { ...f, hierarchyLevel: i >= 0 ? i + 1 : undefined }
+      }) }
+  }
+
+  // Current rungs in level order — the single source for the handlers below AND
+  // for the strip, so the two can't disagree about what the chain is.
+  const levels = hierarchyLevels(schema.fields)
+  const hierOrder = levels.map(function(l) { return l.field })
+
+  function handleHierarchyToggle(field: string) {
+    var next = hierOrder.indexOf(field) >= 0
+      ? hierOrder.filter(function(x) { return x !== field })
+      : hierOrder.concat([field])
+    applyUpdate(renumber(next))
+  }
+
+  function handleHierarchyMove(field: string, dir: -1 | 1) {
+    var i = hierOrder.indexOf(field)
+    var j = i + dir
+    if (i < 0 || j < 0 || j >= hierOrder.length) return
+    var next = hierOrder.slice()
+    next[i] = hierOrder[j]
+    next[j] = hierOrder[i]
+    applyUpdate(renumber(next))
   }
 
   function handleValueAliasChange(field: string, value: string, alias: string) {
@@ -733,6 +803,54 @@ export default function SchemaEditor({ schema, datasetId, onChange, onSave, read
         </div>
       )}
 
+      {/* Org hierarchy strip — the chain the reports roll up through, in order.
+          Only shown once at least one rung is set, so it stays invisible for the
+          single-location datasets that are the majority. */}
+      {levels.length > 0 && (
+        <div style={{ padding: '9px 13px', background: '#faf9ff', border: '1px solid #ddd6fe', borderRadius: 8, marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase' as const, letterSpacing: '.06em', marginRight: 2 }}>
+              Org Hierarchy
+            </span>
+            {levels.map(function(l, i) {
+              return (
+                <span key={l.field} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  {i > 0 && <span style={{ fontSize: 12, color: '#a78bfa', marginRight: 2 }}>{'→'}</span>}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: P.white, color: '#6d28d9', border: '1px solid #ddd6fe' }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, opacity: 0.6 }}>{i + 1}</span>
+                    {l.label}
+                    {!readOnly && (
+                      <>
+                        <button title="Move up a level" disabled={i === 0}
+                          onClick={function() { handleHierarchyMove(l.field, -1) }}
+                          style={{ background: 'transparent', border: 'none', padding: 0, fontSize: 10, lineHeight: 1, color: i === 0 ? P.border : '#a78bfa', cursor: i === 0 ? 'default' : 'pointer', fontFamily: 'inherit' }}>
+                          {'▲'}
+                        </button>
+                        <button title="Move down a level" disabled={i === levels.length - 1}
+                          onClick={function() { handleHierarchyMove(l.field, 1) }}
+                          style={{ background: 'transparent', border: 'none', padding: 0, fontSize: 10, lineHeight: 1, color: i === levels.length - 1 ? P.border : '#a78bfa', cursor: i === levels.length - 1 ? 'default' : 'pointer', fontFamily: 'inherit' }}>
+                          {'▼'}
+                        </button>
+                        <button title="Remove this level"
+                          onClick={function() { handleHierarchyToggle(l.field) }}
+                          style={{ background: 'transparent', border: 'none', padding: 0, fontSize: 10, lineHeight: 1, color: '#dc2626', cursor: 'pointer', fontFamily: 'inherit', opacity: 0.6 }}>
+                          {'✕'}
+                        </button>
+                      </>
+                    )}
+                  </span>
+                </span>
+              )
+            })}
+          </div>
+          <div style={{ fontSize: 10, color: levels.length < 2 ? P.amber : P.textFaint, marginTop: 6, lineHeight: 1.4 }}>
+            {levels.length < 2
+              ? 'Add one more level to build a hierarchy — a single level is just a breakdown, not a tree.'
+              : 'Outlet reports roll up through these levels. Rows with a blank value group under "(unassigned)" so every location still counts.'}
+          </div>
+        </div>
+      )}
+
       {/* Type filter bar */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 14 }}>
         <button onClick={function() { setTypeFilter('all') }}
@@ -772,6 +890,7 @@ export default function SchemaEditor({ schema, datasetId, onChange, onSave, read
               onEntityExtractionToggle={handleEntityExtractionToggle}
               isPrimaryDate={schema.primaryDateField === f.field}
               onSetPrimaryDate={handleSetPrimaryDate}
+              onHierarchyToggle={handleHierarchyToggle}
               readOnly={readOnly}
             />
           )

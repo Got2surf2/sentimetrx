@@ -3,6 +3,11 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { logError } from '@/lib/log'
 import { lexiconScore } from '@/lib/themeUtils'
 import { buildPredictor, type OutletPredictor, type PredReview, type PredExample } from '@/lib/outletPredictor'
+import {
+  hierarchyLevels, buildHierarchy, findNode, breadcrumb, nodesAtDepth, pathOf, pluralLevel, UNASSIGNED,
+  type HierarchyLevel,
+} from '@/lib/hierarchy'
+import type { SchemaFieldConfig } from '@/lib/analyzeTypes'
 
 // Per-outlet "vs peers" summary report.
 //
@@ -33,6 +38,8 @@ const DELTA_THRESHOLD = 0.08 // min gap vs peers to count as a strength/weakness
 // stores, so a tiny-sample location can't claim a flattering rank — matches the
 // PDF's "#12 of 20 stores ≥200 reviews".
 const FLEET_MIN = 200
+// What the outlet-level fleet rank is measured against (shown on the KPI tile).
+const FLEET_PEER_NOUN = `stores ≥${FLEET_MIN} reviews`
 // A theme must clear this many of THIS outlet's mentions to appear in the
 // absolute theme table (the "mentions" column shows n, so thin rows stay honest).
 const MIN_THEME_MENTIONS = 10
@@ -126,7 +133,9 @@ export type RatingBucket = { star: number; count: number; pct: number; net: { mi
 export type PraiseVerbatim = { theme: string; rating: number; quote: string }
 
 // Fleet position among the higher-volume stores only.
-export type FleetPosition = { rank: number; total: number; band: string }
+// `peerNoun` names what the rank is against, so the tile reads truthfully at
+// every rung ("stores ≥200 reviews" for an outlet, "regions" for a region).
+export type FleetPosition = { rank: number; total: number; band: string; peerNoun: string }
 
 // Rolling recent-window rating vs the outlet's all-time average.
 export type RecentTrend = { count: number; avg: number; direction: 'up' | 'down' | 'flat' }
@@ -608,14 +617,70 @@ async function scanDataset(datasetId: string): Promise<Scan> {
   }
 }
 
-// Recent-window rating vs all-time for one outlet: the trailing 12 months of
-// its reviews (falling back to its most-recent 30% when a year is too thin),
-// with an up/down/flat arrow vs the outlet's all-time average. One extra pass
-// over the outlet's flat rows — powers the snapshot's "last N: 4.79 ▲" chip.
-function recentTrend(flat: FlatRow[], placeId: string, allTimeAvg: number): RecentTrend | null {
+// ─── Snapshot units ──────────────────────────────────────────────────────────
+//
+// The snapshot is computed over a UNIT: either a single outlet, or several
+// outlets merged into one (a hierarchy node — a district, a region, the whole
+// network). Every field here is additive, which is the reason the SAME snapshot
+// can be rolled up a rung without inventing a per-level metric: a region's
+// rating distribution is literally the sum of its stores' distributions.
+//
+// This is the subset of `Outlet` that computeSnapshot reads. Keeping it narrow
+// means a merged unit can't be mistakenly fed to the peer-relative path, which
+// needs per-outlet lexicon accumulators that do NOT merge meaningfully.
+type SnapshotUnit = {
+  placeIds: Set<string>   // the outlets this unit covers — one, or many
+  reviews: number; ratingSum: number; ratingN: number
+  ratingCounts: number[]
+  ownerResponded: number
+  minDate: string; maxDate: string
+  themeAbs: Map<string, ThemeAbs>
+}
+
+function unitOf(o: Outlet): SnapshotUnit {
+  return {
+    placeIds: new Set([o.placeId]),
+    reviews: o.reviews, ratingSum: o.ratingSum, ratingN: o.ratingN,
+    ratingCounts: o.ratingCounts, ownerResponded: o.ownerResponded,
+    minDate: o.minDate, maxDate: o.maxDate, themeAbs: o.themeAbs,
+  }
+}
+
+// Merge outlets into one unit. Counts add; the date span is the union; theme
+// figures add per theme, so a rolled-up theme row is the same ratio computed
+// over more reviews — NOT an average of averages, which would weight a 40-review
+// store the same as a 4,000-review one.
+function mergeUnits(members: Outlet[]): SnapshotUnit {
+  const u: SnapshotUnit = {
+    placeIds: new Set(), reviews: 0, ratingSum: 0, ratingN: 0,
+    ratingCounts: [0, 0, 0, 0, 0], ownerResponded: 0, minDate: '', maxDate: '',
+    themeAbs: new Map(),
+  }
+  for (const o of members) {
+    u.placeIds.add(o.placeId)
+    u.reviews += o.reviews; u.ratingSum += o.ratingSum; u.ratingN += o.ratingN
+    u.ownerResponded += o.ownerResponded
+    for (let i = 0; i < 5; i++) u.ratingCounts[i] += o.ratingCounts[i]
+    if (o.minDate && (!u.minDate || o.minDate < u.minDate)) u.minDate = o.minDate
+    if (o.maxDate && (!u.maxDate || o.maxDate > u.maxDate)) u.maxDate = o.maxDate
+    for (const [theme, a] of o.themeAbs) {
+      const t = u.themeAbs.get(theme) || (u.themeAbs.set(theme, { mentions: 0, ratingSum: 0, ratingN: 0, low: 0 }), u.themeAbs.get(theme)!)
+      t.mentions += a.mentions; t.ratingSum += a.ratingSum; t.ratingN += a.ratingN; t.low += a.low
+    }
+  }
+  return u
+}
+
+const unitRating = (u: SnapshotUnit): number => (u.ratingN ? u.ratingSum / u.ratingN : 0)
+
+// Recent-window rating vs all-time for a unit: the trailing 12 months of its
+// reviews (falling back to its most-recent 30% when a year is too thin), with an
+// up/down/flat arrow vs the unit's all-time average. One extra pass over the
+// unit's flat rows — powers the snapshot's "last N: 4.79 ▲" chip.
+function recentTrend(flat: FlatRow[], placeIds: Set<string>, allTimeAvg: number): RecentTrend | null {
   const dated: { d: string; r: number }[] = []
   for (const row of flat) {
-    if (row.data?.place_id !== placeId) continue
+    if (!row.data?.place_id || !placeIds.has(row.data.place_id)) continue
     const r = Number(row.data?.rating); if (!r) continue
     const d = String(row.data?.review_date || '').slice(0, 10)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue
@@ -632,16 +697,29 @@ function recentTrend(flat: FlatRow[], placeId: string, allTimeAvg: number): Rece
   return { count: recent.length, avg, direction }
 }
 
-// Build the absolute GM-facing snapshot (PDF page 1) for the selected outlet.
-function computeSnapshot(target: Outlet, rated: Outlet[], outletRating: number, flat: FlatRow[], highExamples: PredExample[]): OutletSnapshot {
+// Build the absolute GM-facing snapshot (PDF page 1) for a unit — one outlet, or
+// a rolled-up hierarchy node. `peers` are the units at the SAME rung (all stores
+// network-wide for an outlet; all regions network-wide for a region), which is
+// what makes the distribution markers and the rank mean the same thing at every
+// level: "this one against the range of its own kind".
+function computeSnapshot(
+  target: SnapshotUnit, peers: SnapshotUnit[], outletRating: number,
+  flat: FlatRow[], highExamples: PredExample[],
+  // `rankable: false` when the target is not a member of the peer set — the
+  // Network total is not one of its own stores, and ranking an aggregate among
+  // its parts always lands near the weighted middle, so the position would be an
+  // artifact of the arithmetic rather than a finding.
+  peer: { noun: string; rankable: boolean },
+): OutletSnapshot {
   const ratedN = target.ratingN || 1
-  // Per-star network markers = min / avg / max of each outlet's share of that
-  // star bucket, over outlets with a stable sample (≥30 rated; falls back to all
+  // Per-star network markers = min / avg / max of each peer's share of that
+  // star bucket, over peers with a stable sample (≥30 rated; falls back to all
   // rated if too few qualify) so a tiny outlet at 0%/100% can't skew the range.
   const NET_MIN_N = 30
+  const rated = peers.filter((o) => o.ratingN > 0)
   const statOutlets = (() => {
     const q = rated.filter((o) => o.ratingN >= NET_MIN_N)
-    return q.length >= 2 ? q : rated.filter((o) => o.ratingN > 0)
+    return q.length >= 2 ? q : rated
   })()
   const netStat = (i: number): { min: number; avg: number; max: number } => {
     const shares = statOutlets.map((o) => o.ratingCounts[i] / o.ratingN)
@@ -655,9 +733,9 @@ function computeSnapshot(target: Outlet, rated: Outlet[], outletRating: number, 
 
   const fleetOutlets = rated.filter((o) => o.reviews >= FLEET_MIN)
   let fleet: FleetPosition | null = null
-  if (target.reviews >= FLEET_MIN && fleetOutlets.length >= 2) {
+  if (peer.rankable && target.reviews >= FLEET_MIN && fleetOutlets.length >= 2) {
     const rank = fleetOutlets.filter((o) => o.ratingSum / o.ratingN > outletRating).length + 1
-    fleet = { rank, total: fleetOutlets.length, band: fleetBand(rank, fleetOutlets.length) }
+    fleet = { rank, total: fleetOutlets.length, band: fleetBand(rank, fleetOutlets.length), peerNoun: peer.noun }
   }
 
   const themeTable: ThemeTableRow[] = [...target.themeAbs.entries()]
@@ -677,7 +755,7 @@ function computeSnapshot(target: Outlet, rated: Outlet[], outletRating: number, 
   // best-verdict theme, since good-theme rows are sorted first).
   const seenQuote = new Set<string>()
   const praiseVerbatims: PraiseVerbatim[] = highExamples
-    .filter((e) => e.placeId === target.placeId && e.quote)
+    .filter((e) => target.placeIds.has(e.placeId) && e.quote)
     // Good-theme praise first, then the most enthusiastic (5★ over 4★) — a 4★ can
     // carry a mild gripe, so lead with the wholehearted quotes.
     .sort((a, b) => ((goodSet.has(b.theme) ? 1 : 0) - (goodSet.has(a.theme) ? 1 : 0)) || ((b.rating ?? 5) - (a.rating ?? 5)))
@@ -690,7 +768,7 @@ function computeSnapshot(target: Outlet, rated: Outlet[], outletRating: number, 
     dateRange: target.minDate && target.maxDate ? `${fmtMonth(target.minDate)} – ${fmtMonth(target.maxDate)}` : '',
     distribution, fiveStarShare, detractorShare,
     ownerResponseRate: ownerRate, ownerResponseBand: ownerResponseBand(ownerRate),
-    recent: recentTrend(flat, target.placeId, outletRating), fleet, themeTable, praiseChips, praiseVerbatims,
+    recent: recentTrend(flat, target.placeIds, outletRating), fleet, themeTable, praiseChips, praiseVerbatims,
   }
 }
 
@@ -759,7 +837,7 @@ function buildReport(scan: Scan, selectedPlaceId?: string): OutletReport {
       percentile, rank, outletCount: rated.length,
       themes, dimensions, trend,
       narrative: buildNarrative({ name: locName, rank, outletCount: rated.length, percentile, ratingDelta: outletRating - chainRatingAll, chainRating: chainRatingAll, themes, dimensions }),
-      snapshot: computeSnapshot(target, rated, outletRating, flat, scan.highExamples),
+      snapshot: computeSnapshot(unitOf(target), rated.map(unitOf), outletRating, flat, scan.highExamples, { noun: FLEET_PEER_NOUN, rankable: true }),
       lowQuotes: scan.lowExamples.filter((e) => e.placeId === target.placeId && e.quote).map((e) => ({ theme: e.theme, quote: e.quote })),
     }
   }
@@ -855,4 +933,145 @@ export async function computeOutletReportWithPredictor(
 ): Promise<{ report: OutletReport; predictor: OutletPredictor }> {
   const scan = await scanDataset(datasetId)
   return { report: buildReport(scan, selectedPlaceId), predictor: buildPredictorFromScan(scan) }
+}
+
+// ─── Rolled-up hierarchy report (Network → Region → District → Outlet) ────────
+
+// One node one rung below the one being viewed — the row a viewer clicks to
+// drill in.
+export type HierarchyChild = {
+  key: string        // this node's own value, e.g. "New York"
+  path: string[]     // full path from the root — what the link carries
+  outlets: number    // locations under it
+  reviews: number
+  rating: number | null
+}
+
+export type HierarchyReport = {
+  brand: string
+  name: string                    // node display name ("Network" at the root)
+  path: string[]
+  crumbs: { label: string; levelLabel: string; path: string[] }[]
+  levelLabel: string              // what THIS node is ("Network", "Region", …)
+  childLevelLabel: string | null  // what its children are; null at the last rung
+  reviews: number
+  rating: number
+  outletCount: number             // locations under this node
+  networkOutlets: number
+  children: HierarchyChild[]      // empty at the deepest rung
+  outlets: OutletOption[]         // member locations, listed at the deepest rung
+  snapshot: OutletSnapshot
+  strayOutlets: number            // locations whose rows disagree on their path
+}
+
+// Assign each outlet ONE path, and count the outlets whose rows disagree.
+//
+// ⭐ The tree is built over OUTLETS, not raw rows, so every number on the page
+// reconciles by construction: a node's review count is exactly the sum of its
+// member outlets' reviews, and the locations listed at the deepest rung are
+// exactly the ones that were summed. Building it over rows instead would let a
+// store whose rows carry two different districts contribute to both, and the
+// rung totals would then quietly exceed the network total.
+//
+// A store's region is a property of the store, so disagreement means dirty data
+// (a typo in one row's District). We take the outlet's most common path and
+// REPORT the count of stray outlets rather than silently picking one.
+function outletPaths(scan: Scan, levels: HierarchyLevel[]): { paths: Map<string, string[]>; stray: number } {
+  const tallies = new Map<string, Map<string, { path: string[]; n: number }>>()
+  for (const r of scan.flat) {
+    const placeId = r.data?.place_id
+    if (!placeId) continue
+    const path = pathOf(r.data as Record<string, unknown>, levels)
+    const key = path.join('')
+    const t = tallies.get(placeId) || (tallies.set(placeId, new Map()), tallies.get(placeId)!)
+    const e = t.get(key) || (t.set(key, { path, n: 0 }), t.get(key)!)
+    e.n++
+  }
+  const paths = new Map<string, string[]>()
+  let stray = 0
+  for (const [placeId, t] of tallies) {
+    if (t.size > 1) stray++
+    const best = [...t.values()].sort((a, b) => b.n - a.n)[0]
+    paths.set(placeId, best.path)
+  }
+  return { paths, stray }
+}
+
+// The same snapshot, computed over the outlets under one node of the hierarchy.
+// Returns null when the dataset has no usable hierarchy, or the path names a
+// node that doesn't exist.
+export async function computeHierarchyReport(
+  datasetId: string, fields: SchemaFieldConfig[] | undefined, path: string[],
+): Promise<HierarchyReport | null> {
+  const levels = hierarchyLevels(fields)
+  if (levels.length < 2) return null
+
+  const scan = await scanDataset(datasetId)
+  const { paths, stray } = outletPaths(scan, levels)
+
+  // One synthetic record per outlet → node.rowCount is the OUTLET count.
+  const outletRows = scan.outlets.map((o) => {
+    const p = paths.get(o.placeId) || levels.map(() => UNASSIGNED)
+    return Object.fromEntries(levels.map((l, i) => [l.field, p[i]]))
+  })
+  const root = buildHierarchy(outletRows, levels)
+  const node = findNode(root, path)
+  if (!node) return null
+
+  // Members of any node = outlets whose assigned path carries that prefix.
+  const membersOf = (p: string[]): Outlet[] => scan.outlets.filter((o) => {
+    const op = paths.get(o.placeId)
+    if (!op) return false
+    for (let i = 0; i < p.length; i++) if (op[i] !== p[i]) return false
+    return true
+  })
+
+  const members = membersOf(path)
+  const target = mergeUnits(members)
+  const rating = unitRating(target)
+
+  // Peers = every node at the SAME depth, network-wide — the exact analogue of
+  // the outlet view comparing one store against every store, not just the ones
+  // beside it. At the root there is no same-kind peer, so the markers fall back
+  // to the range across individual locations (what "network" means there).
+  const depth = path.length
+  const sameRung = depth === 0 ? [] : nodesAtDepth(root, depth)
+  const peers: SnapshotUnit[] = depth === 0
+    ? scan.outlets.filter((o) => o.ratingN > 0).map(unitOf)
+    : sameRung.map((n) => mergeUnits(membersOf(n.path)))
+
+  // The node's standing among its same-rung peers is carried by the snapshot's
+  // Fleet Position tile (rank + qualitative band), so it isn't computed twice.
+  const levelLabel = depth === 0 ? 'Network' : (levels[depth - 1]?.label || `Level ${depth}`)
+
+  const childLevel = levels[depth] || null
+  const children: HierarchyChild[] = node.children.map((c) => {
+    const m = membersOf(c.path)
+    const u = mergeUnits(m)
+    return { key: c.key, path: c.path, outlets: c.rowCount, reviews: u.reviews, rating: u.ratingN ? unitRating(u) : null }
+  })
+
+  // Only the deepest rung lists individual locations — above it the children ARE
+  // the drill-down, and listing every store as well would double the page.
+  const outlets: OutletOption[] = childLevel ? [] : members
+    .map((o) => ({ placeId: o.placeId, label: scan.labelFor(o), sublabel: `${o.ratingN ? (o.ratingSum / o.ratingN).toFixed(1) : '—'}★`, reviews: o.reviews }))
+    .sort((a, b) => b.reviews - a.reviews)
+
+  return {
+    brand: scan.brand,
+    name: depth === 0 ? 'Network' : path[path.length - 1],
+    path,
+    crumbs: breadcrumb(root, path, levels),
+    levelLabel,
+    childLevelLabel: childLevel ? childLevel.label : null,
+    reviews: target.reviews,
+    rating,
+    outletCount: members.length,
+    networkOutlets: scan.outlets.length,
+    children,
+    outlets,
+    snapshot: computeSnapshot(target, peers, rating, scan.flat, scan.highExamples,
+      { noun: pluralLevel(levelLabel).toLowerCase(), rankable: depth > 0 }),
+    strayOutlets: stray,
+  }
 }

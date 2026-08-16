@@ -8,22 +8,27 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
-import { computeOutletReportWithPredictor } from '@/lib/outletReport'
+import { computeOutletReportWithPredictor, computeHierarchyReport } from '@/lib/outletReport'
+import { hierarchyLevels, crumbsForPath } from '@/lib/hierarchy'
+import type { SchemaConfig } from '@/lib/analyzeTypes'
 import OutletPicker from './OutletPicker'
 import OutletReportTabs from './OutletReportTabs'
 import OutletSnapshotView from './OutletSnapshotView'
 import OutletActionPlanSection from './OutletActionPlanSection'
 import PrintButton from './PrintButton'
 import AnalyticsNav from '../AnalyticsNav'
+import { HierarchyBreadcrumb, HierarchyChildren, HierarchyOutlets } from './HierarchyNav'
 
 export const dynamic = 'force-dynamic'
 
 export default async function OutletReportPage(props: {
   params: Promise<{ datasetId: string }>
-  searchParams: Promise<{ outlet?: string }>
+  searchParams: Promise<{ outlet?: string; node?: string | string[] }>
 }) {
   const { datasetId } = await props.params
-  const { outlet } = await props.searchParams
+  const { outlet, node } = await props.searchParams
+  // Repeated ?node= params, in order — see HierarchyNav for why not a delimiter.
+  const nodePath = node == null ? [] : Array.isArray(node) ? node : [node]
 
   const supabase = await createClient()
   const ctx = await getUserContext(supabase)
@@ -34,6 +39,59 @@ export default async function OutletReportPage(props: {
   const { data: ds } = await service.from('datasets').select('org_id').eq('id', datasetId).maybeSingle()
   if (!ds) notFound()
   if (!ctx.isAdminOrg && ds.org_id !== ctx.orgId) notFound()
+
+  // A dataset whose schema designates ≥2 hierarchy levels opens at the rolled-up
+  // Network view and drills down; picking a location switches to the per-outlet
+  // deep-dive below. Datasets without a hierarchy are untouched.
+  const { data: stateRow } = await service.from('dataset_state').select('schema_config').eq('dataset_id', datasetId).maybeSingle()
+  const schemaFields = (stateRow?.schema_config as SchemaConfig | null)?.fields
+  const levels = hierarchyLevels(schemaFields)
+  const hasHierarchy = levels.length >= 2
+
+  if (hasHierarchy && !outlet) {
+    const h = await computeHierarchyReport(datasetId, schemaFields, nodePath)
+    if (!h) notFound()
+    return (
+      <div className="min-h-screen bg-gray-100 py-8 print:bg-white print:py-0">
+        <div className="mx-auto max-w-4xl px-4 print:max-w-none print:px-0">
+          <div className="print:hidden">
+            <AnalyticsNav datasetId={datasetId} active="outlet" action={<PrintButton />} />
+            <div className="mb-4 mt-2">
+              <HierarchyBreadcrumb datasetId={datasetId} crumbs={h.crumbs} />
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:p-6 print:shadow-none print:ring-0">
+            <OutletSnapshotView
+              brand={h.brand} name={h.name} address=""
+              reviews={h.reviews} rating={h.rating}
+              rank={0} outletCount={h.outletCount} networkSize={h.networkOutlets}
+              snapshot={h.snapshot}
+              unitLabel={h.levelLabel}
+              fleetEmptySub={h.path.length === 0 ? 'Network total — no peer group' : 'Not enough peers to rank'}
+              subtitle={<>
+                {h.outletCount.toLocaleString()} location{h.outletCount === 1 ? '' : 's'} · {h.reviews.toLocaleString()} Google reviews
+                {h.snapshot.dateRange ? ` (${h.snapshot.dateRange})` : ''} · full {h.networkOutlets}-store network
+              </>}
+            />
+
+            <div className="mt-7 border-t border-gray-200 pt-6 print:break-inside-avoid">
+              {h.childLevelLabel
+                ? <HierarchyChildren datasetId={datasetId} childLevelLabel={h.childLevelLabel} nodes={h.children} networkRating={h.rating} />
+                : <HierarchyOutlets datasetId={datasetId} path={h.path} outlets={h.outlets} />}
+            </div>
+
+            {h.strayOutlets > 0 && (
+              <p className="mt-4 text-xs text-amber-700 print:hidden">
+                ⚠ {h.strayOutlets} location{h.strayOutlets === 1 ? '' : 's'} had rows disagreeing on their{' '}
+                {levels.map((l) => l.label).join(' / ')} — each is counted under its most common value. Check those columns for typos.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const { report, predictor } = await computeOutletReportWithPredictor(datasetId, outlet)
   const s = report.selected
@@ -76,6 +134,17 @@ export default async function OutletReportPage(props: {
               </div>
             ) : undefined
           } />
+          {/* Arrived from a rolled-up rung — keep the trail so the way back up
+              is one click, and the location reads as part of its branch. */}
+          {hasHierarchy && nodePath.length > 0 && s && (
+            <div className="mt-2">
+              <HierarchyBreadcrumb
+                datasetId={datasetId}
+                crumbs={crumbsForPath(nodePath, levels)}
+                current={{ label: s.name, levelLabel: 'Location' }}
+              />
+            </div>
+          )}
           <div className="mb-4 mt-2 flex items-center justify-between">
             <OutletPicker outlets={report.outlets} selected={s?.placeId || ''} />
           </div>

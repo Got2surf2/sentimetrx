@@ -654,3 +654,58 @@ nothing, and reads that as "no such memory."
   decision, not a drive-by.
 
 Sweep is clean across the repo, and all memory files now read as UTF-8 text.
+
+---
+
+## 2026-08-16 — Hierarchy: the Schema-tab UI, and the outlet snapshot rolled up each rung
+
+The hierarchy foundation (`lib/hierarchy.ts`, 17 tests) had **zero callers** —
+nothing set `hierarchyLevel` and nothing read it. Both halves now exist.
+
+**Why the Schema tab renumbers levels on every change.** Levels are kept
+contiguous from 1. The alternative — free-form level numbers per field — lets a
+schema carry a gap or a duplicate, and `hierarchyLevels()` sorts by that number,
+so two fields sharing a level would order arbitrarily: the tree would then depend
+on field order rather than on what the user picked. The strip with ▲/▼ exists
+because order *is* the meaning (Region→District is not District→Region) and a
+user who adds City before State needs a way back that isn't "clear it all".
+
+**Why the roll-up lives on the Outlet Deep-Dive** rather than a fourth Advanced
+view (owner call): one page and one component means a region's snapshot cannot
+drift from a store's — the same argument that made print-is-the-export. So
+`computeSnapshot` was generalised from an `Outlet` to a `SnapshotUnit`: the
+additive subset it actually reads. A node is `mergeUnits(members)`. Nothing
+per-level is invented — a region's rating distribution is literally the sum of
+its stores', and theme figures add per theme so a rolled-up row is the same ratio
+over more reviews, **not an average of averages** (which would weight a 40-review
+store like a 4,000-review one). The narrow unit type is deliberate: a merged unit
+*can't* be fed to the peer-relative path, whose lexicon accumulators don't merge
+meaningfully.
+
+**The decision that keeps the numbers honest: the tree is built over OUTLETS, not
+rows.** Then a node's review count is exactly the sum of its member outlets', and
+the locations listed at the deepest rung are exactly the ones that were summed.
+Over rows, a store whose rows carry two different districts would contribute to
+both and the rung totals would quietly exceed the network total. A store's region
+is a property of the store, so disagreement means dirty data — the outlet is
+counted under its most common value and the count is **surfaced** in an amber
+note naming the columns, rather than silently resolved.
+
+**Peers are the entities at the same rung** — a store vs every store network-wide,
+a region vs every region — so the markers and the rank mean the same thing at
+every level. At the root there's no same-kind peer, so markers fall back to the
+range across locations and the rank pill hides. `FleetPosition` gained `peerNoun`
+so the tile stops hardcoding "stores".
+
+Paths travel as **repeated `?node=` params**, not a delimited string: client column
+values are arbitrary text, and any separator — `/`, `>`, `|` — eventually appears
+inside a real district name and splits the path in the wrong place.
+
+**Verified** (`scripts/_verify_hierarchy_rollup.mts`, exits non-zero) on the real
+29-store BareBurger set on TEST with State → City: root covers 29/29 locations and
+14,683/14,683 reviews; children sum to their parent at both rungs; listed
+locations sum to their node; a leaf's rating equals the review-weighted mean of
+its members (4.743 vs 4.743). 1,681 tests + 6 new hierarchy tests green, tsc
+clean. The AI action plan stays outlet-only — its voice is operator-specific
+("bag-check rule"), and a region-level playbook is a different writing job, not
+the same prompt over more rows.

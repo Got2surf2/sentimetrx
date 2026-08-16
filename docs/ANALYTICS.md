@@ -1350,7 +1350,8 @@ Panel list lives in `ANALYSIS_TYPES` in `components/analyze/StatsModule.tsx`.
 
 ## Client-defined hierarchy (`lib/hierarchy.ts`)
 
-**Foundation landed 2026-08-16; the rolled-up outlet views are the next step.**
+**Foundation landed 2026-08-16; the Schema-tab UI and the rolled-up Outlet
+Deep-Dive landed the same day (see "Rolled-up hierarchy view" below).**
 
 A dataset's schema can designate existing columns as hierarchy **levels** —
 `SchemaFieldConfig.hierarchyLevel`, 1-based with 1 broadest (Region 1 -> District
@@ -1375,8 +1376,22 @@ Two correctness properties the roll-ups depend on, both pinned by
   of size, so it never leads a list.
 
 API: `hierarchyLevels` / `hasHierarchy` (needs >=2 levels — one is just a
-breakdown) / `buildHierarchy` / `findNode` / `breadcrumb` / `rowsUnder` (what a
-rolled-up snapshot is computed over) / `nodesAtDepth`.
+breakdown) / `buildHierarchy` / `findNode` / `breadcrumb` / `crumbsForPath` /
+`rowsUnder` (what a rolled-up snapshot is computed over) / `nodesAtDepth` /
+`pluralLevel`.
+
+**Assigning levels — the Schema tab (2026-08-16).** `SchemaEditor` exposes the
+marker on **categorical fields only** (a rung is a grouping of rows by a repeated
+value; a free-text or numeric column has no tree to derive). Expanding a
+categorical field shows an **"Add as level" / "Remove"** control, and a collapsed
+card carries a **`Lv N`** pill so the chain is readable off the field grid. Above
+the grid an **Org Hierarchy strip** lists the rungs in order with ▲/▼/✕, and warns
+while only one level is set. Levels are **renumbered contiguously from 1 on every
+change**, so a saved schema can never carry a gap or a duplicate — two fields
+sharing a level would sort arbitrarily in `hierarchyLevels()` and the tree would
+depend on field order rather than on what the user chose. `mergeSchemaStats`
+spreads the existing field (`{...f}`), so an incremental sync preserves the
+marker.
 
 ## Outlet Report (Advanced Analytics ▸ Outlet Deep-Dive)
 
@@ -1389,6 +1404,54 @@ rolled-up snapshot is computed over) / `nodesAtDepth`.
 > **Print IS the export (2026-07-15).** Per the owner's "one component → screen + PDF, no drift" directive, the page's own **print output is the export**: a `PrintButton` ("Print / Save PDF" → `window.print()`) is the primary nav action (the `outlet-plan-deck` **PPTX** is kept as a secondary "GM deck"). Print CSS (Tailwind `print:` utilities) hides the nav/picker/deep-dive, drops the gray page chrome, renders the snapshot as page 1 (KPIs forced 4-across at print width via `sm:grid-cols-4`, tightened `print:p-6`/`print:py-1` so the whole snapshot fits **one** page, `print:break-inside-avoid` on each block), and `print:break-before-page` starts the AI Action Plan on a fresh page (its cards carry `print:break-inside-avoid`). The action-plan section is `print:hidden` until its plan has loaded, so an early Ctrl-P yields a clean 1-page snapshot rather than a blank page 2. Verified by rendering the real components to a Letter PDF (clean 4-page output, no orphaned/blank pages).
 
 > **Owner-QC refinements (2026-07-15).** (1) **Rating-distribution bars are colour-coded by rating** (5★ green → 1★ red) using the shared `RATING_GRADIENT` (`lib/ratingGradient.ts`, extracted from ChartsModule's `ORD_GRAD` so Charts + the snapshot match), and each bar carries **network markers** — ▶ lowest outlet · │ average · ◀ highest outlet (per-star share across outlets with ≥30 rated reviews; `RatingBucket.net`), so a GM sees this location vs the system on every bar. (2) The **AI action-plan cards name their theme**: a theme-anchor line (theme · avg★ · %negative · mentions, from `themeTable` passed to `ActionPlanBody`) sits under each title, and the LLM diagnosis now names the theme in its first sentence (basis bumped `v1→v2` to invalidate cached plans); the theme name renders as a neutral **Sarina-teal pill** (white text — a red/severity tint would wrongly read as an alarm; severity is carried by the coloured avg★/%-negative beside it). The distribution's ▶ lowest marker is **white** (drop-shadow edge) so it stays visible sitting on the coloured bar. (3) The peer-relative **"What needs work" cards dedup verbatims** (`buildDeltas` — a review matching several themes kept its quote on the strongest-delta card only). (4) The **Dimensions and Themes tabs were removed** from the deep-dive `OutletReportTabs` — both are now redundant with the snapshot's absolute theme table + AI action plan, leaving **Action Plan · Summary** only (the peer-relative `Block`/`ThemeCard` render path was deleted with them). (5) **Print pagination fixed** — the analyze app-shell's `height:100vh` + `overflow:hidden/auto` clip chain was cutting print to page 1; a global `@media print` reset (`app/globals.css`) releases the inline overflow/height and hides the fixed `nav`. (6) Action-plan loading is resilient: honest copy, a 90s client timeout, and a Retry (generation is ~30s the first time, cached after).
+
+### Rolled-up hierarchy view (2026-08-16)
+
+When the dataset's schema designates **≥2 hierarchy levels**, `/outlet-report`
+opens at the **Network** rung and drills down (`Network › New York › Long Island
+City`) instead of jumping straight to one location. Owner direction: the roll-up
+lives **on the Outlet Deep-Dive**, not in a fourth Advanced view — one page and
+one component means a region's snapshot cannot drift from a store's.
+
+- **The same component, the same numbers.** `computeSnapshot` was generalised
+  from an `Outlet` to a **`SnapshotUnit`** — the additive subset it actually reads
+  (placeIds, review/rating counts, star buckets, owner responses, date span,
+  `themeAbs`). One outlet is a unit; a node is `mergeUnits(members)`. Nothing
+  per-level is invented: a region's rating distribution is literally the sum of
+  its stores'. Theme figures add per theme, so a rolled-up theme row is the same
+  ratio over more reviews — **not an average of averages**, which would weight a
+  40-review store like a 4,000-review one. `OutletSnapshotView` renders both,
+  taking only `unitLabel` / `subtitle` / `rankNoun` overrides.
+- **The tree is built over OUTLETS, not rows.** Every figure then reconciles by
+  construction: a node's review count is exactly the sum of its member outlets',
+  and the locations listed at the deepest rung are exactly the ones summed.
+  Building it over rows would let a store whose rows carry two different
+  districts contribute to both, and the rung totals would quietly exceed the
+  network total. A store's region is a property of the store, so disagreement
+  means dirty data — each such outlet is counted under its **most common** value
+  and the count is **surfaced** (`strayOutlets`, an amber note naming the
+  columns), never silently resolved.
+- **Peers are the entities at the same rung.** A store is compared against every
+  store network-wide; a region against every region — so the distribution markers
+  and the rank mean the same thing at every level. At the Network root there is no
+  same-kind peer, so the markers fall back to the range across individual
+  locations (what "network" means there) and the rank pill is hidden.
+  `FleetPosition` gained **`peerNoun`** so the tile reads truthfully per rung.
+- **Drill-down** (`HierarchyNav.tsx`): child rungs are listed **weakest-rated
+  first** with locations · reviews · avg★ · vs-network delta; the deepest rung
+  lists its locations instead. The path travels as **repeated `?node=` params**,
+  never a delimited string — a client's column values are arbitrary text and any
+  separator we picked would eventually appear inside a real district name. Opening
+  a location carries the path along, so the breadcrumb survives the jump and the
+  way back up is one click.
+- **The AI action plan stays outlet-only** for now (owner call): its voice is
+  operator-specific ("bag-check rule"), and a region-level playbook is a different
+  writing job, not the same prompt over more rows.
+- Verified by `scripts/_verify_hierarchy_rollup.mts` (untracked, exits non-zero)
+  against the real 29-store BareBurger set on TEST with State → City: root covers
+  29/29 locations and 14,683/14,683 reviews, children sum to their parent at both
+  rungs, listed locations sum to their node, and a leaf's rating equals the
+  review-weighted mean of its members (4.743 vs 4.743).
 
 **Where it lives.** Route `app/analyze/[datasetId]/outlet-report/` (server component + `OutletPicker`/`PrintButton` client bits). **As of the Target B IA (2026-06-25) it's the Outlet Deep-Dive view (row 2) of the Advanced Analytics section** — a server-rendered route reached via `AnalyticsNav`'s shared two-row bar (earlier, 2026-06-22, it was an "Outlets" sub-tab `<Link>` in TextMine; before that a top-level `DatasetHeader` tab). It preserves the server render + shareable `?outlet=` URL. Same gate as before: `datasetSource === 'google_reviews'` **and** `outletCount >= 5`; the count is computed server-side in `textmine/page.tsx` (a cheap `count` off `review_source_locations` for the dataset's `review_source`, service-role) and passed to `TextMineModule` as `outletCount`. (`layout.tsx` still computes `outletCount` for `DatasetHeader`'s generic `minOutlets` tab-gate machinery, now unused by any tab but retained as reusable infra.) Switching outlets shows a `LottieLoader` overlay (`OutletPicker` wraps the navigation in `useTransition`).
 

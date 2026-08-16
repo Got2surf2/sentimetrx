@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { SchemaFieldConfig } from '@/lib/analyzeTypes'
 import {
-  hierarchyLevels, hasHierarchy, buildHierarchy, pathOf, findNode,
+  hierarchyLevels, hasHierarchy, buildHierarchy, pathOf, findNode, pluralLevel, crumbsForPath,
   breadcrumb, rowsUnder, nodesAtDepth, UNASSIGNED,
 } from '@/lib/hierarchy'
 
@@ -159,5 +159,47 @@ describe('navigation helpers', () => {
     expect(nodesAtDepth(root, 1).map(n => n.key)).toEqual(['East', 'West'])
     expect(nodesAtDepth(root, 2).map(n => n.key).sort()).toEqual(['Downtown', 'Harbor', 'Uptown'])
     expect(nodesAtDepth(root, 0)).toEqual([root])
+  })
+})
+
+describe('pluralLevel', () => {
+  it('pluralises the level labels a client is likely to use', () => {
+    expect(pluralLevel('Region')).toBe('Regions')
+    expect(pluralLevel('City')).toBe('Cities')
+    expect(pluralLevel('District')).toBe('Districts')
+    expect(pluralLevel('Franchise')).toBe('Franchises')
+    expect(pluralLevel('Branch')).toBe('Branches')
+    expect(pluralLevel('Complex')).toBe('Complexes')
+  })
+
+  it('leaves a vowel+y alone rather than mangling it', () => {
+    expect(pluralLevel('Territory')).toBe('Territories')
+    expect(pluralLevel('Bay')).toBe('Bays')
+  })
+})
+
+describe('crumbsForPath', () => {
+  it('builds the same trail as breadcrumb without needing the tree', () => {
+    const tree = buildHierarchy([
+      { region: 'East', district: 'Downtown', store: 'S1' },
+      { region: 'West', district: 'Uptown', store: 'S2' },
+    ], LEVELS)
+    const path = ['East', 'Downtown']
+    expect(crumbsForPath(path, LEVELS)).toEqual(breadcrumb(tree, path, LEVELS))
+  })
+
+  it('always leads with the network root', () => {
+    expect(crumbsForPath([], LEVELS)).toEqual([{ label: 'Network', levelLabel: 'All', path: [] }])
+  })
+
+  it('carries the full prefix path on each crumb, so every link is drillable', () => {
+    expect(crumbsForPath(['East', 'Downtown'], LEVELS).map(c => c.path)).toEqual([
+      [], ['East'], ['East', 'Downtown'],
+    ])
+  })
+
+  it('names each rung after its own level, not the one below it', () => {
+    expect(crumbsForPath(['East', 'Downtown'], LEVELS).map(c => c.levelLabel))
+      .toEqual(['All', 'Region', 'District'])
   })
 })
