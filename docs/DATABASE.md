@@ -365,6 +365,32 @@ instance of a much larger class still open. **⚠️ APPLIED TO TEST ONLY so far
 the prod migration and the `docs/db/schema.sql` refresh happen together on the
 authorised prod apply.** Verified by `scripts/_verify_sql189.mts`.
 
+sql/190 (2026-08-16) is a **grants-only** migration: it locks every SECURITY
+DEFINER function in `public` to `service_role`. Postgres grants EXECUTE to
+PUBLIC on a new function by default and Supabase's `anon`/`authenticated` roles
+inherit it, so 48 of our 85 SECURITY DEFINER functions were reachable as public
+PostgREST RPCs that bypass RLS — see SECURITY.md §2 for the proof and the full
+list. **77 functions locked**, with five deliberate exclusions:
+
+- `is_platform_admin`, `current_org_id`, `current_client_id` — **RLS policy
+  predicates**. A function called inside a policy's `USING`/`WITH CHECK` runs as
+  the querying role, so revoking these would make every policy using them error
+  (42/31/1 policies respectively) and lock the app out entirely.
+- `get_study_response_stats_for_user`, `study_stats_for_ids` — called on the
+  cookie-auth client from `app/dashboard/page.tsx`, so they keep `authenticated`
+  (anon dropped). `study_stats_for_ids` also gained the caller-org filter its
+  sibling already had; it previously accepted **any** study id from **any**
+  authenticated tenant.
+
+The lockdown loop is catalog-driven rather than a hand-typed list of signatures,
+because a typo in a hand-written signature is the one failure mode that silently
+leaves a hole open. It is idempotent, so the end state is deterministic. The
+verification query is in the migration footer and in SECURITY.md §2.
+**⚠️ APPLIED TO TEST ONLY so far** — same as sql/189, the prod apply and the
+`docs/db/schema.sql` refresh happen together on the authorised prod migrate.
+Verified by `scripts/_verify_sql190.mts` plus `test:rls`/`test:egress`/
+`test:auth-flows`.
+
 ---
 
 *Update this file when a migration adds/removes/repurposes a table — the

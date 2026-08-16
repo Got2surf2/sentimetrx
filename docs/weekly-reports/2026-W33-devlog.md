@@ -456,3 +456,25 @@ Owner said fix both. Neither is a collections bug; both were found while buildin
 Verified with `scripts/_verify_sql189.mts` (14 checks, exits non-zero) — including that anon now gets a 401 on both, that an *empty* row with no `_tx` still stays out of the queue (the fix must not resurrect the un-clearable nudge), and that the multifield count is a UNION not a sum. `_verify_collection_dimensions.mts` re-run green, tsc clean, suite 1661 green.
 
 **⚠️ APPLIED TO TEST ONLY.** The prod apply (`npm run migrate sql/189_…`) and the `docs/db/schema.sql` refresh happen together, on the owner's word. Order is migrate-then-push, but no code change ships with this — the fix is entirely in the database.
+
+### sql/190 — the SECURITY DEFINER sweep (Aug 16)
+
+Owner said do the sweep. **77 functions locked to `service_role`.** This closes the class sql/189 exposed: Postgres grants EXECUTE to PUBLIC on every new function, Supabase's `anon`/`authenticated` inherit it, PostgREST publishes anything `anon` can execute, and SECURITY DEFINER means RLS never applies. 48 of our 85 were reachable that way — with a key that ships in every browser bundle.
+
+**The audit is the interesting part, because two things could have taken the whole app down.**
+
+⭐ **RLS policy predicates.** A function called inside a policy's `USING`/`WITH CHECK` runs as the *querying* role, not the definer — so revoking EXECUTE from `authenticated` on one would make every policy using it **error**, locking every logged-in user out of everything. A `pg_policy` scan found exactly three: `is_platform_admin` (42 policies), `current_org_id` (31), `current_client_id` (1). Excluded and left byte-for-byte alone. I also checked their bodies for indirect calls — all three are self-contained (`auth.uid()` + a `users`/`organizations` read), so excluding them exposes nothing.
+
+⭐ **Non-service-role callers.** Every server-side `.rpc(` call but two uses `createServiceRoleClient()`; the exceptions are `get_study_response_stats_for_user` and `study_stats_for_ids`, both on the cookie-auth client in `app/dashboard/page.tsx`. They keep `authenticated`. I also scanned for SECURITY INVOKER or trigger functions calling a target (that would run as the caller's role) — one hit, `set_brand_collection_id → find_or_create_brand_collection`, insulated because the caller is itself SECURITY DEFINER.
+
+⭐ **And keeping `authenticated` surfaced a third leak.** `study_stats_for_ids` is SECURITY DEFINER over `responses` and took arbitrary study ids with **no filter whatsoever** — so any logged-in user of any tenant could read another org's response counts, NPS split, sentiment breakdown and last-response time by collecting study UUIDs. The comment right above its caller even claims "the RPC is a SECURITY DEFINER wrapper that filters rows to the caller's org" — true of its sibling, false of it. It now has the same org gate. **The lesson generalises: keeping `authenticated` is only safe if the function scopes to the caller itself, because `authenticated` is every tenant, not this one.**
+
+The lockdown is a catalog-driven `DO` loop rather than 43 hand-typed signatures — a typo in a hand-written signature is the one failure mode that silently leaves a hole open — and it re-asserts grants on already-locked functions so the end state is deterministic regardless of history.
+
+**Verified** with `scripts/_verify_sql190.mts` against a **throwaway org + user + study** seeded and torn down in-run (never the owner's account — resetting that password locks them out of TEST). It proves all three properties at once: anon gets 401 on raw-row readers, the write, `archive_dataset`, `transfer_recording_org` and the email oracle; a real logged-in session still reads its own rows (so policies still evaluate) and still cannot see another org's; and `study_stats_for_ids` returns the owner's study but not a foreign one, including from a mixed id list. `test:rls` (4), `test:egress` (27), `test:auth-flows` (6), both taxonomy harnesses, tsc and the 1661-test suite all green after.
+
+⭐ **A harness bug nearly gave me a false pass:** the seed's `responses` insert was failing on a NOT NULL column and I wasn't checking the error, so "does the org filter still ALLOW the owner?" was passing vacuously on an empty array. Every seed insert is now error-checked and there's an explicit `seed: the study really has 2 responses` assertion before the checks that depend on it. **An assertion that only tests `Array.isArray` passes on `[]` — which is exactly what a broken filter returns.**
+
+⚠️ **Browser QC not done — the dev-server session had expired to `/login`** and minting a cookie is off-limits. The server-side check with a real `authenticated` JWT covers what the dashboard actually exercises (both kept RPCs + RLS evaluation), so this is confirmatory only; the owner should still load `/dashboard` once after the prod apply.
+
+**⚠️ APPLIED TO TEST ONLY.** Prod: `npm run migrate sql/190_secdef_lockdown.sql`, which also refreshes `docs/db/schema.sql`. Grants-only — no application code ships with it. Apply 189 before 190.

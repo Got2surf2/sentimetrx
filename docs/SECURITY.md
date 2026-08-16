@@ -145,7 +145,11 @@ shortlist for Claude; here is the longer policy:
   `getCallerOrgContext`); `datasets/export/html/share` was the correct
   reference. Covered by `tests/integration/export-org-gate.test.ts`.
 
-> **⚠️ OPEN (found 2026-08-16) — SECURITY DEFINER RPCs are executable by `anon`.**
+> **✅ CLOSED by sql/190 (2026-08-16) — but read this, because the default that
+> caused it is still the default.** Kept in full: it is the largest exposure found
+> to date, and the invariant at the end is now a review requirement.
+>
+> **The bug — SECURITY DEFINER RPCs were executable by `anon`.**
 > A `SECURITY DEFINER` function runs as its owner and therefore **bypasses RLS**.
 > PostgREST exposes every function the `anon` role can execute as a public
 > `POST /rest/v1/rpc/<name>` endpoint, and the anon key is not a secret — it ships
@@ -170,15 +174,62 @@ shortlist for Claude; here is the longer policy:
 > from the browser (verified: zero `.rpc(` calls in any `'use client'` module;
 > everything goes through `/api/*` with the service-role client).
 >
-> **Status:** sql/189 revoked the two functions it rewrote. **The other 52 are
-> still open.** The remaining sweep needs one extra check before it can revoke
-> `authenticated` as well as `anon` — which routes use the cookie-auth client
-> (`createClient()`) rather than the service-role client — so it gets its own
-> migration and its own verification rather than riding along here. Until then,
-> treat "is this function anon-executable?" as a required question in review of
-> **any** new `SECURITY DEFINER` function, and copy sql/180's
-> `REVOKE … FROM PUBLIC; REVOKE … FROM anon, authenticated; GRANT EXECUTE … TO
-> service_role;` block verbatim.
+> **Status: fixed.** sql/189 revoked the two functions it rewrote; **sql/190 swept
+> the rest — 77 functions locked to `service_role`.** The end state is the
+> invariant below, and it is verified, not assumed:
+>
+> - **Zero** SECURITY DEFINER functions in `public` are `anon`-executable, except
+>   the three RLS predicates.
+> - **Three deliberate exclusions**, because a function called inside a policy's
+>   `USING` / `WITH CHECK` runs as the *querying* role — revoking these would make
+>   every policy using them error out and lock the whole app out:
+>   `is_platform_admin` (42 policies), `current_org_id` (31), `current_client_id` (1).
+>   All three are self-contained (`auth.uid()` + a `users`/`organizations` read),
+>   so they expose nothing.
+> - **Two keep `authenticated`**, because `app/dashboard/page.tsx` calls them on
+>   the cookie-auth client: `get_study_response_stats_for_user` (already org-scoped)
+>   and `study_stats_for_ids`. ⚠️ The latter was **itself a cross-tenant leak** —
+>   SECURITY DEFINER over `responses`, accepting arbitrary study ids with **no
+>   filter at all**, so any logged-in user of any tenant could read another org's
+>   response counts, NPS split and sentiment breakdown by collecting study UUIDs.
+>   sql/190 gave it the same org gate its sibling uses.
+> - Trigger functions are untouched (PostgREST cannot expose them, and EXECUTE is
+>   not re-checked when a trigger fires).
+>
+> Verified by `scripts/_verify_sql190.mts` against a **throwaway org + user +
+> study** on TEST: anon gets 401 on raw-row readers, the write, the destructive
+> ops, the cross-org mutation and the email oracle; a real logged-in session still
+> reads its own rows (so policies still evaluate) and still cannot see another
+> org's; `study_stats_for_ids` returns the owner's study and **not** a foreign one,
+> including from a mixed id list; and service_role — how the app actually calls
+> these — is unaffected. `test:rls` (4), `test:egress` (27) and `test:auth-flows`
+> (6) all pass after the sweep.
+>
+> **The invariant, and why it needs enforcing forever:** Postgres will keep
+> granting EXECUTE to PUBLIC on every new function, so this re-opens by default on
+> the next migration that adds one. **Every new `SECURITY DEFINER` function must
+> end with the sql/180 block:**
+>
+> ```sql
+> REVOKE ALL ON FUNCTION f(args) FROM PUBLIC;
+> REVOKE ALL ON FUNCTION f(args) FROM anon, authenticated;
+> GRANT EXECUTE ON FUNCTION f(args) TO service_role;
+> ```
+>
+> Re-check at any time — this must return zero rows:
+>
+> ```sql
+> SELECT p.oid::regprocedure
+>   FROM pg_proc p JOIN pg_namespace ns ON ns.oid = p.pronamespace
+>  WHERE ns.nspname='public' AND p.prokind='f' AND p.prosecdef
+>    AND p.prorettype <> 'trigger'::regtype
+>    AND has_function_privilege('anon', p.oid, 'EXECUTE')
+>    AND p.proname NOT IN ('is_platform_admin','current_org_id','current_client_id');
+> ```
+>
+> And if a function must keep `authenticated`, it has to scope to the caller
+> itself (`auth.uid()` → org), because `authenticated` is every tenant, not this
+> one — that is exactly what `study_stats_for_ids` got wrong.
 
 - **New surface = new test.** Before merge:
   - `npm run test:rls` must pass for table-level RLS coverage
