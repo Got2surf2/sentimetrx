@@ -606,3 +606,19 @@ Also discharged two stale live-constraints from the same era, both verified dire
 ⭐ **I reintroduced the control-byte bug within an hour of banning it.** The path separator went in as a raw U+001E, and `file` immediately reported `lib/hierarchy.ts` as binary — the exact class I swept out of nine files this morning and wrote an ENGINEERING.md rule about. Caught only because I checked the new file rather than assuming. It is now written as the escape sequence.
 
 ⏭ **Next for hierarchy**: the Schema-tab UI to assign levels, and rolling the existing outlet snapshot up each rung (Network → Region → District → Outlet) with breadcrumb nav — `rowsUnder` exists precisely so the SAME snapshot is computed over a node's rows with no per-level metric invented.
+
+### Browser QC on the Stats findings table — and what only looking could catch (Aug 16)
+
+**Why.** The table shipped with `tsc`, 1,681 tests and a zero lint delta all green. On the Carrabba's GSS view it rendered correctly — and with the **Effect column pushed off the right edge**. That single column is the entire justification for the change: without it, a list headed "sorted by effect size" still gives the reader nothing to check the ordering against. Every automated gate passed a version that failed at its own purpose.
+
+The cause was an assumption I never checked: the module's container is `maxWidth: 860`, so I designed seven columns for 860px. The Stats tab actually has a fixed field-list sidebar on the left and the analysis-type panel on the right, leaving the centre column **~560px**. Seven columns never fit.
+
+**What changed**:
+- Type column is the icon alone with the full label as a tooltip — "CORRELATION"/"GROUP EFFECT" spent ~90px repeating what the glyph already says.
+- `n` folded into the Effect cell as a muted second line instead of its own column. It reads better there anyway, sitting directly under the value it qualifies.
+- Column widths set `1%`/`100%` so Relationship absorbs the slack; padding 12 → 8.
+- Group-effect sub-line compacted from `highest X (5.0) · lowest Y (1.5)` to `▲ X 5.0  ▼ Y 1.6` — the long form wrapped to four lines in a ~200px cell and made every group-effect row taller than the card it replaced.
+
+Verified in the browser: six columns all visible, effect descending (0.87 · 0.76 · 0.76 · 0.76 · 0.69 · 0.67 · 0.66), `n` under each value, both finding types labelled correctly (`r` and `η²`).
+
+⭐ **The lesson is narrow and worth keeping: a layout constant is not a layout.** `maxWidth: 860` told me what the container permits, not what the column actually gets after two fixed sidebars take their share. No test can see that, and I had already written "browser QC not done" on the commit — the gap was real, not hypothetical.

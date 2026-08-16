@@ -1313,13 +1313,19 @@ Panel list lives in `ANALYSIS_TYPES` in `components/analyze/StatsModule.tsx`.
 - Auto-scans the dataset for significant correlations, group effects,
   and distribution flags; surfaces them as ranked findings.
 - **Findings render as a dense TABLE, not stacked cards (2026-08-16).**
-  Columns: `# · type · relationship · strength chip · effect · significance · n`,
+  Columns: `# · type · relationship · strength chip · effect · significance`
+  (`n` sits as a muted second line inside the effect cell),
   with the effect size right-aligned and labelled (signed `r` / Cohen's `d` /
   `η²` / skewness). At 100+ findings the old card list wasted ~80% of its
   vertical space and buried the effect size mid-sentence, so a list headed
   "sorted by effect size" had no scannable column to check the order against.
   Group effects keep their highest/lowest detail as a muted second line inside
-  the relationship cell — visible, not behind an expander. `AutoFinding` carries
+  the relationship cell — visible, not behind an expander, compacted to
+  `▲ highest 5.0  ▼ lowest 1.6`. **The Stats centre column is ~560px, not the
+  module's 860px maxWidth** (fixed field-list sidebar left, analysis-type panel
+  right) — seven columns pushed the effect size off-screen, which defeated the
+  point, so the type column is icon-only with a tooltip and `n` moved inside the
+  effect cell. `AutoFinding` carries
   `effect`/`effectLabel`/`n`/`sub` populated from the SAME computed values the
   prose `detail` already quoted (which is retained, because the AI narrative and
   the deterministic summary both read it) — no number is recomputed and no sort,

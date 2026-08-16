@@ -1727,7 +1727,7 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
               detail = fLbl(cf.field) + ' drives ' + fLbl(nf.field) + ' — ' + hiK + ' avg\u202f' + (tr.ma >= tr.mb ? tr.ma : tr.mb).toFixed(1) + ' vs ' + loK + ' avg\u202f' + (tr.ma >= tr.mb ? tr.mb : tr.ma).toFixed(1) + " (Cohen's d\u202f=\u202f" + tr.d.toFixed(2) + ')'
               effVal = tr.d; effLbl = 'd'
               effN = groups[keys[0]].length + groups[keys[1]].length
-              effSub = hiK + ' ' + (tr.ma >= tr.mb ? tr.ma : tr.mb).toFixed(1) + ' vs ' + loK + ' ' + (tr.ma >= tr.mb ? tr.mb : tr.ma).toFixed(1)
+              effSub = '\u25B2 ' + hiK + ' ' + (tr.ma >= tr.mb ? tr.ma : tr.mb).toFixed(1) + '  \u25BC ' + loK + ' ' + (tr.ma >= tr.mb ? tr.mb : tr.ma).toFixed(1)
             } else {
               var ar = oneWayANOVA(groups); if (!ar) return
               p = ar.p; magnitude = ar.eta2
@@ -1735,7 +1735,7 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
               detail = fLbl(cf.field) + ' groups differ on ' + fLbl(nf.field) + ' — highest: ' + sorted[0] + ' (' + mean(groups[sorted[0]]).toFixed(1) + '), lowest: ' + sorted[sorted.length - 1] + ' (' + mean(groups[sorted[sorted.length - 1]]).toFixed(1) + '), \u03B7\u00B2\u202f=\u202f' + ar.eta2.toFixed(2)
               effVal = ar.eta2; effLbl = '\u03B7\u00B2'
               effN = keys.reduce(function(t, k) { return t + groups[k].length }, 0)
-              effSub = 'highest ' + sorted[0] + ' (' + mean(groups[sorted[0]]).toFixed(1) + ') \u00B7 lowest ' + sorted[sorted.length - 1] + ' (' + mean(groups[sorted[sorted.length - 1]]).toFixed(1) + ')'
+              effSub = '\u25B2 ' + sorted[0] + ' ' + mean(groups[sorted[0]]).toFixed(1) + '  \u25BC ' + sorted[sorted.length - 1] + ' ' + mean(groups[sorted[sorted.length - 1]]).toFixed(1)
             }
             if (p >= 0.05) return
             var eff = magnitude > 0.14 ? 'large effect' : magnitude > 0.06 ? 'medium effect' : 'small effect'
@@ -1947,35 +1947,35 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead><tr>
                 {[
-                  { h: '#', a: 'left' }, { h: 'Type', a: 'left' }, { h: 'Relationship', a: 'left' },
-                  { h: 'Strength', a: 'left' }, { h: 'Effect', a: 'right' }, { h: 'Sig.', a: 'left' }, { h: 'n', a: 'right' },
-                ].map(function(c) {
-                  return <th key={c.h} style={{ padding: '7px 12px', textAlign: c.a as 'left' | 'right', fontSize: 10, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: T.textFaint, background: T.bg, borderBottom: '1px solid ' + T.border, whiteSpace: 'nowrap' }}>{c.h}</th>
+                  { h: '#', a: 'left', w: '1%' }, { h: '', a: 'left', w: '1%' }, { h: 'Relationship', a: 'left', w: '100%' },
+                  { h: 'Strength', a: 'left', w: '1%' }, { h: 'Effect', a: 'right', w: '1%' }, { h: 'Sig.', a: 'left', w: '1%' },
+                ].map(function(c, ci) {
+                  return <th key={ci} style={{ width: c.w, padding: '7px 8px', textAlign: c.a as 'left' | 'right', fontSize: 10, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: T.textFaint, background: T.bg, borderBottom: '1px solid ' + T.border, whiteSpace: 'nowrap' }}>{c.h}</th>
                 })}
               </tr></thead>
               <tbody>{findings.map(function(f, i) {
                 return (
                   <tr key={i}>
-                    <td style={{ padding: '8px 12px', color: T.textFaint, fontSize: 11, fontWeight: 700, borderBottom: '1px solid ' + T.border, verticalAlign: 'top' }}>{i + 1}</td>
-                    <td style={{ padding: '8px 12px', color: T.textFaint, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', borderBottom: '1px solid ' + T.border, whiteSpace: 'nowrap', verticalAlign: 'top' }}>
-                      {typeIcon[f.type]} {typeLabel[f.type]}
+                    <td style={{ padding: '8px 8px', color: T.textFaint, fontSize: 11, fontWeight: 700, borderBottom: '1px solid ' + T.border, verticalAlign: 'top' }}>{i + 1}</td>
+                    <td title={typeLabel[f.type]} style={{ padding: '8px 4px', color: T.textFaint, fontSize: 13, borderBottom: '1px solid ' + T.border, whiteSpace: 'nowrap', verticalAlign: 'top', textAlign: 'center' }}>
+                      {typeIcon[f.type]}
                     </td>
                     {/* Group-effect extra detail stays visible as a muted second
                         line rather than an expander — everything on screen. */}
-                    <td style={{ padding: '8px 12px', borderBottom: '1px solid ' + T.border, verticalAlign: 'top', minWidth: 220 }}>
+                    <td style={{ padding: '8px 8px', borderBottom: '1px solid ' + T.border, verticalAlign: 'top' }}>
                       <div style={{ fontSize: 12.5, fontWeight: 700, color: T.text }}>{f.title}</div>
                       {f.sub && <div style={{ fontSize: 11, color: T.textFaint, marginTop: 2, lineHeight: 1.4 }}>{f.sub}</div>}
                     </td>
-                    <td style={{ padding: '8px 12px', borderBottom: '1px solid ' + T.border, verticalAlign: 'top' }}>
+                    <td style={{ padding: '8px 8px', borderBottom: '1px solid ' + T.border, verticalAlign: 'top' }}>
                       <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: f.badgeBg, color: f.badgeColor, border: '1px solid ' + f.badgeColor + '44', whiteSpace: 'nowrap' }}>{f.badge}</span>
                     </td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: T.text, borderBottom: '1px solid ' + T.border, whiteSpace: 'nowrap', verticalAlign: 'top' }}>
+                    <td style={{ padding: '8px 8px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: T.text, borderBottom: '1px solid ' + T.border, whiteSpace: 'nowrap', verticalAlign: 'top' }}>
                       {f.effect == null ? '—' : (
                         <>{f.effect.toFixed(2)}<span style={{ color: T.textFaint, fontWeight: 400, fontSize: 10, marginLeft: 4 }}>{f.effectLabel}</span></>
                       )}
+                      {f.n != null && <div style={{ color: T.textFaint, fontWeight: 400, fontSize: 10, marginTop: 1 }}>n={f.n.toLocaleString()}</div>}
                     </td>
-                    <td style={{ padding: '8px 10px', borderBottom: '1px solid ' + T.border, verticalAlign: 'top' }}>{f.p < 1 ? <SigBadge p={f.p} /> : <span style={{ color: T.textFaint, fontSize: 11 }}>—</span>}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 11, color: T.textMid, borderBottom: '1px solid ' + T.border, verticalAlign: 'top' }}>{f.n == null ? '—' : f.n.toLocaleString()}</td>
+                    <td style={{ padding: '8px 8px', borderBottom: '1px solid ' + T.border, verticalAlign: 'top' }}>{f.p < 1 ? <SigBadge p={f.p} /> : <span style={{ color: T.textFaint, fontSize: 11 }}>—</span>}</td>
                   </tr>
                 )
               })}</tbody>
