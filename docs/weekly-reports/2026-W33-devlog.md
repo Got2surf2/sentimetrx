@@ -550,3 +550,13 @@ After both: 10,381 buffers and 327ms, versus hash's 8,386 and 335ms.
 **Fixture**: seeded 200k → 500k → 1M on TEST via `scripts/_seed_scale_test.sh`, then dropped again (it costs ~4.4 KB/row; the DB hit 3,893 MB at 1M). Note the seeder dies with a statement timeout on its 100K-row batches somewhere past 600k — re-running it resumes, which is how it got to 1M. Measurement harness kept at `scripts/_perf_sampling_stages.sh`.
 
 ⏭ **Still not applied to prod.** The performance case is now made; what remains is the owner's call on when every sampled figure moves, since that is a one-way step for any deck already exported.
+
+### The scale-fixture drop loop never terminates (Aug 16)
+
+Cleaning up after the sql/191 measurement, `_seed_scale_test.sh drop` correctly deleted all 1M rows and then **spun forever**, never reaching its own final step (deleting the `datasets`/`dataset_state` rows and running `VACUUM`).
+
+The loop counts deleted rows with `psql -t -A ... RETURNING 1 | wc -l`. **psql emits a trailing blank line, so `wc -l` reports `1` when ZERO rows were deleted** — and the exit test is `[ "$n" = "0" ]`, which therefore never fires. Verified directly: with the table already empty, that pipeline returns `1`.
+
+This is the second time this exact function has failed in this exact way. The script already carries a comment explaining that the 2026-08-15 run "deleted all 1M rows but left the datasets / dataset_state rows behind while still exiting 0" — that was diagnosed as a `set -e` interaction and fixed accordingly, but the underlying miscount was never the `set -e`; it was always `wc -l`. Counter is now `grep -c '^1$'`, which returns a true 0.
+
+Cleanup finished by hand: fixture rows 0, `datasets`/`dataset_state` rows gone, `VACUUM ANALYZE` run. TEST is back to 454,673 rows and 2,272 MB, against 2,257 MB before the experiment and 3,893 MB at the 1M peak.

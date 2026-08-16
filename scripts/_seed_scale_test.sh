@@ -22,7 +22,11 @@ if [ "${1:-}" = "drop" ]; then
   # Batched delete: a single DELETE of ~1M rows blows the statement timeout
   # (the same 57014 the Trump re-ingest hit with --recreate).
   while true; do
-    n=$(psql "$DB" -t -A -c "WITH d AS (SELECT id FROM dataset_rows_flat WHERE dataset_id='$DST' LIMIT 50000) DELETE FROM dataset_rows_flat f USING d WHERE f.id=d.id RETURNING 1" | wc -l | tr -d ' ')
+    # `wc -l` counts psql's trailing blank line, so it reports 1 for ZERO rows
+    # deleted and the loop below never terminates — it spun forever on 2026-08-16
+    # after correctly deleting all 1M rows, leaving the datasets/dataset_state
+    # rows and the VACUUM unreached. Count only real result lines.
+    n=$(psql "$DB" -t -A -c "WITH d AS (SELECT id FROM dataset_rows_flat WHERE dataset_id='$DST' LIMIT 50000) DELETE FROM dataset_rows_flat f USING d WHERE f.id=d.id RETURNING 1" | grep -c '^1$' || true)
     echo "  deleted $n"
     # NOT `[ "$n" = "0" ] && break` — under `set -e` that list returns 1 on every
     # iteration where rows remain, which silently kills the script mid-drop. That
