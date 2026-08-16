@@ -525,3 +525,28 @@ After both: 10,381 buffers and 327ms, versus hash's 8,386 and 335ms.
 ⚠️ **And that is the honest headline: at 128,619 rows on a warm cache, this is a wash, not 55×.** I cannot validate the claim on TEST, because after a few runs everything is buffer-resident and hash order stops being penalised — which is the very effect sql/188 documented (the same 5,000 rows took 28ms on one dataset and 1,895ms on another purely from cache residency). The directional evidence is real but thin: on the genuinely cold first run, the block walk did **0 disk reads** against hash's **1,169**. The claim is specifically about cold cache at 1M rows, and the 1M fixture was deliberately dropped on 2026-08-15.
 
 **So the conversion is complete and correct, and deliberately NOT applied to prod.** Correctness is verified — paging sound, deterministic, page-size independent, blocks now perfectly even at 1000 rows each, and scaled counts within 2.2% of exact ground truth (FL 32,120 exact vs 31,977 estimated). What is missing is the performance evidence that justifies moving every number in the product, and that needs `bash scripts/_seed_scale_test.sh 1000000` and a cold-cache comparison at 1M. Shipping before that would be trading a known cost — every sampled figure moves once, every deck number with it — for an unproven benefit.
+
+### sql/191 measured at 200k / 500k / 600k / 1M — the claim holds, and my "wash" was wrong (Aug 16)
+
+**Why.** I had built the whole conversion and then reported that at 128K rows it was a wash, so it shouldn't ship. Owner asked for the staged measurement. Staged was the right call — but the first thing it produced was the discovery that **my earlier measurement method was invalid**, which means the "wash" conclusion was too.
+
+⭐ **Retraction: the single-page `EXPLAIN (ANALYZE)` comparison I based "it's a wash" on does not measure what I thought.** Running the identical call two ways, back to back at 1M: inlined `SELECT jsonb_array_length(sample_dataset_rows(...) -> 'rows')` reported **3,749 ms**, the same thing behind a `MATERIALIZED` CTE reported **302 ms** — and in an earlier run the ordering was reversed. Those readings are dominated by cache order and by whether the planner inlines the `LANGUAGE sql` body, not by the sampler. Every "one 5,000-row page" number I quoted earlier — including "10,381 buffers / 327 ms vs hash 8,386 / 335 ms" — is unreliable and should be ignored.
+
+**The sound measurement is a sequential walk**: evict once, then page the full 50K in one session, so both samplers face identical conditions and each page does genuinely new work.
+
+| | hash | blocks | |
+|---|---|---|---|
+| full 50K walk @ 600k | 45,655 ms | 12,226 ms | **3.7×** |
+| full 50K walk @ 1M | 44,057 ms | 11,154 ms | **3.9×** |
+| per page @ 1M (run 1) | 4,700 ms | 1,130 ms | 4.2× |
+| per page @ 1M (run 2) | 4,031 ms | 1,071 ms | 3.8× |
+
+**So the migration is justified: ~4× on the real workload at 1M**, reproducible across two dataset sizes and two runs. Not the 55× the sql/188 header quotes for an isolated 5,000-row read, but that figure was always about one read in isolation; ~4× end-to-end on the thing the product actually does is the number that matters.
+
+⭐ **Two hypotheses tested and rejected along the way, which is how the mechanism got pinned down.** First: that hash degrades with dataset size (sql/188's framing — "cost tracks dataset size"). It does not — hash is flat at 600k and 1M, and so is blocks. Second: that hash's `(hash, id) > (last_hash, last_id)` keyset makes the walk quadratic in page count, each page rescanning what earlier pages returned. Also no — **per-page timings are flat across all 10 pages for both samplers** (hash 4,788/4,681/4,646/… ms). What is left is a constant per-page factor, which is exactly sql/188's original claim: 5,000 rows scattered across the heap cost ~4× what 5,000 contiguous rows cost. The mechanism was right; I simply could not see it through a broken measurement.
+
+**What changed in the code as a result of measuring**: nothing further — the two fixes made earlier (bounding blocks per page, and replacing `dataset_sample_blocks`'s whole-dataset `count(*)` with a probe bounded at cap+1) are both still load-bearing, and the walk numbers above are with them in place.
+
+**Fixture**: seeded 200k → 500k → 1M on TEST via `scripts/_seed_scale_test.sh`, then dropped again (it costs ~4.4 KB/row; the DB hit 3,893 MB at 1M). Note the seeder dies with a statement timeout on its 100K-row batches somewhere past 600k — re-running it resumes, which is how it got to 1M. Measurement harness kept at `scripts/_perf_sampling_stages.sh`.
+
+⏭ **Still not applied to prod.** The performance case is now made; what remains is the owner's call on when every sampled figure moves, since that is a one-way step for any deck already exported.
