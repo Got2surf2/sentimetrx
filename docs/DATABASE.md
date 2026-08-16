@@ -328,6 +328,43 @@ org-scoped SELECT policy (via `studies` join). The MV is dropped;
 `responses` at migration time. Verified counter==GROUP-BY through
 INSERT/UPDATE/DELETE (`scripts/_verify_study_stats_counter.mts`).
 
+sql/189 (2026-08-16) fixes two taxonomy functions that had been quietly wrong
+since sql/117 — which, it turns out, **was never applied**: prod still carried
+the sql/114 scalar `dataset_rows_with_text_count(uuid, text)` and the 3-arg
+`dataset_rows_pending_field_taxonomy(uuid, text, int)` that 117 dropped, and the
+multifield PENDING signature exists only because sql/151 re-created it.
+Consequences and fixes:
+
+1. **`dataset_rows_with_text_count(uuid, text[])` did not exist.** Every caller
+   passes `p_fields`, so the RPC 404'd (PGRST202) and each caller took its
+   "leave it undefined" fallback — `analytics.taxonomy.fields[…].rowsWithText`
+   was undefined on **every dataset**, and the Dimensions header silently
+   showed `classifiedRows` instead of the rows-with-text denominator it names.
+   sql/189 finally creates it. No re-classify needed: the Dimensions GET
+   recomputes the denominator live when the stored entry lacks it, so it
+   self-heals on next read.
+2. **`dataset_rows_pending_field_taxonomy` never saw rows with no `_tx` key.**
+   `NOT ((f.data -> '_tx' -> 'f') ? p_field_key)` is NULL — not true — when
+   `_tx` is absent, because jsonb `?` is STRICT; `WHERE NULL` drops the row. A
+   never-classified row (and every freshly-synced review) has no `_tx`, so the
+   auto-classify safety net was a no-op on exactly the rows it exists for:
+   synced reviews stayed invisible to Dimensions until a manual full
+   re-classify. Now `NOT COALESCE(… ? p_field_key, false)`. **One-time effect on
+   first run:** emoji-only comments surface as pending, because the JS
+   classifier strips surrogate pairs (so "👍🤑" reads as empty and never got a
+   block) while the SQL text test counts them as text. `classifyPendingRows`
+   deliberately writes a tagless block rather than skipping them, so they
+   converge on the first drain and never return.
+
+Both dead pre-multifield overloads are dropped (callerless, and already broken —
+they LEFT JOIN the sidecar tables sql/152 removed). Both functions were also
+`GRANT`ed to **anon** despite being SECURITY DEFINER over raw tenant rows;
+sql/189 revokes anon/authenticated and grants service_role only, matching the
+posture sql/180 documents for their sibling. See SECURITY.md §2 — this is one
+instance of a much larger class still open. **⚠️ APPLIED TO TEST ONLY so far —
+the prod migration and the `docs/db/schema.sql` refresh happen together on the
+authorised prod apply.** Verified by `scripts/_verify_sql189.mts`.
+
 ---
 
 *Update this file when a migration adds/removes/repurposes a table — the

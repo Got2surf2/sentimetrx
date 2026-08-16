@@ -145,6 +145,41 @@ shortlist for Claude; here is the longer policy:
   `getCallerOrgContext`); `datasets/export/html/share` was the correct
   reference. Covered by `tests/integration/export-org-gate.test.ts`.
 
+> **⚠️ OPEN (found 2026-08-16) — SECURITY DEFINER RPCs are executable by `anon`.**
+> A `SECURITY DEFINER` function runs as its owner and therefore **bypasses RLS**.
+> PostgREST exposes every function the `anon` role can execute as a public
+> `POST /rest/v1/rpc/<name>` endpoint, and the anon key is not a secret — it ships
+> in every browser bundle. **Verified against the TEST project with nothing but
+> the anon key and a dataset id belonging to another org:**
+> `dataset_rows_with_text_count` returned a live row count, and
+> `dataset_rows_pending_field_taxonomy` returned a **full raw row** — review text,
+> author name, location, ratings. No login, no session, no org check anywhere in
+> the path.
+>
+> **Scale of the class:** of the 86 SECURITY DEFINER functions in `public`,
+> **54 are anon-executable, and 30 of those read `dataset_rows_flat`.** The list
+> includes a write (`apply_taxonomy_verdicts`), destructive ops
+> (`archive_dataset`, `restore_dataset`), a cross-org mutation
+> (`transfer_recording_org`), and raw-row readers (`get_rows_by_filters`,
+> `search_dataset_rows`, `taxonomy_drill_rows`, `taxonomy_rows_for_field`).
+>
+> **Root cause:** Postgres grants `EXECUTE` to `PUBLIC` on a new function by
+> default, and Supabase's `anon`/`authenticated` roles inherit it. Only the
+> migrations that explicitly `REVOKE` (sql/180 is the model) are safe. This is a
+> *grant* problem, not a code problem — the application itself never calls an RPC
+> from the browser (verified: zero `.rpc(` calls in any `'use client'` module;
+> everything goes through `/api/*` with the service-role client).
+>
+> **Status:** sql/189 revoked the two functions it rewrote. **The other 52 are
+> still open.** The remaining sweep needs one extra check before it can revoke
+> `authenticated` as well as `anon` — which routes use the cookie-auth client
+> (`createClient()`) rather than the service-role client — so it gets its own
+> migration and its own verification rather than riding along here. Until then,
+> treat "is this function anon-executable?" as a required question in review of
+> **any** new `SECURITY DEFINER` function, and copy sql/180's
+> `REVOKE … FROM PUBLIC; REVOKE … FROM anon, authenticated; GRANT EXECUTE … TO
+> service_role;` block verbatim.
+
 - **New surface = new test.** Before merge:
   - `npm run test:rls` must pass for table-level RLS coverage
   - `npm run test:egress` must pass for the cross-org-egress suite

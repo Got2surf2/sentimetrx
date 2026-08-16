@@ -227,7 +227,12 @@ gating).
     `dataset_rows_with_text_count` RPC on every call, an O(N) full scan that
     defeated the fast path (and silently returned 0 past the 8s statement
     timeout on large datasets); entries missing it (pre-store) fall back to the
-    live RPC.
+    live RPC. ⚠️ **`rowsWithText` was in fact undefined on EVERY dataset until
+    sql/189 (2026-08-16)**: the multifield `dataset_rows_with_text_count(uuid,
+    text[])` the code calls was never actually created (sql/117 was never
+    applied), so both the stored write and the live fallback 404'd into their
+    "leave it undefined" branch and the header quietly rendered `classifiedRows`
+    instead. It self-heals on the next GET after the migration — no re-classify.
   - **RPCs** (same names as sql/115/116; sql/164 added an optional
     `p_field_key` to the five chart aggregates — `taxonomy_field_or_primary`
     resolves the requested question when it has a stored rollup, else the
@@ -318,7 +323,17 @@ gating).
   (the stored rollup exists; never auto-starts an un-opted dataset) — classifies the
   still-pending rows via `classifyPendingRows` **for EVERY stored field combo**
   (each rollup entry carries its real `selFields`, so non-default field selections
-  stay current too — previously only `review_text` did). Pending rows come from the
+  stay current too — previously only `review_text` did). ⚠️ **This safety net did
+  nothing at all until sql/189 (2026-08-16).** The pending RPC's
+  `NOT ((data -> '_tx' -> 'f') ? key)` is NULL — not true — when `_tx` is absent
+  (jsonb `?` is STRICT), so `WHERE` dropped every row that had never been
+  classified. Freshly-synced reviews have no `_tx` at all, so they were exactly
+  the rows it could not see: they stayed invisible to Dimensions until someone
+  ran a manual full re-classify (which pages rows directly and never consults
+  this RPC — which is why the feature looked like it worked). The same NULL hid
+  the automatic post-mining path (`autoEnableDimensions` / `autoTagEmotion`),
+  which reported "done" having classified nothing. Fixed with
+  `NOT COALESCE(… ? key, false)`. Pending rows come from the
   `dataset_rows_pending_field_taxonomy` RPC: flat rows with no `_tx` block for the
   field key **and non-empty text** (text-less star-only reviews are excluded — the
   classifier writes them a tagless block so the LIMIT window converges; "reviews
@@ -425,7 +440,13 @@ gating).
   `rowsWithText` count and the pending RPC use the **same "has real text" test as the
   classifier** — `regexp_replace(field, '[[:space:][:cntrl:]]+', '')` non-empty — so
   whitespace/control-only rows (which the classifier writes no row for) don't show as
-  perpetually-pending phantoms in the nudge. As a belt-and-suspenders, `classifyPendingRows`
+  perpetually-pending phantoms in the nudge. **The two tests still disagree on one
+  case, and the tagless-block rule below is what saves it:** the JS classifier
+  strips surrogate pairs, so an **emoji-only** comment ("👍🤑") reads as empty and
+  the full classifier writes no block, while the SQL test (which strips only
+  `[[:space:][:cntrl:]]`) counts it as text. Since sql/189 made a missing `_tx`
+  visible, those rows surface as pending once, get a tagless block, and converge.
+  As a belt-and-suspenders, `classifyPendingRows`
   now **writes a (tagless) row for every row the pending RPC hands it** — even ones that come
   back empty after the classifier's JS strip (unicode-whitespace edge cases the SQL test
   doesn't catch) — so clicking "Classify N new rows" always **converges the nudge to 0**
