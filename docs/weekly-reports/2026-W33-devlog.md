@@ -371,3 +371,15 @@ Fixed by dropping the `singleDataset` gate: anything above the cap samples now. 
 Suite 1660 green, tsc clean, no lint delta.
 
 **Issue 3 of 3 not yet investigated:** `org-snapshot hop 0: 1/9 orgs failed` (`GET /api/cron/org-snapshot`, 1 event, 7d ago) — one org out of nine, a week old, lowest frequency of the three.
+
+## Sentry issue 3 of 3: the backup alert couldn't tell you what failed (Aug 15)
+
+`org-snapshot hop 0: 1/9 orgs failed` (`GET /api/cron/org-snapshot`, 1 event, 7 days ago). One org's nightly backup didn't complete.
+
+**The finding isn't the failure, it's that the failure was undiagnosable.** Per-org causes are captured into `results[].error` and printed with `console.error`, but the Sentry event carried only the aggregate — `{ hop, orgs_failed }`. So the alert says one of nine orgs has no backup and gives you no way to learn which one or why. A week on, Vercel's runtime logs have rotated, and **there is no table recording snapshot runs** — results live only in the HTTP response and the console. So this specific failure is now unrecoverable: we know a backup was missed on ~2026-08-08 and cannot say whose.
+
+For a mechanism whose whole purpose is disaster recovery — the one with `orgRestore.test.ts` and a DR drill behind it — that is the wrong shape of blind spot.
+
+Fixed forward: the event now carries a `failures` array of `{ org_id, error }` (truncated to 200 chars). Deliberately **org_id, not org_name** — the uuid is enough to identify the org, and a customer's name doesn't need to go to a third-party processor (SECURITY.md §7). The next occurrence will name itself.
+
+⏭ **Not built, needs a decision:** there is no durable record of backup runs at all. "Did every org back up last night?" is currently answerable only via Sentry (which fires only on failure) or console logs (which rotate). A small `org_snapshot_runs` table — org, day, key, bytes, status — would make the backup story auditable rather than inferential, which matters for the DD posture the repo is otherwise careful about. Flagging rather than building, since it's a new table and a schema decision.

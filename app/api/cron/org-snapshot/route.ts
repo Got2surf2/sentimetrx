@@ -251,7 +251,21 @@ export async function GET(req: NextRequest) {
   // Vercel cron log for hop 0 — continuation hops' responses are read by no
   // one — so failures also go to Sentry explicitly, every hop.
   if (failedCount > 0) {
-    await logError('cron.orgSnapshot.run', new Error('org-snapshot hop ' + hop + ': ' + failedCount + '/' + results.length + ' orgs failed'), { hop, orgs_failed: failedCount })
+    // Carry WHICH orgs failed and WHY into the event, not just the count. The
+    // per-org cause was only ever written to console.error, so a Sentry alert
+    // reading "1/9 orgs failed" was undiagnosable once Vercel's logs rotated —
+    // which is how the 2026-08-08 event sat for a week with nobody able to say
+    // which org had no backup. org_id (an opaque uuid) and a truncated message,
+    // deliberately NOT org_name: this is a customer identity and Sentry is a
+    // third-party processor (SECURITY.md §7).
+    const failures = results
+      .filter(r => r.error)
+      .map(r => ({ org_id: r.org_id, error: String(r.error).slice(0, 200) }))
+    await logError(
+      'cron.orgSnapshot.run',
+      new Error('org-snapshot hop ' + hop + ': ' + failedCount + '/' + results.length + ' orgs failed'),
+      { hop, orgs_failed: failedCount, failures },
+    )
   }
 
   // Fail the run (non-2xx) if any org's backup failed or was incomplete, so the
