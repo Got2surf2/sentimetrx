@@ -35,7 +35,7 @@ const outPath = getFlag('--out') ?? 'lib/taxonomyKeywordsLearned.ts'
 
 const MINORITY_KEEP_SHARE = 0.30
 const MINORITY_MIN_COUNT = 2
-const SEP = ''   // unit separator — cannot appear in phrase text
+const SEP = '\u001F'   // unit separator — cannot appear in phrase text
 
 function normalizePhrase(p: string): string {
   return p

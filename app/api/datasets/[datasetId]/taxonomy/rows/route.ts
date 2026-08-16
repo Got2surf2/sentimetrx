@@ -56,7 +56,7 @@ function collectTags(assertions: unknown): { axis: string; sub: string; evidence
   const map = new Map<string, { axis: string; sub: string; evidence: Set<string> }>()
   for (const a of assertions as { axis?: string; sub?: string; evidence?: string }[]) {
     if (!a?.axis || !a?.sub) continue
-    const k = a.axis + '' + a.sub
+    const k = a.axis + '\u0001' + a.sub
     if (!map.has(k)) map.set(k, { axis: a.axis, sub: a.sub, evidence: new Set() })
     if (typeof a.evidence === 'string' && a.evidence.trim()) map.get(k)!.evidence.add(a.evidence.trim())
   }

@@ -926,3 +926,40 @@ are in `SECURITY.md`.
     physically exists with stale residue, so a read compiles and
     silently returns wrong data (this left `theme-impact` broken for
     weeks). `.delete()` calls are allowed (teardown purges residue).
+
+### Never write a raw control byte into source (2026-08-16)
+
+A raw C0 control character used as a string delimiter — written as the byte
+itself rather than as an escape — makes `file(1)` classify the source as
+**binary**, and **`grep` then silently prints nothing for that file**. An empty
+grep result is indistinguishable from "the code isn't there", so every
+grep-based survey touching the file is quietly wrong, including automated sweeps
+and audits.
+
+This has now bitten twice. First `lib/agentStudy.ts` (2026-07-30), where it
+produced a confidently wrong claim that a shipped feature was unwired. Then
+again on 2026-08-16: a survey for the stratified-sampling conversion reported
+that `lib/sampledAggregate.ts` contained **zero** hash-cursor lines. It contains
+five, and it holds the shared `pageSample()` loop that every sampled aggregate
+and taxonomy twin routes through — the single most important file in that
+migration.
+
+**The rule: write the escape, never the byte.** A `\u0000` escape and a literal
+NUL are the *same string at runtime*, and only the escape keeps the file
+greppable. Same for `\u0001`, `\u001F`, and any other C0/C1 control character.
+
+Sweep for regressions — anything listed that is not a `.json` file is a bug:
+
+```bash
+git ls-files '*.ts' '*.tsx' '*.js' '*.mjs' '*.mts' '*.sql' '*.md' \
+  | while read -r f; do
+      case "$(file -b "$f")" in *text*) ;; *) echo "BINARY-ish: $f";; esac
+    done
+```
+
+The 2026-08-16 sweep found and fixed nine files: `lib/sampledAggregate.ts`,
+`lib/sampledTaxonomy.ts`, `lib/sampledThemeExtras.ts`, `lib/commentaryReport.ts`,
+`lib/researchProbes.ts`, `app/api/datasets/[datasetId]/taxonomy/rows/route.ts`,
+`scripts/backfill-taxonomy-embed.ts`, `scripts/pilot-rc-keyword-build.ts`, and —
+fittingly — `docs/weekly-reports/2026-W31-devlog.md`, the entry that documented
+the *first* occurrence.
