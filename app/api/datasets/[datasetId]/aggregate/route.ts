@@ -21,6 +21,7 @@ import {
   sampledTaxonomyDateSeries,
   sampledTaxonomyAxisCrosstab,
 } from '@/lib/sampledTaxonomy'
+import { resolveScopeMembers } from '@/lib/collectionScope'
 
 type Params = { params: Promise<{ datasetId: string }> }
 
@@ -68,7 +69,7 @@ export async function POST(req: Request, props: Params) {
   var auth = await authCheck(supabase)
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  var { data: dsCheck } = await supabase.from('datasets').select('org_id, row_count').eq('id', params.datasetId).single()
+  var { data: dsCheck } = await supabase.from('datasets').select('org_id, row_count, source').eq('id', params.datasetId).single()
   if (!dsCheck) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
   if (!auth.isAdmin && dsCheck.org_id !== auth.orgId) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
 
@@ -80,10 +81,13 @@ export async function POST(req: Request, props: Params) {
 
   // Stored row_count (O(1)) gates the sampled path. Above the 50K cap every
   // exact scalar/taxonomy RPC is an O(N) jsonb scan that 57014s at ~1M rows;
-  // below it, exact is fast and stays exact. (Collections don't reach this
-  // route — the client falls back to raw-row client compute for them.)
+  // below it, exact is fast and stays exact. (Collections don't reach the
+  // scalar ops — the client falls back to raw-row client compute for them —
+  // but Dimensions › Compare DOES send the two tax crosstabs, which fan out
+  // over the members below.)
   var rowCount = Number((dsCheck as { row_count?: number }).row_count) || 0
   var useSampled = rowCount > AGG_SAMPLE_CAP
+  var isCollection = (dsCheck as { source?: string }).source === 'collection'
 
   // Optional filtered row-id set (the filtered view). null = whole dataset;
   // else restrict the aggregate to those flat row ids. Sanitized to finite
@@ -240,6 +244,34 @@ export async function POST(req: Request, props: Params) {
     return service.rpc(fn, args)
   }
 
+  // A collection holds no rows of its own — run the RPC over its members and
+  // concatenate. Safe only for the pure-COUNT crosstab ops (the grids below sum
+  // the per-member cnt); tax_group_stats' median/stddev can't be merged from
+  // per-member aggregates, and nothing asks it for a collection. Always exact:
+  // the sampled twins take a single dataset id, so a collection can't use them.
+  //
+  // `_collection_label` ("Source Dataset", the headline breakdown for a
+  // collection) is synthetic — the rows route stamps it on at read time and it
+  // is never stored on a member's rows, so grouping by it in SQL yields one
+  // (blank) bucket. Each fan-out call already IS one member, so the label is
+  // stamped onto its rows here instead.
+  async function taxRowsOverScope<T extends { field_val?: string | null }>(fn: string, args: Record<string, unknown>) {
+    var members = isCollection
+      ? await resolveScopeMembers(service, params.datasetId)
+      : [{ datasetId: params.datasetId, label: null }]
+    var labelByMember = isCollection && args.p_field === '_collection_label'
+    var out: T[] = []
+    for (var m of members) {
+      var r = await taxRpc(fn, { ...args, p_dataset_id: m.datasetId })
+      if (r.error) return { rows: null, error: r.error }
+      var rows = (r.data || []) as T[]
+      var lbl = m.label
+      if (labelByMember) rows = rows.map(row => ({ ...row, field_val: lbl }))
+      out = out.concat(rows)
+    }
+    return { rows: out, error: null }
+  }
+
   if (op === 'tax_counts') {
     var { axis } = body
     if (!axis || !TAX_AXES.includes(axis)) return NextResponse.json({ error: 'invalid axis' }, { status: 400 })
@@ -307,13 +339,16 @@ export async function POST(req: Request, props: Params) {
     if (!field) return NextResponse.json({ error: 'field required' }, { status: 400 })
     var tcxRows: TaxCrosstabRow[] | null = null
     var tcxSampled = false
-    if (useSampled) {
+    if (useSampled && !isCollection) {
       try { var tcxs = await sampledTaxonomyCrosstab(service, params.datasetId, axis, field, taxFieldKey, limit || 50, rowCount, taxRowIds); tcxRows = tcxs.rows as TaxCrosstabRow[]; tcxSampled = true } catch { /* fall through */ }
     }
     if (!tcxRows) {
-      var { data, error } = await taxRpc('taxonomy_crosstab', { p_dataset_id: params.datasetId, p_axis: axis, p_field: field, p_limit: limit || 50, p_row_ids: taxRowIds })
-      if (error) return serverError(error, 'datasets.aggregate.taxCrosstab', { orgId: auth.orgId })
-      tcxRows = (data || []) as TaxCrosstabRow[]
+      // p_limit is the SQL's per-call top-N of sub-buckets, so on a collection
+      // the merged grid is the union of each member's top-N — the tail beyond a
+      // member's cut-off is that member's only.
+      var tcx = await taxRowsOverScope<TaxCrosstabRow>('taxonomy_crosstab', { p_axis: axis, p_field: field, p_limit: limit || 50, p_row_ids: taxRowIds })
+      if (tcx.error) return serverError(tcx.error, 'datasets.aggregate.taxCrosstab', { orgId: auth.orgId })
+      tcxRows = tcx.rows
     }
     var grid: Record<string, Record<string, number>> = {}
     var colSet = new Set<string>()
@@ -321,7 +356,8 @@ export async function POST(req: Request, props: Params) {
       var rowKey = axisIsRow ? r.sub_val : (r.field_val || '(blank)')
       var colKey = axisIsRow ? (r.field_val || '(blank)') : r.sub_val
       if (!grid[rowKey]) grid[rowKey] = {}
-      grid[rowKey][colKey] = Number(r.cnt)
+      // += so the per-member rows of a collection's fan-out add up.
+      grid[rowKey][colKey] = (grid[rowKey][colKey] || 0) + Number(r.cnt)
       colSet.add(colKey)
     })
     return NextResponse.json({ grid: grid, rows: Object.keys(grid), cols: Array.from(colSet), sampled: tcxSampled })
@@ -336,13 +372,13 @@ export async function POST(req: Request, props: Params) {
     if (!axField) return NextResponse.json({ error: 'field required' }, { status: 400 })
     var axRows: AxisCrosstabRow[] | null = null
     var axSampled = false
-    if (useSampled) {
+    if (useSampled && !isCollection) {
       try { var axs = await sampledTaxonomyAxisCrosstab(service, params.datasetId, axField, taxFieldKey, rowCount, taxRowIds); axRows = axs.rows as AxisCrosstabRow[]; axSampled = true } catch { /* fall through */ }
     }
     if (!axRows) {
-      var axResp = await taxRpc('taxonomy_axis_crosstab', { p_dataset_id: params.datasetId, p_field: axField, p_row_ids: taxRowIds })
+      var axResp = await taxRowsOverScope<AxisCrosstabRow>('taxonomy_axis_crosstab', { p_field: axField, p_row_ids: taxRowIds })
       if (axResp.error) return serverError(axResp.error, 'datasets.aggregate.taxAxisCrosstab', { orgId: auth.orgId })
-      axRows = (axResp.data || []) as AxisCrosstabRow[]
+      axRows = axResp.rows
     }
     var axGrid: Record<string, Record<string, number>> = {}
     var axColSet = new Set<string>()
@@ -350,7 +386,8 @@ export async function POST(req: Request, props: Params) {
       var rowKey = axIsRow ? r.axis_val : (r.field_val || '(blank)')
       var colKey = axIsRow ? (r.field_val || '(blank)') : r.axis_val
       if (!axGrid[rowKey]) axGrid[rowKey] = {}
-      axGrid[rowKey][colKey] = Number(r.cnt)
+      // += so the per-member rows of a collection's fan-out add up.
+      axGrid[rowKey][colKey] = (axGrid[rowKey][colKey] || 0) + Number(r.cnt)
       axColSet.add(colKey)
     })
     return NextResponse.json({ grid: axGrid, rows: Object.keys(axGrid), cols: Array.from(axColSet), sampled: axSampled })

@@ -416,3 +416,25 @@ The dot got a real heartbeat: `tm-heartbeat` beats twice (scale 1.55, then 1.45)
 ⭐ **The gotcha worth remembering: Chrome fires no mouse events on a `disabled` button.** The pill was `disabled`, so `onMouseEnter` would never have fired and the Lottie would never have appeared — the feature would have looked implemented and done nothing. Now `aria-disabled="true"` plus a no-op `onClick`: still inert to clicks and still announced as disabled to assistive tech, but hover works.
 
 ⚠️ **Not visually verified.** The dev-server session had expired to `/login`, and minting a cookie is off-limits — `_mint_test_cookie.mjs` resets the owner's TEST password and locks them out (`feedback_cookie_mint_kills_owner_session`). Verified statically: the branch renders the dot when not hovered and the Lottie when hovered, the keyframe exists, tsc clean, suite 1660 green. **The owner should eyeball the two states on a cold load.**
+
+### Dimensions now works for collections — built + verified (Aug 16)
+
+Closed the gap flagged above. WHY it took a fan-out in five places rather than one: a collection dataset holds **zero rows of its own**, so *every* taxonomy path — not just the one read that produced the visible symptom — was querying an empty dataset.
+
+New `lib/collectionScope.ts` (`resolveScopeMembers` / `resolveMemberDatasetIds`) does the `datasets → collections → collection_members` walk `/theme-counts` has always done, and the taxonomy paths route through it:
+
+- **Write** (the consequential one): `classifyDatasetKeyword` + `classifyPendingRows` embed `_tx` into the **member** rows via `apply_taxonomy_verdicts` per member. Nothing is written to the row-less collection.
+- **Read**: `computeTaxonomyRollup` pages each member and folds every page into ONE accumulator; the overall ★ is n-weighted across members; the two denominators sum. The stored rollup lands on the **collection's** `dataset_state` — that's what the Dimensions GET and `taxonomy_primary_field` read.
+- **Drill-down**: `taxonomy_drill_rows` per member, counts added, comment pages **interleaved** so the first member can't fill the page and hide the second brand.
+- **Compare**: `tax_crosstab`/`tax_axis_crosstab` fanned out and summed (pure counts). `tax_group_stats` deliberately not — median/stddev can't be merged from per-member aggregates, and nothing asks it for a collection.
+
+⭐ **The gotcha worth remembering: `dataset_id IN (…)` is NOT a free generalisation of `.eq(dataset_id)`.** My first pass widened the classifier's keyset page to the member set in one query. It passed twice, then hit `canceling statement due to statement timeout` on a **15K-row** collection — the planner drops `idx_drf_id_keyset` (sql/165, built for the `=` predicate) and falls back to something quadratic. Now each member is paged with the original `.eq` shape and the pages are k-way merged in JS. `dataset_rows_flat.id` is one sequence for the whole table, so the cursor stays a single global id and the route's client contract is unchanged.
+
+`_collection_label` ("Source Dataset" — the headline comparison for a collection) is synthetic: the rows route stamps it at read time, it is never stored on a member's rows, so grouping by it in SQL yielded one `(blank)` bucket. Each fan-out call already *is* one member, so the label is stamped onto its rows instead.
+
+**Verified** on *Darden Demo - CG and Flemings Collection* (2 members, 15,154 rows, TEST) with `scripts/_verify_collection_dimensions.mts` — 25 checks, exits non-zero on failure. It un-tags rows on both members and re-classifies through the collection to prove the write fans out, then asserts the collection rollup equals the sum of the members' own rollups (11,122 classified · 9,009 with signal, both exact). Browser-QC'd all three views: Overview renders the 8 axes + Severity (was the empty state), Clouds and the drill-down reconcile to the same counts (steak 3,438 everywhere), and Compare now reads Flemings 17,764 vs Capital Grille 11,883 = 29,647.
+
+**Two pre-existing bugs found along the way, NOT fixed** (both need a prod migration, neither is a collections issue):
+
+1. `dataset_rows_with_text_count(uuid, text[])` — the multifield overload sql/117 was supposed to create — **is not in the database**; only the single-field `(uuid, text)` form is. So `rowsWithText` is `undefined` for *every* dataset and the Dimensions header silently falls back to `classifiedRows`.
+2. `dataset_rows_pending_field_taxonomy` **misses rows that have no `_tx` key at all**: `NOT ((data->'_tx'->'f') ? key)` is `NULL`, not `true`, when `_tx` is absent. So the `pendingOnly` auto-classify path (`autoEnableDimensions`/`autoTagEmotion`) no-ops on a never-classified dataset — the full classify is what actually does the work. A `COALESCE(…, '{}'::jsonb)` fixes it.

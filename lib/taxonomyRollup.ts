@@ -16,6 +16,7 @@ import { DIM_AXIS_LABEL_LONG } from './dimensionFields'
 import { blockAxisSubs, TAXONOMY_VERSION, type TaxonomyFieldBlock } from './taxonomyEmbed'
 import { mergeDatasetAnalytics } from './datasetAnalytics'
 import { deriveTrendWindows } from './trendWindows'
+import { resolveMemberDatasetIds, sumOverDatasets } from './collectionScope'
 import { logError } from './log'
 
 export const AXES = ['touchpoint', 'attribute', 'product', 'beverage', 'ambiance', 'context', 'outcome', 'emotion'] as const
@@ -291,47 +292,57 @@ export async function computeTaxonomyRollup(opts: {
   /** When set, also compute recent/prior-window rollups bucketed by this date
    *  field (the JSONB key, e.g. 'review_date') so dimensions can trend. */
   dateField?: string | null
+  /** Pre-resolved scope (collection members), when the caller already has it. */
+  datasetIds?: string[]
 }): Promise<TaxonomyTrendRollup> {
   const { service, datasetId, orgId, field, topSubs, dateField } = opts
 
   // Resolve the rating field once (dynamic — supports survey/aliased fields,
   // not just a literal `rating` column). Aliased fields store a text label →
-  // resolve via the alias map after the fetch.
+  // resolve via the alias map after the fetch. A collection carries its own
+  // merged schema_config, so this resolves against the collection.
   const { field: ratingField, aliases } = await detectRatingField(service, datasetId)
+
+  // The verdicts live on the ROWS, and a collection has none of its own — page
+  // each member and fold every page into the SAME accumulator, so the rollup is
+  // one set of rates over the collection's whole row population.
+  const datasetIds = opts.datasetIds ?? await resolveMemberDatasetIds(service, datasetId)
 
   // Each page folds straight into the accumulator; rows are buffered (lean —
   // no evidence strings) only when a trend date field needs the recent/prior
   // window re-aggregation below.
   const acc = newTaxonomyAcc()
   const dated: TaxonomyRow[] = []
-  // Keyset on row_id (sql/155), not OFFSET — an OFFSET page re-walks (and
-  // re-detoasts the blob of) every earlier page's rows, O(n²) per rollup.
-  let afterId: number | null = null
-  for (;;) {
-    const { data, error } = await service.rpc('taxonomy_rows_for_field', {
-      p_dataset_id: datasetId, p_field_key: field,
-      p_rating_field: ratingField, p_date_field: dateField ?? null,
-      p_after_id: afterId, p_limit: PAGE,
-    })
-    if (error) throw new Error(error.message)
-    const page = (data ?? []) as { row_id: number; tx: TaxonomyFieldBlock | null; rating_val: string | null; date_val: string | null }[]
-    if (page.length === 0) break
+  for (const memberId of datasetIds) {
+    // Keyset on row_id (sql/155), not OFFSET — an OFFSET page re-walks (and
+    // re-detoasts the blob of) every earlier page's rows, O(n²) per rollup.
+    let afterId: number | null = null
+    for (;;) {
+      const { data, error } = await service.rpc('taxonomy_rows_for_field', {
+        p_dataset_id: memberId, p_field_key: field,
+        p_rating_field: ratingField, p_date_field: dateField ?? null,
+        p_after_id: afterId, p_limit: PAGE,
+      })
+      if (error) throw new Error(error.message)
+      const page = (data ?? []) as { row_id: number; tx: TaxonomyFieldBlock | null; rating_val: string | null; date_val: string | null }[]
+      if (page.length === 0) break
 
-    for (const r of page) {
-      const row = blockToTaxonomyRow(r.tx)
-      const mapped = aliases && r.rating_val != null ? aliases[r.rating_val] : r.rating_val
-      const v = mapped != null ? parseFloat(mapped) : NaN
-      row.rating = isNaN(v) ? null : v
-      if (dateField) {
-        const t = r.date_val != null ? Date.parse(String(r.date_val)) : NaN
-        row.dateMs = isFinite(t) ? t : null
-        dated.push(row)
+      for (const r of page) {
+        const row = blockToTaxonomyRow(r.tx)
+        const mapped = aliases && r.rating_val != null ? aliases[r.rating_val] : r.rating_val
+        const v = mapped != null ? parseFloat(mapped) : NaN
+        row.rating = isNaN(v) ? null : v
+        if (dateField) {
+          const t = r.date_val != null ? Date.parse(String(r.date_val)) : NaN
+          row.dateMs = isFinite(t) ? t : null
+          dated.push(row)
+        }
+        accumulateTaxonomyRow(acc, row)
       }
-      accumulateTaxonomyRow(acc, row)
-    }
 
-    afterId = page[page.length - 1].row_id
-    if (page.length < PAGE) break
+      afterId = page[page.length - 1].row_id
+      if (page.length < PAGE) break
+    }
   }
   const rollup = finalizeTaxonomy(acc, topSubs)
 
@@ -341,14 +352,21 @@ export async function computeTaxonomyRollup(opts: {
   // avgRating stay dimension-scoped (text-classified). Same all-rows RPCs the
   // metric strip uses; leave the classified-rows fallback if the RPC returns 0.
   try {
-    const { data: ns, error: nsErr } = aliases
-      ? await service.rpc('field_aliased_avg', { p_dataset_id: datasetId, p_field: ratingField, p_present_field: '', p_aliases: aliases })
-      : await service.rpc('numeric_field_stats', { p_dataset_id: datasetId, p_field_key: ratingField })
-    if (nsErr) void logError('taxonomyRollup.computeTaxonomyRollup', nsErr, { orgId })
-    const row = Array.isArray(ns) ? ns[0] : null
-    if (row && Number(row.n) > 0 && row.avg_val != null) {
-      rollup.overallAvgRating = Math.round(Number(row.avg_val) * 100) / 100
+    // n-weighted across the scope so a collection's ★ is the mean over ALL its
+    // members' rated rows, not one member's.
+    let sum = 0, n = 0
+    for (const memberId of datasetIds) {
+      const { data: ns, error: nsErr } = aliases
+        ? await service.rpc('field_aliased_avg', { p_dataset_id: memberId, p_field: ratingField, p_present_field: '', p_aliases: aliases })
+        : await service.rpc('numeric_field_stats', { p_dataset_id: memberId, p_field_key: ratingField })
+      if (nsErr) void logError('taxonomyRollup.computeTaxonomyRollup', nsErr, { orgId })
+      const row = Array.isArray(ns) ? ns[0] : null
+      if (row && Number(row.n) > 0 && row.avg_val != null) {
+        sum += Number(row.avg_val) * Number(row.n)
+        n += Number(row.n)
+      }
     }
+    if (n > 0) rollup.overallAvgRating = Math.round((sum / n) * 100) / 100
   } catch { /* keep the classified-rows overall if the all-rows RPC fails */ }
 
   // Recent/prior-window rollups for the trend lens — derived from the dated rows
@@ -431,21 +449,23 @@ export async function updateStoredTaxonomyRollup(opts: {
   field: string; selFields: string[]
 }): Promise<TaxonomyRollup> {
   const { service, datasetId, orgId, field, selFields } = opts
+  // Resolved once and threaded into the rollup: a collection's rows (and so its
+  // denominators) are its members'. The stored entry still lands on the
+  // COLLECTION's dataset_state — that's what the Dimensions GET reads.
+  const datasetIds = await resolveMemberDatasetIds(service, datasetId)
   const { recent: _r, prior: _p, windowLabel: _w, ...rollup } =
-    await computeTaxonomyRollup({ service, datasetId, orgId, field })
+    await computeTaxonomyRollup({ service, datasetId, orgId, field, datasetIds })
   const cur = await readStoredTaxonomy(service, datasetId)
   // Count the "rows with text" denominator once here so the Dimensions GET
   // never has to (see StoredTaxonomyField.rowsWithText). On failure store
   // nothing — the GET falls back to its live count.
-  let rowsWithText: number | undefined
-  const { data: rwt, error: rwtErr } = await service
-    .rpc('dataset_rows_with_text_count', { p_dataset_id: datasetId, p_fields: selFields })
-  if (!rwtErr && rwt != null && Number.isFinite(Number(rwt))) rowsWithText = Number(rwt)
+  const rwt = await sumOverDatasets(service, datasetIds, 'dataset_rows_with_text_count',
+    id => ({ p_dataset_id: id, p_fields: selFields }))
+  const rowsWithText = rwt ?? undefined
   // Substantive denominator (sql/180) — same stored-once posture as rowsWithText.
-  let rowsSubstantive: number | undefined
-  const { data: rws, error: rwsErr } = await service
-    .rpc('dataset_rows_with_substantive_count', { p_dataset_id: datasetId, p_fields: selFields })
-  if (!rwsErr && rws != null && Number.isFinite(Number(rws))) rowsSubstantive = Number(rws)
+  const rws = await sumOverDatasets(service, datasetIds, 'dataset_rows_with_substantive_count',
+    id => ({ p_dataset_id: id, p_fields: selFields }))
+  const rowsSubstantive = rws ?? undefined
   const next: StoredTaxonomy = { fields: { ...(cur?.fields ?? {}) } }
   next.fields[field] = {
     selFields,

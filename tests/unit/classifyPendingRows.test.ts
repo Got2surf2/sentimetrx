@@ -6,10 +6,13 @@ import type { StoredTaxonomy } from '@/lib/taxonomyRollup'
 
 // Shapes of the RPC argument payloads the mock service inspects.
 type RpcArgs = {
+  p_dataset_id?: string
   p_field_key?: string
   p_items?: { id: number; tx: TaxonomyFieldBlock }[]
   p_patch?: { taxonomy: StoredTaxonomy }
 }
+
+type PendingRow = { id: number; data: Record<string, unknown> }
 
 // Minimal mock of the Supabase service for the embed write path (sql/151):
 //   - rpc('dataset_rows_pending_field_taxonomy') yields successive pending pages
@@ -17,20 +20,30 @@ type RpcArgs = {
 //   - the end-of-run rollup refresh reads back the embedded verdicts
 //     (taxonomy_rows_for_field), the rating stats, the current stored rollup,
 //     and merges the new one (merge_dataset_analytics) — all mocked here.
-function mockService(pages: Array<Array<{ id: number; data: Record<string, unknown> }>>) {
-  let pendingCall = 0
-  const applied: { fieldKey: string; items: { id: number; tx: TaxonomyFieldBlock }[] }[] = []
+//
+// `members` makes the dataset a COLLECTION whose rows live on those member
+// datasets — the pending pages are then keyed by member id, so a test can prove
+// the drain and the embed write both fan out to the members (a collection holds
+// no rows of its own).
+function mockService(
+  pages: Array<Array<PendingRow>> | Record<string, Array<Array<PendingRow>>>,
+  members?: string[],
+) {
+  const pendingCall: Record<string, number> = {}
+  const queueFor = (dsId: string) => (Array.isArray(pages) ? pages : (pages[dsId] ?? []))
+  const applied: { datasetId: string; fieldKey: string; items: { id: number; tx: TaxonomyFieldBlock }[] }[] = []
   const merged: { taxonomy: StoredTaxonomy }[] = []
   let rollupServed = false
   const service = {
     rpc: async (name: string, args: RpcArgs) => {
       if (name === 'dataset_rows_pending_field_taxonomy') {
-        const page = pages[pendingCall] ?? []
-        pendingCall++
-        return { data: page, error: null }
+        const dsId = args.p_dataset_id!
+        const n = pendingCall[dsId] ?? 0
+        pendingCall[dsId] = n + 1
+        return { data: queueFor(dsId)[n] ?? [], error: null }
       }
       if (name === 'apply_taxonomy_verdicts') {
-        applied.push({ fieldKey: args.p_field_key!, items: args.p_items! })
+        applied.push({ datasetId: args.p_dataset_id!, fieldKey: args.p_field_key!, items: args.p_items! })
         return { data: args.p_items!.length, error: null }
       }
       if (name === 'taxonomy_rows_for_field') {
@@ -49,13 +62,28 @@ function mockService(pages: Array<Array<{ id: number; data: Record<string, unkno
       if (name === 'merge_dataset_analytics') { merged.push(args.p_patch!); return { data: null, error: null } }
       throw new Error(`unexpected rpc ${name}`)
     },
-    from: (t: string) => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({ data: t === 'dataset_state' ? { schema_config: null, analytics: {} } : null, error: null }),
-        }),
-      }),
-    }),
+    // Table reads: the collection-scope resolution (datasets → collections →
+    // collection_members) and the dataset_state lookups. The builder is
+    // thenable so a chain without .single()/.maybeSingle() resolves too.
+    from: (t: string) => {
+      const rows: Record<string, unknown>[] =
+        t === 'datasets'           ? [{ source: members ? 'collection' : 'upload' }]
+        : t === 'collections'      ? (members ? [{ id: 'col-1' }] : [])
+        : t === 'collection_members' ? (members ?? []).map(id => ({ dataset_id: id }))
+        : t === 'dataset_state'    ? [{ schema_config: null, analytics: {} }]
+        : []
+      const builder = {
+        select: () => builder,
+        eq: () => builder,
+        in: () => builder,
+        order: () => builder,
+        single: async () => ({ data: rows[0] ?? null, error: null }),
+        maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
+        then: (res: (v: { data: unknown; error: null }) => unknown, rej?: (e: unknown) => unknown) =>
+          Promise.resolve({ data: rows, error: null }).then(res, rej),
+      }
+      return builder
+    },
   }
   return { service: service as unknown as SupabaseClient, applied, merged }
 }
@@ -126,5 +154,29 @@ describe('classifyPendingRows (auto-classify safety net, embed path)', () => {
     expect(subs).toContain('steak')   // from `liked`
     expect(subs).toContain('noise')   // from `disliked`
     expect(merged[0].taxonomy.fields['disliked + liked'].selFields).toEqual(['liked', 'disliked'])
+  })
+
+  it('a COLLECTION drains each member and embeds into the MEMBER rows', async () => {
+    // The collection holds no rows of its own — its pending queue is its
+    // members'. Before the fan-out this classified nothing at all, which is why
+    // the Dimensions tab read "No taggable text found" on every collection.
+    const { service, applied, merged } = mockService({
+      'mem-a': [[ROW(1, 'the ribeye steak was overcooked')], []],
+      'mem-b': [[ROW(2, 'great service, loved the wine')], []],
+    }, ['mem-a', 'mem-b'])
+
+    const r = await classifyPendingRows({ service, datasetId: 'coll', orgId: 'o', textFields: ['review_text'] })
+    expect(r.classified).toBe(2)
+    expect(r.hasMore).toBe(false)
+
+    // Verdicts land on the members, never on the (row-less) collection.
+    expect(applied.map(a => a.datasetId).sort()).toEqual(['mem-a', 'mem-b'])
+    expect(applied.some(a => a.datasetId === 'coll')).toBe(false)
+    expect(applied.find(a => a.datasetId === 'mem-a')!.items[0].id).toBe(1)
+    expect(applied.find(a => a.datasetId === 'mem-b')!.items[0].id).toBe(2)
+
+    // One rollup, aggregated across both members, stored on the collection.
+    expect(merged).toHaveLength(1)
+    expect(merged[0].taxonomy.fields['review_text'].rollup.classifiedRows).toBe(2)
   })
 })

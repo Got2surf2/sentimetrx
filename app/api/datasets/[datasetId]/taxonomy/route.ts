@@ -16,6 +16,7 @@ import { computeTaxonomyRollup, readStoredTaxonomy, type TaxonomyRollup } from '
 import { classifyDatasetKeyword, classifyPendingRows } from '@/lib/taxonomyClassify'
 import { orgTaxonomyEnabled } from '@/lib/resolveOrg'
 import { taxonomyFieldKey } from '@/lib/dimensionFields'
+import { resolveMemberDatasetIds, sumOverDatasets } from '@/lib/collectionScope'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { logError } from '@/lib/log'
 
@@ -46,12 +47,21 @@ function prettifyField(field: string): string {
 async function detectTextFields(
   service: SupabaseClient,
   datasetId: string,
+  datasetIds: string[],   // the row scope — a collection's members, else the dataset itself
 ): Promise<{ textFields: TextField[]; defaultField: string | null }> {
-  const [{ data: rows }, { data: stateRow }] = await Promise.all([
-    service.from('dataset_rows_flat').select('data').eq('dataset_id', datasetId)
-      .order('row_index', { ascending: true }).limit(25),
+  // One `.eq` probe per member (a collection's rows all live on its members) —
+  // `.eq` keeps the (dataset_id, row_index) index; `dataset_id IN (…)` loses it.
+  const [pages, { data: stateRow }] = await Promise.all([
+    Promise.all(datasetIds.map(async id => {
+      const { data } = await service.from('dataset_rows_flat').select('data').eq('dataset_id', id)
+        .order('row_index', { ascending: true }).limit(25)
+      return (data ?? []) as { data: Record<string, unknown> }[]
+    })),
+    // Labels come from the dataset's own schema — a collection carries the
+    // merged one, so this stays keyed on the collection.
     service.from('dataset_state').select('schema_config').eq('dataset_id', datasetId).maybeSingle(),
   ])
+  const rows = pages.flat()
 
   const labels: Record<string, string> = {}
   for (const f of (stateRow?.schema_config?.fields ?? []) as { field: string; label?: string }[]) {
@@ -118,7 +128,10 @@ export async function GET(req: Request, props: Params) {
   const fieldKey = taxonomyFieldKey(selFields)
 
   const service = createServiceRoleClient()
-  const fields = await detectTextFields(service, datasetId)
+  // A collection holds no rows of its own — everything that touches
+  // dataset_rows_flat below runs over its members.
+  const datasetIds = await resolveMemberDatasetIds(service, datasetId)
+  const fields = await detectTextFields(service, datasetId, datasetIds)
 
   // No field selected → nothing to roll up; the UI shows the "pick a field" state.
   if (!fieldKey) {
@@ -142,7 +155,7 @@ export async function GET(req: Request, props: Params) {
     // empty state). Degrade to the empty rollup; classification writes the
     // stored rollup, after which this path never runs.
     try {
-      rollup = await computeTaxonomyRollup({ service, datasetId, orgId, field: fieldKey })
+      rollup = await computeTaxonomyRollup({ service, datasetId, orgId, field: fieldKey, datasetIds })
     } catch (err) {
       void logError('taxonomy.rollupFallback', err, { datasetId })
       return NextResponse.json({
@@ -159,15 +172,15 @@ export async function GET(req: Request, props: Params) {
   // datasets).
   let rowsWithText = storedField?.rowsWithText
   if (rowsWithText == null) {
-    const rwt = await service.rpc('dataset_rows_with_text_count', { p_dataset_id: datasetId, p_fields: selFields })
-    rowsWithText = Number(rwt.data ?? 0)
+    rowsWithText = (await sumOverDatasets(service, datasetIds, 'dataset_rows_with_text_count',
+      id => ({ p_dataset_id: id, p_fields: selFields }))) ?? 0
   }
   // Substantive denominator for "% tagged" (sql/180) — stored alongside the
   // rollup, live RPC only for pre-2026-07-14 entries. Same self-heal as above.
   let rowsSubstantive = storedField?.rowsSubstantive
   if (rowsSubstantive == null) {
-    const rws = await service.rpc('dataset_rows_with_substantive_count', { p_dataset_id: datasetId, p_fields: selFields })
-    rowsSubstantive = Number(rws.data ?? 0)
+    rowsSubstantive = (await sumOverDatasets(service, datasetIds, 'dataset_rows_with_substantive_count',
+      id => ({ p_dataset_id: id, p_fields: selFields }))) ?? 0
   }
   return NextResponse.json({ ...rollup, ...fields, totalRows, rowsWithText, rowsSubstantive, field: fieldKey })
 }

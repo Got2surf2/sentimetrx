@@ -14,6 +14,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { taxonomyFieldKey } from '@/lib/dimensionFields'
+import { resolveMemberDatasetIds } from '@/lib/collectionScope'
 import { serverError } from '@/lib/apiError'
 
 export const dynamic = 'force-dynamic'
@@ -109,20 +110,38 @@ export async function GET(req: Request, props: Params) {
 
   // The embedded verdicts and the row text live on the same row now — one RPC
   // returns both plus the window count (the old sidecar read needed a second
-  // lookup for the text).
-  const { data: tax, error } = await service.rpc('taxonomy_drill_rows', {
-    p_dataset_id: datasetId,
-    p_field_key:  effFieldKey,
-    p_axis:       alert ? null : axis,
-    p_sub:        !alert && sub ? sub : null,
-    p_alert:      alert || null,
-    p_limit:      limit,
-  })
-  if (error) return serverError(error, 'datasets.taxonomyRows', { orgId: orgId ?? undefined })
-
+  // lookup for the text). A collection owns no rows, so the drill runs over its
+  // members and the pages are merged: counts add up, and each member
+  // contributes at most `limit` comments before the merged list is trimmed
+  // back to it.
   type DrillRow = { row_id: number; data: Record<string, unknown>; tx: { as?: unknown } | null; total_count: number }
-  const rows = (tax ?? []) as DrillRow[]
-  const count = rows.length ? Number(rows[0].total_count) : 0
+  const datasetIds = await resolveMemberDatasetIds(service, datasetId)
+  const pages: DrillRow[][] = []
+  let count = 0
+  for (const memberId of datasetIds) {
+    const { data: tax, error } = await service.rpc('taxonomy_drill_rows', {
+      p_dataset_id: memberId,
+      p_field_key:  effFieldKey,
+      p_axis:       alert ? null : axis,
+      p_sub:        !alert && sub ? sub : null,
+      p_alert:      alert || null,
+      p_limit:      limit,
+    })
+    if (error) return serverError(error, 'datasets.taxonomyRows', { orgId: orgId ?? undefined })
+    const page = (tax ?? []) as DrillRow[]
+    if (page.length) count += Number(page[0].total_count)   // window count is per member — they add up
+    pages.push(page)
+  }
+  // Interleaved, not concatenated: on a collection the first member would
+  // otherwise fill the whole page and the second brand would never appear.
+  const rows: DrillRow[] = []
+  for (let i = 0; rows.length < limit; i++) {
+    const before = rows.length
+    for (const page of pages) {
+      if (i < page.length && rows.length < limit) rows.push(page[i])
+    }
+    if (rows.length === before) break
+  }
 
   const comments = rows.map(t => {
     const data = t.data ?? {}

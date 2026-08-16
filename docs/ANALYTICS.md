@@ -1123,6 +1123,21 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
   a "0% emotion" pill. The aggregate route's `TAX_AXES` allow-list and the drill
   route's `AXIS_SET` include `emotion` (guards widened in sql/158).
 
+- **Collections fan out to their members (2026-08-16).** A collection dataset holds
+  **zero rows of its own**, so the whole Dimensions section — the rollup GET, the
+  classify POST (both the full run and `pendingOnly`), the drill-down
+  (`/taxonomy/rows`), and Compare's `tax_crosstab` / `tax_axis_crosstab` — resolves
+  its scope through `resolveScopeMembers` (`lib/collectionScope.ts`) and runs over
+  the member datasets. Before this the tab read *"No taggable text found"* on every
+  collection (it never worked, not a regression). Verdicts are embedded in the
+  **member** rows; the aggregated rollup is stored on the **collection**. Compare's
+  "Source Dataset" breakdown (`_collection_label`) is synthetic and never stored on
+  a row, so the fan-out stamps each member's label onto its own rows instead of
+  grouping by a missing key. `tax_group_stats` is deliberately NOT fanned out —
+  median/stddev can't be merged from per-member aggregates, and no collection
+  surface asks for it (Charts already falls back to raw client-side rows for
+  collections). Mechanics + the `IN (…)` planner gotcha: **`TAXONOMY.md §3`**.
+
 - **Where it lives.** The **"Dimensions"** peer section **inside TextMine** (`TextMineModule` renders
   `<TaxonomyModule>` for the section's Overview view — `subTab==='dimensions' && activeView==='overview'`; the
   section also carries Clouds=`DimensionCloud`, Compare=`DimensionCompareTab`, and the unified Comments), shown when **`taxonomyEnabled`** is true — which the

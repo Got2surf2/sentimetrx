@@ -253,6 +253,42 @@ gating).
     dropped their entries. Historical footnote: the prod sidecar carried 2,745
     orphaned verdicts pointing at deleted rows — the lifecycle-drift class the
     embed eliminates.
+- **Collections fan out to their members** (2026-08-16). A collection dataset
+  holds **zero rows of its own** — every row lives in its member datasets — so
+  every taxonomy path resolves its scope through `resolveScopeMembers`
+  (`lib/collectionScope.ts`, the same `datasets → collections →
+  collection_members` walk `/theme-counts` has always used) before touching
+  `dataset_rows_flat`. Until this landed, taxonomy queried the collection's own
+  `dataset_id`, found nothing, and the Dimensions tab reported *"No taggable
+  text found"* on **every** collection — not a regression, it never worked.
+  - **Write**: `classifyDatasetKeyword` / `classifyPendingRows` embed `_tx` into
+    the **member** rows (`apply_taxonomy_verdicts` per member), never the
+    collection's. Nothing is ever written to a row-less collection.
+  - **Read**: `computeTaxonomyRollup` pages `taxonomy_rows_for_field` per member
+    and folds every page into ONE accumulator, so the rates are over the
+    collection's whole population; the overall ★ is n-weighted across members.
+    The `rowsWithText`/`rowsSubstantive` denominators sum across members.
+  - **Where the rollup lives**: on the **collection's** `dataset_state`, which is
+    what the Dimensions GET (and `taxonomy_primary_field`) reads. Members keep
+    their own independent rollups.
+  - **Paging**: the classifier pages each member with the same
+    `.eq(dataset_id) AND id > cursor` shape and k-way merges in JS.
+    `dataset_rows_flat.id` is one sequence for the whole table, so the cursor
+    stays a single global id and the route's client contract is unchanged.
+    Widening the predicate to `dataset_id IN (…)` instead is NOT equivalent —
+    measured 2026-08-16, the planner drops `idx_drf_id_keyset` and the page hits
+    the statement timeout on a 15K-row collection.
+  - **Drill-down**: `taxonomy_drill_rows` runs per member; the window counts add
+    up and the comment pages are **interleaved**, not concatenated, so the first
+    member can't fill the whole page and hide the second brand.
+  - **Compare** (`tax_crosstab` / `tax_axis_crosstab`): fanned out and summed —
+    these are pure counts. `tax_group_stats` is NOT fanned out (median/stddev
+    can't be merged from per-member aggregates) and no collection surface asks
+    for it. The sampled twins take a single dataset id, so a collection always
+    takes the exact path. `_collection_label` ("Source Dataset") is synthetic —
+    the rows route stamps it at read time and it is never stored on a member's
+    rows — so the crosstab fan-out stamps each member's label onto its own rows
+    instead of grouping by a key that isn't there.
 - **Persisting classifier** `lib/taxonomyClassify.ts` (`classifyDatasetKeyword`):
   pages a dataset's rows, runs the keyword tier, and embeds field blocks via the
   `apply_taxonomy_verdicts` RPC in 500-row batches. Pages order by
