@@ -986,3 +986,7 @@ use `git commit -F <file>`.
 The `.md` glob is already in the sweep above, so the sweep catches all of it.
 Cheapest habit: after any scripted edit, `file <path>` should say `UTF-8 text`.
 `data` means the file was just made ungreppable.
+
+## Coverage ratchet (2026-08-16)
+
+`vitest.config.ts` thresholds were raised **20/15/20/20 → 30/23/33/30** (statements/branches/functions/lines). The old floor sat ~10pp under the measured numbers, so it would have passed a 30% coverage regression without complaint — a floor that far below actual is decoration, not a gate. Measured at the time of the raise: statements 30.7 · branches 24.07 · functions 33.79 · lines 31.26. Same doctrine as the ESLint ceiling: the number tracks reality and only ever moves in the improving direction.

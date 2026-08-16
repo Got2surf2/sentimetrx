@@ -709,3 +709,31 @@ its members (4.743 vs 4.743). 1,681 tests + 6 new hierarchy tests green, tsc
 clean. The AI action plan stays outlet-only — its voice is operator-specific
 ("bag-check rule"), and a region-level playbook is a different writing job, not
 the same prompt over more rows.
+
+---
+
+## 2026-08-16 (later) — Quick wins: dependency fixes + a coverage gate that actually gates
+
+`npm audit fix` (no `--force`): **26 → 22 vulns**. Deliberately not forced — the
+forced fix downgrades `pptxgenjs` 4.0.1 → 1.1.5, which would break every deck
+export, and the remaining 19 highs are the `workflow`/`@workflow/*` v4-beta
+cluster where the only "fix" is a major downgrade and `@workflow/next` has no
+forward fix at all. `next`'s high is a Turbopack-only middleware bypass and we
+pin `--webpack` in both `package.json` and `vercel.json`, so it never applied to
+us; it's fixed now anyway by 16.2.10 → 16.3.1.
+
+**205 packages moved, including two major transitive bumps** — `express`
+4.22 → 5.2 and `nanoid` 3.3 → 5.1 (v5 is ESM-only). Neither is declared or
+imported by us; both arrive via the Workflow DevKit CLI. Verified rather than
+assumed: typecheck clean, 1,687 tests green, and a **real `next build --webpack`**
+that compiled every route. The pinned constraints held — `isomorphic-dompurify`
+stayed 2.26 (NOT 3.x), `jsdom` stayed 26, `pptxgenjs` stayed 4.0.1.
+
+⭐ The local build initially failed its TypeScript step on
+`scripts/_verify_trump_themes.ts` — an **untracked** leftover harness with a real
+TS error. CI never sees it (fresh clone), but it silently blocks any local
+`npm run build`. Worth knowing before diagnosing a phantom build break.
+
+**Coverage gate ratcheted 20/15/20/20 → 30/23/33/30.** The floor sat ~10pp below
+the real numbers, so CI would have accepted a 30% regression without complaint.
+Measured: statements 30.7 · branches 24.07 · functions 33.79 · lines 31.26.

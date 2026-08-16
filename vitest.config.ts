@@ -25,11 +25,15 @@ export default defineConfig({
       // Ratcheting floor — set just below the current baseline so unrelated
       // churn doesn't redden CI, but no regression is allowed. Bump these up
       // as each batch of tests lands (governance Tests-score progression plan).
+      // Ratcheted 2026-08-16: 20/15/20/20 → 30/23/33/30. The old floor sat ~10pp
+      // under the real numbers, so it would have passed a 30% regression without
+      // complaint — a floor that far below actual isn't a gate, it's decoration.
+      // Measured: statements 30.7 · branches 24.07 · functions 33.79 · lines 31.26.
       thresholds: {
-        statements: 20,
-        branches: 15,
-        functions: 20,
-        lines: 20,
+        statements: 30,
+        branches: 23,
+        functions: 33,
+        lines: 30,
       },
     },
   },
