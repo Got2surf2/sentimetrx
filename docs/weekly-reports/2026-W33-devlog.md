@@ -383,3 +383,26 @@ For a mechanism whose whole purpose is disaster recovery — the one with `orgRe
 Fixed forward: the event now carries a `failures` array of `{ org_id, error }` (truncated to 200 chars). Deliberately **org_id, not org_name** — the uuid is enough to identify the org, and a customer's name doesn't need to go to a third-party processor (SECURITY.md §7). The next occurrence will name itself.
 
 ⏭ **Not built, needs a decision:** there is no durable record of backup runs at all. "Did every org back up last night?" is currently answerable only via Sentry (which fires only on failure) or console logs (which rotate). A small `org_snapshot_runs` table — org, day, key, bytes, status — would make the backup story auditable rather than inferential, which matters for the DD posture the repo is otherwise careful about. Flagging rather than building, since it's a new table and a schema decision.
+
+## Two owner findings: a stray browser spinner, and Dimensions has never worked for collections (Aug 16)
+
+**1. The pending nav pills showed a non-Lottie spinner.** Mine, from yesterday. I styled the disabled pills `cursor: 'wait'`, and Chrome renders that as **its own blue spinning cursor** — so hovering a pending tab produced a second loading indicator that isn't ours. The bespoke pulsing dot was the same mistake in smaller form: `components/ui/LottieLoader` is the ONE loader in this codebase (`feedback_lottie_loader`), and I'd introduced two alternatives to it in a single commit while ostensibly improving loading affordances.
+
+Now a `LottieLoader size={14}` in the pill, `cursor: 'default'`, and the orphaned `.tm-nav-pending` keyframe removed from `globals.css` rather than left behind. Swept the analyze surfaces for other `cursor: wait` — none.
+
+**2. Dimensions has never worked for collections.** Owner's hypothesis, confirmed: the Dimensions tab on a collection reports *"No taggable text found in Review"* while the header above it says 29,638 comments.
+
+The cause is structural. **A collection holds zero rows of its own** — every row lives in its member datasets:
+
+| collection | rows on itself | rows on members |
+|---|---|---|
+| Carrabba's | **0** | 56,117 |
+| Capital Grille | **0** | 6,500 |
+| Fleming's | **0** | 8,654 |
+| Darden Demo | **0** | 15,154 |
+
+And the taxonomy route reads `dataset_rows_flat … .eq('dataset_id', datasetId)` (`route.ts:51`) — the *collection's* id. It finds nothing, classification tags nothing, the rollup is empty, `attempted` flips true, and the UI honestly reports no taggable text. The message is correct; the query is asking the wrong dataset.
+
+Its sibling `/theme-counts` resolves `collection_members` and fans out across them, which is exactly why Themes works on a collection and Dimensions doesn't. Neither `lib/taxonomyClassify.ts` nor `lib/taxonomyRollup.ts` mentions collections at all.
+
+**Not a regression — a gap that predates this week, and not a small one.** Closing it means member resolution in four places: the route's row read, the classify write path (`_tx` has to be embedded into *member* rows), the rollup read, and the `tax_*` aggregate RPCs, which each take a single `p_dataset_id`. The fan-out pattern already exists in `theme-counts`/`runPool`, so it's tractable — but it touches the taxonomy **write** path, so it wants its own change with its own verification rather than being tacked onto a UI fix. Flagged, not built.

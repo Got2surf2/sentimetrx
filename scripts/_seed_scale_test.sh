@@ -24,7 +24,11 @@ if [ "${1:-}" = "drop" ]; then
   while true; do
     n=$(psql "$DB" -t -A -c "WITH d AS (SELECT id FROM dataset_rows_flat WHERE dataset_id='$DST' LIMIT 50000) DELETE FROM dataset_rows_flat f USING d WHERE f.id=d.id RETURNING 1" | wc -l | tr -d ' ')
     echo "  deleted $n"
-    [ "$n" = "0" ] && break
+    # NOT `[ "$n" = "0" ] && break` — under `set -e` that list returns 1 on every
+    # iteration where rows remain, which silently kills the script mid-drop. That
+    # is why the 2026-08-15 run deleted all 1M rows but left the datasets /
+    # dataset_state rows behind while still exiting 0.
+    if [ "$n" = "0" ]; then break; fi
   done
   psql "$DB" -c "DELETE FROM dataset_state WHERE dataset_id='$DST'; DELETE FROM datasets WHERE id='$DST';"
   psql "$DB" -c "VACUUM ANALYZE dataset_rows_flat;"

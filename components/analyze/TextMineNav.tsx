@@ -10,6 +10,7 @@ import { type ReactNode, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { T } from '@/lib/analyzeTheme'
 import HelpHint from '@/components/analyze/textmine/HelpHint'
+import LottieLoader from '@/components/ui/LottieLoader'
 import { type Section } from '@/lib/textmineNav'
 
 export interface NavSectionItem { id: Section; label: string; help?: string; href?: string }
@@ -75,16 +76,21 @@ export default function TextMineNav({ sections, activeSection, views, activeView
             // than a moment's wait, and the dot explains why the tab is inert.
             // Deliberately a dot, not a spinner: three can be pending at once
             // and a row of spinning glyphs reads as an error, not progress.
+            // The standard Lottie, not a bespoke dot — components/ui/LottieLoader is
+            // the ONE loader in this codebase and every loading state uses it.
             var dot = v.pending
-              ? <span key="d" aria-hidden className="tm-nav-pending" style={{ width: 5, height: 5, borderRadius: 3, background: T.amber, marginLeft: 6, flexShrink: 0, display: 'inline-block' }} />
+              ? <span key="d" aria-hidden style={{ marginLeft: 6, flexShrink: 0, display: 'inline-flex', alignItems: 'center' }}><LottieLoader size={14} /></span>
               : null
             // The ACTIVE view is never disabled even while pending — a deep link
             // straight to Clouds must still render (its own loader covers it);
             // disabling the tab you are standing on would strand the user.
             if (v.pending && !isActive) {
               return (
+                // NOT cursor:'wait' — Chrome renders that as its own blue spinning
+                // cursor, which is a second, non-Lottie loading indicator appearing
+                // on hover. 'default' keeps the Lottie the only spinner on screen.
                 <button key={v.id} disabled title="Loading the comments this view needs — available in a moment"
-                  style={{ ...base, border: 'none', cursor: 'wait', opacity: 0.45 }}>
+                  style={{ ...base, border: 'none', cursor: 'default', opacity: 0.55 }}>
                   {v.label}{dot}
                 </button>
               )
