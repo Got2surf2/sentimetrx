@@ -31,8 +31,11 @@ import { mergeDatasetAnalytics, deleteDatasetAnalyticsKey } from '@/lib/datasetA
 import { logError } from '@/lib/log'
 
 /** Bump when the SHAPE or SEMANTICS of the cached payload changes (not the
- *  theme model — that rides the request hash). Old entries then miss once. */
-const THEME_COUNTS_VERSION = 1
+ *  theme model — that rides the request hash). Old entries then miss once.
+ *  v2 = sql/191 (2026-08-16): the 50K sample moved from hash order to stratified
+ *  contiguous blocks, so above the cap these counts are computed over different
+ *  rows. Nothing else in the key notices a sampling-scheme change. */
+const THEME_COUNTS_VERSION = 2
 
 /** Most-recent slots kept per dataset. A user switching Text pills or toggling
  *  Dimensions creates a slot each; without a bound the analytics blob grows

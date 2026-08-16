@@ -25,9 +25,9 @@ function makeService(rpcName: string, pages: Record<string, unknown>[], calls: R
 describe('sampledCountFieldValues', () => {
   it('merges per-value counts across pages, scales, sorts desc, limits', async () => {
     const calls: Record<string, unknown>[] = []
-    const svc = makeService('sampled_count_field_values', [
-      { n_scanned: 5000, groups: [['A', 3000], ['B', 2000]], last_hash: 10, last_id: 20 },
-      { n_scanned: 5000, groups: [['B', 1000], ['C', 500]], last_hash: 30, last_id: 40 },
+    const svc = makeService('sampled_count_field_values_blocks', [
+      { n_scanned: 5000, groups: [['A', 3000], ['B', 2000]], last_row_index: 20 },
+      { n_scanned: 5000, groups: [['B', 1000], ['C', 500]], last_row_index: 40 },
     ], calls)
     // total 40000, scanned 10000 → ×4 (cap 10000 = two pages)
     const r = await sampledCountFieldValues(svc, 'd1', 'f', 2, 40000, null, 10000)
@@ -37,7 +37,7 @@ describe('sampledCountFieldValues', () => {
     expect(r.rows.map(x => x.value).sort()).toEqual(['A', 'B'])
     expect(r.rows.find(x => x.value === 'B')!.count).toBe(12000)
     expect(r.rows.find(x => x.value === 'A')!.count).toBe(12000)
-    expect(calls[1].p_after_hash).toBe(10) // cursor advanced
+    expect(calls[1].p_after_row_index).toBe(20) // cursor advanced (row_index, was the hash)
     // p_row_ids is OMITTED (not sent as null) when unfiltered, so twins that
     // don't declare the param (the theme-extras pagers, sql/173) still resolve.
     expect(calls[0].p_row_ids).toBeUndefined()
@@ -45,8 +45,8 @@ describe('sampledCountFieldValues', () => {
 
   it('forwards p_row_ids and stops on a short page', async () => {
     const calls: Record<string, unknown>[] = []
-    const svc = makeService('sampled_count_field_values', [
-      { n_scanned: 0, groups: [], last_hash: null, last_id: null },
+    const svc = makeService('sampled_count_field_values_blocks', [
+      { n_scanned: 0, groups: [], last_row_index: null },
     ], calls)
     const r = await sampledCountFieldValues(svc, 'd1', 'f', 200, 100000, [1, 2, 3])
     expect(r.scanned).toBe(0)
@@ -56,9 +56,9 @@ describe('sampledCountFieldValues', () => {
 
 describe('sampledCrosstabCounts', () => {
   it('accumulates (row,col) cells, scales, builds ranked grid', async () => {
-    const svc = makeService('sampled_crosstab_counts', [
-      { n_scanned: 5000, groups: [['Dine-In', 'FL', 3000], ['Carry Out', 'FL', 1000]], last_hash: 1, last_id: 1 },
-      { n_scanned: 0, groups: [], last_hash: null, last_id: null },
+    const svc = makeService('sampled_crosstab_counts_blocks', [
+      { n_scanned: 5000, groups: [['Dine-In', 'FL', 3000], ['Carry Out', 'FL', 1000]], last_row_index: 1 },
+      { n_scanned: 0, groups: [], last_row_index: null },
     ])
     const r = await sampledCrosstabCounts(svc, 'd1', 'visit', 'state', 50, 10000, null)
     // ×2 scaling
@@ -70,8 +70,8 @@ describe('sampledCrosstabCounts', () => {
 
 describe('sampledGroupNumericStats', () => {
   it('derives per-group n(scaled)/mean/median/min/max/stddev(unscaled) from raw values', async () => {
-    const svc = makeService('sampled_group_numeric_stats', [
-      { n_scanned: 4, vals: [['X', 2], ['X', 4], ['X', 6], ['Y', 10]], last_hash: null, last_id: null },
+    const svc = makeService('sampled_group_numeric_stats_blocks', [
+      { n_scanned: 4, vals: [['X', 2], ['X', 4], ['X', 6], ['Y', 10]], last_row_index: null },
     ])
     const r = await sampledGroupNumericStats(svc, 'd1', 'g', 'v', 8, null) // ×2
     const x = r.rows.find(g => g.group_val === 'X')!
@@ -90,8 +90,8 @@ describe('sampledGroupNumericStats', () => {
 
 describe('sampledNumericFieldStats (aggregate op — raw values)', () => {
   it('computes n(scaled)/mean/median/stddev over the sample; even-n median interpolates', async () => {
-    const svc = makeService('sampled_numeric_field_values', [
-      { n_scanned: 4, vals: [1, 2, 3, 4], last_hash: null, last_id: null },
+    const svc = makeService('sampled_numeric_field_values_blocks', [
+      { n_scanned: 4, vals: [1, 2, 3, 4], last_row_index: null },
     ])
     const r = await sampledNumericFieldStats(svc, 'd1', 'v', 8, null) // ×2
     expect(r.rows!.n).toBe(8)          // 4 scaled ×2
@@ -102,8 +102,8 @@ describe('sampledNumericFieldStats (aggregate op — raw values)', () => {
   })
 
   it('returns null rows when no numeric values in the sample', async () => {
-    const svc = makeService('sampled_numeric_field_values', [
-      { n_scanned: 3, vals: [], last_hash: null, last_id: null },
+    const svc = makeService('sampled_numeric_field_values_blocks', [
+      { n_scanned: 3, vals: [], last_row_index: null },
     ])
     const r = await sampledNumericFieldStats(svc, 'd1', 'v', 100, null)
     expect(r.rows).toBeNull()
@@ -112,9 +112,9 @@ describe('sampledNumericFieldStats (aggregate op — raw values)', () => {
 
 describe('sampledDateSeriesStats', () => {
   it('merges bucket counts (scaled) + metric sum/count → avg (unscaled), sorts by bucket', async () => {
-    const svc = makeService('sampled_date_series_stats', [
-      { n_scanned: 5000, buckets: [['2026-02', 100, 400, 100], ['2026-01', 50, 250, 50]], last_hash: 1, last_id: 1 },
-      { n_scanned: 0, buckets: [], last_hash: null, last_id: null },
+    const svc = makeService('sampled_date_series_stats_blocks', [
+      { n_scanned: 5000, buckets: [['2026-02', 100, 400, 100], ['2026-01', 50, 250, 50]], last_row_index: 1 },
+      { n_scanned: 0, buckets: [], last_row_index: null },
     ])
     const r = await sampledDateSeriesStats(svc, 'd1', 'date', 'rating', 'month', 10000, null)
     expect(r.rows.map(b => b.bucket_date)).toEqual(['2026-01', '2026-02'])
@@ -126,7 +126,7 @@ describe('sampledDateSeriesStats', () => {
 
 describe('error handling', () => {
   it('throws on RPC error so the route falls back to the exact path', async () => {
-    const svc = makeService('sampled_count_field_values', []) // immediate error
-    await expect(sampledCountFieldValues(svc, 'd1', 'f', 200, 100, null)).rejects.toThrow('sampled_count_field_values failed')
+    const svc = makeService('sampled_count_field_values_blocks', []) // immediate error
+    await expect(sampledCountFieldValues(svc, 'd1', 'f', 200, 100, null)).rejects.toThrow('sampled_count_field_values_blocks failed')
   })
 })

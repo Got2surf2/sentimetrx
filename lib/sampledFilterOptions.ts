@@ -6,7 +6,7 @@
 // ~500K rows (the modal never opened on large datasets — perf review §7 Brief B).
 //
 // One keyset-paged pass over the SAME deterministic sample the bulk rows route
-// serves (smallest hash(id||dataset_id) first, idx_drf_sample) returns, per
+// serves (sql/191 stratified contiguous row_index blocks) returns, per
 // field, in a single heap visit per row: non-empty count, distinct values with
 // counts (merged across pages, capped 500), numeric min/max, date text min/max.
 // Below the 50K cap the walk reaches every row = EXACT; above it callers scale
@@ -59,8 +59,7 @@ interface PageField {
 interface PageResult {
   n_scanned: number
   fields: PageField[]
-  last_hash: number | null
-  last_id: number | null
+  last_row_index: number | null
 }
 
 interface FieldAcc {
@@ -104,17 +103,15 @@ export async function sampledFilterOptions(
   const fieldsPayload = fields.map(f => ({ field: f.field, type: f.type }))
 
   let scanned = 0
-  let afterHash = -1
-  let afterId = -1
+  let afterRowIndex = -1
   while (scanned < cap) {
-    const { data, error } = await service.rpc('sampled_filter_options', {
+    const { data, error } = await service.rpc('sampled_filter_options_blocks', {
       p_dataset_id: datasetId,
       p_fields: fieldsPayload,
-      p_after_hash: afterHash,
-      p_after_id: afterId,
+      p_after_row_index: afterRowIndex,
       p_limit: Math.min(PAGE_SIZE, cap - scanned),
     })
-    if (error) throw new Error('sampled_filter_options failed for ' + datasetId + ': ' + error.message)
+    if (error) throw new Error('sampled_filter_options_blocks failed for ' + datasetId + ': ' + error.message)
     const page = data as PageResult | null
     const n = Number(page?.n_scanned) || 0
     if (!page || n === 0) break // fewer rows than the cap — scanned them all
@@ -134,9 +131,10 @@ export async function sampledFilterOptions(
         }
       }
     }
-    if (page.last_hash == null || page.last_id == null) break
-    afterHash = Number(page.last_hash)
-    afterId = Number(page.last_id)
+    if (page.last_row_index == null) break
+    const nextRowIndex = Number(page.last_row_index)
+    if (nextRowIndex <= afterRowIndex) break   // no forward progress
+    afterRowIndex = nextRowIndex
   }
 
   const options: Record<string, FilterFieldOption> = {}

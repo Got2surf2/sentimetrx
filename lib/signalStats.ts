@@ -50,7 +50,12 @@ interface ThemeModel {
 // theme model) — old cache entries then recompute on next read. v2 = Model A
 // (2026-07-14): sampled counts are the EXACT counts of the 50K sample, no longer
 // scaled to the full dataset, so v1 entries hold stale scaled numbers.
-const STATS_MODEL_VERSION = 2
+// v3 = sql/191 (2026-08-16): the 50K sample itself changed, from hash order to
+// stratified contiguous blocks. The cache key is (theme-model hash, row count),
+// and NEITHER moves when the sampling scheme changes — so without this bump
+// every existing entry would survive the conversion and keep serving numbers
+// computed over rows that are no longer the sample.
+const STATS_MODEL_VERSION = 3
 
 interface CachedSignalStats extends SignalStats {
   theme_model_hash: string
@@ -232,7 +237,7 @@ export async function computeSignalStatsRaw(
   // ~30 RPCs × ~100ms = ~3s; parallel it's bounded by the slowest RPC).
   //
   // Members ABOVE the cap use the sampled single-pass RPC (sql/162) over the
-  // deterministic idx_drf_sample order — the same 50K sample the bulk rows
+  // deterministic sql/191 block order — the same 50K sample the bulk rows
   // route serves — scaled to the member's total rows and flagged `sampled`.
   // The exact path there is 1 + themes + 1 FULL SCANS, each of which blows
   // the 8s DB statement timeout (~1.4GB of jsonb per scan at 785K rows,

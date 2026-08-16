@@ -8,7 +8,7 @@ function makeService(pages: Record<string, unknown>[], calls: Record<string, unk
   let i = 0
   return {
     rpc: (fn: string, args: Record<string, unknown>) => {
-      if (fn !== 'sampled_filter_options') throw new Error('unexpected rpc ' + fn)
+      if (fn !== 'sampled_filter_options_blocks') throw new Error('unexpected rpc ' + fn)
       calls.push(args)
       const page = pages[i++]
       if (!page) return Promise.resolve({ data: null, error: { message: 'no page queued' } })
@@ -36,7 +36,7 @@ describe('sampledFilterOptions', () => {
           { ord: 3, nonempty: 2, num_min: null, num_max: null, date_min: '2024-01-05', date_max: '2024-03-01', values: [], distinct_n: 0 },
           { ord: 4, nonempty: 1, num_min: null, num_max: null, date_min: null, date_max: null, values: [], distinct_n: 0 },
         ],
-        last_hash: 10, last_id: 100,
+        last_row_index: 100,
       },
       {
         n_scanned: 1,
@@ -46,7 +46,7 @@ describe('sampledFilterOptions', () => {
           { ord: 3, nonempty: 1, num_min: null, num_max: null, date_min: '2024-01-02', date_max: '2024-02-01', values: [], distinct_n: 0 },
           { ord: 4, nonempty: 0, num_min: null, num_max: null, date_min: null, date_max: null, values: [], distinct_n: 0 },
         ],
-        last_hash: null, last_id: null, // terminal page → stop after processing
+        last_row_index: null, // terminal page → stop after processing
       },
     ], calls)
 
@@ -73,10 +73,8 @@ describe('sampledFilterOptions', () => {
     expect(options.txt.values).toBeNull()
 
     // cursor advanced from the first page's (last_hash,last_id)
-    expect(calls[0].p_after_hash).toBe(-1)
-    expect(calls[0].p_after_id).toBe(-1)
-    expect(calls[1].p_after_hash).toBe(10)
-    expect(calls[1].p_after_id).toBe(100)
+    expect(calls[0].p_after_row_index).toBe(-1)
+    expect(calls[1].p_after_row_index).toBe(100) // single row_index cursor now
   })
 
   it('caps the value list at 500 by count and flags valuesCapped', async () => {
@@ -86,7 +84,7 @@ describe('sampledFilterOptions', () => {
       {
         n_scanned: 5,
         fields: [{ ord: 1, nonempty: 5, num_min: null, num_max: null, date_min: null, date_max: null, values, distinct_n: 600 }],
-        last_hash: null, last_id: null,
+        last_row_index: null,
       },
     ])
     const { options } = await sampledFilterOptions(svc, 'ds', [{ field: 'loc', type: 'categorical' }])
@@ -99,8 +97,8 @@ describe('sampledFilterOptions', () => {
 
   it('stops when a page returns zero scanned rows (dataset smaller than cap)', async () => {
     const svc = makeService([
-      { n_scanned: 2, fields: [{ ord: 1, nonempty: 2, num_min: null, num_max: null, date_min: null, date_max: null, values: [{ v: 'A', c: 2 }], distinct_n: 1 }], last_hash: 9, last_id: 9 },
-      { n_scanned: 0, fields: [], last_hash: null, last_id: null },
+      { n_scanned: 2, fields: [{ ord: 1, nonempty: 2, num_min: null, num_max: null, date_min: null, date_max: null, values: [{ v: 'A', c: 2 }], distinct_n: 1 }], last_row_index: 9 },
+      { n_scanned: 0, fields: [], last_row_index: null },
     ])
     const { options, scanned } = await sampledFilterOptions(svc, 'ds', [{ field: 'loc', type: 'categorical' }])
     expect(scanned).toBe(2)
@@ -111,6 +109,6 @@ describe('sampledFilterOptions', () => {
     const svc = {
       rpc: () => Promise.resolve({ data: null, error: { message: 'Could not find the function public.sampled_filter_options' } }),
     } as unknown as SupabaseClient
-    await expect(sampledFilterOptions(svc, 'ds', [{ field: 'loc', type: 'categorical' }])).rejects.toThrow(/sampled_filter_options failed/)
+    await expect(sampledFilterOptions(svc, 'ds', [{ field: 'loc', type: 'categorical' }])).rejects.toThrow(/sampled_filter_options_blocks failed/)
   })
 })

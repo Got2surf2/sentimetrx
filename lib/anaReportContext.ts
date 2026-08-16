@@ -13,7 +13,7 @@ import { logError } from '@/lib/log'
 import { applyFilters, deserializeFilters } from '@/lib/filterUtils'
 import { isSubstantiveText } from '@/lib/datasetUtils'
 import type { SerializedFilters } from '@/lib/filterUtils'
-import { SIGNAL_SAMPLE_CAP } from '@/lib/sampledSignalCounts'
+import { SIGNAL_SAMPLE_CAP, SAMPLE_BLOCKS } from '@/lib/sampledSignalCounts'
 
 type Service = ReturnType<typeof createServiceRoleClient>
 
@@ -113,8 +113,8 @@ export async function fetchDatasetRows(
 }
 
 // ── Filter-aware deterministic sampling (sql/167) ──────────────────────────
-// Pages the sample order (idx_drf_sample — the SAME deterministic population
-// every other sampled surface uses, D6) with the user's filters applied in
+// Pages the sample order (sql/191 stratified blocks — the SAME deterministic
+// population every other sampled surface uses, D6) with the user's filters applied in
 // SQL, so selective filters draw from the whole (sampled) population instead
 // of starving a tiny filter-blind prefetch. Datasets at/below the scan cap are
 // scanned in full = exact filtering; above it, the scan covers the 50K sample.
@@ -142,8 +142,7 @@ async function fetchFilteredSampledRows(
   let scanned = 0
   let matched = 0
   let exhausted = false
-  let afterHash = -1
-  let afterId = -1
+  let afterRowIndex = -1
   const scanCap = Math.min(Math.max(totalRows, 1), SIGNAL_SAMPLE_CAP)
   // Datasets at/below the cap: keep scanning (match_limit 0, counts only) even
   // after the row budget fills, so totalFiltered is EXACT — every other surface
@@ -155,25 +154,27 @@ async function fetchFilteredSampledRows(
   const countToEnd = forceScanToEnd || totalRows <= SIGNAL_SAMPLE_CAP
   while (scanned < scanCap && (rows.length < budget || countToEnd)) {
     const scanLimit = Math.min(FILTER_SCAN_PAGE, scanCap - scanned)
-    const { data, error } = await service.rpc('sampled_filtered_rows', {
-      p_dataset_id:  datasetId,
-      p_filters:     filters || {},
-      p_after_hash:  afterHash,
-      p_after_id:    afterId,
-      p_scan_limit:  scanLimit,
-      p_match_limit: Math.max(0, budget - rows.length),
+    const { data, error } = await service.rpc('sampled_filtered_rows_blocks', {
+      p_dataset_id:      datasetId,
+      p_filters:         filters || {},
+      p_after_row_index: afterRowIndex,
+      p_scan_limit:      scanLimit,
+      p_match_limit:     Math.max(0, budget - rows.length),
+      p_cap:             scanCap,
+      p_blocks:          SAMPLE_BLOCKS,
     })
-    if (error) throw new Error('sampled_filtered_rows failed for ' + datasetId + ': ' + error.message)
-    const page = data as { n_scanned?: number; n_matched?: number; rows?: Record<string, unknown>[]; last_hash?: number | null; last_id?: number | null } | null
+    if (error) throw new Error('sampled_filtered_rows_blocks failed for ' + datasetId + ': ' + error.message)
+    const page = data as { n_scanned?: number; n_matched?: number; rows?: Record<string, unknown>[]; last_row_index?: number | null } | null
     const n = Number(page?.n_scanned) || 0
     if (!page || n === 0) { exhausted = true; break }        // no rows past the cursor
     scanned += n
     matched += Number(page.n_matched) || 0
     for (const r of page.rows || []) rows.push(r)
     if (n < scanLimit) { exhausted = true; break }           // short page = dataset ends here
-    if (page.last_hash == null || page.last_id == null) { exhausted = true; break }
-    afterHash = Number(page.last_hash)
-    afterId = Number(page.last_id)
+    if (page.last_row_index == null) { exhausted = true; break }
+    const nextRowIndex = Number(page.last_row_index)
+    if (nextRowIndex <= afterRowIndex) { exhausted = true; break }   // no forward progress
+    afterRowIndex = nextRowIndex
   }
   // Scanning the cap on a dataset no bigger than the cap = examined everything.
   if (!exhausted && scanned >= totalRows) exhausted = true

@@ -21,7 +21,7 @@ const PAYLOAD: ThemeCountsPayload = {
   sampleSize: 50000,
 }
 
-function blobWith(key: string, rowCount: number, payload = PAYLOAD, v = 1) {
+function blobWith(key: string, rowCount: number, payload = PAYLOAD, v = 2) {  // v2 = sql/191 block sample
   return { theme_counts: { [key]: { payload, row_count: rowCount, computed_at: '2026-08-14T00:00:00.000Z', v } } }
 }
 
@@ -78,7 +78,7 @@ describe('readThemeCountsCache', () => {
   })
 
   it('misses on a malformed entry rather than serving a broken payload', () => {
-    const bad = { theme_counts: { [key]: { payload: { totalNonEmpty: 5 }, row_count: 128619, computed_at: 'x', v: 1 } } }
+    const bad = { theme_counts: { [key]: { payload: { totalNonEmpty: 5 }, row_count: 128619, computed_at: 'x', v: 2 } } }
     expect(readThemeCountsCache(bad, key, 128619)).toBeNull()
   })
 

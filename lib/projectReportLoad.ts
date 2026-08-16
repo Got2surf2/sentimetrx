@@ -234,7 +234,7 @@ interface MemberRow { text: string; rating: number | null; sentiment: string | n
 // Read a member's flat rows (text + rating + date) for the report substrate.
 // Competitive-set datasets are ~8–30K, but a 1M-row member deep-OFFSET-paged
 // via `.range()` 57014s (each page re-scans from row 0). Now pages the
-// deterministic 50K `idx_drf_sample` via `pageSampledRows` (sql/160, the same
+// deterministic 50K stratified block sample via `pageSampledRows` (sql/191, the same
 // sample the bulk-rows route + every sampled surface serves) — an index-range
 // scan flat in dataset size. At/under the sample size the walk returns every
 // row (exact, order-independent aggregates unaffected); above it the report's

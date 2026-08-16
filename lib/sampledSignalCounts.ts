@@ -5,7 +5,7 @@
 // timeout (~1.4GB of jsonb per scan on a 785K-row dataset, prod 2026-07-11).
 //
 // One keyset-paged pass over the SAME sample the bulk rows route serves
-// (smallest hash(id||dataset_id) first, idx_drf_sample) returns per-field
+// (sql/191 stratified contiguous row_index blocks) returns per-field
 // non-empty counts, per-theme match counts, and the any-theme union in a
 // single heap visit per row. Callers scale to the dataset's total row count
 // and label the result as sampled — the platform sampling doctrine
@@ -19,6 +19,12 @@ import { kwPatternFragment } from '@/lib/themeUtils'
 
 /** The platform-wide sampling cap — matches the bulk rows route / RowsContext. */
 export const SIGNAL_SAMPLE_CAP = 50000
+
+/** Stratified blocks the sample is spread over (sql/188/191). The sample is K
+ *  contiguous row_index runs rather than hash order, because hash order is
+ *  uncorrelated with physical order and its cost is buffer-cache residency,
+ *  not row count. 50 sits in the flat part of the measured curve. */
+export const SAMPLE_BLOCKS = 50
 
 const PAGE_SIZE = 5000
 
@@ -48,8 +54,7 @@ interface PageResult {
   theme_counts_substantive?: number[]
   union_count: number
   union_substantive?: number
-  last_hash: number | null
-  last_id: number | null
+  last_row_index: number | null
 }
 
 /**
@@ -81,18 +86,16 @@ export async function sampledSignalCounts(
     const kws = (t.keywords || []).filter(Boolean)
     return { keywords: kws, patterns: kws.map(kwPatternFragment) }
   })
-  let afterHash = -1
-  let afterId = -1
+  let afterRowIndex = -1
   while (acc.scanned < cap) {
-    const { data, error } = await service.rpc('sampled_signal_counts', {
+    const { data, error } = await service.rpc('sampled_signal_counts_blocks', {
       p_dataset_id: datasetId,
       p_field_keys: fields,
       p_themes: themesPayload,
-      p_after_hash: afterHash,
-      p_after_id: afterId,
+      p_after_row_index: afterRowIndex,
       p_limit: Math.min(PAGE_SIZE, cap - acc.scanned),
     })
-    if (error) throw new Error('sampled_signal_counts failed for ' + datasetId + ': ' + error.message)
+    if (error) throw new Error('sampled_signal_counts_blocks failed for ' + datasetId + ': ' + error.message)
     const page = data as PageResult | null
     const n = Number(page?.n) || 0
     if (!page || n === 0) break // fewer rows than the cap — scanned them all
@@ -103,9 +106,10 @@ export async function sampledSignalCounts(
     ;(page.theme_counts_substantive || []).forEach((c, i) => { acc.perThemeSubstantive[i] += Number(c) || 0 })
     acc.union += Number(page.union_count) || 0
     acc.unionSubstantive += Number(page.union_substantive) || 0
-    if (page.last_hash == null || page.last_id == null) break
-    afterHash = Number(page.last_hash)
-    afterId = Number(page.last_id)
+    if (page.last_row_index == null) break
+    const nextRowIndex = Number(page.last_row_index)
+    if (nextRowIndex <= afterRowIndex) break   // no forward progress
+    afterRowIndex = nextRowIndex
   }
   return acc
 }
@@ -134,8 +138,7 @@ interface NumericPageResult {
   sum: number | null
   min: number | null
   max: number | null
-  last_hash: number | null
-  last_id: number | null
+  last_row_index: number | null
 }
 
 /**
@@ -158,18 +161,16 @@ export async function sampledNumericFieldStats(
   let sum = 0
   let min: number | null = null
   let max: number | null = null
-  let afterHash = -1
-  let afterId = -1
+  let afterRowIndex = -1
   while (scanned < cap) {
-    const { data, error } = await service.rpc('sampled_numeric_field_stats', {
+    const { data, error } = await service.rpc('sampled_numeric_field_stats_blocks', {
       p_dataset_id: datasetId,
       p_field: field,
       p_aliases: aliases,
-      p_after_hash: afterHash,
-      p_after_id: afterId,
+      p_after_row_index: afterRowIndex,
       p_limit: Math.min(PAGE_SIZE, cap - scanned),
     })
-    if (error) throw new Error('sampled_numeric_field_stats failed for ' + datasetId + ': ' + error.message)
+    if (error) throw new Error('sampled_numeric_field_stats_blocks failed for ' + datasetId + ': ' + error.message)
     const page = data as NumericPageResult | null
     const pageScanned = Number(page?.n_scanned) || 0
     if (!page || pageScanned === 0) break // fewer rows than the cap — scanned them all
@@ -178,9 +179,10 @@ export async function sampledNumericFieldStats(
     sum += Number(page.sum) || 0
     if (page.min != null) min = min == null ? Number(page.min) : Math.min(min, Number(page.min))
     if (page.max != null) max = max == null ? Number(page.max) : Math.max(max, Number(page.max))
-    if (page.last_hash == null || page.last_id == null) break
-    afterHash = Number(page.last_hash)
-    afterId = Number(page.last_id)
+    if (page.last_row_index == null) break
+    const nextRowIndex = Number(page.last_row_index)
+    if (nextRowIndex <= afterRowIndex) break   // no forward progress
+    afterRowIndex = nextRowIndex
   }
   return { n, avg: n > 0 ? sum / n : null, min, max, scanned }
 }

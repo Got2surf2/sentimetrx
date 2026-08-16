@@ -19,6 +19,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { SchemaConfig } from '@/lib/analyzeTypes'
 import { logError } from '@/lib/log'
 import { allocateSampleShares } from '@/lib/bulkRowSample'
+import { SAMPLE_BLOCKS } from '@/lib/sampledSignalCounts'
 
 // ── slugify — JS mirror of sql/060 public.slugify() ────────────────────────
 // Must stay byte-for-byte equivalent: it's the join key between catalog
@@ -205,7 +206,8 @@ export function buildThemeQuery(keywords: string[]): string | null {
 // At ~1M rows that RPC 57014s (common terms match hundreds of thousands of rows
 // × up to ~300 catalog terms). Two mechanisms close it (sql/172):
 //   * SAMPLED compute for single-dataset scope above the 50K cap
-//     (sampled_count_entity_terms, keyset-paged over idx_drf_sample, scaled).
+//     (sampled_count_entity_terms_blocks, keyset-paged over the sql/191
+//     stratified block sample, scaled).
 //   * STORED counts on entity_catalog, keyed by the scope row total, served on
 //     default reads with zero scans and refreshed in the background on drift.
 
@@ -222,7 +224,7 @@ async function scopeRowTotal(service: SupabaseClient, datasetIds: string[]): Pro
 }
 
 /** Sampled entity counts for ONE dataset above the cap — keyset-pages the 50K
- *  idx_drf_sample (sql/172) and scales counts by total/scanned. Page size adapts
+ *  the sql/191 stratified block sample and scales counts by total/scanned. Page size adapts
  *  to the term count so no single RPC page approaches the statement timeout.
  *  Returns raw scaled counts keyed by term (the websearch query string). */
 async function sampledEntityTermCounts(
@@ -235,25 +237,28 @@ async function sampledEntityTermCounts(
   const raw = new Map<string, number>()
   if (terms.length === 0) return raw
   const pageSize = Math.min(5000, Math.max(500, Math.round(ENTITY_PAGE_TERMROW_BUDGET / terms.length)))
-  let scanned = 0, afterHash = -1, afterId = -1
+  let scanned = 0, afterRowIndex = -1
   while (scanned < cap) {
-    const { data, error } = await service.rpc('sampled_count_entity_terms', {
+    const { data, error } = await service.rpc('sampled_count_entity_terms_blocks', {
       p_dataset_id: datasetId,
       p_terms: terms,
       p_theme_query: themeQuery,
       p_text_fields: textFields.length ? textFields : null,
-      p_after_hash: afterHash,
-      p_after_id: afterId,
+      p_after_row_index: afterRowIndex,
       p_limit: Math.min(pageSize, cap - scanned),
+      p_cap: cap,
+      p_blocks: SAMPLE_BLOCKS,
     })
-    if (error) throw new Error('sampled_count_entity_terms: ' + error.message)
-    const page = data as { n_scanned?: number; counts?: [string, number][]; last_hash?: number | null; last_id?: number | null } | null
+    if (error) throw new Error('sampled_count_entity_terms_blocks: ' + error.message)
+    const page = data as { n_scanned?: number; counts?: [string, number][]; last_row_index?: number | null } | null
     const n = Number(page?.n_scanned) || 0
     if (!page || n === 0) break
     scanned += n
     for (const c of page.counts || []) raw.set(c[0], (raw.get(c[0]) || 0) + Number(c[1]))
-    if (page.last_hash == null || page.last_id == null) break
-    afterHash = Number(page.last_hash); afterId = Number(page.last_id)
+    if (page.last_row_index == null) break
+    const nextRowIndex = Number(page.last_row_index)
+    if (nextRowIndex <= afterRowIndex) break   // no forward progress
+    afterRowIndex = nextRowIndex
   }
   // Scale sample matches to the full dataset (exact below the cap: scanned==total).
   const scaled = new Map<string, number>()

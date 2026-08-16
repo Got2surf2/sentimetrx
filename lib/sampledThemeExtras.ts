@@ -4,7 +4,7 @@
 // and per-theme Dimensions breakdown. The exact RPCs (compute_theme_cooccurrence_matrix
 // sql/055, extract_theme_topical_words sql/054, theme_dimension_counts sql/151)
 // full-scan `dataset_rows_flat` per member and 57014 at ~1M. Each here
-// keyset-pages the deterministic 50K idx_drf_sample (sql/173 paged twins, same
+// keyset-pages the deterministic 50K stratified block sample (sql/191 twins, same
 // sample every sampled surface serves), merges the per-page partials in Node,
 // and scales counts by total/scanned. All three are MULTI-THEME per page call
 // (one page RPC covers every theme) so a member needs ~10 calls, not ~10×N.
@@ -23,7 +23,7 @@ export async function sampledThemeCooccurrence(
   total: number, cap = AGG_SAMPLE_CAP,
 ): Promise<Record<string, Record<string, number>>> {
   const pairs = new Map<string, number>() // key = a   b
-  const scanned = await pageSample(service, datasetId, 'sampled_theme_cooccurrence_page',
+  const scanned = await pageSample(service, datasetId, 'sampled_theme_cooccurrence_page_blocks',
     { p_field_keys: fields, p_themes: themes }, null,
     page => {
       for (const p of (page.pairs as [string, string, number][] | undefined) || []) {
@@ -48,7 +48,7 @@ export async function sampledThemeTopical(
   extraExcludes: string[], total: number, cap = AGG_SAMPLE_CAP,
 ): Promise<Record<string, Record<string, number>>> {
   const byTheme = new Map<string, Map<string, number>>()
-  const scanned = await pageSample(service, datasetId, 'sampled_theme_topical_page',
+  const scanned = await pageSample(service, datasetId, 'sampled_theme_topical_page_blocks',
     { p_field_keys: fields, p_themes: themes, p_extra_excludes: extraExcludes }, null,
     page => {
       for (const w of (page.words as [string, string, number][] | undefined) || []) {
@@ -87,7 +87,7 @@ export async function sampledThemeExtras(
 }> {
   const pairs = new Map<string, number>()
   const byTheme = new Map<string, Map<string, { axis: string; sub: string; count: number }>>()
-  const scanned = await pageSample(service, datasetId, 'sampled_theme_extras_page',
+  const scanned = await pageSample(service, datasetId, 'sampled_theme_extras_page_blocks',
     { p_field_keys: fields, p_themes: themes, p_want_pairs: want.cooccurrence, p_want_dims: want.dimensions }, null,
     page => {
       for (const p of (page.pairs as [string, string, number][] | undefined) || []) {
@@ -124,7 +124,7 @@ export async function sampledThemeDimensions(
   total: number, cap = AGG_SAMPLE_CAP,
 ): Promise<Record<string, Record<string, { axis: string; sub: string; count: number }>>> {
   const byTheme = new Map<string, Map<string, { axis: string; sub: string; count: number }>>()
-  const scanned = await pageSample(service, datasetId, 'sampled_theme_dimension_page',
+  const scanned = await pageSample(service, datasetId, 'sampled_theme_dimension_page_blocks',
     { p_field_keys: fields, p_themes: themes }, null,
     page => {
       for (const d of (page.dims as [string, string, string, number][] | undefined) || []) {

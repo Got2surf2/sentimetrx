@@ -7,13 +7,16 @@
 // members), the exact disease sql/160 cured for single datasets: a 184K-row
 // brand collection was ~184 serial 1000-row requests). Above the cap each
 // member now contributes a proportional share of the deterministic sample
-// (smallest hash(id‖dataset_id) first, idx_drf_sample index range scan), so
-// a collection load costs the same regardless of member sizes.
+// (sql/191: 50 stratified contiguous row_index blocks, not hash order — hash
+// order is uncorrelated with physical order, so its cost was buffer-cache
+// residency rather than row count), so a collection load costs the same
+// regardless of member sizes.
 //
 // Deliberately dependency-free (no lib/log / server-only chain) so verify
 // harnesses can exercise it directly against a real database.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { SAMPLE_BLOCKS } from '@/lib/sampledSignalCounts'
 
 const SAMPLE_PAGE = 5000
 
@@ -24,9 +27,15 @@ export interface SampledRow {
 }
 
 /**
- * Page the sample_dataset_rows RPC (sql/160) up to `cap` rows, invoking `cb`
- * per row in deterministic (hash, id) order. Returns the number of rows
- * fetched. Throws on RPC error — callers decide how to surface it.
+ * Page the sample_dataset_rows_blocks RPC (sql/188, fixed in sql/191) up to
+ * `cap` rows, invoking `cb` per row in deterministic row_index order. Returns
+ * the number of rows fetched. Throws on RPC error — callers decide how to
+ * surface it.
+ *
+ * sql/191: the stratified BLOCK sample replaces the hash sample, so one
+ * row_index cursor is a complete cursor. This is the same sample every
+ * sampled_*_blocks count RPC walks — the two must never be mixed on one
+ * screen, because they select different rows.
  */
 export async function pageSampledRows(
   service: SupabaseClient,
@@ -41,8 +50,7 @@ export async function pageSampledRows(
   dropKeys?: string[],
 ): Promise<number> {
   let fetched = 0
-  let afterHash = -1 // hashes are >= 0, so (-1, -1) starts at the smallest-hash row
-  let afterId = -1
+  let afterRowIndex = -1 // row_index is >= 0, so -1 starts at the first sampled row
   // Drop the argument entirely once a database answers PGRST202 for it, so a
   // deploy that reaches the app before sql/186 reaches the DB degrades to the
   // previous behaviour instead of failing the whole bulk load.
@@ -51,26 +59,28 @@ export async function pageSampledRows(
     const pageLimit = Math.min(SAMPLE_PAGE, cap - fetched)
     const args: Record<string, unknown> = {
       p_dataset_id: datasetId,
-      p_after_hash: afterHash,
-      p_after_id: afterId,
+      p_after_row_index: afterRowIndex,
       p_limit: pageLimit,
+      p_cap: cap,
+      p_blocks: SAMPLE_BLOCKS,
     }
     if (sendDropKeys) args.p_drop_keys = dropKeys
-    let { data, error } = await service.rpc('sample_dataset_rows', args)
+    let { data, error } = await service.rpc('sample_dataset_rows_blocks', args)
     if (error && sendDropKeys && error.code === 'PGRST202') {
       sendDropKeys = false
       delete args.p_drop_keys
-      ;({ data, error } = await service.rpc('sample_dataset_rows', args))
+      ;({ data, error } = await service.rpc('sample_dataset_rows_blocks', args))
     }
-    if (error) throw new Error('sample_dataset_rows failed for ' + datasetId + ': ' + error.message)
-    const parsed = data as { rows?: SampledRow[]; last_hash?: number | null; last_id?: number | null } | null
+    if (error) throw new Error('sample_dataset_rows_blocks failed for ' + datasetId + ': ' + error.message)
+    const parsed = data as { rows?: SampledRow[]; last_row_index?: number | null } | null
     const pageRows = parsed?.rows || []
     if (pageRows.length === 0) break
     for (const r of pageRows) cb(r)
     fetched += pageRows.length
-    if (parsed?.last_hash == null || pageRows.length < pageLimit) break
-    afterHash = parsed.last_hash
-    afterId = parsed.last_id ?? -1
+    if (parsed?.last_row_index == null || pageRows.length < pageLimit) break
+    const nextRowIndex = Number(parsed.last_row_index)
+    if (nextRowIndex <= afterRowIndex) break   // no forward progress
+    afterRowIndex = nextRowIndex
   }
   return fetched
 }

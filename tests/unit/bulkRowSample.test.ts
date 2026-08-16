@@ -6,7 +6,7 @@ function makeService(pages: Record<string, unknown>[], calls: Record<string, unk
   let i = 0
   return {
     rpc: (fn: string, args: Record<string, unknown>) => {
-      if (fn !== 'sample_dataset_rows') throw new Error('unexpected rpc ' + fn)
+      if (fn !== 'sample_dataset_rows_blocks') throw new Error('unexpected rpc ' + fn)
       calls.push(args)
       const page = pages[i++]
       if (!page) return Promise.resolve({ data: null, error: { message: 'no page queued' } })
@@ -24,8 +24,8 @@ describe('pageSampledRows — shared sql/160 pager', () => {
     const calls: Record<string, unknown>[] = []
     const page1 = Array.from({ length: 5000 }, (_v, i) => row(i + 1))
     const svc = makeService([
-      { rows: page1, last_hash: 10, last_id: 5000 },
-      { rows: [row(5001), row(5002)], last_hash: 20, last_id: 5002 },
+      { rows: page1, last_row_index: 5000 },
+      { rows: [row(5001), row(5002)], last_row_index: 5002 },
     ], calls)
 
     const seen: number[] = []
@@ -35,21 +35,20 @@ describe('pageSampledRows — shared sql/160 pager', () => {
     expect(seen[0]).toBe(1)
     expect(seen[seen.length - 1]).toBe(5002)
     expect(calls[0].p_limit).toBe(5000)
-    expect(calls[1].p_after_hash).toBe(10)
-    expect(calls[1].p_after_id).toBe(5000)
+    expect(calls[1].p_after_row_index).toBe(5000) // single row_index cursor now
     expect(calls[1].p_limit).toBe(2000)
     expect(calls).toHaveLength(2) // short page 2 stops the loop
   })
 
   it('stops on a short page (dataset smaller than the cap)', async () => {
-    const svc = makeService([{ rows: [row(1)], last_hash: 5, last_id: 1 }])
+    const svc = makeService([{ rows: [row(1)], last_row_index: 1 }])
     const fetched = await pageSampledRows(svc, 'd1', 5000, () => {})
     expect(fetched).toBe(1) // short page → no second RPC (which would error)
   })
 
   it('throws on RPC error', async () => {
     const svc = makeService([])
-    await expect(pageSampledRows(svc, 'd1', 10, () => {})).rejects.toThrow('sample_dataset_rows failed')
+    await expect(pageSampledRows(svc, 'd1', 10, () => {})).rejects.toThrow('sample_dataset_rows_blocks failed')
   })
 })
 

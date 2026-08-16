@@ -96,9 +96,20 @@ AS $$
   WITH page AS MATERIALIZED (
     SELECT x.id, x.tsv, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.tsv, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -107,10 +118,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -152,9 +164,20 @@ AS $$
   WITH page AS MATERIALIZED (
     SELECT x.id, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -163,10 +186,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -199,9 +223,20 @@ AS $$
   WITH page AS MATERIALIZED (
     SELECT x.id, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -210,10 +245,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -248,9 +284,20 @@ AS $$
   WITH page AS MATERIALIZED (
     SELECT x.id, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -259,10 +306,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -307,9 +355,20 @@ AS $$
   WITH page AS MATERIALIZED (
     SELECT x.id, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -318,10 +377,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -399,9 +459,20 @@ AS $$
   WITH page AS MATERIALIZED (
     SELECT x.id, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -410,10 +481,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -447,9 +519,20 @@ AS $$
   WITH page AS MATERIALIZED (
     SELECT x.id, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -458,10 +541,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -500,9 +584,20 @@ AS $$
   WITH page AS MATERIALIZED (
     SELECT x.id, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -511,10 +606,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -558,9 +654,20 @@ AS $$
   page AS MATERIALIZED (
     SELECT x.id, x.data, x.substantive, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.substantive, f.row_index
       FROM dataset_rows_flat f
@@ -569,10 +676,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -646,9 +754,20 @@ AS $$
   page AS MATERIALIZED (
     SELECT x.id, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -657,10 +776,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -696,9 +816,20 @@ AS $$
   page AS MATERIALIZED (
     SELECT x.id, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -707,10 +838,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -745,9 +877,20 @@ AS $$
   page AS MATERIALIZED (
     SELECT x.id, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -756,10 +899,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -805,9 +949,20 @@ AS $$
   page AS MATERIALIZED (
     SELECT x.id, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -816,10 +971,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -854,9 +1010,20 @@ AS $$
   page AS MATERIALIZED (
     SELECT x.id, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -865,10 +1032,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -900,9 +1068,20 @@ AS $$
   WITH page AS MATERIALIZED (
     SELECT x.id, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -911,10 +1090,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -960,9 +1140,20 @@ AS $$
   WITH page AS MATERIALIZED (
     SELECT x.id, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -971,10 +1162,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -1020,9 +1212,20 @@ AS $$
   WITH page AS MATERIALIZED (
     SELECT x.id, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -1031,10 +1234,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -1100,9 +1304,20 @@ AS $$
   WITH page AS MATERIALIZED (
     SELECT x.id, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -1111,10 +1326,11 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    -- Per-block LIMIT from the BLOCK START, cursor applied outside. Filtering
-    -- inside the LATERAL instead (sql/188) lets a block straddling a page
-    -- boundary hand out a fresh per_block rows on every page.
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   ),
@@ -1188,9 +1404,15 @@ AS $$
   WITH scan AS MATERIALIZED (
     SELECT x.id, x.data, x.row_index
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_scan_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.data, f.row_index
       FROM dataset_rows_flat f
@@ -1199,7 +1421,7 @@ AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_scan_limit
   ), matched AS MATERIALIZED (
@@ -1246,9 +1468,15 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
   WITH page AS MATERIALIZED (
     SELECT x.id, x.row_index, x.data
     FROM (
-      SELECT b.lo, b.hi,
-             (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-      FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
     ) blk, LATERAL (
       SELECT f.id, f.row_index,
              ((f.data - '_tx' - '_txv' - '_sub') - COALESCE(p_drop_keys, '{}'::text[])) AS data
@@ -1258,7 +1486,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
-    WHERE blk.hi > p_after_row_index AND x.row_index > p_after_row_index
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   )
@@ -1276,6 +1504,60 @@ COMMENT ON FUNCTION public.sample_dataset_rows_blocks(uuid, bigint, int, int, in
 REVOKE ALL ON FUNCTION public.sample_dataset_rows_blocks(uuid, bigint, int, int, int, text[]) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.sample_dataset_rows_blocks(uuid, bigint, int, int, int, text[]) FROM anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.sample_dataset_rows_blocks(uuid, bigint, int, int, int, text[]) TO service_role;
+
+-- ── Make the block-set primitive cheap ──────────────────────────────────────
+-- sql/188 decided "is this dataset under the cap?" with count(*) over the whole
+-- dataset. MEASURED on a 128,619-row dataset: that count is 11,190 buffers and
+-- ~24ms, while the stratified read it exists to set up is only ~800 buffers for
+-- 7,000 rows. The primitive was costing 13x what it enabled, and count(*) grows
+-- with the dataset — at 1M rows it would dominate completely, defeating the
+-- flatness that is the entire point of this migration.
+--
+-- The count was only ever used as a boolean ("more rows than the cap?"), so it
+-- becomes an index probe bounded at cap+1 rows. min/max stay index-cheap.
+-- Same signature, so every caller picks it up.
+
+CREATE OR REPLACE FUNCTION public.dataset_sample_blocks(
+  p_dataset_id uuid,
+  p_cap        int,
+  p_blocks     int DEFAULT 50
+)
+RETURNS TABLE(lo bigint, hi bigint)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+  WITH bounds AS (
+    -- min/max, not count: row_index can be sparse after deletes, and the blocks
+    -- must be spread over the range that actually exists.
+    SELECT min(f.row_index) AS lo_ri, max(f.row_index) AS hi_ri
+    FROM dataset_rows_flat f WHERE f.dataset_id = p_dataset_id
+  ),
+  cfg AS (
+    SELECT b.lo_ri, b.hi_ri,
+           -- Under the cap there is no sampling to do: one block, everything.
+           -- Bounded probe rather than count(*) — this asks "is there a row at
+           -- offset p_cap?", so it stops after cap+1 index entries however big
+           -- the dataset is.
+           CASE WHEN EXISTS (SELECT 1 FROM dataset_rows_flat f
+                              WHERE f.dataset_id = p_dataset_id
+                              OFFSET p_cap LIMIT 1)
+                THEN greatest(p_blocks, 1)
+                ELSE 1 END AS k
+    FROM bounds b
+  )
+  SELECT
+    (c.lo_ri + (g.b * ((c.hi_ri - c.lo_ri + 1)::numeric / c.k))::bigint) AS lo,
+    -- `hi` is advisory: callers LIMIT to the per-block count, so a block that
+    -- runs into a sparse stretch simply yields fewer rows.
+    (c.lo_ri + ((g.b + 1) * ((c.hi_ri - c.lo_ri + 1)::numeric / c.k))::bigint) AS hi
+  FROM cfg c, LATERAL generate_series(0, c.k - 1) AS g(b)
+  WHERE c.lo_ri IS NOT NULL;
+$$;
+
+COMMENT ON FUNCTION public.dataset_sample_blocks(uuid, int, int) IS
+  'Stratified sampling primitive (sql/188): K contiguous row_index runs spread evenly across a dataset''s row_index range, or ONE block when the dataset is under the cap. sql/191 replaced the under-the-cap count(*) with an index probe bounded at cap+1 rows — the count was 11,190 buffers on a 128K dataset versus ~800 for the read it sets up, and it grew with dataset size, which defeated the flatness the block sample exists for. Deterministic: a pure function of (min row_index, max row_index, cap, blocks).';
+
+REVOKE ALL ON FUNCTION public.dataset_sample_blocks(uuid, int, int) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.dataset_sample_blocks(uuid, int, int) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.dataset_sample_blocks(uuid, int, int) TO service_role;
 
 COMMIT;
 

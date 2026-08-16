@@ -4,7 +4,7 @@
 // group_stats / crosstab / date_series / axis_crosstab RPCs (sql/164) unnest
 // `data -> '_tx' -> 'f' -> <field> -> 'a'` over EVERY row and 57014 at ~1M once
 // a rollup resolves (measured 8.1s at 1M). Each here keyset-pages the
-// deterministic 50K sample (idx_drf_sample, sql/171 twins — the SAME sample the
+// deterministic 50K sample (sql/191 stratified blocks, the *_blocks twins — the SAME sample the
 // counts twins walk, sql/169) so sampled dimension charts agree with the
 // client-side tiles, then:
 //   * scales COUNTS by total/scanned (an estimate of the full-dataset count)
@@ -36,7 +36,7 @@ export async function sampledTaxonomySubCounts(
   total: number, rowIds: number[] | null, cap = AGG_SAMPLE_CAP,
 ): Promise<Sampled<TaxSubCountRow[]>> {
   const bySub = new Map<string, number>()
-  const scanned = await pageSample(service, datasetId, 'sampled_taxonomy_sub_counts',
+  const scanned = await pageSample(service, datasetId, 'sampled_taxonomy_sub_counts_blocks',
     { p_axis: axis, p_field_key: fieldKey }, rowIds,
     page => {
       for (const g of (page.groups as [string, number][] | undefined) || []) {
@@ -54,7 +54,7 @@ export async function sampledTaxonomyGroupStats(
   total: number, rowIds: number[] | null, cap = AGG_SAMPLE_CAP,
 ): Promise<Sampled<TaxGroupStatsRow[]>> {
   const bySub = new Map<string, number[]>()
-  const scanned = await pageSample(service, datasetId, 'sampled_taxonomy_group_stats',
+  const scanned = await pageSample(service, datasetId, 'sampled_taxonomy_group_stats_blocks',
     { p_axis: axis, p_value_field: valueField, p_field_key: fieldKey }, rowIds,
     page => {
       for (const v of (page.vals as [string, number][] | undefined) || []) {
@@ -88,7 +88,7 @@ export async function sampledTaxonomyCrosstab(
   limit: number, total: number, rowIds: number[] | null, cap = AGG_SAMPLE_CAP,
 ): Promise<Sampled<TaxCrosstabRow[]>> {
   const cells = new Map<string, number>() // key = sub_val \u0000 field_val
-  const scanned = await pageSample(service, datasetId, 'sampled_taxonomy_crosstab',
+  const scanned = await pageSample(service, datasetId, 'sampled_taxonomy_crosstab_blocks',
     { p_axis: axis, p_field: field, p_field_key: fieldKey }, rowIds,
     page => {
       for (const g of (page.groups as [string, string, number][] | undefined) || []) {
@@ -110,7 +110,7 @@ export async function sampledTaxonomyDateSeries(
   total: number, rowIds: number[] | null, cap = AGG_SAMPLE_CAP,
 ): Promise<Sampled<TaxDateSeriesRow[]>> {
   const byKey = new Map<string, { sub: string; bkt: string; n: number; msum: number; mn: number }>()
-  const scanned = await pageSample(service, datasetId, 'sampled_taxonomy_date_series',
+  const scanned = await pageSample(service, datasetId, 'sampled_taxonomy_date_series_blocks',
     { p_axis: axis, p_date_field: dateField, p_metric_field: metricField, p_bucket: bucket, p_field_key: fieldKey }, rowIds,
     page => {
       for (const b of (page.buckets as [string, string, number, number | null, number][] | undefined) || []) {
@@ -138,7 +138,7 @@ export async function sampledTaxonomyAxisCrosstab(
   total: number, rowIds: number[] | null, cap = AGG_SAMPLE_CAP,
 ): Promise<Sampled<TaxAxisCrosstabRow[]>> {
   const cells = new Map<string, number>() // key = axis_val \u0000 field_val
-  const scanned = await pageSample(service, datasetId, 'sampled_taxonomy_axis_crosstab',
+  const scanned = await pageSample(service, datasetId, 'sampled_taxonomy_axis_crosstab_blocks',
     { p_field: field, p_field_key: fieldKey }, rowIds,
     page => {
       for (const g of (page.groups as [string, string, number][] | undefined) || []) {

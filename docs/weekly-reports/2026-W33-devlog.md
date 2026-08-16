@@ -506,3 +506,22 @@ One detail noted so it is not later mistaken for a paging bug: |S| = blocks × (
 - `scripts/_verify_sql191.mts` (untracked) — paging soundness, determinism, page-size independence, block weighting, and representativeness vs exact counts.
 
 **⚠️ TEST only, and a zero behaviour change on its own** — nothing calls these yet. The TS pagers are the next commit, and **the numbers move when that ships**, not now.
+
+### sql/191 — the TS half, and what measuring actually showed (Aug 16)
+
+**Why.** The SQL twins are inert until something calls them. This is the commit where the sample actually changes: one shared pager plus five bespoke ones move from the `(hash, id)` cursor pair to a single `row_index` cursor, and every `sampled_*` RPC name gains its `_blocks` suffix.
+
+**What changed**: `pageSample` in `lib/sampledAggregate.ts` (which alone covers 14 of the 19 twins — the aggregate five, the taxonomy five, the theme-extras four), then `sampledSignalCounts`, `sampledFilterOptions`, `anaReportContext`, `entityFilter` and `bulkRowSample`. `SAMPLE_BLOCKS` lives beside `SIGNAL_SAMPLE_CAP` in `lib/sampledSignalCounts.ts`, since it is the same kind of platform-wide sampling constant.
+
+⭐ **Cache invalidation was a real trap, and the existing key would have hidden it.** The signal-stats cache is keyed on (theme-model hash, row count) and the theme-counts cache on a request hash plus row count. **Neither notices a change of sampling scheme**, so every cached entry would have survived the conversion and kept serving numbers computed over rows that are no longer in the sample — silently, and exactly on the big datasets where sampling applies. Both caches already carry a version discriminator for precisely this, so `STATS_MODEL_VERSION` 2→3 and `THEME_COUNTS_VERSION` 1→2. 26 unit tests went red on the cursor contract and 4 more on the version bumps; they were pinning the contract, which is what they are for.
+
+⭐⭐ **Then I measured, and the headline claim did not survive first contact.** The migration is justified by "hash 2,296ms vs 50 stratified blocks 41ms". My first honest measurement said the new walk was *slower*: 62,486 buffers versus the hash walk's 8,883 for one 5,000-row page. Two compounding causes, both mine or inherited:
+
+1. **Read amplification I introduced.** Fixing sql/188's page-boundary flaw meant taking the per-block LIMIT from the block start — but with no bound on how many blocks a page considers, every page read `per_block` rows from *all 50* blocks and then discarded ~90% at the outer LIMIT. Bounding the blocks to what a page can actually consume took it to 20,646.
+2. **The primitive cost more than the thing it enabled.** Isolating the pieces: the stratified read itself is **~800 buffers for 7,000 rows** — the win the design promises — while `dataset_sample_blocks` alone was **11,190 buffers**, because it decided "is this dataset under the cap?" with a `count(*)` over the whole dataset. It was costing 13× what it set up, and `count(*)` **grows with dataset size**, which defeats the flatness that is the entire point. The count was only ever used as a boolean, so it is now an index probe bounded at cap+1 rows.
+
+After both: 10,381 buffers and 327ms, versus hash's 8,386 and 335ms.
+
+⚠️ **And that is the honest headline: at 128,619 rows on a warm cache, this is a wash, not 55×.** I cannot validate the claim on TEST, because after a few runs everything is buffer-resident and hash order stops being penalised — which is the very effect sql/188 documented (the same 5,000 rows took 28ms on one dataset and 1,895ms on another purely from cache residency). The directional evidence is real but thin: on the genuinely cold first run, the block walk did **0 disk reads** against hash's **1,169**. The claim is specifically about cold cache at 1M rows, and the 1M fixture was deliberately dropped on 2026-08-15.
+
+**So the conversion is complete and correct, and deliberately NOT applied to prod.** Correctness is verified — paging sound, deterministic, page-size independent, blocks now perfectly even at 1000 rows each, and scaled counts within 2.2% of exact ground truth (FL 32,120 exact vs 31,977 estimated). What is missing is the performance evidence that justifies moving every number in the product, and that needs `bash scripts/_seed_scale_test.sh 1000000` and a cold-cache comparison at 1M. Shipping before that would be trading a known cost — every sampled figure moves once, every deck number with it — for an unproven benefit.

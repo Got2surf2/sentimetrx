@@ -3,7 +3,7 @@
 // Above the 50K cap the exact crosstab_counts / group_numeric_stats /
 // date_series_stats / count_field_values / numeric_field_stats RPCs are O(N)
 // jsonb scans that 57014 at ~1M rows. Each here keyset-pages the deterministic
-// 50K sample (idx_drf_sample, sql/169 twins — the SAME sample the bulk rows
+// 50K sample (sql/191 stratified blocks, the *_blocks twins — the SAME sample the bulk rows
 // route serves and sampled_signal_counts counts over) so charts agree with the
 // client-side tiles, then:
 //   * scales COUNTS by total/scanned (an estimate of the full-dataset count)
@@ -17,23 +17,31 @@
 // to stay under the 8s statement timeout).
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { scaleSampledCount, SIGNAL_SAMPLE_CAP } from '@/lib/sampledSignalCounts'
+import { scaleSampledCount, SIGNAL_SAMPLE_CAP, SAMPLE_BLOCKS } from '@/lib/sampledSignalCounts'
 
 /** Sampling cap — the platform-wide 50K, shared with the bulk rows route. */
 export const AGG_SAMPLE_CAP = SIGNAL_SAMPLE_CAP
+export { SAMPLE_BLOCKS }
 
 const PAGE_SIZE = 5000
 
-export interface PageBase { n_scanned?: number; last_hash?: number | null; last_id?: number | null }
+export interface PageBase { n_scanned?: number; last_row_index?: number | null }
 
 /**
  * Shared keyset pager. Calls `rpc` with the cursor + page limit + row-id
  * filter, hands each parsed page to `onPage`, returns the total rows scanned
  * (the scaling denominator). Throws on any RPC error — including PGRST202 when
  * the twin hasn't reached the target DB yet — so the route falls back to the
- * exact RPC (pre-sql/169 behavior). Shared with lib/sampledTaxonomy.ts —
- * `staticArgs` carries the op-specific params (incl. p_field_key for the tax
- * twins).
+ * exact RPC (pre-sql/169 behavior). Shared with lib/sampledTaxonomy.ts and
+ * lib/sampledThemeExtras.ts — `staticArgs` carries the op-specific params
+ * (incl. p_field_key for the tax twins).
+ *
+ * sql/191: pages the STRATIFIED BLOCK sample (`<name>_blocks`), not the hash
+ * sample. One `row_index` cursor replaces the (hash, id) pair — the block set
+ * is walked in row_index order, so a single scalar is a complete cursor. The
+ * caller passes the already-suffixed rpc name; both families exist in the DB
+ * during the deploy window, and they select DIFFERENT ROWS, so a caller must
+ * never mix them within one screen.
  */
 export async function pageSample(
   service: SupabaseClient,
@@ -45,15 +53,15 @@ export async function pageSample(
   cap: number,
 ): Promise<number> {
   let scanned = 0
-  let afterHash = -1
-  let afterId = -1
+  let afterRowIndex = -1        // -1 starts before row_index 0
   while (scanned < cap) {
     const { data, error } = await service.rpc(rpc, {
       p_dataset_id: datasetId,
       ...staticArgs,
-      p_after_hash: afterHash,
-      p_after_id: afterId,
+      p_after_row_index: afterRowIndex,
       p_limit: Math.min(PAGE_SIZE, cap - scanned),
+      p_cap: cap,
+      p_blocks: SAMPLE_BLOCKS,
       // Only send p_row_ids when filtering — twins that don't take it (the
       // theme-extras pagers, sql/173) would otherwise fail the overload lookup;
       // the sql/169/171 twins default it to NULL, so omitting when null is equivalent.
@@ -65,9 +73,10 @@ export async function pageSample(
     if (!page || n === 0) break // fewer rows than the cap — scanned them all
     scanned += n
     onPage(page)
-    if (page.last_hash == null || page.last_id == null) break
-    afterHash = Number(page.last_hash)
-    afterId = Number(page.last_id)
+    if (page.last_row_index == null) break
+    const next = Number(page.last_row_index)
+    if (next <= afterRowIndex) break   // no forward progress — never spin
+    afterRowIndex = next
   }
   return scanned
 }
@@ -115,7 +124,7 @@ export async function sampledCrosstabCounts(
   limit: number, total: number, rowIds: number[] | null, cap = AGG_SAMPLE_CAP,
 ): Promise<Sampled<CrosstabRow[]>> {
   const cells = new Map<string, number>() // key = row_val \u0000 col_val
-  const scanned = await pageSample(service, datasetId, 'sampled_crosstab_counts',
+  const scanned = await pageSample(service, datasetId, 'sampled_crosstab_counts_blocks',
     { p_row_field: rowField, p_col_field: colField }, rowIds,
     page => {
       for (const g of (page.groups as [string, string, number][] | undefined) || []) {
@@ -137,7 +146,7 @@ export async function sampledGroupNumericStats(
   total: number, rowIds: number[] | null, cap = AGG_SAMPLE_CAP,
 ): Promise<Sampled<GroupStatsRow[]>> {
   const byGroup = new Map<string, number[]>()
-  const scanned = await pageSample(service, datasetId, 'sampled_group_numeric_stats',
+  const scanned = await pageSample(service, datasetId, 'sampled_group_numeric_stats_blocks',
     { p_group_field: groupField, p_value_field: valueField }, rowIds,
     page => {
       for (const v of (page.vals as [string, number][] | undefined) || []) {
@@ -169,7 +178,7 @@ export async function sampledDateSeriesStats(
   total: number, rowIds: number[] | null, cap = AGG_SAMPLE_CAP,
 ): Promise<Sampled<DateSeriesRow[]>> {
   const byBucket = new Map<string, { n: number; msum: number; mn: number }>()
-  const scanned = await pageSample(service, datasetId, 'sampled_date_series_stats',
+  const scanned = await pageSample(service, datasetId, 'sampled_date_series_stats_blocks',
     { p_date_field: dateField, p_metric_field: metricField, p_bucket: bucket }, rowIds,
     page => {
       for (const b of (page.buckets as [string, number, number | null, number][] | undefined) || []) {
@@ -195,7 +204,7 @@ export async function sampledCountFieldValues(
   limit: number, total: number, rowIds: number[] | null, cap = AGG_SAMPLE_CAP,
 ): Promise<Sampled<FieldCountRow[]>> {
   const byValue = new Map<string, number>()
-  const scanned = await pageSample(service, datasetId, 'sampled_count_field_values',
+  const scanned = await pageSample(service, datasetId, 'sampled_count_field_values_blocks',
     { p_field_key: field }, rowIds,
     page => {
       for (const g of (page.groups as [string, number][] | undefined) || []) {
@@ -213,7 +222,7 @@ export async function sampledNumericFieldStats(
   total: number, rowIds: number[] | null, cap = AGG_SAMPLE_CAP,
 ): Promise<Sampled<NumericStatsRow | null>> {
   const vals: number[] = []
-  const scanned = await pageSample(service, datasetId, 'sampled_numeric_field_values',
+  const scanned = await pageSample(service, datasetId, 'sampled_numeric_field_values_blocks',
     { p_field_key: field }, rowIds,
     page => { for (const x of (page.vals as number[] | undefined) || []) vals.push(Number(x)) }, cap)
   if (!vals.length) return { rows: null, scanned }

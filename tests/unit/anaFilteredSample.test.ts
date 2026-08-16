@@ -37,11 +37,11 @@ describe('loadAnaSample — filter-aware sampled fetch (sql/167 path)', () => {
     const pages: Record<string, unknown>[] = [{
       n_scanned: 5000, n_matched: 1000,
       rows: Array.from({ length: 600 }, (_, i) => ({ State: 'FL', i })),
-      last_hash: 5000, last_id: 5000,
+      last_row_index: 5000,
     }]
     let calls = 0
     const service = mockService((name) => {
-      if (name !== 'sampled_filtered_rows') throw new Error('unexpected rpc ' + name)
+      if (name !== 'sampled_filtered_rows_blocks') throw new Error('unexpected rpc ' + name)
       return { data: pages[Math.min(calls++, pages.length - 1)], error: null }
     })
     const out = await loadAnaSample({ service, dataset: ds(200000), sampleSize: 200, filters: catFL })
@@ -56,9 +56,9 @@ describe('loadAnaSample — filter-aware sampled fetch (sql/167 path)', () => {
     // 200K dataset, filtered: with exactSampleCounts the scan continues past the
     // row budget to the 50K cap, so the denominator is the EXACT match count over
     // the sample (Model A — no scaling, no "~").
-    const page = { n_scanned: 5000, n_matched: 1000, rows: Array.from({ length: 600 }, () => ({ State: 'FL' })), last_hash: 1, last_id: 1 }
+    const page = { n_scanned: 5000, n_matched: 1000, rows: Array.from({ length: 600 }, () => ({ State: 'FL' })), last_row_index: 1 }
     let calls = 0
-    const service = mockService(() => { calls++; return { data: { ...page, last_hash: calls, last_id: calls }, error: null } })
+    const service = mockService(() => { calls++; return { data: { ...page, last_row_index: calls }, error: null } })
     const out = await loadAnaSample({ service, dataset: ds(200000), sampleSize: 200, filters: catFL, exactSampleCounts: true })
     expect(calls).toBe(10)                          // 50000 / 5000 = 10 pages scanned to the cap
     expect(out.totalFiltered).toBe(10000)           // 10 × 1000 matched, EXACT over the 50K sample
@@ -67,9 +67,9 @@ describe('loadAnaSample — filter-aware sampled fetch (sql/167 path)', () => {
 
   it('at/below the cap: keeps counting past the budget for an EXACT denominator', async () => {
     const pages = [
-      { n_scanned: 5000, n_matched: 4000, rows: Array.from({ length: 600 }, () => ({ State: 'FL' })), last_hash: 1, last_id: 1 },
-      { n_scanned: 5000, n_matched: 4000, rows: [], last_hash: 2, last_id: 2 },
-      { n_scanned: 2000, n_matched: 1600, rows: [], last_hash: 3, last_id: 3 },  // short page = end
+      { n_scanned: 5000, n_matched: 4000, rows: Array.from({ length: 600 }, () => ({ State: 'FL' })), last_row_index: 1 },
+      { n_scanned: 5000, n_matched: 4000, rows: [], last_row_index: 2 },
+      { n_scanned: 2000, n_matched: 1600, rows: [], last_row_index: 3 },  // short page = end
     ]
     let calls = 0
     const service = mockService(() => ({ data: pages[calls++], error: null }))
@@ -100,7 +100,7 @@ describe('loadAnaSample — filter-aware sampled fetch (sql/167 path)', () => {
   it('falls back to the legacy fetch + Node filter when the RPC is unavailable (deploy order)', async () => {
     const legacyRows = [{ State: 'FL' }, { State: 'TX' }, { State: 'FL' }]
     const service = {
-      rpc: vi.fn(async (name: string) => name === 'sampled_filtered_rows'
+      rpc: vi.fn(async (name: string) => name === 'sampled_filtered_rows_blocks'
         ? { data: null, error: { message: 'function does not exist [PGRST202]' } }
         : { data: legacyRows.map(r => ({ data: r })), error: null }),  // sample_row_pairs
       from: vi.fn(() => chainResolving({ data: [], error: null })),
@@ -113,7 +113,7 @@ describe('loadAnaSample — filter-aware sampled fetch (sql/167 path)', () => {
 
   it('no filters: totalFiltered equals the SAMPLE size (Model A), unflagged', async () => {
     const service = mockService(() => ({
-      data: { n_scanned: 5000, n_matched: 5000, rows: Array.from({ length: 600 }, () => ({ a: 1 })), last_hash: 1, last_id: 1 },
+      data: { n_scanned: 5000, n_matched: 5000, rows: Array.from({ length: 600 }, () => ({ a: 1 })), last_row_index: 1 },
       error: null,
     }))
     const out = await loadAnaSample({ service, dataset: ds(200000), sampleSize: 200 })
