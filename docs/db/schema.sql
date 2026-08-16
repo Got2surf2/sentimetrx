@@ -669,30 +669,36 @@ CREATE OR REPLACE FUNCTION "public"."dataset_sample_blocks"("p_dataset_id" "uuid
   WITH bounds AS (
     -- min/max, not count: row_index can be sparse after deletes, and the blocks
     -- must be spread over the range that actually exists.
-    SELECT min(f.row_index) AS lo_ri, max(f.row_index) AS hi_ri, count(*) AS n
+    SELECT min(f.row_index) AS lo_ri, max(f.row_index) AS hi_ri
     FROM dataset_rows_flat f WHERE f.dataset_id = p_dataset_id
   ),
   cfg AS (
-    SELECT b.lo_ri, b.hi_ri, b.n,
+    SELECT b.lo_ri, b.hi_ri,
            -- Under the cap there is no sampling to do: one block, everything.
-           CASE WHEN b.n <= p_cap THEN 1 ELSE greatest(p_blocks, 1) END AS k
+           -- Bounded probe rather than count(*) — this asks "is there a row at
+           -- offset p_cap?", so it stops after cap+1 index entries however big
+           -- the dataset is.
+           CASE WHEN EXISTS (SELECT 1 FROM dataset_rows_flat f
+                              WHERE f.dataset_id = p_dataset_id
+                              OFFSET p_cap LIMIT 1)
+                THEN greatest(p_blocks, 1)
+                ELSE 1 END AS k
     FROM bounds b
   )
   SELECT
     (c.lo_ri + (g.b * ((c.hi_ri - c.lo_ri + 1)::numeric / c.k))::bigint) AS lo,
     -- `hi` is advisory: callers LIMIT to the per-block count, so a block that
-    -- runs into a sparse stretch simply yields fewer rows rather than
-    -- overrunning into the next block's territory.
+    -- runs into a sparse stretch simply yields fewer rows.
     (c.lo_ri + ((g.b + 1) * ((c.hi_ri - c.lo_ri + 1)::numeric / c.k))::bigint) AS hi
   FROM cfg c, LATERAL generate_series(0, c.k - 1) AS g(b)
-  WHERE c.n > 0;
+  WHERE c.lo_ri IS NOT NULL;
 $$;
 
 
 ALTER FUNCTION "public"."dataset_sample_blocks"("p_dataset_id" "uuid", "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."dataset_sample_blocks"("p_dataset_id" "uuid", "p_cap" integer, "p_blocks" integer) IS 'Stratified sampling primitive (sql/188): K contiguous row_index runs spread evenly across a dataset''s actual row_index range, or ONE block covering everything when the dataset is under the cap. Replaces hash-order sampling, whose rows are physically scattered — measured 2,296ms vs 41ms for the same 5,000 rows, because hash order is uncorrelated with heap order and the cost is buffer-cache residency, not row count. Deterministic: a pure function of (min row_index, max row_index, cap, blocks). Gap-tolerant, since callers take the next n rows at or after each `lo`.';
+COMMENT ON FUNCTION "public"."dataset_sample_blocks"("p_dataset_id" "uuid", "p_cap" integer, "p_blocks" integer) IS 'Stratified sampling primitive (sql/188): K contiguous row_index runs spread evenly across a dataset''s row_index range, or ONE block when the dataset is under the cap. sql/191 replaced the under-the-cap count(*) with an index probe bounded at cap+1 rows — the count was 11,190 buffers on a 128K dataset versus ~800 for the read it sets up, and it grew with dataset size, which defeated the flatness the block sample exists for. Deterministic: a pure function of (min row_index, max row_index, cap, blocks).';
 
 
 
@@ -1432,6 +1438,36 @@ CREATE OR REPLACE FUNCTION "public"."public_tables_rls_status"() RETURNS TABLE("
 ALTER FUNCTION "public"."public_tables_rls_status"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."record_org_snapshot_run"("p_org_id" "uuid", "p_day" "date", "p_status" "text", "p_manifest_key" "text" DEFAULT NULL::"text", "p_size_bytes" bigint DEFAULT NULL::bigint, "p_row_counts" "jsonb" DEFAULT NULL::"jsonb", "p_fetch_errors" "jsonb" DEFAULT NULL::"jsonb", "p_error" "text" DEFAULT NULL::"text", "p_duration_ms" integer DEFAULT NULL::integer, "p_hop" integer DEFAULT NULL::integer, "p_trigger" "text" DEFAULT 'cron'::"text") RETURNS "void"
+    LANGUAGE "sql"
+    SET "search_path" TO 'public'
+    AS $$
+  INSERT INTO org_snapshot_runs (
+    org_id, snapshot_day, status, manifest_key, size_bytes,
+    row_counts, fetch_errors, error, duration_ms, hop, trigger
+  )
+  VALUES (
+    p_org_id, p_day, p_status, p_manifest_key, p_size_bytes,
+    p_row_counts, p_fetch_errors, p_error, p_duration_ms, p_hop, COALESCE(p_trigger, 'cron')
+  )
+  ON CONFLICT (org_id, snapshot_day) DO UPDATE SET
+    status       = EXCLUDED.status,
+    manifest_key = COALESCE(EXCLUDED.manifest_key, org_snapshot_runs.manifest_key),
+    size_bytes   = COALESCE(EXCLUDED.size_bytes,   org_snapshot_runs.size_bytes),
+    row_counts   = COALESCE(EXCLUDED.row_counts,   org_snapshot_runs.row_counts),
+    fetch_errors = EXCLUDED.fetch_errors,
+    error        = EXCLUDED.error,
+    duration_ms  = EXCLUDED.duration_ms,
+    hop          = EXCLUDED.hop,
+    trigger      = EXCLUDED.trigger,
+    attempts     = org_snapshot_runs.attempts + 1,
+    updated_at   = now();
+$$;
+
+
+ALTER FUNCTION "public"."record_org_snapshot_run"("p_org_id" "uuid", "p_day" "date", "p_status" "text", "p_manifest_key" "text", "p_size_bytes" bigint, "p_row_counts" "jsonb", "p_fetch_errors" "jsonb", "p_error" "text", "p_duration_ms" integer, "p_hop" integer, "p_trigger" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."refresh_study_response_stats"() RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
@@ -1549,22 +1585,28 @@ CREATE OR REPLACE FUNCTION "public"."sample_dataset_rows_blocks"("p_dataset_id" 
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
     AS $$
-  WITH blk AS (
-    SELECT b.lo, b.hi, (p_cap::numeric / greatest(count(*) OVER (), 1))::int + 1 AS per_block
-    FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
-  ),
-  page AS MATERIALIZED (
+  WITH page AS MATERIALIZED (
     SELECT x.id, x.row_index, x.data
-    FROM blk, LATERAL (
+    FROM (
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
       SELECT f.id, f.row_index,
              ((f.data - '_tx' - '_txv' - '_sub') - COALESCE(p_drop_keys, '{}'::text[])) AS data
       FROM dataset_rows_flat f
       WHERE f.dataset_id = p_dataset_id
         AND f.row_index >= blk.lo AND f.row_index < blk.hi
-        AND f.row_index > p_after_row_index
       ORDER BY f.row_index
       LIMIT blk.per_block
     ) x
+    WHERE x.row_index > p_after_row_index
     ORDER BY x.row_index
     LIMIT p_limit
   )
@@ -1580,7 +1622,7 @@ $$;
 ALTER FUNCTION "public"."sample_dataset_rows_blocks"("p_dataset_id" "uuid", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer, "p_drop_keys" "text"[]) OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."sample_dataset_rows_blocks"("p_dataset_id" "uuid", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer, "p_drop_keys" "text"[]) IS 'Bulk-row sampler over the sql/188 stratified block set — the sequential-read replacement for sample_dataset_rows. Pages by a single row_index cursor instead of (hash, id). Carries sql/186''s reserved-key strip and p_drop_keys unchanged. The hash version is retained for rollback and for the sampled_* functions not yet converted; both must not be mixed in one screen, because they select DIFFERENT ROWS.';
+COMMENT ON FUNCTION "public"."sample_dataset_rows_blocks"("p_dataset_id" "uuid", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer, "p_drop_keys" "text"[]) IS 'Bulk-row sampler over the sql/188 stratified block set. sql/191 moved the per-block LIMIT to the BLOCK START and applies the cursor outside the LATERAL: previously a block straddling a page boundary handed out a fresh per_block rows on every page, over-weighting roughly one block per page. The sampled set is now "the first per_block rows of each block", independent of how it is paged.';
 
 
 
@@ -1648,6 +1690,71 @@ COMMENT ON FUNCTION "public"."sampled_count_entity_terms"("p_dataset_id" "uuid",
 
 
 
+CREATE OR REPLACE FUNCTION "public"."sampled_count_entity_terms_blocks"("p_dataset_id" "uuid", "p_terms" "text"[], "p_theme_query" "text", "p_text_fields" "text"[], "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+  WITH page AS MATERIALIZED (
+    SELECT x.id, x.tsv, x.data, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.tsv, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  matched AS (
+    SELECT t.term, count(*)::bigint AS n
+    FROM unnest(p_terms) AS t(term)
+    JOIN page
+      ON page.tsv @@ websearch_to_tsquery('english', t.term)          -- tsv prefilter (matches count_entity_terms)
+     AND (
+       p_text_fields IS NULL
+       OR to_tsvector('english', COALESCE(
+            (SELECT string_agg(page.data ->> fld, ' ') FROM unnest(p_text_fields) AS fld), '')
+          ) @@ websearch_to_tsquery('english', t.term)               -- exact recheck: open-ended fields only
+     )
+     AND (
+       p_theme_query IS NULL
+       OR page.tsv @@ websearch_to_tsquery('english', p_theme_query)  -- theme keywords stay on the full row
+     )
+    GROUP BY t.term
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'counts',    COALESCE((SELECT jsonb_agg(jsonb_build_array(term, n)) FROM matched), '[]'::jsonb),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_count_entity_terms_blocks"("p_dataset_id" "uuid", "p_terms" "text"[], "p_theme_query" "text", "p_text_fields" "text"[], "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."sampled_count_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS "jsonb"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -1680,6 +1787,62 @@ $$;
 
 
 ALTER FUNCTION "public"."sampled_count_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_count_field_values_blocks"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  WITH page AS MATERIALIZED (
+    SELECT x.id, x.data, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  g AS (
+    SELECT (data ->> p_field_key)::text AS v, count(*)::bigint AS n
+    FROM page
+    WHERE (p_row_ids IS NULL OR id = ANY(p_row_ids))
+      AND data ->> p_field_key IS NOT NULL
+      AND data ->> p_field_key != ''
+    GROUP BY 1
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'groups',    COALESCE((SELECT jsonb_agg(jsonb_build_array(v, n)) FROM g), '[]'::jsonb),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_count_field_values_blocks"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."sampled_crosstab_counts"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS "jsonb"
@@ -1716,6 +1879,64 @@ $$;
 
 
 ALTER FUNCTION "public"."sampled_crosstab_counts"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_crosstab_counts_blocks"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  WITH page AS MATERIALIZED (
+    SELECT x.id, x.data, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  g AS (
+    SELECT COALESCE(data ->> p_row_field, '')::text AS r,
+           COALESCE(data ->> p_col_field, '')::text AS c,
+           count(*)::bigint AS n
+    FROM page
+    WHERE (p_row_ids IS NULL OR id = ANY(p_row_ids))
+      AND data ->> p_row_field IS NOT NULL
+      AND data ->> p_row_field != ''
+    GROUP BY 1, 2
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'groups',    COALESCE((SELECT jsonb_agg(jsonb_build_array(r, c, n)) FROM g), '[]'::jsonb),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_crosstab_counts_blocks"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."sampled_date_series_stats"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS "jsonb"
@@ -1762,6 +1983,74 @@ $$;
 
 
 ALTER FUNCTION "public"."sampled_date_series_stats"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_date_series_stats_blocks"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  WITH page AS MATERIALIZED (
+    SELECT x.id, x.data, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  b AS (
+    SELECT
+      CASE p_bucket
+        WHEN 'week'    THEN to_char(date_trunc('week',    (data ->> p_date_field)::date), 'YYYY-MM-DD')
+        WHEN 'month'   THEN to_char(date_trunc('month',   (data ->> p_date_field)::date), 'YYYY-MM')
+        WHEN 'quarter' THEN to_char(date_trunc('quarter', (data ->> p_date_field)::date), 'YYYY') || '-Q' || extract(quarter from date_trunc('quarter', (data ->> p_date_field)::date))::text
+        WHEN 'year'    THEN to_char(date_trunc('year',    (data ->> p_date_field)::date), 'YYYY')
+        ELSE to_char((data ->> p_date_field)::date, 'YYYY-MM-DD')
+      END AS bkt,
+      count(*)::bigint AS n,
+      sum(drf_to_numeric(data ->> p_metric_field))
+        FILTER (WHERE p_metric_field IS NOT NULL AND p_metric_field != '' AND drf_numeric_ok(data ->> p_metric_field)) AS msum,
+      count(*) FILTER (WHERE p_metric_field IS NOT NULL AND p_metric_field != '' AND drf_numeric_ok(data ->> p_metric_field))::bigint AS mn
+    FROM page
+    WHERE (p_row_ids IS NULL OR id = ANY(p_row_ids))
+      AND data ->> p_date_field IS NOT NULL
+      AND data ->> p_date_field != ''
+      AND (data ->> p_date_field) ~ '^\d{4}-\d{2}-\d{2}'
+    GROUP BY 1
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'buckets',   COALESCE((SELECT jsonb_agg(jsonb_build_array(bkt, n, msum, mn)) FROM b), '[]'::jsonb),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_date_series_stats_blocks"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."sampled_filter_options"("p_dataset_id" "uuid", "p_fields" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) RETURNS "jsonb"
@@ -1847,6 +2136,107 @@ COMMENT ON FUNCTION "public"."sampled_filter_options"("p_dataset_id" "uuid", "p_
 
 
 
+CREATE OR REPLACE FUNCTION "public"."sampled_filter_options_blocks"("p_dataset_id" "uuid", "p_fields" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $_$
+  WITH page AS MATERIALIZED (
+    SELECT x.id, x.data, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  fld AS (
+    SELECT (e ->> 'field') AS field, (e ->> 'type') AS type, ord
+    FROM jsonb_array_elements(p_fields) WITH ORDINALITY AS x(e, ord)
+  ),
+  -- one (field, row) cell with the RAW extracted text value (untrimmed).
+  cells AS MATERIALIZED (
+    SELECT fl.ord, fl.field, fl.type, (p.data ->> fl.field) AS raw
+    FROM fld fl CROSS JOIN page p
+  ),
+  agg AS (
+    SELECT ord, field, type,
+      -- non-empty = count_nonempty_rows (sql/161): trim, all-whitespace is blank
+      count(*) FILTER (WHERE NULLIF(btrim(raw), '') IS NOT NULL) AS nonempty,
+      -- numeric min/max = numeric_field_stats predicate (no trim)
+      min(CASE WHEN type = 'numeric' AND raw ~ '^-?[0-9]+\.?[0-9]*$' THEN raw::double precision END) AS num_min,
+      max(CASE WHEN type = 'numeric' AND raw ~ '^-?[0-9]+\.?[0-9]*$' THEN raw::double precision END) AS num_max,
+      -- date min/max = legacy .order('data->>field') probe: raw lexical, blanks out
+      min(CASE WHEN type = 'date' AND raw IS NOT NULL AND raw <> '' THEN raw END) AS date_min,
+      max(CASE WHEN type = 'date' AND raw IS NOT NULL AND raw <> '' THEN raw END) AS date_max
+    FROM cells
+    GROUP BY ord, field, type
+  ),
+  vc AS (
+    -- distinct value counts = count_field_values (raw data->>field, exclude
+    -- null/''; NO trim). ONLY for categorical fields — the Filters modal value-
+    -- filters categorical/numeric/date; open-ended is never a checkbox list, so
+    -- counting its (high-cardinality free-text) distincts was pure waste and the
+    -- ~40s-at-1M cost driver. Capped per page at 2000 by frequency; the Node
+    -- caller merges across pages and caps the final list at 500.
+    SELECT ord, field,
+           jsonb_agg(jsonb_build_object('v', raw, 'c', c) ORDER BY rn) FILTER (WHERE rn <= 2000) AS values,
+           count(*) AS distinct_n
+    FROM (
+      SELECT ord, field, raw, count(*) AS c,
+             row_number() OVER (PARTITION BY ord ORDER BY count(*) DESC, raw) AS rn
+      FROM cells
+      WHERE type = 'categorical' AND raw IS NOT NULL AND raw <> ''
+      GROUP BY ord, field, raw
+    ) g
+    GROUP BY ord, field
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'fields', (
+      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'ord',        a.ord,
+        'nonempty',   a.nonempty,
+        'num_min',    a.num_min,
+        'num_max',    a.num_max,
+        'date_min',   a.date_min,
+        'date_max',   a.date_max,
+        'values',     COALESCE(vc.values, '[]'::jsonb),
+        'distinct_n', COALESCE(vc.distinct_n, 0)
+      ) ORDER BY a.ord), '[]'::jsonb)
+      FROM agg a LEFT JOIN vc ON vc.ord = a.ord
+    ),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$_$;
+
+
+ALTER FUNCTION "public"."sampled_filter_options_blocks"("p_dataset_id" "uuid", "p_fields" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."sampled_filtered_rows"("p_dataset_id" "uuid", "p_filters" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_scan_limit" integer, "p_match_limit" integer) RETURNS "jsonb"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -1885,6 +2275,57 @@ COMMENT ON FUNCTION "public"."sampled_filtered_rows"("p_dataset_id" "uuid", "p_f
 
 
 
+CREATE OR REPLACE FUNCTION "public"."sampled_filtered_rows_blocks"("p_dataset_id" "uuid", "p_filters" "jsonb", "p_after_row_index" bigint, "p_scan_limit" integer, "p_match_limit" integer, "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  WITH scan AS MATERIALIZED (
+    SELECT x.id, x.data, x.row_index
+    FROM (
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_scan_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_scan_limit
+  ), matched AS MATERIALIZED (
+    SELECT s.id, s.data, s.row_index
+    FROM scan s
+    WHERE public.ana_row_matches_filters(s.data, p_filters)
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM scan),
+    'n_matched', (SELECT count(*) FROM matched),
+    'rows', COALESCE(
+      (SELECT jsonb_agg(m.data ORDER BY m.row_index)
+       FROM (SELECT id, data, row_index FROM matched ORDER BY row_index LIMIT p_match_limit) m),
+      '[]'::jsonb),
+    'last_row_index', (SELECT max(row_index) FROM scan)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_filtered_rows_blocks"("p_dataset_id" "uuid", "p_filters" "jsonb", "p_after_row_index" bigint, "p_scan_limit" integer, "p_match_limit" integer, "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."sampled_filtered_rows_blocks"("p_dataset_id" "uuid", "p_filters" "jsonb", "p_after_row_index" bigint, "p_scan_limit" integer, "p_match_limit" integer, "p_cap" integer, "p_blocks" integer) IS 'Stratified-block twin of sampled_filtered_rows (sql/191). Same filter semantics (ana_row_matches_filters) and the same {n_scanned, n_matched, rows} contract; the hash ordering key is replaced by row_index, which is the block sample''s natural order.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."sampled_group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS "jsonb"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -1918,6 +2359,63 @@ $$;
 
 
 ALTER FUNCTION "public"."sampled_group_numeric_stats"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_group_numeric_stats_blocks"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  WITH page AS MATERIALIZED (
+    SELECT x.id, x.data, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  v AS (
+    SELECT COALESCE(data ->> p_group_field, '')::text AS g,
+           drf_to_numeric(data ->> p_value_field) AS x
+    FROM page
+    WHERE (p_row_ids IS NULL OR id = ANY(p_row_ids))
+      AND data ->> p_group_field IS NOT NULL
+      AND data ->> p_group_field != ''
+      AND drf_numeric_ok(data ->> p_value_field)
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'vals',      COALESCE((SELECT jsonb_agg(jsonb_build_array(g, x)) FROM v), '[]'::jsonb),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_group_numeric_stats_blocks"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."sampled_numeric_field_stats"("p_dataset_id" "uuid", "p_field" "text", "p_aliases" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) RETURNS "jsonb"
@@ -1964,6 +2462,68 @@ COMMENT ON FUNCTION "public"."sampled_numeric_field_stats"("p_dataset_id" "uuid"
 
 
 
+CREATE OR REPLACE FUNCTION "public"."sampled_numeric_field_stats_blocks"("p_dataset_id" "uuid", "p_field" "text", "p_aliases" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $_$
+  WITH page AS MATERIALIZED (
+    SELECT x.id, x.data, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  v AS (
+    SELECT CASE
+      WHEN p_aliases IS NULL THEN
+        CASE WHEN p.data ->> p_field ~ '^-?[0-9]+\.?[0-9]*$'
+             THEN (p.data ->> p_field)::double precision END
+      ELSE
+        CASE WHEN (p_aliases ->> (p.data ->> p_field)) ~ '^-?[0-9]+\.?[0-9]*$'
+             THEN (p_aliases ->> (p.data ->> p_field))::double precision END
+    END AS x
+    FROM page p
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'n',         (SELECT count(x) FROM v),
+    'sum',       (SELECT sum(x)   FROM v),
+    'min',       (SELECT min(x)   FROM v),
+    'max',       (SELECT max(x)   FROM v),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$_$;
+
+
+ALTER FUNCTION "public"."sampled_numeric_field_stats_blocks"("p_dataset_id" "uuid", "p_field" "text", "p_aliases" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."sampled_numeric_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS "jsonb"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -1994,6 +2554,60 @@ $$;
 
 
 ALTER FUNCTION "public"."sampled_numeric_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_numeric_field_values_blocks"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  WITH page AS MATERIALIZED (
+    SELECT x.id, x.data, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  v AS (
+    SELECT drf_to_numeric(data ->> p_field_key) AS x
+    FROM page
+    WHERE (p_row_ids IS NULL OR id = ANY(p_row_ids))
+      AND drf_numeric_ok(data ->> p_field_key)
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'vals',      COALESCE((SELECT jsonb_agg(x) FROM v), '[]'::jsonb),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_numeric_field_values_blocks"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."sampled_signal_counts"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) RETURNS "jsonb"
@@ -2087,6 +2701,115 @@ COMMENT ON FUNCTION "public"."sampled_signal_counts"("p_dataset_id" "uuid", "p_f
 
 
 
+CREATE OR REPLACE FUNCTION "public"."sampled_signal_counts_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $_$
+  WITH pats AS MATERIALIZED (
+    SELECT t.ord,
+           CASE WHEN t.elem ? 'patterns' THEN
+             (SELECT string_agg('(?:^|\W)(?:' || pat || ')', '|')
+                FROM jsonb_array_elements_text(t.elem -> 'patterns') AS pat
+               WHERE btrim(pat) <> '')
+           ELSE
+             (SELECT string_agg('(?:^|\W)' || regexp_replace(kw, '([.*+?^${}()|[\]\\])', '\\\1', 'g') || '\w*', '|')
+                FROM jsonb_array_elements_text(t.elem -> 'keywords') AS kw
+               WHERE btrim(kw) <> '')
+           END AS pattern
+    FROM jsonb_array_elements(p_themes) WITH ORDINALITY AS t(elem, ord)
+  ),
+  page AS MATERIALIZED (
+    SELECT x.id, x.data, x.substantive, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.substantive, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  rec AS (
+    -- per-field non-empty + substantive counts, aligned to p_field_keys order
+    SELECT COALESCE(jsonb_agg(cnt     ORDER BY ord), '[]'::jsonb) AS records,
+           COALESCE(jsonb_agg(cnt_sub ORDER BY ord), '[]'::jsonb) AS records_substantive
+    FROM (
+      SELECT fk.ord,
+             count(*) FILTER (WHERE NULLIF(btrim(p.data ->> fk.fld), '') IS NOT NULL) AS cnt,
+             count(*) FILTER (WHERE p.substantive ? fk.fld)                           AS cnt_sub
+      FROM unnest(p_field_keys) WITH ORDINALITY AS fk(fld, ord)
+      LEFT JOIN page p ON true
+      GROUP BY fk.ord
+    ) r
+  ),
+  hits AS MATERIALIZED (
+    SELECT p.id, pt.ord,
+           (pt.pattern IS NOT NULL AND EXISTS (
+              SELECT 1 FROM unnest(p_field_keys) AS fld
+              WHERE p.data ->> fld IS NOT NULL AND p.data ->> fld ~* pt.pattern
+           )) AS hit,
+           (p.substantive ?| p_field_keys) AS sub
+    FROM page p CROSS JOIN pats pt
+  ),
+  theme_counts AS (
+    -- per-theme all-match counts AND the substantive twin (hit AND substantive),
+    -- both aligned to theme order. The substantive twin is the prevalence-bar
+    -- numerator; the all count stays for any non-substantive consumer.
+    SELECT COALESCE(jsonb_agg(cnt     ORDER BY ord), '[]'::jsonb) AS theme_counts,
+           COALESCE(jsonb_agg(cnt_sub ORDER BY ord), '[]'::jsonb) AS theme_counts_substantive
+    FROM (
+      SELECT ord,
+             count(*) FILTER (WHERE hit)           AS cnt,
+             count(*) FILTER (WHERE hit AND sub)   AS cnt_sub
+      FROM hits GROUP BY ord
+    ) t
+  ),
+  union_cnt AS (
+    SELECT count(*) FILTER (WHERE any_hit)             AS union_count,
+           count(*) FILTER (WHERE any_hit AND any_sub) AS union_count_substantive
+    FROM (
+      SELECT id, bool_or(hit) AS any_hit, bool_or(sub) AS any_sub
+      FROM hits GROUP BY id
+    ) u
+  )
+  SELECT jsonb_build_object(
+    'n',                        (SELECT count(*) FROM page),
+    'records',                  (SELECT records             FROM rec),
+    'records_substantive',      (SELECT records_substantive FROM rec),
+    'theme_counts',             (SELECT theme_counts             FROM theme_counts),
+    'theme_counts_substantive', (SELECT theme_counts_substantive FROM theme_counts),
+    'union_count',              (SELECT union_count             FROM union_cnt),
+    'union_substantive',        (SELECT union_count_substantive FROM union_cnt),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$_$;
+
+
+ALTER FUNCTION "public"."sampled_signal_counts_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."sampled_taxonomy_axis_crosstab"("p_dataset_id" "uuid", "p_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_field_key" "text" DEFAULT NULL::"text") RETURNS "jsonb"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -2124,6 +2847,65 @@ $$;
 ALTER FUNCTION "public"."sampled_taxonomy_axis_crosstab"("p_dataset_id" "uuid", "p_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."sampled_taxonomy_axis_crosstab_blocks"("p_dataset_id" "uuid", "p_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_field_key" "text" DEFAULT NULL::"text", "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  WITH fld AS (SELECT taxonomy_field_or_primary(p_dataset_id, p_field_key) AS f),
+  page AS MATERIALIZED (
+    SELECT x.id, x.data, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  g AS (
+    SELECT ax.key::text AS axv,
+           COALESCE(page.data ->> p_field, '')::text AS fv,
+           count(*)::bigint AS n
+    FROM page, fld,
+         jsonb_each(page.data -> '_tx' -> 'f' -> fld.f -> 'a') AS ax(key, subs),
+         jsonb_array_elements_text(ax.subs) AS sub
+    WHERE (p_row_ids IS NULL OR page.id = ANY(p_row_ids))
+    GROUP BY 1, 2
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'groups',    COALESCE((SELECT jsonb_agg(jsonb_build_array(axv, fv, n)) FROM g), '[]'::jsonb),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_taxonomy_axis_crosstab_blocks"("p_dataset_id" "uuid", "p_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text", "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."sampled_taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_field_key" "text" DEFAULT NULL::"text") RETURNS "jsonb"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -2158,6 +2940,64 @@ $$;
 
 
 ALTER FUNCTION "public"."sampled_taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_taxonomy_crosstab_blocks"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_field_key" "text" DEFAULT NULL::"text", "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  WITH fld AS (SELECT taxonomy_field_or_primary(p_dataset_id, p_field_key) AS f),
+  page AS MATERIALIZED (
+    SELECT x.id, x.data, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  g AS (
+    SELECT sub::text AS s,
+           COALESCE(page.data ->> p_field, '')::text AS fv,
+           count(*)::bigint AS n
+    FROM page, fld,
+         jsonb_array_elements_text(page.data -> '_tx' -> 'f' -> fld.f -> 'a' -> p_axis) AS sub
+    WHERE (p_row_ids IS NULL OR page.id = ANY(p_row_ids))
+    GROUP BY 1, 2
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'groups',    COALESCE((SELECT jsonb_agg(jsonb_build_array(s, fv, n)) FROM g), '[]'::jsonb),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_taxonomy_crosstab_blocks"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text", "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."sampled_taxonomy_date_series"("p_dataset_id" "uuid", "p_axis" "text", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_field_key" "text" DEFAULT NULL::"text") RETURNS "jsonb"
@@ -2207,6 +3047,75 @@ $_$;
 ALTER FUNCTION "public"."sampled_taxonomy_date_series"("p_dataset_id" "uuid", "p_axis" "text", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."sampled_taxonomy_date_series_blocks"("p_dataset_id" "uuid", "p_axis" "text", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_field_key" "text" DEFAULT NULL::"text", "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $_$
+  WITH fld AS (SELECT taxonomy_field_or_primary(p_dataset_id, p_field_key) AS f),
+  page AS MATERIALIZED (
+    SELECT x.id, x.data, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  b AS (
+    SELECT sub::text AS s,
+      CASE p_bucket
+        WHEN 'week'    THEN to_char(date_trunc('week',    (page.data ->> p_date_field)::date), 'YYYY-MM-DD')
+        WHEN 'month'   THEN to_char(date_trunc('month',   (page.data ->> p_date_field)::date), 'YYYY-MM')
+        WHEN 'quarter' THEN to_char(date_trunc('quarter', (page.data ->> p_date_field)::date), 'YYYY') || '-Q' || extract(quarter from date_trunc('quarter', (page.data ->> p_date_field)::date))::text
+        WHEN 'year'    THEN to_char(date_trunc('year',    (page.data ->> p_date_field)::date), 'YYYY')
+        ELSE to_char((page.data ->> p_date_field)::date, 'YYYY-MM-DD')
+      END AS bkt,
+      count(*)::bigint AS n,
+      sum((page.data ->> p_metric_field)::double precision)
+        FILTER (WHERE p_metric_field IS NOT NULL AND p_metric_field != '' AND page.data ->> p_metric_field ~ '^-?[0-9]+\.?[0-9]*$') AS msum,
+      count(*) FILTER (WHERE p_metric_field IS NOT NULL AND p_metric_field != '' AND page.data ->> p_metric_field ~ '^-?[0-9]+\.?[0-9]*$')::bigint AS mn
+    FROM page, fld,
+         jsonb_array_elements_text(page.data -> '_tx' -> 'f' -> fld.f -> 'a' -> p_axis) AS sub
+    WHERE (p_row_ids IS NULL OR page.id = ANY(p_row_ids))
+      AND page.data ->> p_date_field IS NOT NULL
+      AND (page.data ->> p_date_field) ~ '^\d{4}-\d{2}-\d{2}'
+    GROUP BY 1, 2
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'buckets',   COALESCE((SELECT jsonb_agg(jsonb_build_array(s, bkt, n, msum, mn)) FROM b), '[]'::jsonb),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$_$;
+
+
+ALTER FUNCTION "public"."sampled_taxonomy_date_series_blocks"("p_dataset_id" "uuid", "p_axis" "text", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text", "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."sampled_taxonomy_group_stats"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_field_key" "text" DEFAULT NULL::"text") RETURNS "jsonb"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -2243,6 +3152,64 @@ $_$;
 ALTER FUNCTION "public"."sampled_taxonomy_group_stats"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."sampled_taxonomy_group_stats_blocks"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_field_key" "text" DEFAULT NULL::"text", "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $_$
+  WITH fld AS (SELECT taxonomy_field_or_primary(p_dataset_id, p_field_key) AS f),
+  page AS MATERIALIZED (
+    SELECT x.id, x.data, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  v AS (
+    SELECT sub::text AS g,
+           (page.data ->> p_value_field)::double precision AS x
+    FROM page, fld,
+         jsonb_array_elements_text(page.data -> '_tx' -> 'f' -> fld.f -> 'a' -> p_axis) AS sub
+    WHERE (p_row_ids IS NULL OR page.id = ANY(p_row_ids))
+      AND page.data ->> p_value_field IS NOT NULL
+      AND page.data ->> p_value_field ~ '^-?[0-9]+\.?[0-9]*$'
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'vals',      COALESCE((SELECT jsonb_agg(jsonb_build_array(g, x)) FROM v), '[]'::jsonb),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$_$;
+
+
+ALTER FUNCTION "public"."sampled_taxonomy_group_stats_blocks"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text", "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."sampled_taxonomy_sub_counts"("p_dataset_id" "uuid", "p_axis" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_field_key" "text" DEFAULT NULL::"text") RETURNS "jsonb"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -2275,6 +3242,62 @@ $$;
 
 
 ALTER FUNCTION "public"."sampled_taxonomy_sub_counts"("p_dataset_id" "uuid", "p_axis" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_taxonomy_sub_counts_blocks"("p_dataset_id" "uuid", "p_axis" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[] DEFAULT NULL::bigint[], "p_field_key" "text" DEFAULT NULL::"text", "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  WITH fld AS (SELECT taxonomy_field_or_primary(p_dataset_id, p_field_key) AS f),
+  page AS MATERIALIZED (
+    SELECT x.id, x.data, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  g AS (
+    SELECT sub::text AS v, count(*)::bigint AS n
+    FROM page, fld,
+         jsonb_array_elements_text(page.data -> '_tx' -> 'f' -> fld.f -> 'a' -> p_axis) AS sub
+    WHERE (p_row_ids IS NULL OR page.id = ANY(p_row_ids))
+    GROUP BY sub
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'groups',    COALESCE((SELECT jsonb_agg(jsonb_build_array(v, n)) FROM g), '[]'::jsonb),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_taxonomy_sub_counts_blocks"("p_dataset_id" "uuid", "p_axis" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text", "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."sampled_theme_cooccurrence_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) RETURNS "jsonb"
@@ -2324,6 +3347,75 @@ $$;
 ALTER FUNCTION "public"."sampled_theme_cooccurrence_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."sampled_theme_cooccurrence_page_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+  WITH page AS MATERIALIZED (
+    SELECT x.id, x.data, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  tp AS (
+    SELECT (theme->>'id') AS tid,
+           '\m(' || (SELECT string_agg(kw, '|') FROM jsonb_array_elements_text(theme->'keywords') AS kw WHERE kw <> '') || ')' AS pat
+    FROM jsonb_array_elements(p_themes) AS theme
+    WHERE jsonb_array_length(theme->'keywords') > 0
+  ),
+  rc AS (
+    SELECT page.id, string_agg(coalesce(page.data ->> k, ''), ' ') AS combined
+    FROM page, unnest(p_field_keys) AS k
+    GROUP BY page.id
+  ),
+  rt AS (
+    SELECT rc.id, array_agg(tp.tid) AS tids
+    FROM rc JOIN tp ON rc.combined ~* tp.pat
+    GROUP BY rc.id HAVING count(*) >= 2
+  ),
+  pc AS (
+    SELECT a AS ta, b AS tb, count(*)::bigint AS n
+    FROM rt, LATERAL unnest(tids) AS a, LATERAL unnest(tids) AS b
+    WHERE a <> b GROUP BY a, b
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'pairs',     COALESCE((SELECT jsonb_agg(jsonb_build_array(ta, tb, n)) FROM pc), '[]'::jsonb),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_theme_cooccurrence_page_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."sampled_theme_dimension_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) RETURNS "jsonb"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
@@ -2369,6 +3461,75 @@ $$;
 
 
 ALTER FUNCTION "public"."sampled_theme_dimension_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_theme_dimension_page_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+  WITH page AS MATERIALIZED (
+    SELECT x.id, x.data, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  fld AS (SELECT taxonomy_primary_field(p_dataset_id) AS f),
+  tp AS (
+    SELECT (theme->>'id') AS tid,
+           '\m(' || (SELECT string_agg(kw, '|') FROM jsonb_array_elements_text(theme->'keywords') AS kw WHERE kw <> '') || ')' AS pat
+    FROM jsonb_array_elements(p_themes) AS theme
+    WHERE jsonb_array_length(theme->'keywords') > 0
+  ),
+  matched AS (   -- (theme, row) where the row's text matches the theme
+    SELECT DISTINCT tp.tid, page.id, page.data
+    FROM page, tp, unnest(p_field_keys) AS fk(key)
+    WHERE page.data ->> fk.key IS NOT NULL
+      AND page.data ->> fk.key != ''
+      AND page.data ->> fk.key ~* tp.pat
+  ),
+  dims AS (
+    SELECT m.tid, ax.key::text AS axis, sb::text AS sub, count(*)::bigint AS cnt
+    FROM matched m, fld,
+         jsonb_each(m.data -> '_tx' -> 'f' -> fld.f -> 'a') AS ax(key, subs),
+         jsonb_array_elements_text(ax.subs) AS sb
+    GROUP BY m.tid, ax.key, sb
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'dims',      COALESCE((SELECT jsonb_agg(jsonb_build_array(tid, axis, sub, cnt)) FROM dims), '[]'::jsonb),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_theme_dimension_page_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."sampled_theme_extras_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_want_pairs" boolean DEFAULT true, "p_want_dims" boolean DEFAULT true) RETURNS "jsonb"
@@ -2443,6 +3604,95 @@ COMMENT ON FUNCTION "public"."sampled_theme_extras_page"("p_dataset_id" "uuid", 
 
 
 
+CREATE OR REPLACE FUNCTION "public"."sampled_theme_extras_page_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_want_pairs" boolean DEFAULT true, "p_want_dims" boolean DEFAULT true, "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+  WITH page AS MATERIALIZED (
+    SELECT x.id, x.data, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  tp AS (
+    SELECT (theme->>'id') AS tid,
+           '\m(' || (SELECT string_agg(kw, '|') FROM jsonb_array_elements_text(theme->'keywords') AS kw WHERE kw <> '') || ')' AS pat
+    FROM jsonb_array_elements(p_themes) AS theme
+    WHERE jsonb_array_length(theme->'keywords') > 0
+  ),
+  -- ── co-occurrence half: sql/173 semantics (fields concatenated) ──────────
+  rc AS (
+    SELECT page.id, string_agg(coalesce(page.data ->> k, ''), ' ') AS combined
+    FROM page, unnest(p_field_keys) AS k
+    WHERE p_want_pairs
+    GROUP BY page.id
+  ),
+  rt AS (
+    SELECT rc.id, array_agg(tp.tid) AS tids
+    FROM rc JOIN tp ON rc.combined ~* tp.pat
+    GROUP BY rc.id HAVING count(*) >= 2
+  ),
+  pc AS (
+    SELECT a AS ta, b AS tb, count(*)::bigint AS n
+    FROM rt, LATERAL unnest(tids) AS a, LATERAL unnest(tids) AS b
+    WHERE a <> b GROUP BY a, b
+  ),
+  -- ── dimensions half: sql/173 semantics (per-field match) ────────────────
+  fld AS (SELECT taxonomy_primary_field(p_dataset_id) AS f),
+  matched AS (
+    SELECT DISTINCT tp.tid, page.id, page.data
+    FROM page, tp, unnest(p_field_keys) AS fk(key)
+    WHERE p_want_dims
+      AND page.data ->> fk.key IS NOT NULL
+      AND page.data ->> fk.key != ''
+      AND page.data ->> fk.key ~* tp.pat
+  ),
+  dims AS (
+    SELECT m.tid, ax.key::text AS axis, sb::text AS sub, count(*)::bigint AS cnt
+    FROM matched m, fld,
+         jsonb_each(m.data -> '_tx' -> 'f' -> fld.f -> 'a') AS ax(key, subs),
+         jsonb_array_elements_text(ax.subs) AS sb
+    GROUP BY m.tid, ax.key, sb
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'pairs',     COALESCE((SELECT jsonb_agg(jsonb_build_array(ta, tb, n)) FROM pc), '[]'::jsonb),
+    'dims',      COALESCE((SELECT jsonb_agg(jsonb_build_array(tid, axis, sub, cnt)) FROM dims), '[]'::jsonb),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."sampled_theme_extras_page_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_want_pairs" boolean, "p_want_dims" boolean, "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."sampled_theme_topical_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_extra_excludes" "text"[], "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) RETURNS "jsonb"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
@@ -2504,6 +3754,91 @@ $_$;
 
 
 ALTER FUNCTION "public"."sampled_theme_topical_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_extra_excludes" "text"[], "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sampled_theme_topical_page_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_extra_excludes" "text"[], "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer DEFAULT 50000, "p_blocks" integer DEFAULT 50) RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $_$
+  WITH page AS MATERIALIZED (
+    SELECT x.id, x.data, x.row_index
+    FROM (
+      -- ONE call to dataset_sample_blocks: it does a count(*) over the dataset,
+      -- so calling it per scalar subquery multiplied the walk's cost.
+      SELECT a.lo, a.hi, a.per_block
+      FROM (
+        SELECT b.lo, b.hi,
+               greatest(p_cap / greatest(count(*) OVER (), 1), 1) AS per_block
+        FROM dataset_sample_blocks(p_dataset_id, p_cap, p_blocks) b
+      ) a
+      -- Only blocks that can still contribute, and only as many as this page can
+      -- consume. Without the bound every page reads per_block rows from ALL the
+      -- blocks and discards ~90%.
+      WHERE a.hi > p_after_row_index
+      ORDER BY a.lo
+      LIMIT (p_limit * p_blocks / greatest(p_cap, 1)) + 2
+    ) blk, LATERAL (
+      SELECT f.id, f.data, f.row_index
+      FROM dataset_rows_flat f
+      WHERE f.dataset_id = p_dataset_id
+        AND f.row_index >= blk.lo AND f.row_index < blk.hi
+      ORDER BY f.row_index
+      LIMIT blk.per_block
+    ) x
+    -- Per-block LIMIT from the BLOCK START, cursor applied outside, so the
+    -- sampled set is "the first per_block rows of each block" — a fixed set,
+    -- independent of page size (sql/188 filtered inside the LATERAL, which let a
+    -- block straddling a page boundary hand out a fresh per_block every page).
+    WHERE x.row_index > p_after_row_index
+    ORDER BY x.row_index
+    LIMIT p_limit
+  ),
+  tp AS (
+    SELECT (theme->>'id') AS tid,
+           '\m(' || (SELECT string_agg(kw, '|') FROM jsonb_array_elements_text(theme->'keywords') AS kw WHERE kw <> '') || ')' AS pat
+    FROM jsonb_array_elements(p_themes) AS theme
+    WHERE jsonb_array_length(theme->'keywords') > 0
+  ),
+  row_text AS (
+    SELECT page.id, string_agg(lower(coalesce(page.data ->> k, '')), ' ') AS combined
+    FROM page, unnest(p_field_keys) AS k
+    GROUP BY page.id
+  ),
+  tokens AS (
+    SELECT rt.id, tk.word, tk.pos
+    FROM row_text rt,
+         LATERAL unnest(regexp_split_to_array(rt.combined, '[^a-z0-9'']+')) WITH ORDINALITY AS tk(word, pos)
+    WHERE tk.word IS NOT NULL AND tk.word != ''
+  ),
+  kw_positions AS (   -- token positions where each theme's keywords hit
+    SELECT tp.tid, tp.pat, t.id, t.pos
+    FROM tokens t JOIN tp ON t.word ~* tp.pat
+  ),
+  window_words AS (   -- ±2 window per (theme, keyword-hit), excluding the hit position
+    SELECT kp.tid, kp.pat, t.word
+    FROM tokens t
+    JOIN kw_positions kp ON t.id = kp.id
+    WHERE t.pos BETWEEN kp.pos - 2 AND kp.pos + 2 AND t.pos <> kp.pos
+  ),
+  filtered AS (
+    SELECT tid, word, count(*)::bigint AS cnt
+    FROM window_words ww
+    WHERE length(word) >= 3
+      AND word !~ '^[0-9]+$'
+      AND word !~* ww.pat                          -- exclude that theme's own keyword stems
+      AND NOT (word = ANY(p_extra_excludes))
+      AND NOT (word = ANY(topical_stopwords()))
+    GROUP BY tid, word
+  )
+  SELECT jsonb_build_object(
+    'n_scanned', (SELECT count(*) FROM page),
+    'words',     COALESCE((SELECT jsonb_agg(jsonb_build_array(tid, word, cnt)) FROM filtered), '[]'::jsonb),
+    'last_row_index', (SELECT max(row_index) FROM page)
+  );
+$_$;
+
+
+ALTER FUNCTION "public"."sampled_theme_topical_page_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_extra_excludes" "text"[], "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."search_dataset_rows"("p_dataset_id" "uuid", "p_query" "text", "p_limit" integer DEFAULT 50, "p_offset" integer DEFAULT 0) RETURNS TABLE("id" bigint, "row_index" integer, "data" "jsonb", "rank" real, "headline" "text")
@@ -4356,6 +5691,34 @@ COMMENT ON COLUMN "public"."org_features"."quota_per_month" IS 'Per-feature mont
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."org_snapshot_runs" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "org_id" "uuid" NOT NULL,
+    "snapshot_day" "date" NOT NULL,
+    "status" "text" NOT NULL,
+    "manifest_key" "text",
+    "size_bytes" bigint,
+    "row_counts" "jsonb",
+    "fetch_errors" "jsonb",
+    "error" "text",
+    "duration_ms" integer,
+    "hop" integer,
+    "attempts" integer DEFAULT 1 NOT NULL,
+    "trigger" "text" DEFAULT 'cron'::"text" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "org_snapshot_runs_status_check" CHECK (("status" = ANY (ARRAY['ok'::"text", 'incomplete'::"text", 'partial'::"text", 'failed'::"text"]))),
+    CONSTRAINT "org_snapshot_runs_trigger_check" CHECK (("trigger" = ANY (ARRAY['cron'::"text", 'manual'::"text"])))
+);
+
+
+ALTER TABLE "public"."org_snapshot_runs" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."org_snapshot_runs" IS 'Durable per-tenant backup outcome, one row per (org, snapshot day), upserted as the resumable cron hops. Exists because the nightly run previously reported only to the HTTP response, console.error and an aggregate Sentry count — so when the 2026-08-08 alert said "1/9 orgs failed" and Vercel''s logs had rotated, nobody could say which org had no backup. status=incomplete is the dangerous case: a manifest was committed but a table failed to read, so it must never read as a green backup. sql/192.';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."org_transfers" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "resource_type" "text" NOT NULL,
@@ -5658,6 +7021,11 @@ ALTER TABLE ONLY "public"."org_features"
 
 
 
+ALTER TABLE ONLY "public"."org_snapshot_runs"
+    ADD CONSTRAINT "org_snapshot_runs_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."org_transfers"
     ADD CONSTRAINT "org_transfers_pkey" PRIMARY KEY ("id");
 
@@ -6248,6 +7616,18 @@ CREATE INDEX "idx_org_transfers_to_org" ON "public"."org_transfers" USING "btree
 
 
 CREATE INDEX "idx_organizations_status" ON "public"."organizations" USING "btree" ("status");
+
+
+
+CREATE INDEX "idx_osr_day_status" ON "public"."org_snapshot_runs" USING "btree" ("snapshot_day" DESC, "status");
+
+
+
+CREATE UNIQUE INDEX "idx_osr_org_day" ON "public"."org_snapshot_runs" USING "btree" ("org_id", "snapshot_day");
+
+
+
+CREATE INDEX "idx_osr_org_recent" ON "public"."org_snapshot_runs" USING "btree" ("org_id", "snapshot_day" DESC);
 
 
 
@@ -7765,6 +9145,15 @@ CREATE POLICY "org_features_org_read" ON "public"."org_features" FOR SELECT USIN
 
 
 
+ALTER TABLE "public"."org_snapshot_runs" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "org_snapshot_runs_org_read" ON "public"."org_snapshot_runs" FOR SELECT USING ((("org_id" = ( SELECT "users"."org_id"
+   FROM "public"."users"
+  WHERE ("users"."id" = "auth"."uid"()))) OR "public"."is_platform_admin"()));
+
+
+
 ALTER TABLE "public"."org_transfers" ENABLE ROW LEVEL SECURITY;
 
 
@@ -8428,6 +9817,11 @@ GRANT ALL ON FUNCTION "public"."public_tables_rls_status"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."record_org_snapshot_run"("p_org_id" "uuid", "p_day" "date", "p_status" "text", "p_manifest_key" "text", "p_size_bytes" bigint, "p_row_counts" "jsonb", "p_fetch_errors" "jsonb", "p_error" "text", "p_duration_ms" integer, "p_hop" integer, "p_trigger" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."record_org_snapshot_run"("p_org_id" "uuid", "p_day" "date", "p_status" "text", "p_manifest_key" "text", "p_size_bytes" bigint, "p_row_counts" "jsonb", "p_fetch_errors" "jsonb", "p_error" "text", "p_duration_ms" integer, "p_hop" integer, "p_trigger" "text") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."refresh_study_response_stats"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."refresh_study_response_stats"() TO "service_role";
 
@@ -8463,8 +9857,18 @@ GRANT ALL ON FUNCTION "public"."sampled_count_entity_terms"("p_dataset_id" "uuid
 
 
 
+REVOKE ALL ON FUNCTION "public"."sampled_count_entity_terms_blocks"("p_dataset_id" "uuid", "p_terms" "text"[], "p_theme_query" "text", "p_text_fields" "text"[], "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_count_entity_terms_blocks"("p_dataset_id" "uuid", "p_terms" "text"[], "p_theme_query" "text", "p_text_fields" "text"[], "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."sampled_count_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."sampled_count_field_values"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_count_field_values_blocks"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_count_field_values_blocks"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_cap" integer, "p_blocks" integer) TO "service_role";
 
 
 
@@ -8473,8 +9877,18 @@ GRANT ALL ON FUNCTION "public"."sampled_crosstab_counts"("p_dataset_id" "uuid", 
 
 
 
+REVOKE ALL ON FUNCTION "public"."sampled_crosstab_counts_blocks"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_crosstab_counts_blocks"("p_dataset_id" "uuid", "p_row_field" "text", "p_col_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_cap" integer, "p_blocks" integer) TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."sampled_date_series_stats"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."sampled_date_series_stats"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[]) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_date_series_stats_blocks"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_date_series_stats_blocks"("p_dataset_id" "uuid", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_cap" integer, "p_blocks" integer) TO "service_role";
 
 
 
@@ -8483,8 +9897,18 @@ GRANT ALL ON FUNCTION "public"."sampled_filter_options"("p_dataset_id" "uuid", "
 
 
 
+REVOKE ALL ON FUNCTION "public"."sampled_filter_options_blocks"("p_dataset_id" "uuid", "p_fields" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_filter_options_blocks"("p_dataset_id" "uuid", "p_fields" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."sampled_filtered_rows"("p_dataset_id" "uuid", "p_filters" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_scan_limit" integer, "p_match_limit" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."sampled_filtered_rows"("p_dataset_id" "uuid", "p_filters" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_scan_limit" integer, "p_match_limit" integer) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_filtered_rows_blocks"("p_dataset_id" "uuid", "p_filters" "jsonb", "p_after_row_index" bigint, "p_scan_limit" integer, "p_match_limit" integer, "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_filtered_rows_blocks"("p_dataset_id" "uuid", "p_filters" "jsonb", "p_after_row_index" bigint, "p_scan_limit" integer, "p_match_limit" integer, "p_cap" integer, "p_blocks" integer) TO "service_role";
 
 
 
@@ -8493,8 +9917,18 @@ GRANT ALL ON FUNCTION "public"."sampled_group_numeric_stats"("p_dataset_id" "uui
 
 
 
+REVOKE ALL ON FUNCTION "public"."sampled_group_numeric_stats_blocks"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_group_numeric_stats_blocks"("p_dataset_id" "uuid", "p_group_field" "text", "p_value_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_cap" integer, "p_blocks" integer) TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."sampled_numeric_field_stats"("p_dataset_id" "uuid", "p_field" "text", "p_aliases" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."sampled_numeric_field_stats"("p_dataset_id" "uuid", "p_field" "text", "p_aliases" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_numeric_field_stats_blocks"("p_dataset_id" "uuid", "p_field" "text", "p_aliases" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_numeric_field_stats_blocks"("p_dataset_id" "uuid", "p_field" "text", "p_aliases" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) TO "service_role";
 
 
 
@@ -8503,8 +9937,18 @@ GRANT ALL ON FUNCTION "public"."sampled_numeric_field_values"("p_dataset_id" "uu
 
 
 
+REVOKE ALL ON FUNCTION "public"."sampled_numeric_field_values_blocks"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_numeric_field_values_blocks"("p_dataset_id" "uuid", "p_field_key" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_cap" integer, "p_blocks" integer) TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."sampled_signal_counts"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."sampled_signal_counts"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_signal_counts_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_signal_counts_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) TO "service_role";
 
 
 
@@ -8513,8 +9957,18 @@ GRANT ALL ON FUNCTION "public"."sampled_taxonomy_axis_crosstab"("p_dataset_id" "
 
 
 
+REVOKE ALL ON FUNCTION "public"."sampled_taxonomy_axis_crosstab_blocks"("p_dataset_id" "uuid", "p_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text", "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_taxonomy_axis_crosstab_blocks"("p_dataset_id" "uuid", "p_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text", "p_cap" integer, "p_blocks" integer) TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."sampled_taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."sampled_taxonomy_crosstab"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_taxonomy_crosstab_blocks"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text", "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_taxonomy_crosstab_blocks"("p_dataset_id" "uuid", "p_axis" "text", "p_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text", "p_cap" integer, "p_blocks" integer) TO "service_role";
 
 
 
@@ -8523,8 +9977,18 @@ GRANT ALL ON FUNCTION "public"."sampled_taxonomy_date_series"("p_dataset_id" "uu
 
 
 
+REVOKE ALL ON FUNCTION "public"."sampled_taxonomy_date_series_blocks"("p_dataset_id" "uuid", "p_axis" "text", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text", "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_taxonomy_date_series_blocks"("p_dataset_id" "uuid", "p_axis" "text", "p_date_field" "text", "p_metric_field" "text", "p_bucket" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text", "p_cap" integer, "p_blocks" integer) TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."sampled_taxonomy_group_stats"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."sampled_taxonomy_group_stats"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_taxonomy_group_stats_blocks"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text", "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_taxonomy_group_stats_blocks"("p_dataset_id" "uuid", "p_axis" "text", "p_value_field" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text", "p_cap" integer, "p_blocks" integer) TO "service_role";
 
 
 
@@ -8533,8 +9997,18 @@ GRANT ALL ON FUNCTION "public"."sampled_taxonomy_sub_counts"("p_dataset_id" "uui
 
 
 
+REVOKE ALL ON FUNCTION "public"."sampled_taxonomy_sub_counts_blocks"("p_dataset_id" "uuid", "p_axis" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text", "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_taxonomy_sub_counts_blocks"("p_dataset_id" "uuid", "p_axis" "text", "p_after_row_index" bigint, "p_limit" integer, "p_row_ids" bigint[], "p_field_key" "text", "p_cap" integer, "p_blocks" integer) TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."sampled_theme_cooccurrence_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."sampled_theme_cooccurrence_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_theme_cooccurrence_page_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_theme_cooccurrence_page_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) TO "service_role";
 
 
 
@@ -8543,13 +10017,28 @@ GRANT ALL ON FUNCTION "public"."sampled_theme_dimension_page"("p_dataset_id" "uu
 
 
 
+REVOKE ALL ON FUNCTION "public"."sampled_theme_dimension_page_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_theme_dimension_page_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."sampled_theme_extras_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_want_pairs" boolean, "p_want_dims" boolean) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."sampled_theme_extras_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer, "p_want_pairs" boolean, "p_want_dims" boolean) TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."sampled_theme_extras_page_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_want_pairs" boolean, "p_want_dims" boolean, "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_theme_extras_page_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_after_row_index" bigint, "p_limit" integer, "p_want_pairs" boolean, "p_want_dims" boolean, "p_cap" integer, "p_blocks" integer) TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."sampled_theme_topical_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_extra_excludes" "text"[], "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."sampled_theme_topical_page"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_extra_excludes" "text"[], "p_after_hash" bigint, "p_after_id" bigint, "p_limit" integer) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."sampled_theme_topical_page_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_extra_excludes" "text"[], "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sampled_theme_topical_page_blocks"("p_dataset_id" "uuid", "p_field_keys" "text"[], "p_themes" "jsonb", "p_extra_excludes" "text"[], "p_after_row_index" bigint, "p_limit" integer, "p_cap" integer, "p_blocks" integer) TO "service_role";
 
 
 
@@ -8975,6 +10464,12 @@ GRANT ALL ON TABLE "public"."mco_handoff_sessions" TO "service_role";
 GRANT ALL ON TABLE "public"."org_features" TO "anon";
 GRANT ALL ON TABLE "public"."org_features" TO "authenticated";
 GRANT ALL ON TABLE "public"."org_features" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."org_snapshot_runs" TO "anon";
+GRANT ALL ON TABLE "public"."org_snapshot_runs" TO "authenticated";
+GRANT ALL ON TABLE "public"."org_snapshot_runs" TO "service_role";
 
 
 
