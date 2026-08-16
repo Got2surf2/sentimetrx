@@ -622,3 +622,35 @@ The cause was an assumption I never checked: the module's container is `maxWidth
 Verified in the browser: six columns all visible, effect descending (0.87 · 0.76 · 0.76 · 0.76 · 0.69 · 0.67 · 0.66), `n` under each value, both finding types labelled correctly (`r` and `η²`).
 
 ⭐ **The lesson is narrow and worth keeping: a layout constant is not a layout.** `maxWidth: 860` told me what the container permits, not what the column actually gets after two fixed sidebars take their share. No test can see that, and I had already written "browser QC not done" on the commit — the gap was real, not hypothetical.
+
+### The control-byte rule extended to prose — because that's where it kept recurring (Aug 16)
+
+**Why.** Closing the session, the memory files got a `file(1)` pass. Three were
+classified **binary**: the open work queue, `project_charts_calc_sweep`, and —
+for the second time — the memory that *documents this exact bug*. Every one of
+them was clean prose whose only offence was **describing** a control byte, which
+pastes a real one.
+
+That makes four occurrences in a day: the nine-file source sweep this morning,
+`lib/hierarchy.ts` (raw U+001E path separator, written within an hour of banning
+it), the three memory files, and then the bullet I added to warn about it, which
+itself contained a NUL. The rule as written only said "never write a raw control
+byte into **source**" — so I kept obeying it in code and breaking it in prose.
+
+A binary memory file is worse than a binary source file: recall greps it, gets
+nothing, and reads that as "no such memory."
+
+**What changed** in `docs/ENGINEERING.md` §"Never write a raw control byte":
+- Scope is now **every file authored by hand or by script** — source, specs,
+  devlogs, and commit messages. (Raw bytes in a commit message are rejected by
+  tooling outright; write the message to a file and `git commit -F`.)
+- The regression sweep gained `':(exclude)node_modules/**'`. It was reporting
+  `lottie-web/player/js/modules/full_worker.js` on every run — a genuine binary,
+  and a false positive that would eventually train me to ignore the output.
+- Noted, not acted on: **312 `lottie-web` files are still tracked** from the
+  2026-04-01 install commit even though `node_modules/` is gitignored (the
+  2026-04-09 cleanup missed them). `lottie-web` is a normal `package.json`
+  dependency, so the tracked copy is redundant — but untracking 312 files is a
+  decision, not a drive-by.
+
+Sweep is clean across the repo, and all memory files now read as UTF-8 text.

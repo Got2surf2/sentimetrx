@@ -952,10 +952,19 @@ Sweep for regressions — anything listed that is not a `.json` file is a bug:
 
 ```bash
 git ls-files '*.ts' '*.tsx' '*.js' '*.mjs' '*.mts' '*.sql' '*.md' \
+    ':(exclude)node_modules/**' \
   | while read -r f; do
       case "$(file -b "$f")" in *text*) ;; *) echo "BINARY-ish: $f";; esac
     done
 ```
+
+The `node_modules` exclusion is there because 312 `lottie-web` files are still
+tracked from the 2026-04-01 install commit despite `node_modules/` being in
+`.gitignore` (the 2026-04-09 cleanup missed them). One of them, `full_worker.js`,
+is legitimately binary-ish and would otherwise report every run. Untracking that
+vendored copy is a separate call — `lottie-web` is a normal `package.json`
+dependency, so the tracked files are redundant, but removing 312 files is not a
+change to make in passing.
 
 The 2026-08-16 sweep found and fixed nine files: `lib/sampledAggregate.ts`,
 `lib/sampledTaxonomy.ts`, `lib/sampledThemeExtras.ts`, `lib/commentaryReport.ts`,
@@ -963,3 +972,17 @@ The 2026-08-16 sweep found and fixed nine files: `lib/sampledAggregate.ts`,
 `scripts/backfill-taxonomy-embed.ts`, `scripts/pilot-rc-keyword-build.ts`, and —
 fittingly — `docs/weekly-reports/2026-W31-devlog.md`, the entry that documented
 the *first* occurrence.
+
+**Prose is not exempt — that is where it keeps recurring.** Writing *about* a
+control byte pastes a real one. Three of the occurrences above were `.md` files
+whose only offence was describing the bug, and the same day this rule was
+written it was broken twice more: once in new source (`lib/hierarchy.ts`, a raw
+U+001E path separator, within an hour of the ban) and once in the sentence
+warning against it. So the rule covers **every file authored by hand or by
+script** — source, specs, devlogs, and commit messages alike. A raw byte in a
+commit message is rejected outright by tooling; write the message to a file and
+use `git commit -F <file>`.
+
+The `.md` glob is already in the sweep above, so the sweep catches all of it.
+Cheapest habit: after any scripted edit, `file <path>` should say `UTF-8 text`.
+`data` means the file was just made ungreppable.
