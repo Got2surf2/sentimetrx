@@ -884,3 +884,29 @@ where the element is a **JSX child**. In expression position (`return <img/>`,
 runs work and sum to CI exactly — 132 (`components lib`) + 106 (`app`) + 4
 (`tests scripts workflows proxy.ts`) = 242.
 
+---
+
+## 2026-08-16 (later⁶) — The last 2 advisories are unreachable code, not a waiting game
+
+**Why**: "do we just wait for an `image-size` fix?" Answer: no — waiting fails on
+its own terms, and the vulnerability isn't reachable regardless.
+
+Waiting fails because the vulnerable range is `<=2.0.2` and **2.0.2 is the latest
+release**; the package was **last published 2025-04-02**; and `pptxgenjs@4.0.1`
+pins `image-size: ^1.2.1`, so even a hypothetical 2.0.3 wouldn't satisfy its range.
+
+It doesn't matter because `image-size` is a **phantom dependency**. The only
+function that would call it, `getSizeFromImage`, is inside a `/* … */` block
+comment marked *"FIXME: TODO: currently unused"*; its single call site is also
+commented out; it calls `require('sizeof')` (not `image-size`, and no such package
+is installed); and `image-size` appears **0 times** across all four shipped
+pptxgenjs bundles. npm installs it, audit flags it, nothing loads it.
+
+Our decks independently only pass base64 data URIs we generate ourselves, so no
+user-supplied image file is parsed on that path either. CI doesn't gate on
+`npm audit`, so this only ever touched the governance score.
+
+Chose **not** to alias it to a stub via `overrides` — that zeroes the audit by
+adding a fake package rather than fixing anything, and would break pptxgenjs if it
+ever un-commented that code. The real fix is upstream dropping the unused dep.
+

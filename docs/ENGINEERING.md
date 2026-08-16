@@ -1081,3 +1081,43 @@ browser verification, never as a bulk sweep.
 instead — `components lib`, `app`, `tests scripts workflows proxy.ts` — which sum
 to the CI total exactly (132 + 106 + 4 = 242 pre-fix).
 
+## The last 2 advisories are a phantom dependency — do NOT wait for a fix (2026-08-16)
+
+`npm audit` reports 2 highs, both the same root: `image-size`
+(GHSA-w3rx-r6r6-pgpr ICNS parser infinite loop, GHSA-5p2g-fcmc-qvqq JXL/HEIF
+parsers, both CWE-835, CVSS 7.5), reached via `pptxgenjs`. Waiting is the wrong
+plan, for two reasons — and it doesn't matter anyway.
+
+**Why waiting fails**
+- Vulnerable range is `<=2.0.2` and **2.0.2 is the latest release**. There is no
+  patched version.
+- `image-size` was **last published 2025-04-02** — effectively unmaintained.
+- `pptxgenjs@4.0.1` (current latest) pins `image-size: ^1.2.1`, so even a
+  hypothetical 2.0.3 fix would not satisfy its range and would never reach us.
+- npm's offered "fix" downgrades `pptxgenjs` 4.0.1 → 1.1.5 (major) and **breaks
+  every deck export**. Never run `npm audit fix --force` in this repo.
+
+**Why it doesn't matter — `image-size` is never loaded.** Verified, not assumed:
+1. The only code that would call it, `getSizeFromImage`, is **inside a `/* … */`
+   block comment** in every shipped bundle, headed `FIXME: TODO: currently unused`.
+2. Its one call site is *also* commented out.
+3. It calls `require('sizeof')` — not even the `image-size` package name, and no
+   `sizeof` package is installed.
+4. `grep` for `require('image-size')` / `from 'image-size'` across the whole
+   package returns **nothing**. It appears 0 times in `pptxgen.cjs.js`,
+   `pptxgen.es.js`, `pptxgen.min.js` and `pptxgen.bundle.js`.
+
+So it is a **declared-but-never-imported dependency**: npm installs it, `npm
+audit` flags it, and no executing line ever loads it. The vulnerable ICNS/JXL/HEIF
+parsers cannot run. Independently, our decks only ever pass **base64 data URIs we
+generate ourselves** (`addImage({ data: … })`) — no user-supplied image file is
+parsed on this path.
+
+**CI does not gate on `npm audit`**, so this affects only the weekly governance
+score, never the build.
+
+**Deliberately NOT done**: aliasing `image-size` to a stub via `overrides` would
+zero the audit, but that games a metric with a fake package rather than fixing
+anything, and would silently break pptxgenjs if it ever un-commented that code.
+The honest resolution is upstream — pptxgenjs should drop the unused dependency.
+
