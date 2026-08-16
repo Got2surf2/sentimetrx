@@ -37,6 +37,7 @@ export default function QRCode({ url, size = 160, color = '#000000', background 
   }, [url, size, color, background, margin])
 
   return (
+    // eslint-disable-next-line @next/next/no-img-element -- next/image cannot optimize a data: URL — it would need `unoptimized`, making the wrapper pure overhead
     <img
       src={src}
       alt={alt}

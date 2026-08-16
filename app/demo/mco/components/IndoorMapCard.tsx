@@ -268,6 +268,7 @@ export default function IndoorMapCard({ hint }: { hint: IndoorMapHint }) {
       </div>
 
       <div className="indoor-map-viewport">
+        {/* eslint-disable-next-line @next/next/no-img-element -- remote SVG — Next declines to optimize SVG without dangerouslyAllowSVG */}
         <img className="indoor-map-svg" src={data.svg_url} alt={m.name} draggable={false} />
         <div className="indoor-pins" aria-hidden={false}>
           {filtered.map(p => {

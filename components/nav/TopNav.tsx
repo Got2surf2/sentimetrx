@@ -127,6 +127,7 @@ export default function TopNav({ logoUrl, orgName, isAdmin, userEmail, fullName,
       <div className="flex items-center gap-3 min-w-0">
         <Link href="/dashboard" className="flex items-center gap-2.5 flex-shrink-0">
           {logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- customer-supplied logo on an arbitrary domain; images.remotePatterns cannot enumerate it
             <img src={logoUrl} alt={orgName || 'Logo'} className="h-8 w-auto object-contain max-w-[120px] rounded" />
           ) : (
             <div className="flex items-center gap-2">

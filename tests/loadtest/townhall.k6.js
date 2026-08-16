@@ -91,7 +91,7 @@ function pickMessage() {
 // sends none of those by default.
 const JSON_HEADERS = { 'Content-Type': 'application/json', 'Origin': BASE }
 
-export default function () {
+export default function townHallScenario() {
   // 1. Join — server generates participant_id
   const joinRes = http.post(
     BASE + '/api/townhall/join/' + SESSION,

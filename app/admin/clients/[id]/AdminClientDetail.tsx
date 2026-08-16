@@ -463,6 +463,7 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
             <div className="flex items-center gap-3">
               <div className="w-20 h-10 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center overflow-hidden">
                 {logoUrl
+                  // eslint-disable-next-line @next/next/no-img-element -- customer-supplied logo on an arbitrary domain; images.remotePatterns cannot enumerate it
                   ? <img src={logoUrl} alt="logo" className="h-full w-full object-contain p-1" />
                   : <span className="text-xs text-gray-400">No logo</span>
                 }

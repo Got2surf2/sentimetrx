@@ -237,6 +237,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
                   className="rounded-2xl overflow-hidden p-4"
                   style={{ background: '#0a1628', border: `2px solid ${theme.primaryColor || '#00b4d8'}30` }}
                 >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- next/image cannot optimize a data: URL — it would need `unoptimized`, making the wrapper pure overhead */}
                   <img src={qrDataUrl} alt="QR code" width={200} height={200} />
                 </div>
               )}
@@ -314,6 +315,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
             {kioskQrDataUrl && (
               <div className="flex flex-col items-center gap-3 mt-6 pt-5 border-t border-gray-200">
                 <div className="rounded-2xl overflow-hidden p-4" style={{ background: '#0a1628', border: `2px solid ${theme.primaryColor || '#00b4d8'}30` }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element -- next/image cannot optimize a data: URL — it would need `unoptimized`, making the wrapper pure overhead */}
                   <img src={kioskQrDataUrl} alt="Kiosk QR code" width={200} height={200} />
                 </div>
                 <button

@@ -1039,3 +1039,45 @@ over `lib app components` (911 files) now reports **none**.
 **Watch for the phantom variant**: a type-only cycle passes `tsc` silently. Don't
 dismiss a madge finding because "it compiles."
 
+## Lint ratchet: 251 → 229 (2026-08-16)
+
+The ceiling had **9 warnings of slack** (ceiling 251, CI measuring 242). Slack is
+the failure mode the ratchet exists to prevent — drift creeps in under a loose
+ceiling and nothing complains. Ceiling now tracks the real count exactly.
+
+Cleared 13 warnings, in two honest categories:
+
+- **4 × `import/no-anonymous-default-export`** — the k6 load-test entry points.
+  k6 requires a default export but doesn't care about the name, so naming them
+  (`chatTurnScenario`, …) costs nothing and improves stack traces.
+- **9 × `@next/next/no-img-element`** — scoped `eslint-disable-next-line` with a
+  concrete reason, the same documented escape hatch used for `no-explicit-any`.
+  These are cases where **`next/image` is the wrong tool**, not laziness:
+  - *data: URLs* (QR codes, 5 sites) — next/image cannot optimize them; it would
+    need `unoptimized`, making the wrapper pure overhead.
+  - *arbitrary customer logo domains* (3 sites) — `images.remotePatterns` cannot
+    enumerate a URL supplied per customer (`lib/places.ts` `logo_url`).
+  - *remote SVG* (1 site) — Next declines to optimize SVG without
+    `dangerouslyAllowSVG`.
+
+**Deliberately NOT suppressed**: the 4 remaining `no-img-element` warnings are
+static local logos (`/mco/logo-mark.png`) where `next/image` genuinely is the
+right call. Converting changes rendered DOM and needs visual QC, so they stay on
+the ratchet as real, actionable debt rather than being papered over.
+
+⭐ **JSX comment style is context-dependent** — `{/* eslint-disable-next-line */}`
+only parses where the element is a **JSX child**. In an expression position
+(`return <img/>`, `return (<img/>)`, `{cond ? <img/> : null}`) it is a syntax
+error and you need a plain `//` comment. Getting this wrong fails `tsc`, not
+eslint, so the error looks unrelated.
+
+**Remaining 229 are 96% `react-hooks/*`** (`set-state-in-effect` 109,
+`exhaustive-deps` 83, `purity` 18, `immutability` 9, `refs` 8,
+`static-components` 6) — behaviour-sensitive, and an unmemoized effect web
+already caused the Statistics-tab infinite loop. Burn them down per-file with
+browser verification, never as a bulk sweep.
+
+⚠️ `eslint .` cannot be run locally (OOMs at 12GB). Lint **scoped directories**
+instead — `components lib`, `app`, `tests scripts workflows proxy.ts` — which sum
+to the CI total exactly (132 + 106 + 4 = 242 pre-fix).
+

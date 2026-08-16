@@ -129,7 +129,7 @@ function sentimentFor(score) {
 // still runs its CSRF same-origin check on it (not on the bypass list).
 const JSON_HEADERS = { 'Content-Type': 'application/json', 'Origin': BASE }
 
-export default function () {
+export default function surveySubmitScenario() {
   // 1. Load the survey page (SSR study lookup — what a real respondent does)
   const pageRes = http.get(BASE + '/s/' + GUID, { tags: { name: 'survey_page' } })
   if (!check(pageRes, { 'survey page 200': r => r.status === 200 })) {

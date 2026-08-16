@@ -68,6 +68,7 @@ function DonutChart({ promoters, passives, detractors, total, avgScore, ratingLa
 
 function QRCode({ url }: { url: string }) {
   const src = 'https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=' + encodeURIComponent(url) + '&margin=8'
+  // eslint-disable-next-line @next/next/no-img-element -- next/image cannot optimize a data: URL — it would need `unoptimized`, making the wrapper pure overhead
   return <img src={src} alt="QR code" className="w-40 h-40 rounded-lg border border-gray-200" />
 }
 

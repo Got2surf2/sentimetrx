@@ -70,6 +70,11 @@ Each question supports: `required`, `clarify` (keyword trigger), `useAI` (AI fol
 - **Campaign link**: `?rid=RECIPIENT_ID` for tracking
 - **Kiosk**: `?kiosk=1` (or `?kiosk=true`) — unattended shared-tablet mode (see below)
 
+**QR rendering (Publish page + dashboard)**: the survey QR, the kiosk QR and the dashboard QR are generated
+client-side into a `data:` URL and rendered with a plain `<img>`, **not** `next/image`. Next cannot optimize a
+`data:` URL — it would require `unoptimized`, leaving the wrapper as pure overhead — so the sites carry a scoped
+`eslint-disable-next-line @next/next/no-img-element` with that reason recorded inline (2026-08-16).
+
 ### Kiosk mode (`?kiosk=1`)
 Enabled per-survey from the **Publish** page (`/studies/[id]/deploy`) → **Kiosk mode** card: copy the `?kiosk=1` link, download a kiosk QR, and set the attract-screen headline/sub-text (saved to `StudyConfig`). For shared tablets (counter/table-top "feedback station"). Same survey, different lifecycle:
 - **Attract screen** between guests (`SurveyWidget` `phase='attract'`) — tap to begin a fresh session. Copy via `StudyConfig.kioskAttractHeadline` / `kioskAttractSubtext`.

@@ -242,6 +242,7 @@ export default function TeamClient({ org, members: initialMembers, invites: init
           <div className="flex items-center gap-4">
             <div className="w-24 h-12 rounded-lg bg-white border border-gray-200 flex items-center justify-center overflow-hidden">
               {logoUrl
+                // eslint-disable-next-line @next/next/no-img-element -- customer-supplied logo on an arbitrary domain; images.remotePatterns cannot enumerate it
                 ? <img src={logoUrl} alt="logo" className="h-full w-full object-contain p-1" />
                 : <span className="text-xs font-bold" style={{ color: HERMES }}>sentimetrx.ai</span>
               }

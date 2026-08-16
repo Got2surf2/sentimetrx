@@ -846,3 +846,41 @@ A type-only cycle is a latent one.
 
 madge now reports **zero** circular dependencies. typecheck clean, 1,687 tests +
 coverage gate green.
+
+---
+
+## 2026-08-16 (later⁵) — Lint ratchet 251 → 229, and what an ESLint upgrade can't fix
+
+**Why**: chasing the remaining governance gap. Two findings worth recording.
+
+**An ESLint upgrade does not help.** ESLint 10.8.1 exists (we're on 9.39.4), but
+`eslint-plugin-react-hooks` is **already at latest (7.1.1)** — and its v7
+React-Compiler-era rules (`set-state-in-effect`, `purity`, `immutability`,
+`static-components`) are what generate **142 of the 242 warnings**. The upgrade is
+how the debt arrived, not how it clears. An ESLint major changes config/API and
+typically *adds* rules.
+
+**The ceiling had 9 warnings of slack** (251 vs 242 measured) — the exact drift
+the ratchet exists to prevent.
+
+**What changed**:
+- `package.json` — ceiling 251 → **229**, tracking the real count exactly.
+- `tests/loadtest/*.k6.js` (×4) — named the default exports. k6 needs a default
+  export but not an anonymous one; naming improves stack traces.
+- 8 component files — 9 scoped `no-img-element` disables **with concrete
+  reasons**, all cases where `next/image` is the wrong tool (data: URLs for QR
+  codes; arbitrary per-customer logo domains that `remotePatterns` can't
+  enumerate; a remote SVG Next won't optimize without `dangerouslyAllowSVG`).
+- **Left alone on purpose**: 4 static-logo `<img>` sites where `next/image` *is*
+  correct. Converting changes rendered DOM and needs visual QC, so they stay on
+  the ratchet as real debt instead of being papered over.
+
+⭐ Cost me a broken build first: `{/* eslint-disable-next-line */}` only parses
+where the element is a **JSX child**. In expression position (`return <img/>`,
+`{cond ? <img/> : null}`) it's a syntax error needing a plain `//` — and it fails
+`tsc`, not eslint, so the error reads as unrelated.
+
+⚠️ Also confirmed: `eslint .` still cannot run locally (OOMs at 12GB). Scoped
+runs work and sum to CI exactly — 132 (`components lib`) + 106 (`app`) + 4
+(`tests scripts workflows proxy.ts`) = 242.
+

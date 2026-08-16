@@ -92,6 +92,7 @@ export default function QRHandoffModal({ botId, sessionId, messages, onClose }: 
 
         {state === 'ready' && (
           <>
+            {/* eslint-disable-next-line @next/next/no-img-element -- next/image cannot optimize a data: URL — it would need `unoptimized`, making the wrapper pure overhead */}
             {qrDataUrl ? <img src={qrDataUrl} alt="QR code" className="qr-img" /> : null}
             <p className="qr-sub">Scan with your phone camera, or enter the code at</p>
             <p className="qr-url">{url.replace(/^https?:\/\//, '')}</p>

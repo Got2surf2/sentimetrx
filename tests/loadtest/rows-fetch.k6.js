@@ -88,7 +88,7 @@ export const options = {
 const URL = BASE + '/api/datasets/' + DATASET +
   '/rows?all=true&withRowIds=true&sampleMax=' + SAMPLE_MAX
 
-export default function () {
+export default function rowsFetchScenario() {
   const res = http.get(URL, {
     headers: { 'Cookie': AUTH_COOKIE },
     tags: { name: 'rows' },

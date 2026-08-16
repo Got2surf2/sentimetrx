@@ -120,7 +120,7 @@ export function setup() {
 // browser-shaped.
 const JSON_HEADERS = { 'Content-Type': 'application/json', 'Origin': BASE }
 
-export default function (data) {
+export default function chatTurnScenario(data) {
   const botId = data.botId
   // Fresh conversation per iteration — mirrors the widget's localStorage
   // cb_sid_* session id (chatCore gates transcript persistence on session_id).
