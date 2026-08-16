@@ -229,8 +229,9 @@ gating).
     timeout on large datasets); entries missing it (pre-store) fall back to the
     live RPC. ⚠️ **`rowsWithText` was in fact undefined on EVERY dataset until
     sql/189 (2026-08-16)**: the multifield `dataset_rows_with_text_count(uuid,
-    text[])` the code calls was never actually created (sql/117 was never
-    applied), so both the stored write and the live fallback 404'd into their
+    text[])` the code calls was never actually created (sql/117's effects are
+    absent from the database — and its ledger row is a pre-147 bulk backfill, not
+    proof it ran), so both the stored write and the live fallback 404'd into their
     "leave it undefined" branch and the header quietly rendered `classifiedRows`
     instead. It self-heals on the next GET after the migration — no re-classify.
   - **RPCs** (same names as sql/115/116; sql/164 added an optional

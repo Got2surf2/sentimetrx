@@ -7,10 +7,18 @@
 -- BUG 1 — dataset_rows_with_text_count(uuid, text[]) IS NOT IN THE DATABASE.
 --
 -- sql/117 was written to drop the sql/114 single-field form and create this
--- multifield one. It was never applied: prod still carries the sql/114 scalar
--- dataset_rows_with_text_count(uuid, text) AND the 3-arg
--- dataset_rows_pending_field_taxonomy(uuid, text, int) that 117 also dropped.
--- (The multifield PENDING signature exists only because sql/151 re-created it.)
+-- multifield one. Its effects are ABSENT from prod: the sql/114 scalar
+-- dataset_rows_with_text_count(uuid, text) and the 3-arg
+-- dataset_rows_pending_field_taxonomy(uuid, text, int) that 117 also dropped are
+-- both still there, and the multifield text count never existed. (The multifield
+-- PENDING signature exists only because sql/151 re-created it independently.)
+--
+-- ⚠️ The ledger DOES list 117 — but with applied_by='backfill' at the same
+-- timestamp as every other pre-147 filename: sql/147 created schema_migrations
+-- and bulk-recorded the back catalogue as *assumed* applied. So a pre-147 ledger
+-- row is not evidence that a migration ran. Whether 117 never ran or ran and was
+-- later reverted is not recoverable; what IS verifiable is the catalog above.
+-- Trust `pg_proc`, not the ledger, for anything older than sql/147.
 --
 -- So the array call the code has always made 404s with PGRST202, every caller
 -- takes its "leave it undefined" fallback, and StoredTaxonomyField.rowsWithText

@@ -329,10 +329,21 @@ org-scoped SELECT policy (via `studies` join). The MV is dropped;
 INSERT/UPDATE/DELETE (`scripts/_verify_study_stats_counter.mts`).
 
 sql/189 (2026-08-16) fixes two taxonomy functions that had been quietly wrong
-since sql/117 — which, it turns out, **was never applied**: prod still carried
-the sql/114 scalar `dataset_rows_with_text_count(uuid, text)` and the 3-arg
+since sql/117 — whose **effects are absent from prod**: it still carried the
+sql/114 scalar `dataset_rows_with_text_count(uuid, text)` and the 3-arg
 `dataset_rows_pending_field_taxonomy(uuid, text, int)` that 117 dropped, and the
-multifield PENDING signature exists only because sql/151 re-created it.
+multifield PENDING signature exists only because sql/151 re-created it
+independently.
+
+⚠️ **The ledger is NOT proof for anything older than sql/147.** `117` *is* listed
+in `schema_migrations`, which is what made this confusing — but with
+`applied_by = 'backfill'` at the identical timestamp to every other pre-147
+filename, because sql/147 created the ledger and bulk-recorded the back catalogue
+as *assumed* applied. Whether 117 never ran, or ran and was later reverted, is not
+recoverable. **Trust `pg_proc`, not the ledger, below sql/147.** Post-147 entries
+are written by `scripts/apply-migration.ts` at real apply time and carry the
+file's sha256, so those are trustworthy.
+
 Consequences and fixes:
 
 1. **`dataset_rows_with_text_count(uuid, text[])` did not exist.** Every caller
