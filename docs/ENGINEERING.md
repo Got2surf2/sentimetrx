@@ -1024,3 +1024,18 @@ ignore list so both agree on what counts as product code. Tracked operational
 scripts (`apply-migration`, `specMap`, `spec-drift`, …) stay type-checked —
 verified in both directions.
 
+## Zero circular dependencies (2026-08-16)
+
+`lib/types.ts` and `lib/industryDefaults.ts` imported each other. Both sides were
+`import type`, so it was erased at compile time and had **no runtime effect** —
+but it was a real cycle to static analysis, and would have become a genuine one
+the moment either side needed a *value* rather than a type.
+
+Fixed by moving the `Industry` union into `lib/types.ts` (the direction that makes
+sense: config depends on types, not the reverse) and re-exporting it from
+`industryDefaults`, so all 18 existing importers are unchanged. `madge --circular`
+over `lib app components` (911 files) now reports **none**.
+
+**Watch for the phantom variant**: a type-only cycle passes `tsc` silently. Don't
+dismiss a madge finding because "it compiles."
+

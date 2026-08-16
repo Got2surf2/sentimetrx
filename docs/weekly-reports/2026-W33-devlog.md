@@ -820,3 +820,29 @@ turned up in a line-based grep and **all eight are false positives** — they ap
 `.eq('org_id', auth.orgId)` on the following line for non-admins (the documented
 conditional-gate pattern). No other real instances.
 
+
+---
+
+## 2026-08-16 (later⁴) — The last circular dependency was a phantom
+
+**Why**: `madge --circular` reported one cycle across 911 files —
+`lib/types.ts > lib/industryDefaults.ts`. It survived a long time because it was
+invisible to the tooling most likely to catch it: **both sides were `import
+type`**, so TypeScript erases them at compile time and `tsc` is silent. It had no
+runtime effect at all. But it was real to static analysis, and it would have
+become a genuine load-order cycle the moment either module needed a *value* from
+the other rather than a type.
+
+Worth stating as a rule: **don't dismiss a madge finding because "it compiles."**
+A type-only cycle is a latent one.
+
+**What changed**:
+- `lib/types.ts` — now owns the `Industry` union (config should depend on the
+  taxonomy, not define it), and no longer imports from `industryDefaults`.
+- `lib/industryDefaults.ts` — imports `Industry` from `./types` and re-exports it,
+  so all 18 existing `import { Industry } from '@/lib/industryDefaults'` call
+  sites are untouched. Zero call-site churn.
+- `docs/ENGINEERING.md` — records the phantom-cycle rule.
+
+madge now reports **zero** circular dependencies. typecheck clean, 1,687 tests +
+coverage gate green.

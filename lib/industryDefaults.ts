@@ -19,28 +19,11 @@
 // That's it. No other files to touch.
 // ───────────────────────────────────────────────────────────────
 
-import type { StudyConfig, PsychoQuestion } from './types'
-
-export type Industry =
-  | 'healthcare'
-  | 'hospitality'
-  | 'casual_dining'
-  | 'fine_dining'
-  | 'fast_food'
-  | 'travel_tourism'
-  | 'political'
-  | 'media_entertainment'
-  | 'performing_arts'
-  | 'saas_software'
-  | 'retail_ecommerce'
-  | 'financial_services'
-  | 'education'
-  | 'higher_education'
-  | 'hr_employee'
-  | 'sports'
-  | 'nonprofit'
-  | 'automotive_repair'
-  | 'other'
+// `Industry` is defined in ./types so the dependency runs ONE way
+// (industryDefaults -> types). It is re-exported here so the 18 existing
+// importers of `Industry` from this module keep working unchanged.
+import type { StudyConfig, PsychoQuestion, Industry } from './types'
+export type { Industry }
 
 // Industries that get the restaurant 7-axis taxonomy ("Dimensions") auto-enabled.
 export const RESTAURANT_INDUSTRIES: Industry[] = ['casual_dining', 'fine_dining', 'fast_food']

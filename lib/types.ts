@@ -3,7 +3,33 @@
 // ============================================================
 
 import type { StudyType } from './surveyBlueprints'
-import type { Industry } from './industryDefaults'
+
+// The industry taxonomy lives HERE, not in industryDefaults, so the dependency
+// runs one way (industryDefaults -> types). Defining it beside the config that
+// consumes it created a types <-> industryDefaults cycle: harmless at runtime
+// (both sides were `import type`, erased at compile time) but real to any
+// static analysis, and a genuine cycle the moment either side needs a value.
+// industryDefaults re-exports it, so all existing importers are unaffected.
+export type Industry =
+  | 'healthcare'
+  | 'hospitality'
+  | 'casual_dining'
+  | 'fine_dining'
+  | 'fast_food'
+  | 'travel_tourism'
+  | 'political'
+  | 'media_entertainment'
+  | 'performing_arts'
+  | 'saas_software'
+  | 'retail_ecommerce'
+  | 'financial_services'
+  | 'education'
+  | 'higher_education'
+  | 'hr_employee'
+  | 'sports'
+  | 'nonprofit'
+  | 'automotive_repair'
+  | 'other'
 
 export type ClientPlan = 'trial' | 'active' | 'suspended'
 // ── Module feature flags ─────────────────────────────────────────────────────
