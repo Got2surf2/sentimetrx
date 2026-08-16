@@ -787,3 +787,36 @@ silently broke every local build with an error that looked unrelated. Now exclud
 `scripts/_*.ts`, `scripts/_*.mts`, `scripts/oneoff/**`, mirroring the eslint ignore
 list exactly. Verified both directions: a deliberately broken scratch file no
 longer fails tsc, and a break planted in a tracked operational script still does.
+
+---
+
+## 2026-08-16 (later³) — Closing the chatCore MEDIUM, and why the prescribed fix was wrong
+
+The W31→W33 governance reports carried a multi-tenancy MEDIUM on
+`lib/chatCore.ts` for two consecutive weeks, with a specific remedy: *"add
+`.eq('org_id', session_org_id)` to the `content_flags` updates on
+`bot_conversation_turns` … ~10 min, tsc-clean."*
+
+⭐ **That fix would have broken the writes.** `bot_conversation_turns` has no
+`org_id` column — it carries `id, bot_id, session_id, turn_number, role, content,
+content_en, language, created_at, content_flags, source, sentiment,
+sentiment_score`. The `org_id` the report saw belongs to the **phase-3
+`conversation_turns`** table that `chatCore` reads from behind
+`isPhase3ReadSafe()`; the two flagged *writes* are on the legacy table. Applying
+the recommendation verbatim would have sent PostgREST an unknown column and
+silently broken focus/entity flag persistence.
+
+The legacy table's tenancy key is `bot_id` (a bot belongs to exactly one org), so
+both sites now read `.eq('id', x).eq('bot_id', bot.id)` — which satisfies the
+invariant on the table as it actually exists.
+
+**Lesson**: "pair `id` with `org_id`" is shorthand for *pair the id with the
+table's tenancy key*. Verify which column that is before applying it — a
+remediation copied from a report is still a change that has to be checked against
+the schema.
+
+Swept the class repo-wide. Eight other bare `.eq('id', …)` service-role writes
+turned up in a line-based grep and **all eight are false positives** — they append
+`.eq('org_id', auth.orgId)` on the following line for non-admins (the documented
+conditional-gate pattern). No other real instances.
+

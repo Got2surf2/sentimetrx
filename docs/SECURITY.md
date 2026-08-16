@@ -836,3 +836,25 @@ plumbing that needs to ship.
     conversation turns via `linkify`), `ChatBot.tsx` (chat messages
     via `formatHtml`), and `CampaignDetailClient.tsx` (the 3
     email-preview renders).
+
+## `bot_conversation_turns` has no `org_id` — pair with `bot_id` (2026-08-16)
+
+The W31/W33 governance reports carried a MEDIUM on `lib/chatCore.ts` for two
+weeks: two service-role `content_flags` updates matched a bare `.eq('id', …)`,
+violating the multi-tenancy invariant. **The prescribed fix — "add
+`.eq('org_id', …)`" — could not be applied as written**: `bot_conversation_turns`
+has no `org_id` column. That column lives on the phase-3 `conversation_turns`
+table, which `chatCore` reads from behind `isPhase3ReadSafe()`; the flagged
+writes are on the **legacy** table.
+
+Applying the recommendation literally would have sent PostgREST an unknown
+column and broken the focus/entity flag writes.
+
+**The legacy table's tenancy key is `bot_id`** — a bot belongs to exactly one org
+— so the invariant is satisfied by `.eq('id', x).eq('bot_id', bot.id)`. Fixed at
+both sites.
+
+⭐ **Generalisation**: "pair `id` with `org_id`" is shorthand for *pair the id with
+the table's tenancy key*. Check which column that actually is before applying it;
+on join-scoped legacy tables it is the parent FK, not `org_id`.
+

@@ -2041,7 +2041,12 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
               }
               if (focusResult.slugs.length > 0) {
                 const flags = focusResult.slugs.map(function(s) { return 'focus:' + s })
-                service.from('bot_conversation_turns').update({ content_flags: flags }).eq('id', assistantRow.id).then(function() {})
+                // Service-role write: never a bare `id` match. `bot_conversation_turns`
+                // has no org_id (that column is on the phase-3 `conversation_turns`),
+                // so `bot_id` IS this table's tenancy key — a bot belongs to exactly
+                // one org. Pairing the id with it satisfies the multi-tenancy
+                // invariant on the table as it actually exists.
+                service.from('bot_conversation_turns').update({ content_flags: flags }).eq('id', assistantRow.id).eq('bot_id', bot.id).then(function() {})
                 void mirrorFocusFlagsUpdate(service, { botId: bot.id, sessionId: session_id, turnNumber: assistantRow.turn_number, flags }).then(function() {})
               }
             }).catch(function(e: unknown) { console.error({ at: 'bot-chat', msg: 'focus classify failed', err: (e as Error)?.message }) })
@@ -2160,7 +2165,9 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
                 const entityFlags = entitySlugs.map(function(s) { return 'entity:' + s })
                 const topicFlags = topicSlugs.map(function(s) { return 'topic:' + s })
                 const merged = Array.from(new Set([...existing, ...topicFlags, ...entityFlags]))
-                await service.from('bot_conversation_turns').update({ content_flags: merged }).eq('id', userRow.id)
+                // Same invariant as the assistant-turn update above: pair the id
+                // with `bot_id`, this table's tenancy key.
+                await service.from('bot_conversation_turns').update({ content_flags: merged }).eq('id', userRow.id).eq('bot_id', bot.id)
                 await mirrorFocusFlagsUpdate(service, { botId: bot.id, sessionId: session_id, turnNumber: userRow.turn_number, flags: merged as string[] })
               } catch (e) {
                 console.error({ at: 'bot-chat', msg: 'user-turn classify failed', err: (e as Error)?.message })
