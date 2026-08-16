@@ -72,6 +72,13 @@ The canvas shell is brand-agnostic; the agent's `personality` field carries the 
 
 - Single canvas slot, never stacked panels. Cross-fade transitions on swap (≤ 250 ms).
 - Top bar has a persistent QR ("Send this to my phone") that encodes the conversation share link.
+- **Image rendering (2026-08-16)**: the handoff QR (`QRHandoffModal`) and the indoor map (`IndoorMapCard`) use a
+  plain `<img>`, not `next/image`, each with a scoped `eslint-disable-next-line @next/next/no-img-element` naming
+  the reason inline. The QR is a `data:` URL, which Next cannot optimize without `unoptimized` (leaving the
+  wrapper as pure overhead); the indoor map is a **remote SVG**, which Next declines to optimize unless
+  `dangerouslyAllowSVG` is enabled — not worth widening for a demo surface. The MCO logo marks
+  (`CanvasShell`, `WelcomeCard`) are static local assets where `next/image` *would* be correct; they remain on
+  the lint ratchet as real debt rather than being suppressed.
 - Input is bottom-anchored, always visible. Suggested chips above it pre-populate the input.
 - When the canvas is empty (initial state), it shows an idle "panorama" — looping ambient terminal photo with the day's parking-availability summary as a centered overlay.
 
