@@ -560,3 +560,21 @@ The loop counts deleted rows with `psql -t -A ... RETURNING 1 | wc -l`. **psql e
 This is the second time this exact function has failed in this exact way. The script already carries a comment explaining that the 2026-08-15 run "deleted all 1M rows but left the datasets / dataset_state rows behind while still exiting 0" — that was diagnosed as a `set -e` interaction and fixed accordingly, but the underlying miscount was never the `set -e`; it was always `wc -l`. Counter is now `grep -c '^1$'`, which returns a true 0.
 
 Cleanup finished by hand: fixture rows 0, `datasets`/`dataset_state` rows gone, `VACUUM ANALYZE` run. TEST is back to 454,673 rows and 2,272 MB, against 2,257 MB before the experiment and 3,893 MB at the 1M peak.
+
+### org_snapshot_runs — a durable answer to "which tenant has no backup?" (Aug 16)
+
+**Why.** The nightly per-tenant snapshot cron reported its outcome to exactly three places, none of them durable: the HTTP response body (gone the moment the cron returns), `console.error` (gone when Vercel rotates logs), and a Sentry event carrying an aggregate count. On 2026-08-08 that produced an alert reading "1/9 orgs failed" which sat unresolved for a week — by the time anyone looked, the logs had rotated and **there was no way to say which org had no backup**. The cron's own source comments say exactly this. A backup system that cannot answer "which tenants are unprotected, and why" after the fact is not really a backup system.
+
+**What changed**: `sql/192` adds `org_snapshot_runs`, one row per (`org_id`, `snapshot_day`), upserted through `record_org_snapshot_run` as the resumable cron hops across invocations — `attempts` counts the touches rather than the table accumulating a row per hop. `lib/orgSnapshotRuns.ts` wraps it; `/admin/health` grows a Backups card.
+
+⭐ **Status is four-valued on purpose, because "failed" would hide the dangerous case.** An `incomplete` snapshot committed a manifest but silently dropped a table that failed to read — it looks like a backup and isn't one. It gets its own status, its own `fetch_errors` payload, and red styling, so it can never read as green. `partial` (out of time mid-org, no manifest yet) is genuinely not a failure and is distinguished from both.
+
+⭐ **The instrumentation is derived, not sprinkled.** There are eight `results.push` sites across the resume path, the main loop, the hop cap and two catch blocks. Rather than instrument each — where a future ninth path would silently skip the ledger — the recording loop reads the same `results` array the HTTP response is built from. One place, and it cannot drift from what the response claims.
+
+⭐ **`missing` is counted separately from `failed`, and that is the whole lesson of 2026-08-08.** An org the cron never reached leaves no row, no log line and no Sentry event. It cannot be inferred from an absence of bad news, so the gap query enumerates the fleet and reports orgs with no row at all as their own category.
+
+Recording is best-effort and never throws: bookkeeping must not turn a good backup into a failed cron run, nor mask a real backup error behind a write error. That design was immediately confirmed by the existing cron test — its mock service had no `.rpc`, the recorder threw, and the cron still completed successfully; the only symptom was an unexpected `logError`, which is what caught the gap.
+
+**Verified** with `scripts/_verify_sql192.mts` against TEST: upsert collapses 3 hops to 1 row with `attempts=3`, a later `partial` cannot erase the pointer to the last good manifest, `incomplete` survives as its own status, the gap query flags bad statuses *and* orgs with no row, and the multi-tenancy invariant holds (RLS on, anon reads nothing, anon writes 401). `test:rls` 4, `test:egress` 27, suite 1,664 green. Three new cron tests assert the ledger itself.
+
+**⚠️ TEST only** — prod apply pending, like sql/191.

@@ -56,6 +56,13 @@ interface AnthropicSpend {
   error: string | null
 }
 
+interface BackupHealth {
+  day: string
+  total: number
+  gaps: { orgId: string; name: string; status: string; error: string | null }[]
+  missing: { orgId: string; name: string }[]
+}
+
 interface Props {
   logoUrl: string
   orgName: string
@@ -68,6 +75,7 @@ interface Props {
   totalComplete24h: number
   sentry: SentryHealth
   serviceCredits: ServiceCredit[]
+  backups: BackupHealth
   anthropicSpend: AnthropicSpend
   claudeProbe: ClaudeProbe
   alertRecipientSet: boolean
@@ -99,7 +107,7 @@ function StatusDot({ ok, neutral }: { ok: boolean; neutral?: boolean }) {
 
 export default function HealthClient({
   logoUrl, orgName, fullName, userEmail,
-  dbOk, dbLatency, studyHealth, totalResponses24h, totalComplete24h, sentry, serviceCredits,
+  dbOk, dbLatency, studyHealth, totalResponses24h, totalComplete24h, sentry, serviceCredits, backups,
   anthropicSpend, claudeProbe, alertRecipientSet,
 }: Props) {
   const platform24hRate = totalResponses24h > 0
@@ -301,6 +309,63 @@ export default function HealthClient({
             </div>
           )}
         </div>
+
+        {/* ── Backups: per-tenant snapshot outcomes (sql/192) ─────────────── */}
+        {(() => {
+          // `missing` is the case that actually bit on 2026-08-08: an org the
+          // cron never reached leaves no trace anywhere, so it cannot be an
+          // absence of bad news — it has to be counted explicitly.
+          const bad = backups.gaps.length + backups.missing.length
+          const ok = Math.max(0, backups.total - bad)
+          const tone = bad === 0 ? 'green' : backups.gaps.some(g => g.status === 'failed') || backups.missing.length ? 'red' : 'amber'
+          const label: Record<string, string> = {
+            failed: 'bg-red-100 text-red-700',
+            incomplete: 'bg-red-100 text-red-700',
+            partial: 'bg-amber-100 text-amber-800',
+          }
+          return (
+            <div className={'rounded-2xl p-5 border ' +
+              (tone === 'green' ? 'bg-green-50 border-green-200'
+               : tone === 'amber' ? 'bg-amber-50 border-amber-200'
+               : 'bg-red-50 border-red-200')}>
+              <div className="flex items-center gap-3 mb-3">
+                <StatusDot ok={bad === 0} />
+                <div>
+                  <p className="text-sm font-bold text-gray-800">Per-Tenant Backups</p>
+                  <p className="text-xs text-gray-600">
+                    Nightly org snapshots for <strong>{backups.day}</strong> — {ok}/{backups.total} orgs backed up cleanly.
+                  </p>
+                </div>
+              </div>
+              {bad === 0 ? (
+                <p className="text-xs text-gray-600">Every tenant has a complete snapshot for this day.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {backups.missing.map(m => (
+                    <div key={m.orgId} className="flex items-center justify-between gap-3 text-xs">
+                      <span className="font-semibold text-gray-800">{m.name}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">no run recorded</span>
+                    </div>
+                  ))}
+                  {backups.gaps.map(g => (
+                    <div key={g.orgId} className="flex items-center justify-between gap-3 text-xs">
+                      <span className="font-semibold text-gray-800">{g.name}</span>
+                      <span className="flex items-center gap-2 min-w-0">
+                        {g.error && <span className="text-gray-500 truncate max-w-[22rem]" title={g.error}>{g.error}</span>}
+                        <span className={'px-2 py-0.5 rounded-full font-semibold ' + (label[g.status] || 'bg-gray-100 text-gray-600')}>
+                          {g.status}
+                        </span>
+                      </span>
+                    </div>
+                  ))}
+                  <p className="text-[11px] text-gray-500 pt-1">
+                    <strong>incomplete</strong> means a manifest was written but a table failed to read — it is NOT a usable backup.
+                  </p>
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         {/* ── Service credits / vendor health ───────────────────────────── */}
         {(() => {

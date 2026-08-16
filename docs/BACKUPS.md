@@ -227,3 +227,44 @@ At present scale (~30 orgs, ~10 MB compressed each):
 - **Restore drills:** first full prod→test drill run **2026-07-04** (fresh v2 dump of the Datanautix org: 200,986 rows / 50 tables / 0 fetch errors — capture verified complete). The restore side surfaced three fidelity bug classes (FK ordering, referential-debt batch poisoning, silent-loss accounting) plus the trigger-minted-phantom interference, all fixed same day — see "Restore fidelity" above. **Re-drill from the S3 nightly artifact (2026-07-04, post-fix): PASSED** — 200,967/200,978 rows landed on a clean target, 0 errors / 0 conflicts / 0 missing (self-verified), the remaining 11 = 10 referential-debt rows each attributed to a named FK constraint + 1 deliberately remapped user identity; prod↔test recount reconciled row-for-row against the manifest (prod-side drift since the 07:45 UTC snapshot accounted). Log each subsequent drill here.
 - **No automated restore tests**: there is no NIGHTLY "restore yesterday's snapshot, assert row counts" job yet. Partially covered since 2026-07-04: the v2 unit suite round-trips a dump→restore through the local store on every CI run, a live dump→restore→recount drill ran against the test project (row-for-row reconciliation), and every routine `clone-org-to-test` doubles as a restore drill. The missing piece is only the *scheduled* version.
 - **`auth.users` mirror**: consider also snapshotting Supabase Auth users (their JSON shape) so an accidental user delete can be partially recovered. Today, only `public.users` is captured.
+
+## Answering "which tenants have no backup?" (sql/192)
+
+Until 2026-08-16 this question could not be answered after the fact. The nightly
+cron reported its outcome to three places, none durable: the HTTP response body,
+`console.error`, and a Sentry event carrying only an aggregate count. On
+2026-08-08 that produced an alert reading "1/9 orgs failed" which sat for a week,
+because by the time anyone looked, Vercel's logs had rotated and **there was no
+way to tell which org it was**.
+
+`org_snapshot_runs` now holds one row per (org, snapshot day), upserted as the
+resumable cron hops across invocations. Four statuses, and the distinction
+matters:
+
+| status | meaning |
+|---|---|
+| `ok` | manifest committed, no read errors — a usable backup |
+| `incomplete` | manifest committed **but a table failed to read**. NOT a usable backup. |
+| `partial` | ran out of time mid-org; parts uploaded, no manifest yet. The continuation hop finishes it. |
+| `failed` | threw or gave up; nothing usable |
+
+**The admin Health page** (`/admin/health`) shows last night's result across the
+fleet. Note it counts orgs with **no row at all** separately — that is the case
+that actually bit, since an org the cron never reached leaves no trace anywhere
+and cannot be inferred from an absence of bad news.
+
+To query directly:
+
+```sql
+-- orgs without a clean backup for a given day
+SELECT o.name, r.status, r.error
+  FROM organizations o
+  LEFT JOIN org_snapshot_runs r
+    ON r.org_id = o.id AND r.snapshot_day = DATE '2026-08-16'
+ WHERE r.status IS DISTINCT FROM 'ok';   -- NULL row = never attempted
+```
+
+Recording is best-effort by design (`lib/orgSnapshotRuns.ts`): a bookkeeping
+failure must never turn a good backup into a failed cron run, nor mask a real
+backup error behind a write error.
+

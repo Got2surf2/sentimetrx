@@ -154,6 +154,12 @@ complete empty schema. Data restore comes from the nightly org snapshots
 | `sentry_snapshots` | Captured error-context snapshots. |
 | `schema_migrations` | Applied-migration ledger (sql/147): filename, sha256, applied_at/by. *(Applied to prod 2026-07-03; ledger backfilled with all 147 prior migrations.)* |
 
+## Backup accounting
+
+| Table | Purpose |
+|---|---|
+| `org_snapshot_runs` | Durable per-tenant backup outcome — one row per (`org_id`, `snapshot_day`), upserted as the resumable cron hops (`attempts` counts the touches). Exists because the nightly run previously reported only to the HTTP response, `console.error` and an aggregate Sentry count, so when the 2026-08-08 alert said "1/9 orgs failed" and Vercel's logs had rotated, **nobody could say which org had no backup**. `status` is four-valued: `ok` · `incomplete` (manifest committed but a table failed to read — **never a usable backup**) · `partial` (out of time mid-org, no manifest yet) · `failed`. RLS org-scoped SELECT + admin-org bypass; no write policy (service-role only). Written via `record_org_snapshot_run`. sql/192. |
+
 ## Views & functions
 
 Most views are **security-invoker compat views** created during renames so

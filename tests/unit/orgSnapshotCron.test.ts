@@ -20,8 +20,25 @@ const BASE = 'https://cron-test.example'
 // Org fixture — ids deliberately unsorted to prove the route orders by id.
 let orgRows: Array<{ id: string; name: string | null }> = []
 
+// Records every (org, day, status) the route writes durably (sql/192), so the
+// tests can assert the outcome ledger, not just the HTTP body.
+const snapshotRuns: { org: string; day: string; status: string }[] = []
+
 function makeServiceMock() {
   return {
+    // sql/192: the route records each org's outcome via record_org_snapshot_run.
+    // Without this the recorder throws, is swallowed as best-effort, and the
+    // only visible symptom is an unexpected logError — which is how this mock
+    // was caught out.
+    rpc(fn: string, args: Record<string, unknown>) {
+      if (fn === 'record_org_snapshot_run') {
+        snapshotRuns.push({
+          org: String(args.p_org_id), day: String(args.p_day), status: String(args.p_status),
+        })
+        return Promise.resolve({ data: null, error: null })
+      }
+      return Promise.resolve({ data: null, error: { message: 'unexpected rpc ' + fn } })
+    },
     from(_table: string) {
       const state = { gt: null as string | null }
       const builder = {
@@ -114,6 +131,7 @@ beforeEach(() => {
   process.env.CRON_SECRET = SECRET
   process.env.NEXT_PUBLIC_BASE_URL = BASE
   orgRows = []
+  snapshotRuns.length = 0
   dumpMock.mockReset()
   loadCheckpointMock.mockReset()
   loadCheckpointMock.mockResolvedValue(null)
@@ -330,6 +348,38 @@ describe('cron/org-snapshot — time-budgeted continuation', () => {
     expect(res.status).toBe(500)
     expect(body.results[0].error).toContain('incomplete snapshot: conversations')
     expect(body.results[0].fetch_errors).toEqual({ conversations: 'read timeout' })
+  })
+
+  // ── sql/192: the durable outcome ledger ─────────────────────────────────
+  // The whole point of the table: after the fact, be able to say WHICH orgs
+  // have no good backup. Previously that lived only in the response body,
+  // console.error and an aggregate Sentry count.
+  it('records a durable ok row per org', async () => {
+    orgRows = [{ id: 'org-a', name: null }, { id: 'org-b', name: null }]
+    okDump(0)
+    await (await loadGet())(req())
+    expect(snapshotRuns).toEqual([
+      { org: 'org-a', day: '2026-07-14', status: 'ok' },
+      { org: 'org-b', day: '2026-07-14', status: 'ok' },
+    ])
+  })
+
+  it('records incomplete (NOT ok) when a table failed to read', async () => {
+    orgRows = [{ id: 'org-a', name: null }]
+    okDump(0, { conversations: 'read timeout' })
+    await (await loadGet())(req())
+    expect(snapshotRuns).toEqual([{ org: 'org-a', day: '2026-07-14', status: 'incomplete' }])
+  })
+
+  it('records failed for an org whose dump threw — the case nobody could diagnose', async () => {
+    orgRows = [{ id: 'org-a', name: null }, { id: 'org-b', name: null }]
+    dumpMock.mockImplementation((_db: unknown, orgId: string) => {
+      if (orgId === 'org-a') return Promise.reject(new Error('S3 refused'))
+      return Promise.resolve({ done: true, manifestKey: 'k', meta: { org_name: null, total_bytes: 1, table_row_counts: {}, fetch_errors: {} } })
+    })
+    await (await loadGet())(req())
+    expect(snapshotRuns).toContainEqual({ org: 'org-a', day: '2026-07-14', status: 'failed' })
+    expect(snapshotRuns).toContainEqual({ org: 'org-b', day: '2026-07-14', status: 'ok' })
   })
 
   it('a continuation hop that never ran (non-2xx) is reported via logError', async () => {

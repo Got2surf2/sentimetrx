@@ -39,6 +39,7 @@ import {
 import { s3SnapshotStore } from '@/lib/backupS3'
 import { serverError } from '@/lib/apiError'
 import { logError } from '@/lib/log'
+import { recordSnapshotRun, type SnapshotRunStatus } from '@/lib/orgSnapshotRuns'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300 // 5 minutes per hop; the org loop bails at TIME_BUDGET_MS
@@ -64,6 +65,9 @@ interface OrgResult {
   partial?: boolean
   error?: string
   ms: number
+  /** Snapshot day this outcome belongs to. Only the RESUMED org can differ from
+   *  today (it continues yesterday's run), so everything else defaults. */
+  day?: string
 }
 
 export async function GET(req: NextRequest) {
@@ -120,6 +124,7 @@ export async function GET(req: NextRequest) {
         results.push({
           org_id: resume,
           org_name: out.meta.org_name,
+          day,
           key: out.manifestKey,
           size_bytes: out.meta.total_bytes,
           row_counts: out.meta.table_row_counts,
@@ -128,19 +133,19 @@ export async function GET(req: NextRequest) {
         })
       } else if (checkpointProgress(out.checkpoint) > before) {
         resumeKick = { orgId: resume, day }
-        results.push({ org_id: resume, org_name: out.checkpoint.org_name, partial: true, ms: Date.now() - orgStart })
+        results.push({ org_id: resume, org_name: out.checkpoint.org_name, partial: true, ms: Date.now() - orgStart, day })
       } else {
         // A resume hop that advanced nothing would chain to the hop cap
         // doing zero work — give this org up for tonight, loudly, and let
         // the rest of the fleet back up.
         const stallErr = new Error('org-snapshot resume for org ' + resume + ' made no progress at hop ' + hop)
         await logError('cron.orgSnapshot.stalled', stallErr, { hop, org_id: resume })
-        results.push({ org_id: resume, org_name: out.checkpoint.org_name, error: 'resume made no progress — org NOT backed up tonight', ms: Date.now() - orgStart })
+        results.push({ org_id: resume, org_name: out.checkpoint.org_name, error: 'resume made no progress — org NOT backed up tonight', ms: Date.now() - orgStart, day })
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       console.error('[org-snapshot] resumed org ' + resume + ' failed:', msg)
-      results.push({ org_id: resume, org_name: null, error: msg, ms: Date.now() - orgStart })
+      results.push({ org_id: resume, org_name: null, error: msg, ms: Date.now() - orgStart, day })
     }
   }
 
@@ -241,6 +246,32 @@ export async function GET(req: NextRequest) {
       try { waitUntil(kick) } catch { void kick }
       continued = true
     }
+  }
+
+  // Durable record of every outcome (sql/192). Derived from `results` — the
+  // same array the response is built from — rather than instrumented at each of
+  // the eight push sites, so a future outcome path cannot silently skip it.
+  // Best-effort inside recordSnapshotRun: bookkeeping never fails a backup.
+  for (const r of results) {
+    const hasFetchErrors = !!r.fetch_errors && Object.keys(r.fetch_errors).length > 0
+    const status: SnapshotRunStatus =
+      r.partial            ? 'partial'
+      : hasFetchErrors     ? 'incomplete'   // manifest committed but a table was dropped — never green
+      : r.error            ? 'failed'
+      :                      'ok'
+    await recordSnapshotRun(service, {
+      orgId: r.org_id,
+      day: r.day || todayStr,
+      status,
+      manifestKey: r.key ?? null,
+      sizeBytes: r.size_bytes ?? null,
+      rowCounts: r.row_counts ?? null,
+      fetchErrors: hasFetchErrors ? r.fetch_errors! : null,
+      error: r.error ?? null,
+      durationMs: r.ms,
+      hop,
+      trigger: 'cron',
+    })
   }
 
   const successCount = results.filter(r => !r.error).length

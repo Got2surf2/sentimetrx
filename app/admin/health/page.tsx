@@ -4,6 +4,7 @@ import { resolveOrg } from '@/lib/resolveOrg'
 import { probeBalances, getServiceHealthRows } from '@/lib/serviceHealth'
 import { getAnthropicSpend, probeClaudeCredits } from '@/lib/anthropicCost'
 import { recordCreditError } from '@/lib/serviceHealth'
+import { snapshotGapsForDay } from '@/lib/orgSnapshotRuns'
 import HealthClient from './HealthClient'
 
 export const dynamic = 'force-dynamic'
@@ -157,6 +158,27 @@ export default async function HealthPage() {
   // Whether the service-balance cron's credit alerts have anywhere to go.
   const alertRecipientSet = !!(process.env.CREDITS_ALERT_TO || process.env.SENTRY_ALERT_TO)
 
+  // ── Backups: did every tenant get a snapshot last night? (sql/192) ───────
+  // The cron runs overnight, so "today" is only meaningful after it has run —
+  // report the most recent day that HAS rows, falling back to today so a fleet
+  // with no runs at all still shows as unbacked rather than silently blank.
+  const { data: lastRun } = await service
+    .from('org_snapshot_runs').select('snapshot_day')
+    .order('snapshot_day', { ascending: false }).limit(1).maybeSingle()
+  const backupDay = (lastRun as { snapshot_day: string } | null)?.snapshot_day
+    || new Date().toISOString().slice(0, 10)
+  const backupHealth = await snapshotGapsForDay(service, backupDay)
+  const backupOrgNames: Record<string, string> = {}
+  {
+    const ids = [...backupHealth.gaps.map(g => g.org_id), ...backupHealth.missing]
+    if (ids.length) {
+      const { data: names } = await service.from('organizations').select('id, name').in('id', ids)
+      for (const o of (names || []) as { id: string; name: string | null }[]) {
+        backupOrgNames[o.id] = o.name || o.id.slice(0, 8)
+      }
+    }
+  }
+
   return (
     <HealthClient
       logoUrl={orgData?.logo_url || ''}
@@ -172,6 +194,15 @@ export default async function HealthPage() {
       anthropicSpend={anthropicSpend}
       claudeProbe={claudeProbe}
       alertRecipientSet={alertRecipientSet}
+      backups={{
+        day: backupDay,
+        total: backupHealth.total,
+        gaps: backupHealth.gaps.map(g => ({
+          orgId: g.org_id, name: backupOrgNames[g.org_id] || g.org_id.slice(0, 8),
+          status: g.status, error: g.error,
+        })),
+        missing: backupHealth.missing.map(id => ({ orgId: id, name: backupOrgNames[id] || id.slice(0, 8) })),
+      }}
       sentry={{
         dsnSet: sentryDsnSet,
         tokenSet: !!sentryToken,
