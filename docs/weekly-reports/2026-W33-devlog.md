@@ -406,3 +406,13 @@ And the taxonomy route reads `dataset_rows_flat … .eq('dataset_id', datasetId)
 Its sibling `/theme-counts` resolves `collection_members` and fans out across them, which is exactly why Themes works on a collection and Dimensions doesn't. Neither `lib/taxonomyClassify.ts` nor `lib/taxonomyRollup.ts` mentions collections at all.
 
 **Not a regression — a gap that predates this week, and not a small one.** Closing it means member resolution in four places: the route's row read, the classify write path (`_tx` has to be embedded into *member* rows), the rollup read, and the `tax_*` aggregate RPCs, which each take a single `p_dataset_id`. The fan-out pattern already exists in `theme-counts`/`runPool`, so it's tractable — but it touches the taxonomy **write** path, so it wants its own change with its own verification rather than being tacked onto a UI fix. Flagged, not built.
+
+### Follow-up: heartbeat dot AND Lottie, with a gotcha (Aug 16)
+
+Owner clarified the crossed wire: keep **both**. "lottie only kicks in on a hover over so we need teh pulsing dot" — the dot is the always-on, glanceable signal; the Lottie is the on-demand detail when you point at a specific view. I'd removed the dot entirely on the previous pass, reading "use the standard LOTTIE" as *replace*, when it meant *for the spinner*.
+
+The dot got a real heartbeat: `tm-heartbeat` beats twice (scale 1.55, then 1.45) then rests, over 1.5s, rather than a sine pulse — the difference between reading as *alive* and reading as a status light. Bumped 5px → 7px with a soft amber halo (`box-shadow: 0 0 0 3px`).
+
+⭐ **The gotcha worth remembering: Chrome fires no mouse events on a `disabled` button.** The pill was `disabled`, so `onMouseEnter` would never have fired and the Lottie would never have appeared — the feature would have looked implemented and done nothing. Now `aria-disabled="true"` plus a no-op `onClick`: still inert to clicks and still announced as disabled to assistive tech, but hover works.
+
+⚠️ **Not visually verified.** The dev-server session had expired to `/login`, and minting a cookie is off-limits — `_mint_test_cookie.mjs` resets the owner's TEST password and locks them out (`feedback_cookie_mint_kills_owner_session`). Verified statically: the branch renders the dot when not hovered and the Lottie when hovered, the keyframe exists, tsc clean, suite 1660 green. **The owner should eyeball the two states on a cold load.**

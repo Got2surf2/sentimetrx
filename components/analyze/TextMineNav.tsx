@@ -6,7 +6,7 @@
 // (link-driven — each item carries an href). An item with an href renders as a
 // <Link>; otherwise as a <button> that calls the onSelect* callback.
 
-import { type ReactNode, type CSSProperties } from 'react'
+import { useState, type ReactNode, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { T } from '@/lib/analyzeTheme'
 import HelpHint from '@/components/analyze/textmine/HelpHint'
@@ -34,6 +34,9 @@ export default function TextMineNav({ sections, activeSection, views, activeView
   // picker so it shares a row instead of occupying its own bar.
   viewsExtra?: ReactNode
 }) {
+  // Which pending view the cursor is over. The heartbeat dot is the always-on
+  // signal; the Lottie is the on-demand detail when you actually point at it.
+  const [hoveredView, setHoveredView] = useState<string | null>(null)
   return (
     <>
       {/* Row 1 — peer sections (left) + right-aligned action slot (children) */}
@@ -76,20 +79,36 @@ export default function TextMineNav({ sections, activeSection, views, activeView
             // than a moment's wait, and the dot explains why the tab is inert.
             // Deliberately a dot, not a spinner: three can be pending at once
             // and a row of spinning glyphs reads as an error, not progress.
-            // The standard Lottie, not a bespoke dot — components/ui/LottieLoader is
-            // the ONE loader in this codebase and every loading state uses it.
+            // Two indicators with different jobs. The heartbeat dot is ALWAYS on
+            // while a view is pending — it has to be readable at a glance across
+            // the whole nav row without pointing at anything. The Lottie (the one
+            // loader in this codebase) swaps in on hover, when you've singled a
+            // view out and want confirmation it's actively working.
+            var hoveringThis = hoveredView === v.id
             var dot = v.pending
-              ? <span key="d" aria-hidden style={{ marginLeft: 6, flexShrink: 0, display: 'inline-flex', alignItems: 'center' }}><LottieLoader size={14} /></span>
+              ? (
+                <span key="d" aria-hidden style={{ marginLeft: 7, flexShrink: 0, display: 'inline-flex', alignItems: 'center', width: 14, height: 14, justifyContent: 'center' }}>
+                  {hoveringThis
+                    ? <LottieLoader size={14} />
+                    : <span className="tm-nav-heartbeat" style={{ width: 7, height: 7, borderRadius: '50%', background: T.amber, boxShadow: '0 0 0 3px ' + T.amberBg, display: 'inline-block' }} />}
+                </span>
+              )
               : null
             // The ACTIVE view is never disabled even while pending — a deep link
             // straight to Clouds must still render (its own loader covers it);
             // disabling the tab you are standing on would strand the user.
             if (v.pending && !isActive) {
               return (
-                // NOT cursor:'wait' — Chrome renders that as its own blue spinning
-                // cursor, which is a second, non-Lottie loading indicator appearing
-                // on hover. 'default' keeps the Lottie the only spinner on screen.
-                <button key={v.id} disabled title="Loading the comments this view needs — available in a moment"
+                // `aria-disabled` + a no-op click, NOT the `disabled` attribute:
+                // Chrome fires NO mouse events on a disabled button, so hover — and
+                // therefore the Lottie — would never trigger. Still inert to clicks.
+                // And NOT cursor:'wait', which Chrome renders as its own blue
+                // spinning cursor, i.e. a second, non-Lottie spinner on hover.
+                <button key={v.id} aria-disabled="true"
+                  onClick={function(e) { e.preventDefault() }}
+                  onMouseEnter={function() { setHoveredView(v.id) }}
+                  onMouseLeave={function() { setHoveredView(null) }}
+                  title="Loading the comments this view needs — available in a moment"
                   style={{ ...base, border: 'none', cursor: 'default', opacity: 0.55 }}>
                   {v.label}{dot}
                 </button>

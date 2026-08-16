@@ -51,6 +51,18 @@
   animation: pulse-dot 2s infinite; display: inline-block;
 }
 
+/* TextMine nav: a view whose data is still arriving. A real heartbeat — two
+   quick beats then a rest — rather than a sine pulse, so it reads as "alive and
+   working" at a glance across the nav row. The Lottie replaces it on hover. */
+@keyframes tm-heartbeat {
+  0%, 100% { transform: scale(1);   opacity: 0.9; }
+  10%      { transform: scale(1.55); opacity: 1; }
+  20%      { transform: scale(1);   opacity: 0.9; }
+  30%      { transform: scale(1.45); opacity: 1; }
+  40%      { transform: scale(1);   opacity: 0.9; }
+}
+.tm-nav-heartbeat { animation: tm-heartbeat 1.5s ease-in-out infinite; }
+
 /* LottieLoader spinner */
 @keyframes lspin {
   to { transform: rotate(360deg); }
