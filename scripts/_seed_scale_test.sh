@@ -20,7 +20,7 @@ DST='dddddddd-0000-4000-8000-00000000cafe'
 if [ "${1:-}" = "drop" ]; then
   echo "dropping the scale-test dataset…"
   # Batched delete: a single DELETE of ~1M rows blows the statement timeout
-  # (the same 57014 the Trump re-ingest hit with --recreate).
+  # (the same 57014 a large re-ingest hits with --recreate).
   while true; do
     # `wc -l` counts psql's trailing blank line, so it reports 1 for ZERO rows
     # deleted and the loop below never terminates — it spun forever on 2026-08-16

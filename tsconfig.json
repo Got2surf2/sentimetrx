@@ -36,6 +36,15 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    // Scratch + archive scripts are NOT operating code, and `next build`
+    // type-checks the whole project — so one broken scratch file silently
+    // breaks every local build with an error that looks unrelated to the app.
+    // This mirrors the eslint ignore list exactly, so both agree on what counts
+    // as product code. Tracked operational scripts (apply-migration, specMap,
+    // spec-drift, bootstrap-test-db, …) stay type-checked.
+    "scripts/_*.ts",
+    "scripts/_*.mts",
+    "scripts/oneoff/**"
   ]
 }

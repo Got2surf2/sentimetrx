@@ -737,3 +737,53 @@ TS error. CI never sees it (fresh clone), but it silently blocks any local
 **Coverage gate ratcheted 20/15/20/20 → 30/23/33/30.** The floor sat ~10pp below
 the real numbers, so CI would have accepted a 30% regression without complaint.
 Measured: statements 30.7 · branches 24.07 · functions 33.79 · lines 31.26.
+
+---
+
+## 2026-08-16 (later²) — The 19 "unfixable" advisories were a stale pin; Trump side project out of the repo
+
+**I was wrong that the `workflow` cluster had no forward fix.** Two corrections:
+
+1. The Workflow DevKit **is** genuinely used — `workflows/recordings.ts` carries 4
+   `"use workflow"` blocks and 4 API routes call `start` from `workflow/api`
+   (the Town Hall recordings pipeline). My earlier grep only covered
+   `app/lib/components` and missed the top-level `workflows/` directory.
+   Dropping the dependency was never an option.
+2. **Only 5 packages had their own advisory** — `brace-expansion`, `fast-uri`,
+   `image-size`, `nanoid`, `undici`. The other 17 (all 13 `@workflow/*`, plus
+   `workflow`, `pptxgenjs`, `ajv`, `@vercel/sandbox`) were flagged *purely
+   transitively*. They were never vulnerable; they just depended on one of the 5.
+
+⭐ **And the root cause was our own `overrides` block**: it pinned
+`undici: "7.28.0"` and `fast-uri: "3.1.4"` — which are *exactly* the vulnerable
+versions. The pins were holding those packages at the vulnerable release and
+blocking `npm audit fix` from moving them. Patched releases existed in-major the
+whole time. Repointing four overrides (undici ^7.29.0, fast-uri ^3.1.5, nanoid
+^5.1.16, `brace-expansion@1` ^1.1.18 — the last scoped so the 2.x/5.x copies
+aren't dragged back to 1.x) took **26 → 2**.
+
+The 2 that remain are one advisory: `image-size` (vulnerable range `*` — no fixed
+version exists anywhere) reached via `pptxgenjs`. It's a DoS in the ICNS/JXL/HEIF
+parsers, triggered only by parsing a malicious image; deck exports size our own
+generated assets. Accepted and documented, not ignored.
+
+**Lesson: a pinned override is a liability that ages.** Nothing re-checks whether
+a pin still points at a safe version, and a stale one is invisible — it presents
+as an upstream package with "no fix available."
+
+**Trump corpus removed from the repo** (owner: side project, shouldn't be part of
+the product). Nothing ever shipped in the app bundle — it was 18 `scripts/oneoff/`
+generators plus 4 untracked harnesses. Moved intact to
+`~/Developer/GitHub/trump-corpus/` with a README; history preserved in git. The
+`"trump's"` possessive examples in `lib/collocations.ts` and the Context-view
+specs were swapped for a neutral name (comments/docs only). **The `_vindman_*`
+agent files still reference Trump and were deliberately left alone** — that's
+client work where the references are biographical, not the side project.
+
+⭐ **Root cause of the build breakage fixed properly**: `tsconfig.json` had
+`exclude: ["node_modules"]` only, so `next build`'s TypeScript step checked every
+`.ts` in the repo — including untracked scratch harnesses. One broken scratch file
+silently broke every local build with an error that looked unrelated. Now excludes
+`scripts/_*.ts`, `scripts/_*.mts`, `scripts/oneoff/**`, mirroring the eslint ignore
+list exactly. Verified both directions: a deliberately broken scratch file no
+longer fails tsc, and a break planted in a tracked operational script still does.

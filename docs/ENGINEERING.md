@@ -990,3 +990,37 @@ Cheapest habit: after any scripted edit, `file <path>` should say `UTF-8 text`.
 ## Coverage ratchet (2026-08-16)
 
 `vitest.config.ts` thresholds were raised **20/15/20/20 → 30/23/33/30** (statements/branches/functions/lines). The old floor sat ~10pp under the measured numbers, so it would have passed a 30% coverage regression without complaint — a floor that far below actual is decoration, not a gate. Measured at the time of the raise: statements 30.7 · branches 24.07 · functions 33.79 · lines 31.26. Same doctrine as the ESLint ceiling: the number tracks reality and only ever moves in the improving direction.
+
+## Dependency overrides age — re-check them (2026-08-16)
+
+`package.json` `overrides` pinned `undici: "7.28.0"` and `fast-uri: "3.1.4"` —
+**exactly the versions those packages' advisories name as vulnerable**. The pins
+held them at the vulnerable release and blocked `npm audit fix` from moving them,
+so the advisories presented as *upstream has no fix available* when patched
+releases had existed in-major the whole time.
+
+They also cascaded: 17 of 22 flagged packages (all 13 `@workflow/*`, plus
+`workflow`, `pptxgenjs`, `ajv`, `@vercel/sandbox`) had **no advisory of their own**
+— they were flagged only for depending on one of five real roots. Repointing four
+overrides took the count **26 → 2**.
+
+**Rule**: when `npm audit` reports a cluster, separate roots from transitive flags
+first (`via[]` entries that are objects are the real advisories; a package whose
+`via` holds only strings is collateral). Then check whether one of our own pins is
+the thing holding a root at a vulnerable version. A pin is a liability that ages —
+nothing re-checks it, and a stale one is invisible.
+
+Scope an override when only one major is affected (`"brace-expansion@1"`), or a
+blanket pin drags every other copy back to that major.
+
+## Scratch scripts must not be able to break the build (2026-08-16)
+
+`tsconfig.json` excluded only `node_modules`, and `next build` type-checks the
+whole project — so one broken *untracked* scratch harness in `scripts/` failed
+every local `npm run build` with an error that looked unrelated to the app (CI
+never saw it, since a fresh clone has no untracked files). `exclude` now carries
+`scripts/_*.ts`, `scripts/_*.mts`, `scripts/oneoff/**`, mirroring the eslint
+ignore list so both agree on what counts as product code. Tracked operational
+scripts (`apply-migration`, `specMap`, `spec-drift`, …) stay type-checked —
+verified in both directions.
+

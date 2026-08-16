@@ -28,7 +28,7 @@ import { tokenize } from './trendingWords'
 // past its stop list — which only carries the uncontracted "we" / "it" / "that".
 // On conversational or spoken corpora they dominate the top of the cloud.
 // Stripping the enclitic and re-testing fixes that, and folds possessives into
-// the base word ("trump's" → "trump") so a name isn't split across two entries.
+// the base word ("sarah's" → "sarah") so a name isn't split across two entries.
 //   "don't" → "do" (stop) · "isn't" → "is" (stop) · "can't" → "ca" (too short)
 const ENCLITIC = /(?:n't|'(?:s|re|ve|ll|d|m))$/
 
@@ -260,8 +260,8 @@ export function computeCollocates(
         TOKEN_SCAN.lastIndex = 0
         let m: RegExpExecArray | null
         while ((m = TOKEN_SCAN.exec(lower)) !== null) {
-          // Same normalization as pass 1 — otherwise "trump's" in the corpus
-          // wouldn't count toward the "trump" candidate and the baseline
+          // Same normalization as pass 1 — otherwise "sarah's" in the corpus
+          // wouldn't count toward the "sarah" candidate and the baseline
           // (hence the G² score) would be understated.
           const tok = normalizeToken(m[0].replace(/^['-]+|['-]+$/g, ''))
           if (tok && candidateSet.has(tok)) seen.add(tok)
