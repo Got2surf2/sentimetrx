@@ -1535,6 +1535,13 @@ type AutoFinding = {
   badge: string
   badgeColor: string
   badgeBg: string
+  // Table columns (2026-08-16). The list used to bury the effect size mid-
+  // sentence, so the "sorted by effect size" ordering wasn't scannable. These
+  // carry the SAME numbers the prose already quoted — nothing is recomputed.
+  effect?: number        // signed r · Cohen's d · eta² · skewness
+  effectLabel?: string   // 'r' | 'd' | 'η²' | 'skew'
+  n?: number
+  sub?: string           // the group-effect highest/lowest detail, shown muted under the relationship
 }
 
 // Auto "what drives the rating" analysis: a linear model of a target rating on
@@ -1690,6 +1697,7 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
             detail: strength.charAt(0).toUpperCase() + strength.slice(1) + ' ' + dir + ' correlation — r\u202f=\u202f' + cr.r.toFixed(2) + ', n\u202f=\u202f' + cr.n,
             magnitude: Math.abs(cr.r),
             p: cr.p,
+            effect: cr.r, effectLabel: 'r', n: cr.n,
             badge: strength + ' ' + dir,
             badgeColor: cr.r > 0 ? T.green : T.blue,
             badgeBg: cr.r > 0 ? T.greenBg : T.blueBg,
@@ -1711,16 +1719,23 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
             if (keys.length < 2 || keys.length > 12) return
 
             var p: number, magnitude: number, detail: string
+            var effVal = 0, effLbl = '', effN = 0, effSub = ''
             if (keys.length === 2) {
               var tr = welchTTest(groups[keys[0]], groups[keys[1]]); if (!tr) return
               p = tr.p; magnitude = Math.min(Math.abs(tr.d) * 0.3, 0.99)
               var hiK = tr.ma >= tr.mb ? keys[0] : keys[1], loK = tr.ma >= tr.mb ? keys[1] : keys[0]
               detail = fLbl(cf.field) + ' drives ' + fLbl(nf.field) + ' — ' + hiK + ' avg\u202f' + (tr.ma >= tr.mb ? tr.ma : tr.mb).toFixed(1) + ' vs ' + loK + ' avg\u202f' + (tr.ma >= tr.mb ? tr.mb : tr.ma).toFixed(1) + " (Cohen's d\u202f=\u202f" + tr.d.toFixed(2) + ')'
+              effVal = tr.d; effLbl = 'd'
+              effN = groups[keys[0]].length + groups[keys[1]].length
+              effSub = hiK + ' ' + (tr.ma >= tr.mb ? tr.ma : tr.mb).toFixed(1) + ' vs ' + loK + ' ' + (tr.ma >= tr.mb ? tr.mb : tr.ma).toFixed(1)
             } else {
               var ar = oneWayANOVA(groups); if (!ar) return
               p = ar.p; magnitude = ar.eta2
               var sorted = keys.slice().sort(function(a, b) { return mean(groups[b]) - mean(groups[a]) })
               detail = fLbl(cf.field) + ' groups differ on ' + fLbl(nf.field) + ' — highest: ' + sorted[0] + ' (' + mean(groups[sorted[0]]).toFixed(1) + '), lowest: ' + sorted[sorted.length - 1] + ' (' + mean(groups[sorted[sorted.length - 1]]).toFixed(1) + '), \u03B7\u00B2\u202f=\u202f' + ar.eta2.toFixed(2)
+              effVal = ar.eta2; effLbl = '\u03B7\u00B2'
+              effN = keys.reduce(function(t, k) { return t + groups[k].length }, 0)
+              effSub = 'highest ' + sorted[0] + ' (' + mean(groups[sorted[0]]).toFixed(1) + ') \u00B7 lowest ' + sorted[sorted.length - 1] + ' (' + mean(groups[sorted[sorted.length - 1]]).toFixed(1) + ')'
             }
             if (p >= 0.05) return
             var eff = magnitude > 0.14 ? 'large effect' : magnitude > 0.06 ? 'medium effect' : 'small effect'
@@ -1730,6 +1745,7 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
               detail: detail,
               magnitude: magnitude,
               p: p,
+              effect: effVal, effectLabel: effLbl, n: effN, sub: effSub,
               badge: eff,
               badgeColor: magnitude > 0.14 ? T.accent : magnitude > 0.06 ? T.amber : T.textMid,
               badgeBg: magnitude > 0.14 ? T.accentBg : magnitude > 0.06 ? T.amberBg : T.bg,
@@ -1751,6 +1767,8 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
               detail: (dir === 'right' ? 'Most values are low with a long tail upward' : 'Most values are high with a long tail downward') + ' — skewness\u202f=\u202f' + sk.toFixed(2) + '. Consider log-transforming before regression.',
               magnitude: Math.min(Math.abs(sk) / 6, 0.5),
               p: 1,
+              effect: sk, effectLabel: 'skew', n: vals.length,
+              sub: dir === 'right' ? 'long tail upward — consider log-transforming' : 'long tail downward — consider log-transforming',
               badge: dir + '-skewed',
               badgeColor: T.amber,
               badgeBg: T.amberBg,
@@ -1919,25 +1937,50 @@ function AutoInsightsPanel({ numFields, catFields, data, aliases }: { numFields:
       {!running && findings !== null && findings.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.07em' }}>{findings.length} finding{findings.length !== 1 ? 's' : ''} — sorted by effect size</div>
-          {findings.map(function(f, i) {
-            return (
-              <div key={i} style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '12px 16px', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-                {/* Rank */}
-                <div style={{ flexShrink: 0, width: 26, height: 26, borderRadius: '50%', background: T.bg, border: '1px solid ' + T.border, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: T.textMid, marginTop: 1 }}>{i + 1}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  {/* Title row */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                    <span style={{ fontSize: 8, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.06em' }}>{typeIcon[f.type]} {typeLabel[f.type]}</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{f.title}</span>
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: f.badgeBg, color: f.badgeColor, border: '1px solid ' + f.badgeColor + '44', whiteSpace: 'nowrap' }}>{f.badge}</span>
-                    {f.p < 1 && <SigBadge p={f.p} />}
-                  </div>
-                  {/* Detail */}
-                  <div style={{ fontSize: 12, color: T.textMid, lineHeight: 1.5 }}>{f.detail}</div>
-                </div>
-              </div>
-            )
-          })}
+          {/* Dense table, not stacked cards (2026-08-16). At 100+ findings the
+              cards wasted ~80% of the vertical space, and the prose line
+              repeated the badge and title while burying the effect size
+              mid-sentence — so the "sorted by effect size" ordering was not
+              scannable. Presentation only: nothing here changes what is
+              computed, sorted or filtered. */}
+          <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead><tr>
+                {[
+                  { h: '#', a: 'left' }, { h: 'Type', a: 'left' }, { h: 'Relationship', a: 'left' },
+                  { h: 'Strength', a: 'left' }, { h: 'Effect', a: 'right' }, { h: 'Sig.', a: 'left' }, { h: 'n', a: 'right' },
+                ].map(function(c) {
+                  return <th key={c.h} style={{ padding: '7px 12px', textAlign: c.a as 'left' | 'right', fontSize: 10, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: T.textFaint, background: T.bg, borderBottom: '1px solid ' + T.border, whiteSpace: 'nowrap' }}>{c.h}</th>
+                })}
+              </tr></thead>
+              <tbody>{findings.map(function(f, i) {
+                return (
+                  <tr key={i}>
+                    <td style={{ padding: '8px 12px', color: T.textFaint, fontSize: 11, fontWeight: 700, borderBottom: '1px solid ' + T.border, verticalAlign: 'top' }}>{i + 1}</td>
+                    <td style={{ padding: '8px 12px', color: T.textFaint, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', borderBottom: '1px solid ' + T.border, whiteSpace: 'nowrap', verticalAlign: 'top' }}>
+                      {typeIcon[f.type]} {typeLabel[f.type]}
+                    </td>
+                    {/* Group-effect extra detail stays visible as a muted second
+                        line rather than an expander — everything on screen. */}
+                    <td style={{ padding: '8px 12px', borderBottom: '1px solid ' + T.border, verticalAlign: 'top', minWidth: 220 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: T.text }}>{f.title}</div>
+                      {f.sub && <div style={{ fontSize: 11, color: T.textFaint, marginTop: 2, lineHeight: 1.4 }}>{f.sub}</div>}
+                    </td>
+                    <td style={{ padding: '8px 12px', borderBottom: '1px solid ' + T.border, verticalAlign: 'top' }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: f.badgeBg, color: f.badgeColor, border: '1px solid ' + f.badgeColor + '44', whiteSpace: 'nowrap' }}>{f.badge}</span>
+                    </td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: T.text, borderBottom: '1px solid ' + T.border, whiteSpace: 'nowrap', verticalAlign: 'top' }}>
+                      {f.effect == null ? '—' : (
+                        <>{f.effect.toFixed(2)}<span style={{ color: T.textFaint, fontWeight: 400, fontSize: 10, marginLeft: 4 }}>{f.effectLabel}</span></>
+                      )}
+                    </td>
+                    <td style={{ padding: '8px 10px', borderBottom: '1px solid ' + T.border, verticalAlign: 'top' }}>{f.p < 1 ? <SigBadge p={f.p} /> : <span style={{ color: T.textFaint, fontSize: 11 }}>—</span>}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 11, color: T.textMid, borderBottom: '1px solid ' + T.border, verticalAlign: 'top' }}>{f.n == null ? '—' : f.n.toLocaleString()}</td>
+                  </tr>
+                )
+              })}</tbody>
+            </table>
+          </div>
         </div>
       )}
 

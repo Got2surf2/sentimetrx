@@ -578,3 +578,17 @@ Recording is best-effort and never throws: bookkeeping must not turn a good back
 **Verified** with `scripts/_verify_sql192.mts` against TEST: upsert collapses 3 hops to 1 row with `attempts=3`, a later `partial` cannot erase the pointer to the last good manifest, `incomplete` survives as its own status, the gap query flags bad statuses *and* orgs with no row, and the multi-tenancy invariant holds (RLS on, anon reads nothing, anon writes 401). `test:rls` 4, `test:egress` 27, suite 1,664 green. Three new cron tests assert the ledger itself.
 
 **⚠️ TEST only** — prod apply pending, like sql/191.
+
+### Statistics findings: stacked cards → dense table (Aug 16)
+
+**Why.** Owner-approved 2026-07-15 and carried since. At 100+ findings the card list wasted roughly 80% of its vertical space, the prose line repeated the badge and the title, and — the real problem — the effect size was buried mid-sentence, so a list explicitly headed "sorted by effect size" gave the reader no scannable column to check the ordering against.
+
+**What changed**: `components/analyze/StatsModule.tsx` — the findings list is now a table: `# · type · relationship · strength chip · effect (right-aligned, labelled) · significance · n`. It reuses the table styling already in the module (the logistic-coefficients table), so it doesn't introduce a second visual language.
+
+⭐ **The columns needed values the type didn't carry.** `AutoFinding` held `magnitude` (a sort key, normalised across finding types) plus a prose `detail` string with the real numbers inside it. Rather than parse numbers back out of prose — brittle, and it would silently break when the wording changes — `AutoFinding` now carries `effect`, `effectLabel`, `n` and `sub` **populated at the same push sites from the same computed values** the prose already quoted. Nothing is recomputed and no sort, filter or threshold moved; `detail` is untouched because the AI narrative and the deterministic summary both read it.
+
+Group effects keep their "highest / lowest" detail as a muted second line inside the relationship cell rather than behind an expander, so nothing is hidden. Signed `r` is shown rather than `|r|`, so direction is visible without reading the badge.
+
+Zero lint delta (36 warnings before and after — all pre-existing `react-hooks/*` in that file). tsc clean, suite 1,664 green.
+
+**⚠️ Browser QC NOT done** — the dev-server session had expired to `/login` again and minting a cookie is off-limits. Needs an eyeball on the Carrabba's GSS 113-findings view, checking both finding types render (correlation with `r`, group effect with `η²`/`d` plus its second line).
