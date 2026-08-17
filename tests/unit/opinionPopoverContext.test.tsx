@@ -128,4 +128,18 @@ describe('OpinionPopover — which denominator the percentage is against', () =>
     expect(screen.getAllByText(/33% of comments/).length).toBeGreaterThanOrEqual(2)
     expect(screen.queryByText(/of Empty Theme/)).toBeNull()
   })
+
+  it('renders the share on its OWN line, not as an inline tail', async () => {
+    // A theme name is arbitrarily long, so inline the parenthetical wrapped
+    // mid-phrase — "(10% of Special / Occasions & Celebrations)" — which reads as
+    // broken text. It must be a block so the title keeps line 1 and the whole
+    // share phrase stays intact on line 2.
+    await openWith({ label: 'Special Occasions & Celebrations', count: 40 })
+    const heading = screen.getByRole('heading')
+    const shareEl = within(heading).getByText(/25% of Special Occasions & Celebrations/)
+    expect(shareEl.style.display).toBe('block')
+    // and it must not be pushed sideways by a leftover inline margin
+    expect(shareEl.style.marginLeft).toBe('')
+  })
 })
+

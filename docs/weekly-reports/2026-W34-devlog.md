@@ -178,3 +178,21 @@ denominator tests, and 1,704 green — but the browser extension dropped before 
 could re-confirm it visually. Lint on TextMineModule holds at 19 warnings, so the
 229 ceiling is intact.
 
+---
+
+## 2026-08-17 (later²) — Word modal header: the share gets its own line
+
+**Why**: owner confirmed the percentages read correctly, but with a real theme
+name the header wrapped mid-phrase — *"Opinions about \"celebrating\" (10% of
+Special / Occasions & Celebrations)"*. Splitting a parenthetical across lines
+reads as broken text rather than as a caption.
+
+The share span was an inline tail with `marginLeft: 8`. It's now `display: block`
+with `marginTop: 2`, so the title keeps line 1 and the whole share phrase stays
+intact on line 2. This only became visible once the label carried a *theme name*
+instead of the short fixed word "comments" — the change that made the number
+useful is the same one that made the layout wrong.
+
+Pinned by a test asserting the element's `display` is `block` and that no inline
+`marginLeft` survives; verified it fails against the inline markup.
+

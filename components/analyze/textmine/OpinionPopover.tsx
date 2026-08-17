@@ -323,7 +323,12 @@ export default function OpinionPopover({ word, rows, fields, ratingField, hidden
                   ? 'What "' + word + '" is talked about with'
                   : (result.mode === 'nouns' ? 'What people call "' + word + '"' : 'Opinions about "' + word + '"')}
               {share && result.totalMentions > 0 && (
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#6b7280', marginLeft: 8 }}>
+                // Its OWN line, not an inline tail. A theme name is arbitrarily
+                // long ("Special Occasions & Celebrations"), so inline it wrapped
+                // mid-phrase — "(10% of Special / Occasions & Celebrations)" —
+                // which reads as broken. Block keeps the title on line 1 and the
+                // whole share phrase intact on line 2.
+                <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#6b7280', marginTop: 2 }}>
                   ({share.pct}% of {share.label})
                 </span>
               )}
