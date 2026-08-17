@@ -32,6 +32,13 @@ interface Props {
   /** Field names hidden by the schema (type='ignore'|'id' or hidden=true).
    *  Excluded from Insights candidate detection. */
   hiddenFields?: string[]
+  /** Set when the modal is opened from inside a theme. The percentage is then
+   *  expressed against THAT theme's comment count instead of the whole dataset —
+   *  the same "% of this theme" convention the co-occurrence chips already use
+   *  (`pctOfThis` in TextMineModule). `count` must be the theme's own displayed
+   *  comment number (`theme.count`), or the percentage stops reconciling with the
+   *  number on the theme card, which is the whole point of showing it. */
+  themeScope?: { label: string; count: number }
   onClose: () => void
 }
 
@@ -57,7 +64,7 @@ function highlightWords(text: string, words: string[]): React.ReactNode[] {
   })
 }
 
-export default function OpinionPopover({ word, rows, fields, ratingField, hiddenFields, onClose }: Props) {
+export default function OpinionPopover({ word, rows, fields, ratingField, hiddenFields, themeScope, onClose }: Props) {
   const [view, setView] = useState<'opinions' | 'context' | 'comments' | 'insights'>('opinions')
   const [insightFilter, setInsightFilter] = useState<InsightFilter | null>(null)
   // Context word drilled in from the Context tab — narrows the comments list
@@ -87,6 +94,12 @@ export default function OpinionPopover({ word, rows, fields, ratingField, hidden
     return frequencyBuckets(rows, fieldArr, [word], dateField)
   }, [rows, fieldArr, word, dateField])
 
+  // Which denominator this modal's percentage is against. Opened inside a theme
+  // it is THAT theme's comment count ("16% of Food Quality"), which is what a
+  // reader actually wants — the share of the theme, not of the corpus. Opened
+  // outside one it stays the whole-dataset share. Either way the label NAMES its
+  // denominator, so the number can't be misread (deck-number-credibility rule),
+  // and both readouts below derive from this one place so they can't disagree.
   // CANONICAL denominator: rows with non-empty text in ANY analyzed field.
   // Used identically in themeUtils.computeThemeStats, WordCloud, and
   // ThemePopover so every percentage on the analytics page stays consistent.
@@ -100,6 +113,27 @@ export default function OpinionPopover({ word, rows, fields, ratingField, hidden
     }
     return n
   }, [rows, fieldArr])
+
+  // The ONE place the percentage and its label are derived, so the header pill
+  // and the stats row can never disagree. Inside a theme the denominator is that
+  // theme's own comment count and the label names the theme; otherwise it's the
+  // whole-dataset count labelled "comments". Rounding matches `pctOfThis` in
+  // TextMineModule so this figure agrees with the co-occurrence chips.
+  const share = useMemo(() => {
+    if (themeScope && themeScope.count > 0) {
+      return {
+        pct: Math.round((result.totalMentions / themeScope.count) * 100),
+        label: themeScope.label,
+      }
+    }
+    if (totalCommentsWithText > 0) {
+      return {
+        pct: Math.round((result.totalMentions / totalCommentsWithText) * 100),
+        label: 'comments',
+      }
+    }
+    return null
+  }, [themeScope, result.totalMentions, totalCommentsWithText])
 
   // Pre-compute the matching comments for the comments view (only when needed).
   // Each entry carries the rating value so cards can be color-coded.
@@ -241,9 +275,9 @@ export default function OpinionPopover({ word, rows, fields, ratingField, hidden
           <span><span style={{ color: '#dc2626', fontWeight: 700 }}>{negPct}%</span> negative</span>
           <span style={{ marginLeft: 'auto', color: '#9ca3af' }}>
             {result.totalMentions.toLocaleString()} mentions
-            {totalCommentsWithText > 0 && (
+            {share && (
               <span style={{ marginLeft: 4, color: '#6b7280', fontWeight: 600 }}>
-                · {Math.round((result.totalMentions / totalCommentsWithText) * 100)}% of comments
+                · {share.pct}% of {share.label}
               </span>
             )}
           </span>
@@ -288,9 +322,9 @@ export default function OpinionPopover({ word, rows, fields, ratingField, hidden
                 : view === 'context'
                   ? 'What "' + word + '" is talked about with'
                   : (result.mode === 'nouns' ? 'What people call "' + word + '"' : 'Opinions about "' + word + '"')}
-              {totalCommentsWithText > 0 && result.totalMentions > 0 && (
+              {share && result.totalMentions > 0 && (
                 <span style={{ fontSize: 14, fontWeight: 600, color: '#6b7280', marginLeft: 8 }}>
-                  ({Math.round((result.totalMentions / totalCommentsWithText) * 100)}%)
+                  ({share.pct}% of {share.label})
                 </span>
               )}
             </h3>

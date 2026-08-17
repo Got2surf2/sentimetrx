@@ -578,3 +578,6 @@ A FAILED entity count must not read as a measured zero (`count_entity_terms` 570
 ### analyzableFieldsKey.test.ts
 The `RowsProvider` remount key. The rows API drops `ignore`/`hidden` columns (sql/186), so the payload's shape is a function of the schema; `DatasetShell` keys the provider on this signature to refetch when the carried-column set changes. 9 cases pin both directions: it **must change** on an ignore/hidden flip (else a re-enabled field stays unusable until a page reload), and **must not change** on field reordering, a label/sqt/hierarchyLevel edit, or a fresh array with identical content (else the whole dataset view remounts on every render). Also pins that two columns cannot collide with one.
 
+### opinionPopoverContext.test.tsx — denominator cases (added 2026-08-17)
+Four cases pin **which denominator** the word modal's percentage is against: the dataset share when there's no theme scope, the **theme** share when there is (10/40 = 25% vs 33% dataset-wide, so the test cannot pass against the old behaviour), reconciliation with the theme card's own count using `pctOfThis` rounding, and a fall-back when the theme count is zero (never divide by zero). Each asserts **both** render sites agree, since header and stats row derive from one memo. Verified to fail against the pre-fix component.
+

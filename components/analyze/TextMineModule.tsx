@@ -3077,6 +3077,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                       fields={activeField || (themes ? themes.fieldName : '')}
                                       ratingField={ratingField}
                                       hiddenFields={hiddenFields}
+                                      // Opened from THIS theme's keyword chips, so the share is
+                                      // of this theme. `t.count` is the same number the card
+                                      // prints as "N comments" — using anything else would put a
+                                      // percentage on screen that doesn't reconcile with it.
+                                      themeScope={t.count ? { label: t.name, count: t.count } : undefined}
                                       onClose={function() { setOpinionWord(null) }}
                                     />
                                   </div>
@@ -3374,6 +3379,15 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         fields={activeFields && activeFields.length > 0 ? activeFields : (activeField || (themes ? themes.fieldName : ''))}
                         ratingField={ratingField}
                         hiddenFields={hiddenFields}
+                        // Theme Clouds scopes by SELECTION, so only a single
+                        // selected theme gives an unambiguous denominator. With 0
+                        // ("All responses") or 2+ selected there is no one theme to
+                        // be a share OF, so it falls back to the whole-dataset
+                        // share — labelled "of comments" either way, so the reader
+                        // always knows which denominator they're looking at.
+                        themeScope={selectedThemes.length === 1 && selectedThemes[0].count
+                          ? { label: selectedThemes[0].name, count: selectedThemes[0].count as number }
+                          : undefined}
                         onClose={function() { setOpinionWord(null) }}
                       />
                     </div>

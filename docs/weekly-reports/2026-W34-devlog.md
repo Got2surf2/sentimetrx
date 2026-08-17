@@ -106,3 +106,40 @@ navigation wouldn't fire consistently in the dev server — so the negative half
 rests on code reading plus the unit tests, not on an observed A/B. The remount
 itself is deterministic React behaviour.
 
+---
+
+## 2026-08-17 — The word modal's % is a share of the theme, not the corpus
+
+**Why**: owner: *"the % on this image is calculated using the old approach and
+represents the % of total comments — this should show as % of that theme."* Right
+question to ask of it: "chicken (1%)" tells you almost nothing, whereas "19% of
+Food Quality" tells you how much of that theme the word accounts for.
+
+Harder than a formula swap, because `OpinionPopover` had **no theme context** —
+its props were `word, rows, fields, ratingField, hiddenFields, onClose`. It now
+takes an optional `themeScope: { label, count }`.
+
+⭐ **The denominator had to be the theme's OWN displayed count.** `theme.count` is
+what the card prints as "N comments", so passing anything else would put a
+percentage on screen that doesn't reconcile with the number right next to it.
+Verified live: 358 mentions of "overcooked" / 1,895 = **19%**, matching the card;
+the old code showed 358 / 17,157 = 2%. Rounding matches `pctOfThis` — the
+"% of this theme" convention the co-occurrence chips already use — so the two
+figures agree rather than being two conventions on one screen.
+
+Both readouts (header pill + stats row) now derive from **one** `share` memo, so
+they cannot disagree; the tests assert both render sites.
+
+**Scope resolution.** From a theme card the theme is unambiguous. In Theme Clouds
+the scope is `selectedThemes` — an array — so only a **single** selected theme
+qualifies; with 0 ("All responses") or 2+ there is no one theme to be a share OF,
+and it falls back to the dataset share. Every case **names its denominator**,
+which is the deck-number-credibility rule applied to a UI readout.
+
+This is a deliberate divergence from `totalCommentsWithText`, documented as the
+canonical denominator. `ThemePopover`'s "% of comments" is theme-level, where % of
+total is correct, and is untouched.
+
+4 tests, verified to fail against the pre-fix component. Browser-verified on the
+Carrabba's set.
+

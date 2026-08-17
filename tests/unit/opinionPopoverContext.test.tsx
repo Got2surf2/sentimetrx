@@ -76,3 +76,56 @@ describe('OpinionPopover — Context tab', () => {
     expect(screen.getByText(/10 comments containing "food"/)).toBeTruthy()
   })
 })
+
+// ── Which denominator the percentage is against (2026-08-17) ────────────────
+// The modal stated its share against the WHOLE dataset ("1% of comments") even
+// when opened from inside a theme — not the question a reader is asking. They
+// want the word's share OF THAT THEME. `themeScope` switches the denominator,
+// and the label must always NAME it so the figure can't be misread.
+//
+// The same text appears twice (header pill + stats row), which is the point:
+// both derive from one `share` memo, so they cannot disagree. Hence getAllByText.
+describe('OpinionPopover — which denominator the percentage is against', () => {
+  // "food" matches 10 of the 30 text-bearing rows → 33% dataset-wide.
+  const MENTIONS = 10
+  const ALL_WITH_TEXT = 30
+
+  const openWith = async (themeScope?: { label: string; count: number }) => {
+    render(
+      <OpinionPopover
+        word="food" rows={ROWS} fields={['comment']}
+        themeScope={themeScope}
+        onClose={() => {}}
+      />,
+    )
+    await flush()
+  }
+
+  it('states the dataset share, and names it, with no theme scope', async () => {
+    await openWith()
+    const pct = Math.round((MENTIONS / ALL_WITH_TEXT) * 100) // 33
+    // Both readouts agree — one derivation, two render sites.
+    expect(screen.getAllByText(new RegExp(pct + '% of comments')).length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('states the share OF THE THEME when opened inside one', async () => {
+    // 10/40 = 25%, vs 33% dataset-wide — deliberately different, so this test
+    // cannot pass against the old behaviour.
+    await openWith({ label: 'Food Quality', count: 40 })
+    expect(screen.getAllByText(/25% of Food Quality/).length).toBeGreaterThanOrEqual(2)
+    expect(screen.queryByText(/% of comments/)).toBeNull()
+  })
+
+  it('reconciles with the theme card and rounds like pctOfThis', async () => {
+    // The theme card prints `theme.count` as "N comments"; passing that same
+    // number is what makes this % reconcile with it. 10/80 = 12.5 → 13.
+    await openWith({ label: 'Pacing', count: 80 })
+    expect(screen.getAllByText(/13% of Pacing/).length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('falls back to the dataset share on a zero theme count (never divides by zero)', async () => {
+    await openWith({ label: 'Empty Theme', count: 0 })
+    expect(screen.getAllByText(/33% of comments/).length).toBeGreaterThanOrEqual(2)
+    expect(screen.queryByText(/of Empty Theme/)).toBeNull()
+  })
+})
