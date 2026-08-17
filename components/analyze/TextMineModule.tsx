@@ -2629,13 +2629,29 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                   </div>
                 )}
 
-                {/* Rows still loading, and nothing to show yet. Once the server
-                    theme counts land (`themesPaintable`) the cards below take
-                    over and this full-page loader steps aside — the rows keep
-                    streaming behind them under the slim banner instead. */}
-                {!rowsLoaded && rowsLoading && !rowsError && !themesPaintable && (
+                {/* Nothing to show yet. Once the server theme counts land
+                    (`themesPaintable`) the cards below take over and this
+                    full-page loader steps aside — the rows keep streaming behind
+                    them under the slim banner instead.
+
+                    ⭐ Gated on `!rowsLoaded`, NOT `rowsLoading`, to cover the
+                    DEFERRED-START WINDOW — the same fix the nav tabs needed
+                    (2026-08-16). `startRowFetch` is a one-shot that only fires
+                    after the server counts request finishes (or a terminal
+                    bail-out releases it), so between mount and that moment
+                    `rowsLoading` is still false. Requiring it here meant NO
+                    branch rendered and the content area sat BLANK for the whole
+                    multi-second counts scan — which read as a broken page on
+                    every first open, and looked fine on a revisit only because
+                    rows were already loaded by then. Every bail-out releases the
+                    fetch, so this always resolves. */}
+                {!rowsLoaded && !rowsError && !themesPaintable && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, paddingTop: 60, paddingBottom: 60 }}>
-                    <LottieLoader size={120} message={rowsProgressLabel ? 'Loading dataset rows... ' + rowsProgressLabel : 'Loading dataset rows...'} />
+                    <LottieLoader size={120} message={
+                      rowsLoading
+                        ? (rowsProgressLabel ? 'Loading dataset rows... ' + rowsProgressLabel : 'Loading dataset rows...')
+                        : 'Counting themes across the dataset\u2026'
+                    } />
                   </div>
                 )}
 
