@@ -1268,6 +1268,13 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   const { subTab, viewBy } = deriveLegacy(section, view)
   const [opinionWord, setOpinionWord] = useState<string | null>(null)
   const [themePopoverIdx, setThemePopoverIdx] = useState<number | null>(null)
+  // Which THEME the opinion word was opened from — by id, so both entry points
+  // can set it: a keyword chip on a theme card, and a word inside that theme's
+  // cloud row. (Theme Clouds draws one cloud PER theme, so the row identifies the
+  // theme; it is NOT `selectedThemes`, which is the filter selection and is
+  // normally empty there.) null = not opened from a theme, so there is no theme
+  // for the percentage to be a share of.
+  const [opinionThemeId, setOpinionThemeId] = useState<string | null>(null)
   const [isDirty, setIsDirty] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
   const [ratingField, setRatingField] = useState<string | null>(ratingFields.length > 0 ? ratingFields[0].field : null)
@@ -1872,6 +1879,33 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   var filteredRows: Record<string, unknown>[] = useMemo(function(): Record<string, unknown>[] {
     return injectSignalTier(_filteredBase, datasetSource || '', signalCutoffs)
   }, [_filteredBase, datasetSource, signalCutoffs.mainstream, signalCutoffs.noise])
+
+  // When the opinion modal is scoped to a theme, it must READ that theme's rows —
+  // not the whole dataset. Otherwise the mention count (numerator) is drawn from
+  // one population and the theme's comment count (denominator) from another, and
+  // the ratio is meaningless: "server" showed 950 dataset-wide mentions over the
+  // theme's 2,231 comments = 43%, while the cloud counted 896 mentions IN the
+  // theme = 40%. Same matcher as the theme's own count (`commentMatchesTheme`),
+  // so the two reconcile by construction.
+  const opinionTheme = useMemo(function() {
+    if (!opinionThemeId) return null
+    return ((displayThemes || themes)?.themes || []).find(function(x) { return x.id === opinionThemeId }) || null
+  }, [opinionThemeId, displayThemes, themes])
+
+  const opinionThemeRows = useMemo(function() {
+    if (!opinionTheme) return null
+    return filteredRows.filter(function(r) {
+      return commentMatchesTheme(getRowText(r, effectiveFields), opinionTheme)
+    })
+  }, [opinionTheme, filteredRows, effectiveFields])
+
+  // The scope both popovers pass down. `theme.count` is the denominator the theme
+  // card prints as "N comments"; pairing it with rows filtered by the SAME
+  // matcher keeps numerator and denominator in one population.
+  const opinionThemeScope = opinionTheme && opinionTheme.count
+    ? { label: opinionTheme.name, count: opinionTheme.count as number }
+    : undefined
+
 
   // Recount theme hits against filtered data — deferred to let UI paint loading state
   var _recountFields = effectiveFields.length > 0 ? effectiveFields
@@ -3062,7 +3096,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                   {(t.keywords || []).slice(0, 4).map(function(k) {
                                     var kr = t.keywordRatings?.[k]
                                     var kwColor = kr && colorMode === 'rating' ? ratingColor(normRating(kr.avg)) : null
-                                    return <span key={k} onClick={function(e) { e.stopPropagation(); setOpinionWord(opinionWord === k ? null : k) }}
+                                    return <span key={k} onClick={function(e) { e.stopPropagation(); setOpinionWord(opinionWord === k ? null : k); setOpinionThemeId(opinionWord === k ? null : t.id) }}
                                       style={{ fontSize: 11, padding: '2px 8px', background: opinionWord === k ? '#eff6ff' : kwColor ? kwColor + '15' : T.bg, color: opinionWord === k ? '#2563eb' : kwColor || T.textMid, borderRadius: 20, border: '1px solid ' + (opinionWord === k ? '#bfdbfe' : kwColor ? kwColor + '40' : T.border), cursor: 'pointer', transition: 'all .1s', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                                       {k}{kr && ratingField ? <span style={{ fontSize: 9, fontWeight: 700, opacity: 0.8 }}>{kr.avg.toFixed(1)}</span> : null}
                                     </span>
@@ -3073,16 +3107,16 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                   <div style={{ marginBottom: 10 }} onClick={function(e) { e.stopPropagation() }}>
                                     <OpinionPopover
                                       word={opinionWord}
-                                      rows={filteredRows}
+                                      // Theme-scoped rows, so the mention count and the theme's
+                                      // comment count come from the SAME population. Pairing a
+                                      // dataset-wide numerator with a theme denominator produces a
+                                      // ratio of two different things (and can exceed 100%).
+                                      rows={opinionThemeRows || filteredRows}
                                       fields={activeField || (themes ? themes.fieldName : '')}
                                       ratingField={ratingField}
                                       hiddenFields={hiddenFields}
-                                      // Opened from THIS theme's keyword chips, so the share is
-                                      // of this theme. `t.count` is the same number the card
-                                      // prints as "N comments" — using anything else would put a
-                                      // percentage on screen that doesn't reconcile with it.
-                                      themeScope={t.count ? { label: t.name, count: t.count } : undefined}
-                                      onClose={function() { setOpinionWord(null) }}
+                                      themeScope={opinionThemeScope}
+                                      onClose={function() { setOpinionWord(null); setOpinionThemeId(null) }}
                                     />
                                   </div>
                                 )}
@@ -3367,6 +3401,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                           setThemePopoverIdx(themePopoverIdx === themeIdx ? null : themeIdx)
                         } else if (word) {
                           setOpinionWord(opinionWord === word ? null : word)
+                          var ct = ((displayThemes || themes)?.themes || [])[themeIdx]
+                          setOpinionThemeId(themeIdx >= 0 && ct ? ct.id : null)
                         }
                       }}
                     />
@@ -3375,20 +3411,23 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                     <div style={{ marginTop: 12 }}>
                       <OpinionPopover
                         word={opinionWord}
-                        rows={filteredRows}
+                        // Scoped to the theme's own rows when the word came from a
+                        // theme's cloud, so the mention count and the theme comment
+                        // count are the SAME population and the percentage means
+                        // something. Everything else in the modal (opinions, quotes,
+                        // frequency) is then about that theme too, which is what the
+                        // header now promises.
+                        rows={opinionThemeRows || filteredRows}
                         fields={activeFields && activeFields.length > 0 ? activeFields : (activeField || (themes ? themes.fieldName : ''))}
                         ratingField={ratingField}
                         hiddenFields={hiddenFields}
-                        // Theme Clouds scopes by SELECTION, so only a single
-                        // selected theme gives an unambiguous denominator. With 0
-                        // ("All responses") or 2+ selected there is no one theme to
-                        // be a share OF, so it falls back to the whole-dataset
-                        // share — labelled "of comments" either way, so the reader
-                        // always knows which denominator they're looking at.
-                        themeScope={selectedThemes.length === 1 && selectedThemes[0].count
-                          ? { label: selectedThemes[0].name, count: selectedThemes[0].count as number }
-                          : undefined}
-                        onClose={function() { setOpinionWord(null) }}
+                        // Theme Clouds draws one cloud PER theme, so the theme is the
+                        // ROW the word was clicked in (captured as opinionThemeId).
+                        // An earlier pass keyed this off `selectedThemes` — the filter
+                        // selection, normally empty here — so every word fell back to
+                        // "% of comments", the very thing this was meant to fix.
+                        themeScope={opinionThemeScope}
+                        onClose={function() { setOpinionWord(null); setOpinionThemeId(null) }}
                       />
                     </div>
                   )}

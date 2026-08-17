@@ -143,3 +143,38 @@ total is correct, and is untouched.
 4 tests, verified to fail against the pre-fix component. Browser-verified on the
 Carrabba's set.
 
+---
+
+## 2026-08-17 (later) — Correcting the theme-% fix: wrong scope source, wrong population
+
+Owner reported still seeing "9% of comments" in **Theme Clouds**. Two defects in
+my own first pass, both worth recording:
+
+⭐ **1. Wrong scope source.** I keyed the Clouds popover off `selectedThemes` —
+which is the *filter* selection and is normally **empty** on that view — so every
+cloud word fell straight back to "% of comments". Theme Clouds draws one cloud
+**per theme**, and `WordCloud`'s `onWordClick(word, themeIdx, type)` already hands
+back the row's theme; I simply wasn't capturing it. Now tracked by theme **id**,
+which both entry points (card keyword chip, cloud word) can set.
+
+⭐⭐ **2. Wrong population — the more serious one.** Even once scoped, the modal
+counted mentions across the **whole dataset** while dividing by the **theme's**
+comment count. That is a ratio of two different populations; it can exceed 100%.
+Concretely: "server" reported 950 dataset-wide mentions over the theme's 2,231
+comments = 43%, while the cloud counted 896 mentions *inside* the theme = 40%.
+The modal now reads the theme's rows (`commentMatchesTheme` — the same matcher
+behind the theme's own count), so numerator and denominator share a population.
+
+**Known residual, stated rather than hidden**: the modal's mention count and
+`WordCloud`'s token frequency use different matchers, so the modal can read 19%
+where the cloud chip says 18% (433 vs 403 for "waitress"). The modal is internally
+consistent; aligning the two matchers is a separate piece of work.
+
+**Verification**: browser-confirmed on both entry points before the final
+id-refactor — Overview "19% of Food Quality & Preparation Issues" (358/1,895) and
+Clouds "19% of Service & Staff Issues" (433/2,231). The last refactor (index → id,
+plus row-scoping the Overview site) is mechanical and covered by typecheck, the 4
+denominator tests, and 1,704 green — but the browser extension dropped before I
+could re-confirm it visually. Lint on TextMineModule holds at 19 warnings, so the
+229 ceiling is intact.
+
