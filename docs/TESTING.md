@@ -574,3 +574,7 @@ next-session items after the W22 push lands.
 
 ### entityCountFailure.test.ts
 A FAILED entity count must not read as a measured zero (`count_entity_terms` 57014). Pins: no persist on failure, persist on success, `counts_failed` surfaced, zero-count drop suspended. Verified to fail against the pre-fix code.
+
+### analyzableFieldsKey.test.ts
+The `RowsProvider` remount key. The rows API drops `ignore`/`hidden` columns (sql/186), so the payload's shape is a function of the schema; `DatasetShell` keys the provider on this signature to refetch when the carried-column set changes. 9 cases pin both directions: it **must change** on an ignore/hidden flip (else a re-enabled field stays unusable until a page reload), and **must not change** on field reordering, a label/sqt/hierarchyLevel edit, or a fresh array with identical content (else the whole dataset view remounts on every render). Also pins that two columns cannot collide with one.
+

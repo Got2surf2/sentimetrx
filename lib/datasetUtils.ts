@@ -707,3 +707,27 @@ export function emptyThemeModel() {
 export function emptySchemaConfig(): SchemaConfig {
   return { fields: [], autoDetected: true, version: 1 }
 }
+
+// The rows API DROPS columns the schema marks ignore/hidden (sql/186,
+// app/api/datasets/[datasetId]/rows/route.ts), so the row payload's SHAPE is a
+// function of the schema. A field re-enabled in the Schema tab is therefore
+// simply ABSENT from any rows fetched before that change, and every consumer
+// reads it as empty — which used to bounce TextMine's field selection back to
+// the first open field.
+//
+// DatasetShell keys RowsProvider on this signature so the provider remounts (and
+// refetches) exactly when the set of carried columns changes. Returned as a
+// STRING so prop-identity churn cannot trigger a remount, and sorted so field
+// reordering alone cannot either. U+001F is the unit separator, written as an
+// escape — a literal control byte would make this file binary to grep
+// (docs/ENGINEERING.md).
+export function analyzableFieldsKey(
+  fields: Array<{ field: string; type?: string; hidden?: boolean }> | undefined | null,
+): string {
+  return (fields || [])
+    .filter(f => f.type !== 'ignore' && !f.hidden)
+    .map(f => f.field)
+    .sort()
+    .join('\u001f')
+}
+

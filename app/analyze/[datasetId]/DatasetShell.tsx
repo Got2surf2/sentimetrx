@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { FilterProvider, useFilters } from '@/components/analyze/FilterContext'
+import { analyzableFieldsKey } from '@/lib/datasetUtils'
 import { RowsProvider, useRows } from '@/components/analyze/RowsContext'
 import { filterCount, applyFilters } from '@/lib/filterUtils'
 import type { Filters, SerializedFilters } from '@/lib/filterUtils'
@@ -314,9 +315,24 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
 }
 
 export default function DatasetShell(props: Props) {
+  // The rows API DROPS columns the schema marks ignore/hidden (sql/186,
+  // rows/route.ts) — so the payload's shape depends on the schema, and a field
+  // re-enabled in the Schema tab is simply ABSENT from rows fetched before that
+  // change. RowsProvider's fetch is a one-shot (`if (rowsLoaded) return`) and
+  // `router.refresh()` after a schema save re-renders the server layout without
+  // remounting it, so the stale payload used to survive: selecting the
+  // re-enabled field read as "no content" and TextMine bounced the choice back
+  // to the first open field.
+  //
+  // Keying the provider on the analyzable field set remounts it — and only it —
+  // when that set actually changes, so the rows are refetched WITH the column.
+  // A string key means prop-identity churn can't trigger a remount, and an
+  // unchanged schema produces an identical key (zero behaviour change on every
+  // normal render). FilterProvider sits OUTSIDE, so filters survive the remount.
+  const analyzableKey = analyzableFieldsKey(props.schemaFields)
   return (
     <FilterProvider>
-      <RowsProvider datasetId={props.datasetId} schemaFields={props.schemaFields} datasetSource={props.dataset.source} expectedRows={props.dataset.row_count}>
+      <RowsProvider key={analyzableKey} datasetId={props.datasetId} schemaFields={props.schemaFields} datasetSource={props.dataset.source} expectedRows={props.dataset.row_count}>
         <ShellInner {...props} />
       </RowsProvider>
     </FilterProvider>

@@ -1523,6 +1523,17 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // Auto-switch away from empty fields once rows load
   useEffect(function() {
     if (!rowsLoaded || !rows.length || !activeFields.length || openFields.length === 0) return
+    // A column the payload does not CARRY is unknown, not empty. The rows API
+    // drops ignore'd columns (sql/186), so a field re-enabled in the schema is
+    // absent from any rows fetched before that change — and reading absent as
+    // "no content" used to bounce the user's explicit selection back to the
+    // first open field. DatasetShell now remounts RowsProvider on a schema
+    // change so this shouldn't arise; this guard means a stale payload can never
+    // override a deliberate choice regardless.
+    var payloadCarries = activeFields.every(function(f) {
+      return rows.some(function(r) { return Object.prototype.hasOwnProperty.call(r, f) })
+    })
+    if (!payloadCarries) return
     // Check if current fields have any text content
     var hasContent = activeFields.some(function(f) {
       return rows.some(function(r) { return String(r[f] || '').trim().length > 0 })
