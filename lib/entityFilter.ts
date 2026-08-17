@@ -278,10 +278,10 @@ async function computeEntityCounts(
   themeQuery: string | null,
   total: number,
   textFieldKeys?: string[],
-): Promise<{ countByTerm: Map<string, number>; sampled: boolean }> {
+): Promise<{ countByTerm: Map<string, number>; sampled: boolean; failed: boolean }> {
   const countByTerm = new Map<string, number>()
   const terms = Array.from(new Set(Array.from(queryByEntity.values()).filter(Boolean)))
-  if (terms.length === 0) return { countByTerm, sampled: false }
+  if (terms.length === 0) return { countByTerm, sampled: false, failed: false }
 
   // Scope counts to caller-selected fields when asked, else every eligible field.
   let textFields = (textFieldKeys && textFieldKeys.length > 0)
@@ -327,7 +327,7 @@ async function computeEntityCounts(
       )
       for (const [term, n] of scaled) countByTerm.set(term, (countByTerm.get(term) || 0) + n)
     }
-    return { countByTerm, sampled: true }
+    return { countByTerm, sampled: true, failed: false }
   }
 
   const { data: counts, error: countsErr } = await service.rpc('count_entity_terms', {
@@ -336,11 +336,19 @@ async function computeEntityCounts(
     p_theme_query: themeQuery,
     p_text_fields: textFields,
   })
-  if (countsErr) void logError('entityFilter.computeEntityCounts', countsErr)
+  // A failed count is NOT a measured zero. When the RPC errors (57014 statement
+  // timeout is the observed case) `counts` is null, the loop below is a no-op,
+  // and an empty countByTerm is indistinguishable from "every term has zero
+  // mentions" — which callers then PERSIST, zeroing the catalog. Report the
+  // failure so they can decline to write.
+  if (countsErr) {
+    void logError('entityFilter.computeEntityCounts', countsErr)
+    return { countByTerm, sampled: false, failed: true }
+  }
   for (const c of (counts || []) as Array<{ term: string; row_count: number }>) {
     countByTerm.set(c.term, Number(c.row_count) || 0)
   }
-  return { countByTerm, sampled: false }
+  return { countByTerm, sampled: false, failed: false }
 }
 
 /** Recompute + store the default (no theme, no field-scoping) mention counts for
@@ -366,7 +374,16 @@ export async function storeEntityMentionCounts(service: SupabaseClient, datasetI
     const queryByEntity = new Map<string, string>()
     for (const e of rows) queryByEntity.set(e.slug, buildEntityQuery(e.canonical, e.aliases || []))
     const total = await scopeRowTotal(service, scope.memberDatasetIds)
-    const { countByTerm, sampled } = await computeEntityCounts(service, scope, queryByEntity, null, total)
+    const { countByTerm, sampled, failed } = await computeEntityCounts(service, scope, queryByEntity, null, total)
+    // Writing here on failure would persist mention_count = 0 for EVERY entity,
+    // and default reads drop zero-count entries — so one transient timeout would
+    // empty the catalog in the UI until the next successful run. Leave the
+    // previous stored counts in place instead.
+    if (failed) {
+      void logError('entityFilter.storeEntityMentionCounts',
+        new Error('entity counts failed — refusing to persist zeros for scope ' + scope.scopeType + ':' + scope.scopeId))
+      return
+    }
     const bySlug: Record<string, number> = {}
     for (const e of rows) bySlug[e.slug] = countByTerm.get(queryByEntity.get(e.slug) || '') || 0
     const { error: applyErr } = await service.rpc('apply_entity_mention_counts', {
@@ -405,6 +422,11 @@ export interface EntitiesResult {
   /** true when counts were estimated over the 50K sample + scaled (dataset
    *  above the cap) — the UI shows a "~". sql/172. */
   sampled?:       boolean
+  /** true when the count RPC ERRORED (57014 statement timeout is the observed
+   *  case). Every `mentions` is then UNKNOWN, not a measured zero — the zero-count
+   *  drop is suspended so the catalog doesn't blank, and nothing is persisted.
+   *  A caller rendering counts should say so rather than show them as real. */
+  counts_failed?: boolean
 }
 
 /** Read the entity catalog for a dataset's scope and attach live counts.
@@ -516,6 +538,7 @@ export async function getEntitiesWithCounts(opts: {
 
   const countByTerm = new Map<string, number>()
   let sampled = false
+  let countsFailed = false
   const storedFresh = isDefaultRead && entries.every(e =>
     e.mention_count != null && Number(e.mention_count_row_total) === total)
 
@@ -526,9 +549,11 @@ export async function getEntitiesWithCounts(opts: {
     const computed = await computeEntityCounts(service, scope, queryByEntity, themeQuery, total, opts.textFieldKeys)
     for (const [term, n] of computed.countByTerm) countByTerm.set(term, n)
     sampled = computed.sampled
+    countsFailed = computed.failed
     // Populate / refresh the store in the background (default reads only) so the
     // next read is a zero-scan hit. Fire-and-forget — never blocks this response.
-    if (isDefaultRead) void storeEntityMentionCounts(service, datasetId)
+    // Skipped when the count failed: storing it would bake the false zeros in.
+    if (isDefaultRead && !computed.failed) void storeEntityMentionCounts(service, datasetId)
   }
 
   // Attach counts. Default reads drop zero-count entries — discovery
@@ -545,7 +570,11 @@ export async function getEntitiesWithCounts(opts: {
       mentions:  countByTerm.get(queryByEntity.get(e.slug) || '') || 0,
       ...(includeHidden ? { source: (e.source as 'discovered' | 'manual') || 'discovered', hidden: !!e.hidden } : {}),
     }))
-    .filter(e => includeHidden || e.mentions > 0)
+    // Zero-count entries are normally dropped (discovery sometimes surfaces a
+    // canonical too generic to match). But when the count FAILED every entity
+    // reads as zero, and dropping them would blank the whole catalog on a
+    // transient timeout — so keep them and let the caller flag the state.
+    .filter(e => includeHidden || countsFailed || e.mentions > 0)
     .sort((a, b) => b.mentions - a.mentions)
 
   const categoryAgg = new Map<string, number>()
@@ -563,6 +592,8 @@ export async function getEntitiesWithCounts(opts: {
     scope_type:     scope.scopeType,
     last_refresh,
     sampled,
+    // True when the count RPC errored: `mentions` are UNKNOWN, not measured zero.
+    counts_failed:  countsFailed,
   }
 }
 

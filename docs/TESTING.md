@@ -571,3 +571,6 @@ Each surfaces 8–15 cases / file, adds a test file (lifts the
 file-count ratio), and exercises real route logic (closes the audit's
 narrative). Queued in the open-work-queue memory as the highest-ROI
 next-session items after the W22 push lands.
+
+### entityCountFailure.test.ts
+A FAILED entity count must not read as a measured zero (`count_entity_terms` 57014). Pins: no persist on failure, persist on success, `counts_failed` surfaced, zero-count drop suspended. Verified to fail against the pre-fix code.

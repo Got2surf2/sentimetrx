@@ -892,6 +892,9 @@ prompt instructs NER to skip them — they are what the data is *about*, not fin
 `sample_count` is a discovery-frequency hint, **not** a row count — real counts are live.
 
 ### Counting (`lib/entityFilter.ts` + `count_entity_terms`)
+
+> **A failed count is not a measured zero (2026-08-17).** `count_entity_terms` 57014s (statement timeout) on large scopes — Sentry recorded 12 such events from the entity-discovery cron. The error was logged and swallowed, leaving an empty count map **indistinguishable from "every term has zero mentions"**, and two things followed from that: `storeEntityMentionCounts` **persisted** the zeros via `apply_entity_mention_counts` (so a transient timeout durably zeroed the catalog), and because default reads drop zero-count entries, the UI then showed an **empty entity list** rather than an error. `computeEntityCounts` now returns **`failed: boolean`**; on failure `storeEntityMentionCounts` **declines to write** (leaving the previous stored counts intact), `getEntitiesWithCounts` skips the background store-refresh, **suspends the zero-count drop** so the catalog can't blank, and surfaces **`counts_failed`** on `EntitiesResult` so a caller renders "couldn't measure" instead of a real-looking zero. Pinned by `tests/unit/entityCountFailure.test.ts` (verified to fail against the pre-fix code). Same defect class as the substantive-count fallback — an unmeasured value must never render as a measured one.
+
 At read time, `getEntitiesWithCounts`
 builds one `websearch_to_tsquery` per entity (canonical + aliases OR'd) and calls the
 `count_entity_terms` SQL function (migrations 064 + 070) — a single set-based query
