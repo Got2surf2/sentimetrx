@@ -521,3 +521,51 @@ With that, the decisive check: **the full conversation transcript is
 byte-identical before and after the change** on two studies (18 and 39 turns),
 against the real client bundle. All five active studies plus a full Spanish run
 pass; jsdom 17/17 with both snapshots unchanged; suite 1,730 green.
+
+### The first-open loader was invisible because it was queued behind its own page
+
+Owner item ⑦ ("no loading Lottie on FIRST dataset open") was still live, and the
+diagnosis carried in memory — *"there is NO route-level loading UI anywhere; add
+`app/analyze/[datasetId]/loading.tsx`"* — was **wrong**. A screenshot settled it:
+the shell, the tab strip, the row count and the module were all rendered, and the
+content area showed the module's own pending sentence, *"Counting themes across
+the dataset…"*, with nothing above it. The server render had already finished, so
+a route-level Suspense boundary would have fixed nothing.
+
+`components/ui/LottieLoader` was mounted and running the whole time. Instrumenting
+it showed `loadAnimation` being called with a valid container — and the container
+staying empty for 15+ seconds. The network trace gave the answer: the request for
+`/morphing-particle-loader.json` was **issued and never answered**. Not a 404, not
+a failure — no response at all.
+
+It's client connection queueing. A first dataset open saturates the origin with a
+ten-page serial row download plus the theme-counts and signal-stats scans, and
+over HTTP/1.1 Chrome allows ~6 connections per origin. **The loader's own asset
+sits in the queue behind the very work it exists to announce.** The dev server
+returned that same file to `curl` in 3ms throughout, so it was never server
+slowness.
+
+Fix: bundle the animation (`animationData`) instead of fetching it by `path`.
+~8.6KB in the shared chunk. Verified on a 42,224-row collection with the cache
+cleared: the animation now appears ~530ms after the pending state starts (the
+residual is the `lottie-web` dynamic chunk) and stays for the whole ~9s wait —
+confirmed by DOM assertion **and** by looking at the screenshot. Deleted the
+now-orphaned `public/morphing-particle-loader.json`; the component copy is the
+single source. The general rule is now in ENGINEERING.md: *a progress indicator
+may not have a runtime dependency on the resource whose contention it reports.*
+
+**Two verification traps, both mine, both worth remembering.** My first assertion
+was "some `<svg>` on the page is ≥80×80" — it matched an unrelated page icon and
+went green while the loader was visibly blank; the check now scopes to an `<svg>`
+inside the loader's own container. Then I read a screenshot from a *previous* run
+(an edit had silently dropped the screenshot call) and briefly concluded the fix
+hadn't worked. Confirm the artefact you're reading came from the run you think it
+did.
+
+Harness: `scripts/_verify_dataset_loading.mts` (untracked, KEEP). It seeds a
+**throwaway** user — never the owner's account, which `_mint_test_cookie.mjs` once
+locked out — and reaps it before *and* after. Writing it caught a third instance
+of the silent-empty-result trap: `auth.admin.listUsers` returns
+`{ error: 'Database error finding users', users: [] }` on this project, so a reap
+that reads only `data.users` looks exactly like "nothing to clean up". It now
+resolves ids from `public.users` and checks every error.

@@ -455,9 +455,10 @@ Use the shared `brandedPdfChrome({ brand, confidentiality })` in `lib/htmlToPdf.
   semantics; don't write a CSS spinner. **Narrow exception:**
   inline button-busy indicators (≤ 16px, rendered alongside a
   visible "Saving…" / "Publishing…" text label) may use a plain
-  CSS spinner because (a) the Lottie JSON loads async and would
-  flicker, and (b) the morphing-particle animation has no useful
-  rendering at that size. The spinner element must carry
+  CSS spinner because (a) `lottie-web` itself is a dynamic import
+  and would flicker at that scale, and (b) the morphing-particle
+  animation has no useful rendering at that size. (The animation
+  JSON is no longer a factor — it is bundled, see below.) The spinner element must carry
   `aria-hidden="true"` — the adjacent text is the accessible
   status. See `components/creator/CreatorNav.tsx` and
   `components/townhall/THCreatorNav.tsx`.
@@ -1285,3 +1286,39 @@ ratchet number is a poor measure of this kind of work.
 project — with `Math.random` seeded in the page, the complete conversation
 transcript is **byte-identical before and after** on two studies (18 and 39
 turns), and all five active studies plus a full Spanish run pass.
+
+
+## The loading indicator must not depend on the network (2026-08-18)
+
+`LottieLoader` used to load its animation with lottie-web's `path` option, i.e.
+an HTTP request for `/morphing-particle-loader.json` at mount. That made the
+app's only loader **silently invisible exactly when it was needed**.
+
+On a first dataset open the page saturates the origin: a 10-page serial row
+download plus the theme-counts and signal-stats scans. Over HTTP/1.1 — any dev
+server, and any HTTP/1.1 hop in front of prod — Chrome allows ~6 connections per
+origin, so the animation's own request is **queued behind the very work it is
+announcing**. Measured 2026-08-18 on a 42,224-row collection: the request was
+issued and never came back for the whole 15s+ pending window, `loadAnimation`
+ran against a container that stayed empty, and the user got a bare sentence on a
+blank page. The dev server served the same file to `curl` in 3ms throughout, so
+this was never server slowness — it was client connection queueing.
+
+The fix is to bundle it: `import animationData from './morphingParticleLoader.json'`
+and pass `animationData` instead of `path`. ~8.6KB in the shared client chunk,
+and the loader now renders ~500–700ms after mount (that residual is the
+`lottie-web` dynamic chunk, cached after the first load) and stays for the rest
+of the wait. `public/morphing-particle-loader.json` was deleted as part of the
+change — the component copy is the single source.
+
+**The general rule: a progress indicator may not have a runtime dependency on
+the resource whose contention it exists to report.**
+
+⚠️ Two verification traps this cost me, both worth remembering:
+- My first pass asserted "some `<svg>` on the page is ≥80×80". That matched an
+  unrelated page icon and went green while the loader was still visibly blank.
+  **Scope the assertion to the element under test** — the check now looks for an
+  `<svg>` inside the loader's own container.
+- I then read a screenshot from a *previous* run (an edit had silently dropped
+  the screenshot call) and concluded the fix hadn't worked. **Confirm the
+  artefact you are reading was produced by the run you think it was.**
