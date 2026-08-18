@@ -5,6 +5,37 @@ structured axes — a more organized view than themes. Where themes surface the
 topics people bring up, Dimensions classifies *what kind* of thing each comment is
 about, consistently, across every response.
 
+## How do I turn Dimensions on?
+
+Dimensions are **not** on automatically — you switch them on once per dataset and a
+one-off classification pass tags every comment.
+
+1. Open the dataset, go to **Advanced Analytics** → **TextMine**, and open the
+   **Dimensions** section.
+2. If you see *"Pick a field to analyze"*, choose an open-ended field first using
+   the field toggle at the top of TextMine. You can select more than one.
+3. Click **Enable Dimensions**.
+
+That single button does both things: it turns Dimensions on for the dataset and
+classifies your comments. A progress bar shows how many rows have been scanned —
+keep the tab open while it runs, and you can leave it running.
+
+Classification is keyword-based and runs in one pass, so there's no AI cost and no
+waiting on a model.
+
+What you get depends on the data. **Restaurant data** — Google reviews, or an
+organisation in the restaurant industry — gets the full restaurant taxonomy:
+service, food, drinks, ambiance, value and more, each with sentiment and severity.
+**Every other dataset** gets the universal **Emotion** dimension described below.
+
+### If you don't see a Dimensions section at all
+
+Open the **Schema** tab and tick **Apply Dimensions**. That reveals the
+**Dimensions** section for the dataset, plus dimension breakdowns in **Charts** and
+**Statistics**. You don't need this step for Google-reviews datasets or
+restaurant-industry organisations — those are already eligible, so you can go
+straight to **Enable Dimensions**.
+
 ## The Dimensions axes
 
 Open a dataset in **Advanced Analytics**, go to **TextMine**, and open the
@@ -17,8 +48,10 @@ Open a dataset in **Advanced Analytics**, go to **TextMine**, and open the
 - A **Severity** flag that marks comments as normal, alert, or crisis — handy for
   catching the issues that need attention first.
 
-Dimensions are computed on the open-ended field(s) you're looking at and update
-as you change your selection, so the view always reflects your current comments.
+Dimensions are tagged on the open-ended field(s) you selected when you turned them
+on, and the view reflects the comments in your current selection. Tagging is not
+automatic — you enable it once per dataset and a classification pass runs. See
+**How do I turn Dimensions on?** below.
 
 ## Emotion-language flags
 

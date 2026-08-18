@@ -51,6 +51,16 @@ Status: ✅ drafted (awaiting owner review) · ⏳ to draft
 | 20 | `getting-started.md` | First-time orientation / where to click first | ✅ |
 | — | `not-sure-fallback.md` | The honest "I'm not certain" fallback copy | ✅ |
 
+**Updated 2026-08-18** — `dimensions-and-emotion.md` gained a **How do I turn
+Dimensions on?** section. Browser QC on 2026-08-16 caught the agent answering
+*"Dimensions are computed automatically — there's no toggle"*, which is false:
+there is an explicit **Enable Dimensions** button (and a **Schema** tab checkbox
+for datasets that aren't already eligible). The article had described what
+Dimensions *are* but never how to switch them on, and one sentence actively
+implied it was automatic — so the model filled the gap. Exactly the content gap
+the thumbs-down KB-gap detector exists to surface. **Re-seed after editing any
+article, or the change never reaches the agent.**
+
 **All 21 drafted 2026-07-16 — awaiting owner review.** A handful of exact UI
 labels the drafting flagged for owner verification against the live app: the
 **Agent Capability / Super Agent** editor labels; the PulseIQ facilitator surface
