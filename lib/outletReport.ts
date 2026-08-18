@@ -182,6 +182,12 @@ export type OutletReport = {
   } | null
 }
 
+// The selected outlet, non-null. `OutletReport['selected']` is inlined in
+// several places (the PDF builder, the Deeper-analysis tabs); naming it once
+// keeps those in step — notably the POSTed PDF payload, whose whole point is
+// that the page and the document agree on the shape.
+export type OutletSelected = NonNullable<OutletReport['selected']>
+
 // ─── Cross-outlet leaderboard types ──────────────────────────────────────────
 
 // One outlet's standing on a single theme/dimension item.

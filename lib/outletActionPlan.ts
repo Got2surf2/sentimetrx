@@ -223,18 +223,23 @@ Return JSON exactly: {"priorities":[{"tag","title","theme","diagnosis","verbatim
 
 type PlanCacheEntry = { basis: string; plan: ActionPlan; generatedAt: string }
 
+// `cacheOnly` callers pass `input: null` — they want the cached plan or nothing,
+// never a generation. The PDF export uses it: a download must not sit behind a
+// ~30s LLM call, and the page that triggered it is already generating one.
 export async function getOrGenerateActionPlan(
   service: SupabaseClient,
   datasetId: string,
   outlet: string,
-  input: ActionPlanInput,
+  input: ActionPlanInput | null,
   basis: string,
-): Promise<{ plan: ActionPlan; cached: boolean }> {
+  opts?: { cacheOnly?: boolean },
+): Promise<{ plan: ActionPlan | null; cached: boolean }> {
   const { data: state } = await service
     .from('dataset_state').select('outlet_action_plans').eq('dataset_id', datasetId).maybeSingle()
   const cache = (state?.outlet_action_plans || {}) as Record<string, PlanCacheEntry>
   const hit = cache[outlet]
   if (hit && hit.basis === basis && hit.plan) return { plan: hit.plan, cached: true }
+  if (opts?.cacheOnly || !input) return { plan: null, cached: false }
 
   const plan = await generateActionPlan(input)
 

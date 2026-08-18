@@ -1538,26 +1538,87 @@ marker.
 
 > **Rebuilt 2026-07-15 → GM-facing "Location Performance Snapshot".** The page now **leads with an absolute snapshot** (`OutletSnapshotView.tsx`, presentational, print-first) that matches the Datanautix Bareburger snapshot PDF — not the peer-relative deltas. Its data is a new `snapshot: OutletSnapshot` block on `report.selected` built by `computeSnapshot` in `lib/outletReport.ts` (one extra pass, all from data we already have): **rating distribution** (5★→1★ counts+%), **5★ share** + **detractor (≤2★) share**, **owner-response rate** (`data.owner_response` non-empty ÷ reviews) with a plain-English band, a **recent-trend chip** (trailing-12-month avg + ▲/▼ vs all-time, falling back to the most-recent 30% when a year is thin), **fleet position** (rank + qualitative band among the **≥200-review** stores only, `FLEET_MIN` — so a tiny-sample store can't claim a flattering rank), and the **absolute theme table** (per theme: mentions · avg★ · %negative[≤3★ share] · **READ verdict** FIX/WATCH/SOLID/STRENGTH from `themeRead`, thresholds calibrated to reproduce the PDF; worst READ first). Plus deterministic **praise chips** (top SOLID/STRENGTH theme labels) + real 5★-preferred **verbatims** (`highExamples`, deduped by quote). The theme table's per-theme stats are a new rating-keyed `themeAbs` accumulator (mentions/avg★/%≤3★), distinct from the lexicon `themeSubs` that still feeds the peer-relative deltas. **The peer-relative `OutletReportTabs` (Summary/Themes/Dimensions + what-if) are retained but demoted to a screen-only "Deeper analysis" block below the snapshot (`print:hidden`)** — so the printed output is exactly the snapshot (+ AI action plan). Datanautix-branded (deck-export brand exception). Verified against the real 29-store "BareBurger Reviews" dataset on TEST.
 
-> **AI Action Plan (page 2) — LLM-narrated, cached.** Below the snapshot the page renders `OutletActionPlanSection.tsx` (`'use client'`): the PDF's **"3 things to work on next"** — per priority a diagnosis + a **real 1–3★ verbatim** + a concrete **operator playbook** (bag-check rule, tamper-seal, portion audit…), then a "keep doing" note. The **theme selection is deterministic** (worst READ first — FIX then WATCH, by avg★), which feeds a single **Claude call** (`lib/outletActionPlan.ts` `generateActionPlan`, tier `advanced`, `event_type:'outlet_action_plan'`); the LLM narrates but **cites only computed figures** and its verbatims are **validated against the real candidate quotes** we pass in (`validateVerbatims` — a returned quote must be a normalized substring of a real 1–3★ review, else it's replaced; nothing fabricated). Generation takes ~25–30s so it is **cached** per outlet in `dataset_state.outlet_action_plans` (sql/183, a place_id-keyed jsonb map, atomic per-outlet `merge_outlet_action_plan` merge), keyed by a `basis` = review count + the theme READ verdicts — a view regenerates only when that changes. Fetched lazily via `GET /api/datasets/[datasetId]/outlet-action-plan?outlet=<place_id>` (org-scoped like the page; get-or-generate, write-through cache) so the snapshot paints instantly while the plan streams in behind a LottieLoader. A `fallbackPlan` (real themes + quotes, no narration) covers an LLM error/timeout. The selected outlet's one-real-quote-per-theme evidence is exposed as `report.selected.lowQuotes` (from `scanDataset`'s `lowExamples`).
+> **AI Action Plan (page 2) — LLM-narrated, cached.** Below the snapshot the page renders `OutletActionPlanSection.tsx` (`'use client'`): the PDF's **"3 things to work on next"** — per priority a diagnosis + a **real 1–3★ verbatim** + a concrete **operator playbook** (bag-check rule, tamper-seal, portion audit…), then a "keep doing" note. The **theme selection is deterministic** (worst READ first — FIX then WATCH, by avg★), which feeds a single **Claude call** (`lib/outletActionPlan.ts` `generateActionPlan`, tier `advanced`, `event_type:'outlet_action_plan'`); the LLM narrates but **cites only computed figures** and its verbatims are **validated against the real candidate quotes** we pass in (`validateVerbatims` — a returned quote must be a normalized substring of a real 1–3★ review, else it's replaced; nothing fabricated). Generation takes ~25–30s so it is **cached** per outlet in `dataset_state.outlet_action_plans` (sql/183, a place_id-keyed jsonb map, atomic per-outlet `merge_outlet_action_plan` merge), keyed by a `basis` = review count + the theme READ verdicts — a view regenerates only when that changes. Fetched lazily via `POST /api/datasets/[datasetId]/outlet-action-plan?outlet=<place_id>` (org-scoped like the page; get-or-generate, write-through cache). **POST since 2026-08-18:** the cache key is `actionPlanBasis(reviews, themeTable)`, and the route used to rebuild those two inputs by re-running `computeOutletReport` — a full scan (~7s) paid on **every** page view including pure cache hits. The page already rendered both values, so it posts them and the warm path is ~200ms; on a cache **miss** the route still scans and generates server-side, so nothing client-supplied is ever persisted into the shared plan cache. so the snapshot paints instantly while the plan streams in behind a LottieLoader. A `fallbackPlan` (real themes + quotes, no narration) covers an LLM error/timeout. The selected outlet's one-real-quote-per-theme evidence is exposed as `report.selected.lowQuotes` (from `scanDataset`'s `lowExamples`).
 
 > **The export is a REAL composed PDF (2026-08-18) — supersedes "print IS the
 > export" below.** Owner: *"I don't like the PDF being an export of the print
 > view — we need to generate a real PDF otherwise we look half baked."* The nav
-> action is now **Download PDF** → `GET /api/datasets/[datasetId]/outlet-report-pdf?outlet=<place_id>`,
+> action is **Download PDF** (`DownloadPdfButton.tsx`) → `POST /api/datasets/[datasetId]/outlet-report-pdf?outlet=<place_id>`,
 > which typesets the document server-side (`lib/outletReportPdf.ts`
-> `buildOutletReportHtml`) from the **same computed values the page renders**
-> (`OutletReport['selected']` + the cached `ActionPlan`) and renders it through
-> `htmlToPdfBuffer` with the shared `brandedPdfChrome` header/footer (page
-> numbers, confidentiality line, datanautix wordmark). Nothing is recomputed and
-> nothing is fabricated. Sections in narrative order: snapshot KPIs → rating
-> distribution (network average as a tick on each bar) → theme table → praise →
-> **Dimensions vs the network** → action plan.
+> `buildOutletReportHtml`) and renders it through `htmlToPdfBuffer` with the
+> shared `brandedPdfChrome` header/footer (page numbers, confidentiality line,
+> datanautix wordmark). Nothing is recomputed and nothing is fabricated.
+>
+> **Why POST — the page already has the data (2026-08-18, second pass).** It was
+> a `GET` that recomputed everything: `computeOutletReport` (a full
+> `dataset_rows_flat` scan, ~7s) plus, when the page's own plan fetch was still
+> in flight, a **second** ~34s Sonnet call for an action plan it was already
+> generating. One measured download: `200 in 54s (application-code: 52s)`. The
+> page (`outlet-report/page.tsx`) already computes and ships every figure to the
+> browser, so the button **posts back the payload it rendered** and the route only
+> authenticates, applies the same `outletReportingOn` gate, validates and
+> typesets. Measured after: **520ms–1.4s** of application code. The contract and
+> its parser are `lib/outletPdfPayload.ts` — `OutletPdfPayload` +
+> `parseOutletPdfPayload(body, outlet)`. The trade is explicit: figures become
+> **client-asserted**, which is acceptable because the document is rendered for,
+> and returned only to, the authenticated requester and is never stored or
+> shared. What is *not* assumed is well-formedness — the parser rejects only when
+> the body has no subject (`selected.placeId` missing or ≠ the requested outlet →
+> 400) and **coerces** everything else, because the builder interpolates numbers
+> into unquoted CSS (`style="width:${w}%"`). Body >2MB → 413. Cross-field
+> arithmetic is deliberately *not* re-derived — that would be a second
+> implementation of `computeOutletReport`. Covered by
+> `tests/unit/outletPdfPayload.test.ts`. The `plan` rides in the payload; if the
+> page couldn't get one the route falls back to a **cache-only** read
+> (`getOrGenerateActionPlan(…, { cacheOnly: true })`) and never generates.
+>
+> **The button has states.** It was a bare `<a href>`, so 52s of real work read as
+> a hang. `OutletPlanContext.tsx` owns the plan fetch for the whole page (the
+> section displays it, the button posts it back — one fetch, no child→parent state
+> push, keyed by outlet so no stale plan leaks into the next download); the button
+> reads *Preparing PDF…* (disabled) → *Download PDF* → *Building PDF…*, and
+> *Download PDF (no action plan)* when the plan failed.
+>
+> **Content parity with the page (2026-08-18).** Owner: *"the pdf report feels a
+> lot shorter than the html version… we have tabs for different views, need to
+> show those as well."* The document now carries the page's screen-only
+> **"Deeper analysis"** block — both tabs — since the payload makes it free.
+> Sections in narrative order: header (address · N reviews (range) · full N-store
+> network) → snapshot KPIs → rating distribution (**▶ lowest · │ avg · ◀ highest**
+> across the network, plus raw counts, per-star bar colour) → theme table → praise
+> (**filtered through `verbatimSupports(quote,'positive')`** — the PDF used to
+> print quotes the page suppresses) → **review score over time** (the dual-line
+> SVG ported from `TrendChart`) → action plan (now with the theme anchor chips,
+> the "AI-generated from N guest reviews" badge and the Method footnote) →
+> Dimensions vs the network (with the page's **empty state**, which the PDF used
+> to render as a silent hole) → narrative → **Recovering this location's unhappy
+> guests** + the systemic-driver callout → **lever cards** (rank badge, percentile
+> pill, guarded quote, "Learn from" exemplars) → **What-if** → **strength cards** →
+> the peer-ranking method note.
+>
+> **What-if is the one thing that can't be ported literally** — it is a slider
+> panel, and `print:hidden` even on the page. The document states the benchmarks
+> instead: a `theme | you now | peer median | best-in-class | trend` table sorted
+> by biggest gap to the median, plus one resolved scenario ("if every theme
+> reached the peer median": detractors recovered · 1–3★ rate · rating + rank)
+> computed with the same pure `projectRecovery` (`lib/outletPredictor.ts`) the
+> panel calls, so the two cannot disagree.
+>
 > **Layout rule learned here:** forcing `break-before:page` per section produced a
 > 3-page document with two pages a third full and a lone "Keep doing" block
-> orphaned on page 3 — exactly the half-baked look. The document now flows
-> continuously with `break-inside:avoid` on each section **and** each priority
-> card (the action plan alone is `break-inside:auto`, since it is a list of
-> self-contained cards), which yields a dense 2 pages on the same data.
+> orphaned on page 3 — exactly the half-baked look. The document flows
+> continuously with `break-inside:avoid` on each section **and** each card
+> (card-list sections are `break-inside:auto`), and a `.keeptog` wrapper binds
+> each such heading to its **first** card so the heading can't orphan. A single
+> `avoid` block taller than a page is undefined behaviour, so the deeper-analysis
+> half is many small blocks, never one section. **~4 pages** on real data (67-store
+> Ruth's Chris); a 6-page result means something is over-spaced — treat it as a
+> defect, not a data variation.
+>
+> **Shared wording lives in `lib/outletPeerWords.ts`** (`pct1`, `rankWord`,
+> `topWord`, `locOnly`, `monthLabel`), imported by both `OutletReportTabs.tsx` and
+> the PDF builder — that shared import is what stops the two surfaces drifting on
+> a phrase.
 > Same capability gate as the page (`outletReportingOn`) — an export must not be
 > a way around a hidden surface; verified 404 with the capability off.
 > ⚠️ The route is registered in `next.config.js` `outputFileTracingIncludes` with

@@ -4,8 +4,8 @@
 // lazily (generation is one Claude call, cached server-side) so the snapshot
 // paints instantly. Matches the Datanautix PDF's action-plan page.
 
-import { useEffect, useState } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
+import { useOutletPlan } from './OutletPlanContext'
 import type { ActionPlan } from '@/lib/outletActionPlan'
 import type { ThemeTableRow } from '@/lib/outletReport'
 
@@ -35,28 +35,12 @@ const ACCENT = [
   { bar: 'border-teal-400', kicker: 'text-teal-700' },
 ]
 
-export default function OutletActionPlanSection({ datasetId, outlet, outletName, reviews, themeTable }: {
-  datasetId: string; outlet: string; outletName: string; reviews: number; themeTable: ThemeTableRow[]
+export default function OutletActionPlanSection({ outletName, reviews, themeTable }: {
+  outletName: string; reviews: number; themeTable: ThemeTableRow[]
 }) {
-  const [plan, setPlan] = useState<ActionPlan | null>(null)
-  const [status, setStatus] = useState<'loading' | 'error' | 'ok'>('loading')
-  const [retry, setRetry] = useState(0)
-
-  useEffect(() => {
-    let cancelled = false
-    const ctrl = new AbortController()
-    // The plan is one LLM call (~30s the first time, cached after). Cap the wait
-    // so a slow/failed call surfaces a Retry instead of spinning forever.
-    // (Loading state is set on mount / by the Retry handler, not here — the
-    // parent keys this component by outlet so it remounts fresh per outlet.)
-    const timer = setTimeout(() => ctrl.abort(), 90000)
-    fetch(`/api/datasets/${datasetId}/outlet-action-plan?outlet=${encodeURIComponent(outlet)}`, { signal: ctrl.signal })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((d) => { if (!cancelled) { setPlan(d.plan); setStatus('ok') } })
-      .catch(() => { if (!cancelled) setStatus('error') })
-      .finally(() => clearTimeout(timer))
-    return () => { cancelled = true; clearTimeout(timer); ctrl.abort() }
-  }, [datasetId, outlet, retry])
+  // The fetch lives in OutletPlanContext so the Download PDF button can post the
+  // same plan back instead of the export generating a second one.
+  const { plan, status, retry } = useOutletPlan()
 
   return (
     // Break to a fresh page for the export; until the plan loads, drop out of
@@ -79,7 +63,7 @@ export default function OutletActionPlanSection({ datasetId, outlet, outletName,
       {status === 'error' && (
         <div className="flex flex-col items-center gap-3 py-12 text-center print:hidden">
           <p className="text-sm text-gray-500">Couldn’t build the action plan just now.</p>
-          <button onClick={() => { setPlan(null); setStatus('loading'); setRetry((r) => r + 1) }} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700">Retry</button>
+          <button onClick={retry} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700">Retry</button>
         </div>
       )}
 

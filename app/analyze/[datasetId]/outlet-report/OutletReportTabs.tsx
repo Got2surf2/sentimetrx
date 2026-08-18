@@ -2,23 +2,12 @@
 
 import { useState } from 'react'
 import { verbatimSupports } from '@/lib/verbatimGuard'
-import type { OutletReport, TrendPoint } from '@/lib/outletReport'
+import { pct1, locOnly, rankWord, topWord, monthLabel } from '@/lib/outletPeerWords'
+import type { OutletSelected, TrendPoint } from '@/lib/outletReport'
 import type { OutletLever, OutletSummary, PredictorModel } from '@/lib/outletPredictor'
 import WhatIfPanel, { type WhatIfData } from './WhatIfPanel'
 
-type Sel = NonNullable<OutletReport['selected']>
-
-const pct1 = (n: number) => `${(n * 100).toFixed(1)}%`
-
-// Exemplar labels carry the brand prefix ("Rubio's … — Laguna Niguel, CA"); the
-// brand is already the page eyebrow, so show just the location half.
-function locOnly(label: string): string {
-  const i = label.indexOf(' — ')
-  return i >= 0 ? label.slice(i + 3) : label
-}
-
-// How far into the worst tail an outlet sits on a theme, in plain words.
-const rankWord = (p: number) => (p >= 90 ? 'bottom 10%' : p >= 75 ? 'bottom 25%' : `worse than ${Math.round(p)}% of locations`)
+type Sel = OutletSelected
 
 // One theme where this location is a BOTTOM-quartile performer vs all outlets —
 // a real, peer-relative weakness — with a verbatim quote and the best peer.
@@ -54,8 +43,6 @@ function LeverCard({ l, rank }: { l: OutletLever; rank: number }) {
     </div>
   )
 }
-
-const topWord = (p: number) => (p <= 10 ? 'top 10%' : 'top 25%')
 
 // One theme where this location is a TOP-quartile performer vs all outlets — a
 // peer-relative strength, with a praise quote from a 4–5★ review.
@@ -141,12 +128,6 @@ function ActionPlan({ levers, strengths, summary, model, brandDriver, outletCoun
 }
 
 // Outlet vs network avg-rating over time (inline SVG dual-line; no chart dep).
-function monthLabel(m: string): string {
-  const [y, mo] = m.split('-')
-  const names = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-  return `${names[Number(mo)] || mo} '${y.slice(2)}`
-}
-
 function TrendChart({ trend }: { trend: TrendPoint[] }) {
   const pts = trend.filter((p) => typeof p.networkAvg === 'number')
   if (pts.length < 3) {

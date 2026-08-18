@@ -8,20 +8,28 @@ import 'server-only'
 // print dialog decided, and no control over where pages break. A document handed
 // to a GM or a franchisee should be typeset as a document.
 //
-// So this builds a print-first HTML document from the SAME computed values the
-// page renders (`OutletReport['selected']` + the cached `ActionPlan`), and
-// `htmlToPdfBuffer` renders it through headless Chrome with the shared
-// `brandedPdfChrome` header/footer. Nothing is recomputed and nothing is
-// fabricated — if a figure isn't in the snapshot, it isn't on the page.
+// It typesets from the payload the PAGE posts back (lib/outletPdfPayload.ts) —
+// the same values it rendered — so nothing is recomputed and nothing is
+// fabricated. If a figure isn't in the payload, it isn't in the document.
+//
+// 2026-08-18: the document now carries the page's "Deeper analysis" section too
+// (both tabs). That block is `print:hidden` on screen, so the export used to be
+// roughly half the page. The only piece that can't be reproduced literally is
+// the what-if SLIDER — a static benchmark table plus one projection computed
+// with the same pure `projectRecovery` stands in for it.
 //
 // ⚠️ Any route that calls this MUST be listed in next.config.js
 // `outputFileTracingIncludes` with `@sparticuz/chromium/bin/**`, or it 500s on
 // Vercel with "input directory .../bin does not exist".
 
-import type { OutletReport, OutletSnapshot, ThemeDelta, ComparisonBlock } from '@/lib/outletReport'
+import type { OutletSnapshot, ThemeDelta, ComparisonBlock, TrendPoint, ThemeTableRow } from '@/lib/outletReport'
 import type { ActionPlan } from '@/lib/outletActionPlan'
-
-type Selected = NonNullable<OutletReport['selected']>
+import type { ThemeStanding, OutletSummary, PredictorModel, WhatIfView } from '@/lib/outletPredictor'
+import type { OutletPdfPayload } from '@/lib/outletPdfPayload'
+import { projectRecovery } from '@/lib/outletPredictor'
+import { verbatimSupports } from '@/lib/verbatimGuard'
+import { starBarColor } from '@/lib/ratingGradient'
+import { pct1, locOnly, rankWord, topWord, monthLabel } from '@/lib/outletPeerWords'
 
 const TEAL = '#0F7173'
 const ORANGE = '#E85A1A'
@@ -38,6 +46,12 @@ const esc = (s: string) =>
 const pct0 = (n: number) => `${Math.round(n * 100)}%`
 const signedPct = (n: number) => `${n < 0 ? '−' : ''}${Math.abs(Math.round(n * 100))}%`
 const pts = (d: number) => `${d > 0 ? '+' : '−'}${Math.abs(Math.round(d * 100))}`
+const n0 = (n: number) => Math.round(n).toLocaleString()
+
+// Every number that lands in an unquoted CSS position goes through this. The
+// payload is client-supplied (see lib/outletPdfPayload.ts) — a stray string in
+// `style="width:${w}%"` would otherwise be an injection point.
+const cssPct = (frac: number) => Math.min(100, Math.max(0, Number.isFinite(frac) ? frac * 100 : 0))
 
 const READ_COLOR: Record<string, string> = {
   FIX: '#be123c', WATCH: '#b45309', SOLID: '#475569', STRENGTH: '#0f766e',
@@ -56,17 +70,18 @@ function kpi(label: string, value: string, sub?: string): string {
 
 function distributionRows(s: OutletSnapshot): string {
   return s.distribution.map((b) => {
-    const w = Math.max(0.6, b.pct * 100)
-    // The network average for this star bucket, drawn as a tick on the track so
-    // every bar carries its own comparison rather than needing a second chart.
-    const at = Math.min(100, Math.max(0, b.net.avg * 100))
+    const w = Math.max(0.6, cssPct(b.pct))
+    // The network's spread for this star bucket, drawn on the track so every bar
+    // carries its own comparison: ▶ lowest outlet · │ average · ◀ highest.
     return `<div class="dist">
-      <span class="dist-k">${b.star}★</span>
+      <span class="dist-k">${esc(String(b.star))}★</span>
       <span class="dist-track">
-        <span class="dist-bar" style="width:${w}%"></span>
-        <span class="dist-tick" style="left:${at}%"></span>
+        <span class="dist-bar" style="width:${w}%;background:${starBarColor(b.star)}"></span>
+        <span class="dist-lo" style="left:${cssPct(b.net.min)}%"></span>
+        <span class="dist-hi" style="left:${cssPct(b.net.max)}%"></span>
+        <span class="dist-tick" style="left:${cssPct(b.net.avg)}%"></span>
       </span>
-      <span class="dist-v">${pct0(b.pct)}</span>
+      <span class="dist-v"><b>${n0(b.count)}</b> · ${pct0(b.pct)}</span>
     </div>`
   }).join('')
 }
@@ -75,7 +90,7 @@ function themeTable(s: OutletSnapshot): string {
   if (!s.themeTable.length) return ''
   const rows = s.themeTable.map((t) => `<tr>
     <td class="t-name">${esc(t.theme)}</td>
-    <td class="num">${t.mentions.toLocaleString()}</td>
+    <td class="num">${n0(t.mentions)}</td>
     <td class="num strong">${t.avgStar.toFixed(2)}</td>
     <td class="num">${pct0(t.pctNegative)}</td>
     <td class="right"><span class="pill" style="color:${READ_COLOR[t.read]};background:${READ_BG[t.read]}">${esc(t.read)}</span></td>
@@ -90,13 +105,21 @@ function themeTable(s: OutletSnapshot): string {
 }
 
 function dimensionRows(block: ComparisonBlock, unit: string, networkSize: number): string {
+  if (!block.available) return ''
   const rows: ThemeDelta[] = [...block.strengths, ...block.weaknesses].sort((a, b) => b.delta - a.delta)
-  if (!block.available || !rows.length) return ''
+  // Available but nothing cleared the reporting floor. The page SAYS so
+  // (OutletDimensionsView) — an empty section here would read as a bug.
+  if (!rows.length) {
+    return `<section class="blk">
+      <h2>Dimensions — how this ${esc(unit)} compares to the network</h2>
+      <p class="empty">No dimension differed from the network by enough to report — this ${esc(unit)} tracks the network on every dimension with sufficient mentions.</p>
+    </section>`
+  }
   const scale = Math.max(...rows.map((r) => Math.abs(r.delta)))
   const MAX_ARM = 38
   const body = rows.map((d) => {
     const ahead = d.delta > 0
-    const arm = scale > 0 ? Math.max(1.5, (Math.abs(d.delta) / scale) * MAX_ARM) : 0
+    const arm = scale > 0 ? Math.min(MAX_ARM, Math.max(1.5, (Math.abs(d.delta) / scale) * MAX_ARM)) : 0
     const color = ahead ? AHEAD : BEHIND
     const bar = ahead
       ? `<span class="dv-bar" style="left:50%;width:${arm}%;background:${color};border-radius:0 3px 3px 0"></span>`
@@ -107,7 +130,7 @@ function dimensionRows(block: ComparisonBlock, unit: string, networkSize: number
     return `<div class="dv-row">
       <span class="dv-label">${esc(d.label)} <em>${esc(d.axis)}</em></span>
       <span class="dv-track"><span class="dv-axis"></span>${bar}${tip}</span>
-      <span class="dv-meta"><b>${signedPct(d.outletNet)}</b> net · ${d.n.toLocaleString()} ${d.n === 1 ? 'mention' : 'mentions'}</span>
+      <span class="dv-meta"><b>${signedPct(d.outletNet)}</b> net · ${n0(d.n)} ${d.n === 1 ? 'mention' : 'mentions'}</span>
     </div>`
   }).join('')
 
@@ -127,43 +150,228 @@ function dimensionRows(block: ComparisonBlock, unit: string, networkSize: number
     <div class="legend"><span><i style="background:${AHEAD}"></i>ahead of network</span><span><i style="background:${BEHIND}"></i>behind</span></div>
     <div class="dv-card">${body}</div>
     ${words}
-    <p class="note">Each dimension is scored by <b>net-positive rate</b> — the share of mentions that are positive minus the share that are negative. The bar is the gap between this ${esc(unit)} and the same figure across all ${networkSize.toLocaleString()} ${esc(unit)}s, in percentage points; the centre line is the network. Only dimensions with enough mentions here and network-wide to be reliable are shown.</p>
+    <p class="note">Each dimension is scored by <b>net-positive rate</b> — the share of mentions that are positive minus the share that are negative. The bar is the gap between this ${esc(unit)} and the same figure across all ${n0(networkSize)} ${esc(unit)}s, in percentage points; the centre line is the network. Only dimensions with enough mentions here and network-wide to be reliable are shown.</p>
   </section>`
 }
 
-function actionPlanSection(plan: ActionPlan | null): string {
+function actionPlanSection(plan: ActionPlan | null, reviews: number, themeTable: ThemeTableRow[]): string {
   if (!plan || !plan.priorities.length) return ''
-  const items = plan.priorities.map((p, i) => `<div class="pri">
-    <div class="pri-h"><span class="pri-n">${i + 1}</span><span class="pri-tag">${esc(p.tag)}</span></div>
-    <h3>${esc(p.title)}</h3>
-    <p class="pri-d">${esc(p.diagnosis)}</p>
-    ${p.verbatims.length ? `<div class="pri-q">${p.verbatims.map((v) => `<div><b>${v.rating}★</b> <em>“${esc(v.quote)}”</em></div>`).join('')}</div>` : ''}
-    ${p.actions.length ? `<ul>${p.actions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
-  </div>`).join('')
+  const byTheme = new Map(themeTable.map((t) => [t.theme, t]))
+  const items = plan.priorities.map((p, i) => {
+    const r = byTheme.get(p.theme)
+    // Anchor each card to its row in the snapshot table above, so the narrated
+    // priority and the measured figures read as one argument.
+    const anchor = `<div class="pri-anchor">
+      <span class="pill" style="color:#fff;background:${TEAL}">${esc(p.theme)}</span>
+      ${r ? `<span class="pri-stats"><b>${r.avgStar.toFixed(2)}★</b> · <b>${pct0(r.pctNegative)}</b> negative · ${n0(r.mentions)} mentions</span>` : ''}
+    </div>`
+    return `<div class="pri">
+      <div class="pri-h"><span class="pri-n">${i + 1}</span><span class="pri-tag">${esc(p.tag)}</span></div>
+      <h3>${esc(p.title)}</h3>
+      ${anchor}
+      <p class="pri-d">${esc(p.diagnosis)}</p>
+      ${p.verbatims.length ? `<div class="pri-q">${p.verbatims.map((v) => `<div><b>${esc(String(v.rating))}★</b> <em>“${esc(v.quote)}”</em></div>`).join('')}</div>` : ''}
+      ${p.actions.length ? `<ul>${p.actions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
+    </div>`
+  })
+  // The heading rides with the first card so it can't orphan at a page bottom;
+  // the remaining cards flow (each avoids splitting on its own).
   return `<section class="blk flow">
-    <h2>Action plan — what to work on next</h2>
-    ${items}
+    <div class="keeptog">
+      <h2>Action plan — what to work on next</h2>
+      <div class="badge">AI-generated from ${n0(reviews)} guest reviews</div>
+      ${items[0]}
+    </div>
+    ${items.slice(1).join('')}
     ${plan.keepDoing ? `<div class="keep"><div class="eyebrow" style="color:${TEAL}">Keep doing</div><p>${esc(plan.keepDoing)}</p></div>` : ''}
+    <p class="note"><b>Method.</b> AI-generated from ${n0(reviews)} Google reviews. Ratings, trend and response-rate are exact counts; theme figures are keyword-matched mentions (“% negative” = share of a theme’s mentions rated ≤3★). Verbatims are real guest reviews, lightly trimmed; names omitted. A prioritization signal, not a guaranteed star change.</p>
   </section>`
 }
 
-export function buildOutletReportHtml(opts: {
-  brand: string
-  selected: Selected
-  plan: ActionPlan | null
-  networkSize: number
-  unitLabel?: string
+// ─── "Deeper analysis" — the page's screen-only tabs, typeset ────────────────
+// Everything below mirrors app/analyze/[datasetId]/outlet-report/OutletReportTabs.tsx
+// (and WhatIfPanel for the static what-if). Shared wording lives in
+// lib/outletPeerWords so the two surfaces cannot drift on a phrase.
+
+// Outlet vs network avg-rating over time — the same geometry as the page's
+// inline SVG, emitted as markup rather than JSX.
+function trendChartSvg(trend: TrendPoint[]): string {
+  const p = trend.filter((x) => typeof x.networkAvg === 'number')
+  if (p.length < 3) return `<p class="empty">Not enough dated reviews to chart a trend.</p>`
+  const W = 660, H = 210, padL = 30, padR = 14, padT = 12, padB = 26
+  const x = (i: number) => padL + (W - padL - padR) * (p.length === 1 ? 0 : i / (p.length - 1))
+  const vals = p.flatMap((q) => [q.networkAvg, ...(q.outletAvg != null ? [q.outletAvg] : [])])
+  const yMin = Math.max(1, Math.floor(Math.min(...vals) * 2) / 2 - 0.25)
+  const yMax = 5
+  const y = (v: number) => padT + (H - padT - padB) * (1 - (v - yMin) / (yMax - yMin))
+  const netLine = p.map((q, i) => `${x(i).toFixed(1)},${y(q.networkAvg).toFixed(1)}`).join(' ')
+  const outLine = p.map((q, i) => (q.outletAvg != null ? `${x(i).toFixed(1)},${y(q.outletAvg).toFixed(1)}` : '')).filter(Boolean).join(' ')
+  const yTicks = [yMin, (yMin + yMax) / 2, yMax]
+  const xIdx = [0, Math.floor((p.length - 1) / 2), p.length - 1]
+  const grid = yTicks.map((t) => `<line x1="${padL}" x2="${W - padR}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}" stroke="#ececed" stroke-width="1"/>
+    <text x="${padL - 6}" y="${(y(t) + 3).toFixed(1)}" text-anchor="end" font-size="10" fill="#9ca3af">${t.toFixed(1)}</text>`).join('')
+  const labels = xIdx.map((i) => `<text x="${x(i).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="#9ca3af">${esc(monthLabel(p[i].month))}</text>`).join('')
+  return `<div class="legend start"><span><i style="background:${ORANGE}"></i>This location</span><span><i style="background:#9ca3af"></i>Network avg</span></div>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:200px">
+      ${grid}${labels}
+      <polyline points="${netLine}" fill="none" stroke="#9ca3af" stroke-width="2"/>
+      ${outLine ? `<polyline points="${outLine}" fill="none" stroke="${ORANGE}" stroke-width="2.5"/>` : ''}
+    </svg>`
+}
+
+// "Recovering this location's unhappy guests" + the chain's systemic-driver
+// callout — one argument, so they share a block and never split apart.
+function recoveryBlock(a: {
+  name: string; reviews: number; summary: OutletSummary | null; model: PredictorModel | null
+  outletCount: number; levers: ThemeStanding[]; strengths: ThemeStanding[]; brandDriver: string | null
 }): string {
-  const { brand, selected: s, plan, networkSize } = opts
-  const unit = opts.unitLabel || 'location'
+  if (!a.summary || !a.model) {
+    return `<section class="blk"><h2>Deeper analysis — how this location compares to its peers</h2>
+      <p class="empty">Not enough rated reviews at this location to build a plan.</p></section>`
+  }
+  const { summary: sm, model: m } = a
+  const atPar = sm.gapToTarget <= 0.01
+  const closing = a.levers.length
+    ? 'Below are the themes where this location ranks among the worst in the brand — its real, fixable weaknesses.'
+    : atPar
+      ? 'This location already runs among your best — hold the line and share what’s working.'
+      : 'It isn’t a bottom-quartile performer on any single operational theme; its 1–3★ reviews are spread across topics. Work the operational basics.'
+
+  const driverState: 'weak' | 'strong' | 'mid' | null = !a.brandDriver ? null
+    : a.levers.some((l) => l.theme === a.brandDriver) ? 'weak'
+    : a.strengths.some((l) => l.theme === a.brandDriver) ? 'strong' : 'mid'
+  const driverTail = driverState === 'weak'
+    ? 'and you’re <b>bottom-quartile</b> on it. That makes it your highest-leverage fix.'
+    : driverState === 'strong'
+      ? 'and you’re <b>top-quartile</b> on it. One less thing to worry about — protect it.'
+      : 'you’re middle-of-the-pack on it. Not your biggest problem, but worth watching.'
+
+  return `<section class="blk">
+    <h2>Deeper analysis — how this location compares to its peers</h2>
+    <div class="rec${atPar ? ' ok' : ''}">
+      <h3>Recovering this location’s unhappy guests</h3>
+      <p><b>${pct1(sm.lowRate)}</b> of ${esc(a.name)}’s reviews are 1–3★ (${n0(sm.lowCount)} of ${n0(a.reviews)}) — the
+      <b>#${n0(sm.lowRateRank)}</b> highest 1–3★ rate of ${n0(a.outletCount)} outlets (1 = worst), versus
+      <b>${pct1(m.lowRate)}</b> brand average and <b>${pct1(m.bestLowRate)}</b> at your best location. ${closing}</p>
+    </div>
+    ${driverState ? `<div class="callout ${driverState}">The chain’s one <b>systemic</b> issue is <b>${esc(a.brandDriver || '')}</b> — ${driverTail}</div>` : ''}
+  </section>`
+}
+
+function leverCards(levers: ThemeStanding[]): string {
+  if (!levers.length) return ''
+  const cards = levers.map((l, i) => `<div class="card lever">
+    <div class="card-h">
+      <span><span class="rank">${i + 1}</span><b>${esc(l.theme)}</b></span>
+      <span class="tag bad">${esc(rankWord(l.peerPercentile))} of locations</span>
+    </div>
+    <p class="card-d"><b>${pct1(l.problemRate)}</b> of all reviews here are 1–3★ and cite this (${pct1(l.shareInBad)} of its 1–3★ reviews).${l.cohortSize > 1 ? ` You’re one of <b>${n0(l.cohortSize)}</b> outlets in the bottom quartile here.` : ''}</p>
+    ${verbatimSupports(l.quote, 'negative') ? `<p class="q bad">“${esc(l.quote || '')}”</p>` : ''}
+    ${l.exemplars.length ? `<div class="learn">★ <b>Learn from</b> ${l.exemplars.slice(0, 5).map((e) => `${esc(locOnly(e.label))}${e.rating != null ? ` (${e.rating.toFixed(1)}★)` : ''}`).join(', ')} — the top performers on this theme. Worth a call on how they run it.</div>` : ''}
+  </div>`)
+  return `<section class="blk flow">
+    <div class="keeptog"><h2>Where this location ranks worst vs all outlets — work these</h2>${cards[0]}</div>
+    ${cards.slice(1).join('')}
+  </section>`
+}
+
+function strengthCards(strengths: ThemeStanding[]): string {
+  if (!strengths.length) return ''
+  const cards = strengths.map((t) => `<div class="card good">
+    <div class="card-h"><b>${esc(t.theme)}</b><span class="tag ok">${esc(topWord(t.peerPercentile))} of locations</span></div>
+    <p class="card-d">Only <b>${pct1(t.problemRate)}</b> of reviews here are 1–3★ and cite this — among the best in the brand. Protect it.</p>
+    ${verbatimSupports(t.quote, 'positive') ? `<p class="q ok">“${esc(t.quote || '')}”</p>` : ''}
+  </div>`)
+  return `<section class="blk flow">
+    <div class="keeptog"><h2 style="color:${AHEAD}">What this location does best — top quartile vs all outlets</h2>${cards[0]}</div>
+    ${cards.slice(1).join('')}
+  </section>`
+}
+
+// The page's what-if is a slider panel — interactive, and `print:hidden` even
+// there. The document instead states the benchmarks it lets you drag between,
+// and resolves ONE scenario ("every theme at the peer median") with the same
+// pure projectRecovery the panel calls, so the two can't disagree.
+function whatIfStatic(w: WhatIfView): string {
+  if (!w.themes.length || !w.reviews13.length) return ''
+
+  const scenario = (target: number[]) => {
+    const recovered = projectRecovery(w.reviews13, w.currentRate, target)
+    const newLow = Math.max(0, w.lowCount - recovered)
+    const newRate = w.totalReviews ? newLow / w.totalReviews : 0
+    const d = Number.isFinite(w.happyAvg) && Number.isFinite(w.detractorAvg) ? w.happyAvg - w.detractorAvg : 0
+    const newAvg = w.ratedReviews ? w.avg + (recovered * d) / w.ratedReviews : w.avg
+    const newRank = 1 + w.otherRatings.filter((r) => r > newAvg).length
+    return { recovered, newRate, newAvg, newRank }
+  }
+  const toMedian = scenario(w.currentRate.map((c, i) => Math.min(c, w.medianRate[i])))
+  const toBest = scenario(w.currentRate.map((c, i) => Math.min(c, w.bestRate[i])))
+
+  const showTrend = w.trendBasis !== null
+  // Biggest gap to the peer median first — the document's job is prioritisation,
+  // and the actionable-theme order carries no meaning.
+  const order = w.themes.map((t, i) => ({ t, i })).sort((a, b) =>
+    (w.currentRate[b.i] - w.medianRate[b.i]) - (w.currentRate[a.i] - w.medianRate[a.i]))
+  const rows = order.map(({ t, i }) => {
+    const behind = w.currentRate[i] > w.medianRate[i]
+    const tr = w.trends[i]
+    const trendCell = !tr || tr.direction === 'flat'
+      ? '<span class="flat">→ flat</span>'
+      : tr.direction === 'up'
+        ? '<span class="worse">▲ worsening</span>'
+        : '<span class="better">▼ improving</span>'
+    return `<tr>
+      <td class="t-name">${esc(t)}</td>
+      <td class="num ${behind ? 'strong' : ''}">${pct1(w.currentRate[i])}${behind ? '' : ' <span class="ok-mark">✓</span>'}</td>
+      <td class="num">${pct1(w.medianRate[i])}</td>
+      <td class="num">${pct1(w.bestRate[i])}</td>
+      ${showTrend ? `<td class="right">${trendCell}</td>` : ''}
+    </tr>`
+  }).join('')
+
+  return `<section class="blk">
+    <h2>What-if — how many unhappy guests could you win back?</h2>
+    <p class="lede">Each theme's <b>1–3★ problem rate</b> — the share of this location's reviews that are 1–3★ and cite it — against what its peers achieve. Biggest gap first.</p>
+    <table>
+      <thead><tr><th>Theme</th><th class="num">You now</th><th class="num">Peer median</th><th class="num">Best-in-class</th>${showTrend ? '<th class="right">Trend</th>' : ''}</tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="eyebrow" style="margin:11px 0 5px">If every theme reached the peer median</div>
+    <div class="kpis">
+      ${kpi('Detractors recovered', `~${n0(toMedian.recovered)}`, `of ${n0(w.lowCount)} today`)}
+      ${kpi('1–3★ review rate', pct1(toMedian.newRate), `from ${pct1(w.lowRate)}`)}
+      ${kpi('Overall rating', toMedian.newAvg.toFixed(2), `from ${w.avg.toFixed(2)} · rank #${n0(w.currentRank)} → #${n0(toMedian.newRank)} of ${n0(w.outletCount)}`)}
+    </div>
+    <p class="note">Reaching <b>best-in-class</b> on every theme instead: ~${n0(toBest.recovered)} recovered, a ${pct1(toBest.newRate)} 1–3★ rate and a ${toBest.newAvg.toFixed(2)} rating (rank #${n0(toBest.newRank)}).${showTrend ? ` Trend is brand-wide quarter-over-quarter (${esc(w.trendBasis!.prior)} → ${esc(w.trendBasis!.recent)}).` : ''} A planning estimate, not a promise: each recovered review is credited only as far as its <b>least-improved</b> theme moves, and a review citing a theme you don't fix isn't counted at all — a conservative floor.</p>
+  </section>`
+}
+
+function peerMethodNote(): string {
+  return `<p class="note blk">Each operational theme is <b>peer-ranked</b> across all outlets by its problem rate — the share of a location’s reviews that are 1–3★ and cite that theme. Weaknesses = bottom quartile (among the worst); strengths = top quartile. Lagging outcomes like brand loyalty are excluded — they’re symptoms of these operational issues, not levers. Quotes are this location’s own reviews. Associational — a prioritization signal, not a guaranteed star change.</p>`
+}
+
+export function buildOutletReportHtml(p: OutletPdfPayload): string {
+  const s = p.selected
+  const unit = p.unitLabel || 'location'
   const snap = s.snapshot
 
   const fleet = snap.fleet
-    ? `${snap.fleet.band} · #${snap.fleet.rank} of ${snap.fleet.total} ${snap.fleet.peerNoun}`
+    ? `#${snap.fleet.rank} of ${snap.fleet.total} ${snap.fleet.peerNoun}`
     : 'Under 200 reviews'
   const recent = snap.recent
     ? `${snap.recent.avg.toFixed(2)}★ recent (${snap.recent.direction})`
     : ''
+
+  // Every verbatim under "what guests consistently praise" must read as praise —
+  // the rating selects the review, it does not vouch for the sentence lifted out
+  // of it. The page filters here too (see lib/verbatimGuard).
+  const praise = snap.praiseVerbatims.filter((v) => verbatimSupports(v.quote, 'positive'))
+
+  const subtitle = [
+    s.address,
+    `${n0(s.reviews)} Google reviews${snap.dateRange ? ` (${snap.dateRange})` : ''}`,
+    `full ${n0(p.networkSize)}-store network`,
+  ].filter(Boolean).join(' · ')
 
   return `<!doctype html><html><head><meta charset="utf-8"><style>
   @page { size: letter; }
@@ -177,10 +385,14 @@ export function buildOutletReportHtml(opts: {
   .meta { color:${FAINT}; font-size:9.5px; }
   .hdr { border-bottom:2px solid ${INK}; padding-bottom:9px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:flex-end; }
   .blk { margin-top:12px; break-inside:avoid; }
-  /* The action plan is the one section allowed to span pages — it is a list of
-     self-contained cards, each of which avoids splitting, so flowing it keeps
-     the document dense instead of reserving a page for a heading. */
+  /* Card-list sections are allowed to span pages — each card avoids splitting on
+     its own, so flowing them keeps the document dense instead of reserving a
+     page for a heading. .keeptog holds the heading to its FIRST card so the
+     heading can never orphan at a page bottom (ENGINEERING §6 rule 1). */
   .blk.flow { break-inside:auto; }
+  .keeptog { break-inside:avoid; }
+  .empty { border:1px dashed ${RULE}; border-radius:6px; padding:11px; text-align:center; color:${FAINT}; margin:0; }
+  .lede { color:${MUTED}; margin:-3px 0 7px; }
 
   .kpis { display:flex; gap:7px; }
   .kpi { flex:1; border:1px solid ${RULE}; border-radius:6px; padding:7px 9px; }
@@ -191,9 +403,18 @@ export function buildOutletReportHtml(opts: {
   .dist { display:flex; align-items:center; gap:8px; margin:3px 0; }
   .dist-k { width:20px; color:${MUTED}; font-variant-numeric:tabular-nums; }
   .dist-track { position:relative; flex:1; height:7px; background:#f1f5f9; border-radius:99px; }
-  .dist-bar { position:absolute; left:0; top:0; height:7px; background:${TEAL}; border-radius:99px; }
-  .dist-tick { position:absolute; top:-2px; width:1.5px; height:11px; background:${INK}; opacity:.55; }
-  .dist-v { width:32px; text-align:right; color:${MUTED}; font-variant-numeric:tabular-nums; }
+  .dist-bar { position:absolute; left:0; top:0; height:7px; border-radius:99px; }
+  .dist-tick { position:absolute; top:-2.5px; width:2px; height:12px; margin-left:-1px; background:#374151; border-radius:99px; }
+  /* Network spread for this star bucket: ▶ lowest outlet, ◀ highest outlet.
+     Drawn as CSS triangles — printBackground is on, so they survive the render. */
+  .dist-lo { position:absolute; top:0.5px; margin-left:-2.5px; width:0; height:0;
+             border-top:3px solid transparent; border-bottom:3px solid transparent; border-left:5px solid #fff;
+             filter:drop-shadow(0 0 .5px rgba(0,0,0,.55)); }
+  .dist-hi { position:absolute; top:0.5px; margin-left:-2.5px; width:0; height:0;
+             border-top:3px solid transparent; border-bottom:3px solid transparent; border-right:5px solid #9ca3af; }
+  .dist-v { width:64px; text-align:right; color:${MUTED}; font-variant-numeric:tabular-nums; }
+  .dist-v b { color:${INK}; }
+  .dist-leg { float:right; font-weight:400; text-transform:none; letter-spacing:0; color:${FAINT}; }
 
   table { width:100%; border-collapse:collapse; }
   th { font-size:7.5px; text-transform:uppercase; letter-spacing:.07em; color:${FAINT};
@@ -203,9 +424,14 @@ export function buildOutletReportHtml(opts: {
   .right, th.right { text-align:right; }
   .t-name { font-weight:600; }
   .strong { font-weight:700; }
+  .ok-mark { color:${AHEAD}; }
+  .flat { color:${FAINT}; }
+  .worse { color:${BEHIND}; font-weight:700; }
+  .better { color:${AHEAD}; font-weight:700; }
   .pill { display:inline-block; padding:1px 5px; border-radius:3px; font-size:7.5px; font-weight:700; letter-spacing:.05em; }
 
   .legend { display:flex; gap:10px; justify-content:flex-end; font-size:8px; color:${FAINT}; margin:-4px 0 5px; }
+  .legend.start { justify-content:flex-start; margin:0 0 4px; }
   .legend i { display:inline-block; width:9px; height:6px; border-radius:2px; margin-right:3px; vertical-align:middle; }
   .dv-card { border:1px solid ${RULE}; border-radius:6px; padding:7px 11px; }
   .dv-row { display:flex; align-items:center; gap:9px; }
@@ -223,38 +449,66 @@ export function buildOutletReportHtml(opts: {
   .eyebrow { font-size:7.5px; text-transform:uppercase; letter-spacing:.09em; color:${FAINT}; font-weight:700; }
   .eyebrow .reg { text-transform:none; letter-spacing:0; font-weight:400; }
   .note { font-size:8px; color:${FAINT}; line-height:1.55; margin:7px 0 0; }
+  .note b { color:${MUTED}; }
 
   .pri { border:1px solid ${RULE}; border-left:3px solid ${ORANGE}; border-radius:5px; padding:8px 11px; margin-bottom:6px; break-inside:avoid; }
   .pri-h { display:flex; align-items:center; gap:6px; }
   .pri-n { display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px; border-radius:99px;
            background:${ORANGE}; color:#fff; font-size:8.5px; font-weight:700; }
   .pri-tag { font-size:7.5px; text-transform:uppercase; letter-spacing:.08em; color:${ORANGE}; font-weight:700; }
+  .pri-anchor { margin:0 0 5px; }
+  .pri-stats { font-size:8.5px; color:${FAINT}; margin-left:5px; font-variant-numeric:tabular-nums; }
+  .pri-stats b { color:${MUTED}; }
   .pri-d { margin:0 0 5px; color:${MUTED}; }
   .pri-q { margin:0 0 5px; font-size:9.5px; }
   .pri-q em { color:${MUTED}; }
+  .badge { display:inline-block; background:#ecfdf5; color:#047857; border-radius:99px; padding:2px 8px;
+           font-size:7.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; margin:-2px 0 7px; }
   ul { margin:0; padding-left:15px; }
   li { margin:1.5px 0; }
   .keep { border:1px solid #99f6e4; background:#f0fdfa; border-radius:5px; padding:8px 11px; break-inside:avoid; }
   .keep p { margin:3px 0 0; color:${MUTED}; }
+
+  .rec { border-radius:6px; background:#f8fafc; padding:9px 12px; }
+  .rec.ok { background:#ecfdf5; }
+  .rec h3 { font-size:11.5px; margin:0 0 3px; }
+  .rec p { margin:0; color:${MUTED}; }
+  .rec b { color:${INK}; }
+  .callout { margin-top:6px; border:1px solid ${RULE}; border-radius:6px; padding:7px 11px; font-size:9.5px; color:${MUTED}; }
+  .callout.weak { border-color:#fecdd3; background:#fff1f2; color:#9f1239; }
+  .callout.strong { border-color:#a7f3d0; background:#ecfdf5; color:#065f46; }
+
+  .card { border:1px solid ${RULE}; border-radius:6px; padding:8px 11px; margin-bottom:6px; break-inside:avoid; }
+  .card.good { border-color:#a7f3d0; background:#f0fdf6; }
+  .card-h { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+  .card-h b { font-size:11.5px; }
+  .rank { display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; border-radius:99px;
+          background:#1f2937; color:#fff; font-size:8px; font-weight:700; margin-right:5px; }
+  .tag { flex:none; border-radius:3px; padding:1px 5px; font-size:7.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+  .tag.bad { background:#ffe4e6; color:#be123c; }
+  .tag.ok { background:#ccfbf1; color:#0f766e; }
+  .card-d { margin:4px 0 0; color:${MUTED}; }
+  .card-d b { color:${INK}; }
+  .q { margin:5px 0 0; padding-left:7px; font-style:italic; color:${MUTED}; font-size:9.5px; }
+  .q.bad { border-left:2px solid #fda4af; }
+  .q.ok { border-left:2px solid #6ee7b7; }
+  .learn { margin-top:5px; border-radius:4px; background:#ecfdf5; color:#065f46; padding:4px 8px; font-size:9px; }
   </style></head><body>
 
   <div class="hdr">
     <div>
-      <div class="meta">${esc(brand)}</div>
+      <div class="meta">${esc(p.brand)}</div>
       <h1>${esc(s.name)}</h1>
-      ${s.address ? `<p class="sub">${esc(s.address)}</p>` : ''}
+      ${subtitle ? `<p class="sub">${esc(subtitle)}</p>` : ''}
     </div>
-    <div style="text-align:right">
-      <div class="meta">${esc(snap.asOf)}</div>
-      <div class="meta">${esc(snap.dateRange)}</div>
-    </div>
+    <div class="meta">${esc(snap.asOf)}</div>
   </div>
 
   <section class="blk" style="margin-top:0">
     <h2>Location performance snapshot</h2>
     <div class="kpis">
       ${kpi('Rating', s.rating.toFixed(2), recent || `Network ${s.chainRating.toFixed(2)}★`)}
-      ${kpi('Reviews', s.reviews.toLocaleString(), `Rank #${s.rank} of ${s.outletCount}`)}
+      ${kpi('Reviews', n0(s.reviews), `Rank #${n0(s.rank)} of ${n0(s.outletCount)}`)}
       ${kpi('5-Star Share', pct0(snap.fiveStarShare), `Detractors ${pct0(snap.detractorShare)}`)}
       ${kpi('Owner Responses', pct0(snap.ownerResponseRate), snap.ownerResponseBand)}
       ${kpi('Fleet Position', snap.fleet ? snap.fleet.band : '—', fleet)}
@@ -262,23 +516,48 @@ export function buildOutletReportHtml(opts: {
   </section>
 
   <section class="blk">
-    <h2>Rating distribution <span style="text-transform:none;letter-spacing:0;font-weight:400">— tick marks the network average</span></h2>
+    <h2>Rating distribution
+      <span class="dist-leg">▶ lowest · │ avg · ◀ highest — across the network</span>
+    </h2>
     ${distributionRows(snap)}
   </section>
 
   ${themeTable(snap)}
 
-  ${snap.praiseVerbatims.length ? `<section class="blk">
+  ${(snap.praiseChips.length || praise.length) ? `<section class="blk">
     <h2>What guests consistently praise</h2>
     <div class="keep">
       ${snap.praiseChips.length ? `<div>${snap.praiseChips.map((c) => `<span class="pill" style="color:${TEAL};background:#f0fdfa;margin-right:4px">${esc(c)}</span>`).join('')}</div>` : ''}
-      ${snap.praiseVerbatims.map((v) => `<div style="margin-top:4px;font-size:9.5px"><b style="color:${TEAL}">${v.rating}★</b> <em style="color:${MUTED}">“${esc(v.quote)}”</em></div>`).join('')}
+      ${praise.map((v) => `<div style="margin-top:4px;font-size:9.5px"><b style="color:${TEAL}">${esc(String(v.rating))}★</b> <em style="color:${MUTED}">“${esc(v.quote)}”</em></div>`).join('')}
     </div>
   </section>` : ''}
 
-  ${dimensionRows(s.dimensions, unit, networkSize)}
+  <section class="blk">
+    <h2>Review score over time <span style="text-transform:none;letter-spacing:0;font-weight:400">— this location vs. network</span></h2>
+    ${trendChartSvg(s.trend)}
+  </section>
 
-  ${actionPlanSection(plan)}
+  ${actionPlanSection(p.plan, s.reviews, snap.themeTable)}
+
+  ${dimensionRows(s.dimensions, unit, p.networkSize)}
+
+  ${s.narrative ? `<section class="blk">
+    <h2>How this location compares to the network</h2>
+    <p style="margin:0;color:${MUTED}">${esc(s.narrative)}</p>
+  </section>` : ''}
+
+  ${recoveryBlock({
+    name: s.name, reviews: s.reviews, summary: p.summary, model: p.model,
+    outletCount: p.outletCount, levers: p.levers, strengths: p.strengths, brandDriver: p.brandDriver,
+  })}
+
+  ${leverCards(p.levers)}
+
+  ${p.whatIf ? whatIfStatic(p.whatIf) : ''}
+
+  ${strengthCards(p.strengths)}
+
+  ${(p.levers.length || p.strengths.length) ? peerMethodNote() : ''}
 
   </body></html>`
 }

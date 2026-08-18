@@ -958,3 +958,79 @@ verbatim defects that turned into a permanent rule; and an export that had been 
 screenshot of a web page. Four of those were found by real-data sweeps that unit
 tests would not have caught, and three of my own assertions were wrong about the
 thing they were measuring before they were right.
+
+---
+
+## The PDF that was slow AND short (2026-08-18, later)
+
+Two complaints on the freshly composed Outlet Deep-Dive export: *"worked but was
+very slow"* and *"feels a lot shorter than the html version — on the html we have
+a couple of places with tabs for different views. Need to show those as well."*
+
+**Where the 52s went.** A real request logged `200 in 54s (application-code: 52s)`.
+`computeOutletReport` was ~7s — a sequential `pageAll('dataset_rows_flat','id, data')`
+over the whole dataset, uncached. The other ~34s was a **cold Sonnet call for an
+action plan the page was already generating**: the user clicked Download while the
+page's own `/outlet-action-plan` fetch was in flight, so the export missed the
+cache and generated a duplicate. And the button was a bare `<a href>` with no
+loading state, so all of it read as a hang rather than as work.
+
+**The fix was the owner's one-line diagnosis:** *"The data for the pdf should
+already be in the html page."* It does — `outlet-report/page.tsx` computes
+`computeOutletReportWithPredictor` and ships every figure to the browser. So the
+route stopped recomputing and started typesetting: `GET`-and-scan became
+`POST`-a-payload (`lib/outletPdfPayload.ts`). Measured after: **520ms–1.4s** of
+application code, and 1.5s wall-clock through the real UI. Same auth, same
+org-scope, same `outletReportingOn` gate.
+
+The honest cost is that the figures are now **client-asserted**. That is fine
+because the document is rendered for, and returned only to, the authenticated
+requester and is never stored — a caller who posts nonsense gets their own
+nonsense PDF. What is *not* fine is assuming the body is well-formed: the builder
+interpolates numbers into unquoted CSS (`style="width:${w}%"`), which was safe
+when they were server-computed and is not now. `parseOutletPdfPayload` rejects
+only when the body has no subject (`selected.placeId` missing or ≠ the requested
+outlet) and **coerces** everything else — malformed array elements are dropped,
+not fatal. It deliberately does not re-derive cross-field arithmetic; that would
+be a second implementation of the thing this change deletes.
+
+**Same idea, second route.** `/outlet-action-plan` had the identical defect: its
+cache key is `actionPlanBasis(reviews, themeTable)`, and it rebuilt those two
+values by re-running the full scan on **every page view, including pure cache
+hits**. The page already has both, so it posts them: warm path 34.4s/7s → **~200ms**.
+On a cache miss the route still scans and generates server-side, so nothing
+client-supplied is ever persisted into the shared plan cache.
+
+**Content parity.** The page's whole "Deeper analysis" card is `print:hidden`, so
+the export was roughly half the page. It now carries both tabs — trend chart,
+narrative, "Recovering this location's unhappy guests", the systemic-driver
+callout, lever cards with their "Learn from" exemplars, strength cards, the
+peer-ranking note — plus several smaller gaps the delta surfaced. Two of those
+were real defects, not omissions: the PDF printed praise verbatims **unfiltered**
+while the page runs them through `verbatimSupports(quote,'positive')`, and the
+dimensions section rendered `''` where the page prints an explicit empty state —
+a silent hole that reads as a bug.
+
+The what-if panel is the one thing that cannot be ported literally (it is
+sliders, and `print:hidden` even on screen). The document states the benchmarks
+instead — `theme | you now | peer median | best-in-class | trend`, sorted by
+biggest gap — and resolves one scenario with the same pure `projectRecovery` the
+panel calls, so the two cannot disagree.
+
+**What the verification caught that a single render would not.** A sweep built
+the document for **all 67 outlets** from one scan, round-tripping each payload
+through `JSON.stringify` → the parser → the builder, and asserted per-outlet
+invariants. Coverage came back `{levers:33, strengths:37, plan:3, whatIf:66,
+noSummary:1}` — printing which branches actually ran is the point; without it
+"all clean" would have been a green light over a strengths section nobody had
+rendered. Pixel QC then found two things text extraction never would: the Fleet
+Position tile printed its band twice (value *and* sub), and the trend chart plus
+narrative sitting last left a page 4 that was 80% white. Moving the trend up with
+the absolute material and the narrative down as the lead-in to the peer-relative
+half fixed the ragged page and reads better besides.
+
+One harness bug worth remembering: the "unauthenticated → 401" probe ran through
+`ctx.request` **after** the page had logged in through that same context, so it
+was silently re-testing the authed path and returned 200. A fresh context fixes
+it. And Playwright's request context sends no `Origin`, which `proxy.ts` CSRF-rejects
+with a 403 that looks exactly like a route bug — every direct probe sets it.

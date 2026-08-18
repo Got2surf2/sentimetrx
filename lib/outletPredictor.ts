@@ -94,6 +94,34 @@ export type OutletWhatIf = {
   happyAvg: number     // mean rating of its 4–5★ reviews (where a recovered detractor lands)
 }
 
+// The assembled per-outlet what-if VIEW — `OutletWhatIf` widened with the
+// peer benchmarks + trends the page joins in (outletReport/page.tsx). Declared
+// here, next to its two sources, because both the interactive panel and the
+// PDF's static equivalent consume it and a server lib must not import a type
+// out of a `'use client'` component.
+export type WhatIfView = {
+  themes: string[]          // actionable theme names (index-aligned)
+  reviews13: number[][]     // each 1–3★ review's actionable-theme indices
+  currentRate: number[]     // this outlet's problem rate per theme
+  medianRate: number[]      // peer-median problem rate per theme
+  bestRate: number[]        // best-quartile problem rate per theme
+  worstRate: number[]       // worst-in-class problem rate per theme (the right anchor)
+  totalReviews: number      // text-bearing reviews (the recoverable pool / lowRate denominator)
+  ratedReviews: number      // ALL rated rows (denominator for projecting the all-reviews avg ★)
+  lowCount: number
+  lowRate: number
+  avg: number               // outlet's current avg star rating — over ALL rated rows (ties to Google)
+  detractorAvg: number      // mean rating of its 1–3★ reviews
+  happyAvg: number          // mean rating of its 4–5★ reviews
+  otherRatings: number[]    // every OTHER outlet's avg star (for the conventional rank)
+  currentRank: number       // 1 = best (highest avg star)
+  outletCount: number
+  trends: (ThemeTrend | null)[]  // brand-level QoQ trend per theme (index-aligned)
+  trendBasis: { recent: string; prior: string } | null
+}
+
+export type ThemeTrend = { direction: 'up' | 'down' | 'flat'; recentRate: number; priorRate: number }
+
 // "Detractors recovered" if the outlet moved each theme's problem rate from
 // `currentRate[i]` to `targetRate[i]` (per-theme target — what each slider sets).
 // Honest about co-occurrence: a review flips only if EVERY theme it cites is

@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import type { WhatIfView, ThemeTrend } from '@/lib/outletPredictor'
 
 // Interactive "recover your detractors" what-if for one outlet. Drag each
 // theme's problem rate down (toward best-in-class) and see the projected 1–3★
@@ -8,28 +9,11 @@ import { useMemo, useState } from 'react'
 // recovered gated by its LEAST-improved theme — a review citing a theme you
 // leave untouched stays a detractor.
 
-type Trend = { direction: 'up' | 'down' | 'flat'; recentRate: number; priorRate: number }
-
-export type WhatIfData = {
-  themes: string[]          // actionable theme names (index-aligned)
-  reviews13: number[][]     // each 1–3★ review's actionable-theme indices
-  currentRate: number[]     // this outlet's problem rate per theme
-  medianRate: number[]      // peer-median problem rate per theme
-  bestRate: number[]        // best-quartile problem rate per theme
-  worstRate: number[]       // worst-in-class problem rate per theme (the right anchor)
-  totalReviews: number      // text-bearing reviews (the recoverable pool / lowRate denominator)
-  ratedReviews: number      // ALL rated rows (denominator for projecting the all-reviews avg ★)
-  lowCount: number
-  lowRate: number
-  avg: number               // outlet's current avg star rating — over ALL rated rows (ties to Google)
-  detractorAvg: number      // mean rating of its 1–3★ reviews
-  happyAvg: number          // mean rating of its 4–5★ reviews
-  otherRatings: number[]    // every OTHER outlet's avg star (for the conventional rank)
-  currentRank: number       // 1 = best (highest avg star)
-  outletCount: number
-  trends: (Trend | null)[]  // brand-level QoQ trend per theme (index-aligned)
-  trendBasis: { recent: string; prior: string } | null
-}
+// The shape lives in lib/outletPredictor (next to its two sources) so the PDF's
+// static equivalent can consume it without a server lib importing a type out of
+// a client component. Re-exported here under the name the page already uses.
+export type { WhatIfView as WhatIfData } from '@/lib/outletPredictor'
+type Trend = ThemeTrend
 
 const pct1 = (n: number) => `${(n * 100).toFixed(1)}%`
 
@@ -86,7 +70,7 @@ function TrendBadge({ t }: { t: Trend | null }) {
   )
 }
 
-export default function WhatIfPanel(d: WhatIfData) {
+export default function WhatIfPanel(d: WhatIfView) {
   // Default: start at "You today" (each target = current rate) so the user drags
   // down from where they are. Reset returns here.
   const [target, setTarget] = useState<number[]>(() => [...d.currentRate])

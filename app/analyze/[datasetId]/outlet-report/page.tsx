@@ -17,10 +17,13 @@ import OutletReportTabs from './OutletReportTabs'
 import OutletSnapshotView from './OutletSnapshotView'
 import OutletDimensionsView from './OutletDimensionsView'
 import OutletActionPlanSection from './OutletActionPlanSection'
+import type { PdfPayloadProps } from './DownloadPdfButton'
 // Rolled-up hierarchy rungs (Network / Region / District) still print: the PDF
 // route composes ONE outlet's document and needs a place_id, which a rung has
 // no equivalent of. Per-outlet gets the real PDF; rungs keep Print for now.
 import PrintButton from './PrintButton'
+import DownloadPdfButton from './DownloadPdfButton'
+import { OutletPlanProvider } from './OutletPlanContext'
 import AnalyticsNav from '../AnalyticsNav'
 import { HierarchyBreadcrumb, HierarchyChildren, HierarchyOutlets } from './HierarchyNav'
 
@@ -133,86 +136,118 @@ export default async function OutletReportPage(props: {
     trendBasis: predictor.trendBasis,
   } : null
 
+  // Everything the composed PDF needs, assembled here because this is where it is
+  // already computed. The export POSTs it straight back instead of re-running the
+  // full dataset scan (lib/outletPdfPayload.ts) — typed against the builder's
+  // contract so the two can't drift.
+  const pdfPayload: PdfPayloadProps | null = s ? {
+    outlet: s.placeId,
+    brand: report.brand,
+    networkSize: report.outlets.length,
+    outletCount: predictor.outletSummaries.length,
+    selected: s,
+    levers, strengths,
+    summary: summary || null,
+    model: predictor.model,
+    brandDriver: predictor.brandLevers[0]?.theme || null,
+    whatIf,
+  } : null
+
+  // One provider owns the action-plan fetch for the whole page: the section below
+  // displays it and the Download PDF button in the nav posts it back, so the
+  // export never generates a second one. Keyed by outlet, so switching locations
+  // can't carry a stale plan into the next download.
+  const body = (
+    <>
+      <div className="print:hidden">
+        {/* The "GM deck (PPTX)" link was removed 2026-08-18 (owner). It was the
+            secondary export kept when print became the primary one in July;
+            two export buttons offering different documents from one page was
+            the confusion, not a feature. The route and lib/pptx/outletPlanDeck
+            still exist but are now unreferenced — delete deliberately. */}
+        <AnalyticsNav datasetId={datasetId} active="outlet" outlet={s?.placeId} action={
+          pdfPayload ? <DownloadPdfButton datasetId={datasetId} payload={pdfPayload} /> : undefined
+        } />
+        {/* Arrived from a rolled-up rung — keep the trail so the way back up
+            is one click, and the location reads as part of its branch. */}
+        {hasHierarchy && nodePath.length > 0 && s && (
+          <div className="mt-2">
+            <HierarchyBreadcrumb
+              datasetId={datasetId}
+              crumbs={crumbsForPath(nodePath, levels)}
+              current={{ label: s.name, levelLabel: 'Location' }}
+            />
+          </div>
+        )}
+        <div className="mb-4 mt-2 flex items-center justify-between">
+          <OutletPicker outlets={report.outlets} selected={s?.placeId || ''} />
+        </div>
+      </div>
+
+      {!s ? (
+        <div className="rounded-xl bg-white p-10 text-center text-gray-500 shadow">
+          No outlet data found for this dataset.
+        </div>
+      ) : (
+        <>
+          {/* Printable snapshot (page 1 of the export) */}
+          <div className="rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:p-6 print:shadow-none print:ring-0">
+            <OutletSnapshotView
+              brand={report.brand} name={s.name} address={s.address}
+              reviews={s.reviews} rating={s.rating} rank={s.rank} outletCount={s.outletCount}
+              networkSize={report.outlets.length} snapshot={s.snapshot}
+            />
+          </div>
+
+          {/* AI action plan (page 2 of the export) — lazily generated + cached. */}
+          <OutletActionPlanSection outletName={s.name} reviews={s.reviews} themeTable={s.snapshot.themeTable} />
+
+          {/* Dimensions vs the network (page 3 of the export).
+              Its OWN card, and PRINTED — owner call 2026-08-18. It is the
+              sharpest per-location read on the page ("how does this location
+              compare to the other N on each dimension"), so burying it inside
+              the screen-only "Deeper analysis" block made the most useful
+              thing the least visible one.
+              It stays OUT of the snapshot card above: that block is
+              deliberately ABSOLUTE (GM-facing "how am I doing"), this is
+              RELATIVE to the network. A titled section of its own keeps that
+              separation legible instead of folding the two together. */}
+          <div className="mt-6 rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:mt-0 print:break-before-page print:p-6 print:shadow-none print:ring-0">
+            <h2 className="text-sm font-bold text-gray-700">
+              Dimensions <span className="font-normal text-gray-400">— how this location compares to the network</span>
+            </h2>
+            <OutletDimensionsView block={s.dimensions} outletCount={s.outletCount} />
+          </div>
+
+          {/* Deeper peer-relative analysis — screen only, not part of the export. */}
+          <div className="mt-6 rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:hidden">
+            <h2 className="text-sm font-bold text-gray-700">Deeper analysis <span className="font-normal text-gray-400">— how this location compares to its peers</span></h2>
+            <OutletReportTabs
+              selected={s} levers={levers} strengths={strengths} summary={summary} model={predictor.model}
+              brandDriver={predictor.brandLevers[0]?.theme || null}
+              outletCount={predictor.outletSummaries.length}
+              whatIf={whatIf}
+            />
+          </div>
+        </>
+      )}
+    </>
+  )
+
   return (
     <div className="min-h-screen bg-gray-100 py-8 print:bg-white print:py-0">
       <div className="mx-auto max-w-4xl px-4 print:max-w-none print:px-0">
-        <div className="print:hidden">
-          {/* The "GM deck (PPTX)" link was removed 2026-08-18 (owner). It was the
-              secondary export kept when print became the primary one in July;
-              two export buttons offering different documents from one page was
-              the confusion, not a feature. The route and lib/pptx/outletPlanDeck
-              still exist but are now unreferenced — delete deliberately. */}
-          <AnalyticsNav datasetId={datasetId} active="outlet" outlet={s?.placeId} action={
-            s ? (
-              <a href={`/api/datasets/${datasetId}/outlet-report-pdf?outlet=${encodeURIComponent(s.placeId)}`}
-                 className="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-700">
-                Download PDF
-              </a>
-            ) : undefined
-          } />
-          {/* Arrived from a rolled-up rung — keep the trail so the way back up
-              is one click, and the location reads as part of its branch. */}
-          {hasHierarchy && nodePath.length > 0 && s && (
-            <div className="mt-2">
-              <HierarchyBreadcrumb
-                datasetId={datasetId}
-                crumbs={crumbsForPath(nodePath, levels)}
-                current={{ label: s.name, levelLabel: 'Location' }}
-              />
-            </div>
-          )}
-          <div className="mb-4 mt-2 flex items-center justify-between">
-            <OutletPicker outlets={report.outlets} selected={s?.placeId || ''} />
-          </div>
-        </div>
-
-        {!s ? (
-          <div className="rounded-xl bg-white p-10 text-center text-gray-500 shadow">
-            No outlet data found for this dataset.
-          </div>
-        ) : (
-          <>
-            {/* Printable snapshot (page 1 of the export) */}
-            <div className="rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:p-6 print:shadow-none print:ring-0">
-              <OutletSnapshotView
-                brand={report.brand} name={s.name} address={s.address}
-                reviews={s.reviews} rating={s.rating} rank={s.rank} outletCount={s.outletCount}
-                networkSize={report.outlets.length} snapshot={s.snapshot}
-              />
-            </div>
-
-            {/* AI action plan (page 2 of the export) — lazily generated + cached. */}
-            <OutletActionPlanSection key={s.placeId} datasetId={datasetId} outlet={s.placeId} outletName={s.name} reviews={s.reviews} themeTable={s.snapshot.themeTable} />
-
-            {/* Dimensions vs the network (page 3 of the export).
-                Its OWN card, and PRINTED — owner call 2026-08-18. It is the
-                sharpest per-location read on the page ("how does this location
-                compare to the other N on each dimension"), so burying it inside
-                the screen-only "Deeper analysis" block made the most useful
-                thing the least visible one.
-                It stays OUT of the snapshot card above: that block is
-                deliberately ABSOLUTE (GM-facing "how am I doing"), this is
-                RELATIVE to the network. A titled section of its own keeps that
-                separation legible instead of folding the two together. */}
-            <div className="mt-6 rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:mt-0 print:break-before-page print:p-6 print:shadow-none print:ring-0">
-              <h2 className="text-sm font-bold text-gray-700">
-                Dimensions <span className="font-normal text-gray-400">— how this location compares to the network</span>
-              </h2>
-              <OutletDimensionsView block={s.dimensions} outletCount={s.outletCount} />
-            </div>
-
-            {/* Deeper peer-relative analysis — screen only, not part of the export. */}
-            <div className="mt-6 rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:hidden">
-              <h2 className="text-sm font-bold text-gray-700">Deeper analysis <span className="font-normal text-gray-400">— how this location compares to its peers</span></h2>
-              <OutletReportTabs
-                selected={s} levers={levers} strengths={strengths} summary={summary} model={predictor.model}
-                brandDriver={predictor.brandLevers[0]?.theme || null}
-                outletCount={predictor.outletSummaries.length}
-                whatIf={whatIf}
-              />
-            </div>
-          </>
-        )}
+        {s ? (
+          <OutletPlanProvider
+            key={s.placeId}
+            datasetId={datasetId}
+            outlet={s.placeId}
+            reviews={s.reviews}
+            themeTable={s.snapshot.themeTable}
+          >
+            {body}
+          </OutletPlanProvider>
+        ) : body}
       </div>
     </div>
   )
