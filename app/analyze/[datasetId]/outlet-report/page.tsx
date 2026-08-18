@@ -149,7 +149,7 @@ export default async function OutletReportPage(props: {
     levers, strengths,
     summary: summary || null,
     model: predictor.model,
-    brandDriver: predictor.brandLevers[0]?.theme || null,
+    brandDrivers: predictor.brandLevers.map((d) => d.theme),
     whatIf,
   } : null
 
@@ -224,7 +224,7 @@ export default async function OutletReportPage(props: {
             <h2 className="text-sm font-bold text-gray-700">Deeper analysis <span className="font-normal text-gray-400">— how this location compares to its peers</span></h2>
             <OutletReportTabs
               selected={s} levers={levers} strengths={strengths} summary={summary} model={predictor.model}
-              brandDriver={predictor.brandLevers[0]?.theme || null}
+              brandDrivers={predictor.brandLevers.map((d) => d.theme)}
               outletCount={predictor.outletSummaries.length}
               whatIf={whatIf}
             />

@@ -65,6 +65,14 @@ export type ThemeStanding = {
   cohortSize: number    // # outlets in the bottom quartile on this theme (the peer cohort)
   exemplars: Exemplar[] // top 3–5 peers to learn from on this theme (best first)
   quote: string | null  // a verbatim 1–3★ quote from this outlet citing the theme
+  // Detractors this outlet would win back by moving THIS theme alone to the peer
+  // median — the honest measure of "work this first". Deliberately solo and
+  // therefore conservative: projectRecovery gates each review by its
+  // LEAST-improved theme, so a review that also cites something you're not
+  // fixing counts for nothing. A theme with a wide peer gap but heavy
+  // co-occurrence lands near zero, which is the correct signal — on its own it
+  // buys you little. See the what-if block for the combined scenario.
+  soloRecovery: number
 }
 
 // Keep the historical name `OutletLever` (consumers import it) = a weakness.
@@ -154,7 +162,7 @@ export type OutletSummary = {
   gapToTarget: number
   lowRateRank: number   // 1 = the brand's highest 1–3★ rate (worst); N = best
   ratingRank: number    // CONVENTIONAL rank by avg star: 1 = best (highest), N = worst
-  topIssue: { theme: string; peerPercentile: number } | null // worst-quartile theme
+  topIssue: { theme: string; peerPercentile: number } | null // the theme this outlet ranks WORST on vs peers (by percentile, not by impact)
   weaknessCount: number // # bottom-quartile actionable themes
 }
 
@@ -449,6 +457,16 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
       .map((o) => ({ placeId: o.placeId, label: labelOf(o.placeId), lowRate: o.lowRate, rating: o.avg }))
   }
 
+  // Per-theme peer targets. Computed HERE, ahead of the weakness cards, because
+  // each card now reports what closing its own gap to the median would recover.
+  const p25 = (a: number[]): number => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor((s.length - 1) * 0.25)] : 0 }
+  const themeTargets = actionableThemes.map((t) => {
+    const rates = aggs.map((o) => o.problemRate[t])
+    return { theme: t, medianRate: median(rates), bestRate: p25(rates), worstRate: Math.max(0, ...rates) }
+  })
+  const medianByIdx = themeTargets.map((t) => t.medianRate)
+  const idxOfTheme = new Map(actionableThemes.map((t, i) => [t, i]))
+
   // ── Per-outlet weaknesses (bottom quartile) + strengths (top quartile). ──
   // Weakness cards quote a 1–3★ review (the complaint); strength cards quote a
   // 4–5★ review (the praise) — pass the matching quote map per context.
@@ -456,32 +474,55 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
   for (const e of input.examples || []) negQuote.set(`${e.placeId}|${e.theme}`, e.quote)
   const posQuote = new Map<string, string>()
   for (const e of input.positiveExamples || []) posQuote.set(`${e.placeId}|${e.theme}`, e.quote)
-  const standing = (o: Agg, t: string, qmap: Map<string, string>): ThemeStanding => ({
+  // What moving ONE theme to the peer median wins back, holding everything else
+  // where it is. Same pure projectRecovery the what-if panel uses.
+  const soloRecoveryOf = (o: Agg, cur: number[], t: string): number => {
+    const i = idxOfTheme.get(t)
+    if (i == null || !o.reviews13.length) return 0
+    const target = cur.map((c, k) => (k === i ? Math.min(c, medianByIdx[i]) : c))
+    return projectRecovery(o.reviews13, cur, target)
+  }
+  const standing = (o: Agg, t: string, qmap: Map<string, string>, cur: number[]): ThemeStanding => ({
     theme: t, problemRate: o.problemRate[t], peerPercentile: themePctl[t]?.get(o.placeId) ?? 0,
     shareInBad: o.shareInBad[t], cohortSize: (themeFocus[t] || []).length,
     exemplars: themeExemplars[t] || [], quote: qmap.get(`${o.placeId}|${t}`) || null,
+    soloRecovery: soloRecoveryOf(o, cur, t),
   })
   const outletLevers: Record<string, ThemeStanding[]> = {}
   const outletStrengths: Record<string, ThemeStanding[]> = {}
   for (const o of aggs) {
     const ranked = actionableThemes.filter((t) => themeRanked.has(t))
+    const cur = actionableThemes.map((t) => o.problemRate[t])
+    // Ordered by what fixing each one actually WINS BACK, not by how deep into
+    // the worst tail it sits (2026-08-18, owner). Peer percentile answers "how
+    // unusual is this?"; it does not answer "what do I do first?" — a theme can
+    // be bottom-10% and still touch fewer guests than a bottom-25% one. Ties and
+    // outlets with no 1–3★ pool fall back to the old percentile order.
     outletLevers[o.placeId] = ranked
       .filter((t) => (themePctl[t]?.get(o.placeId) ?? 0) >= BOTTOM_PCTL && o.problemRate[t] > 0)
-      .map((t) => standing(o, t, negQuote))
-      .sort((a, b) => b.peerPercentile - a.peerPercentile || b.problemRate - a.problemRate)
+      .map((t) => standing(o, t, negQuote, cur))
+      .sort((a, b) => b.soloRecovery - a.soloRecovery || b.peerPercentile - a.peerPercentile || b.problemRate - a.problemRate)
     outletStrengths[o.placeId] = ranked
       .filter((t) => (themePctl[t]?.get(o.placeId) ?? 100) <= TOP_PCTL)
-      .map((t) => standing(o, t, posQuote))
+      .map((t) => standing(o, t, posQuote, cur))
       .sort((a, b) => a.peerPercentile - b.peerPercentile)
   }
 
   const outletSummaries: OutletSummary[] = aggs.map((o) => {
     const w = outletLevers[o.placeId] || []
+    const worstRanked = w.length
+      ? [...w].sort((a, b) => b.peerPercentile - a.peerPercentile || b.problemRate - a.problemRate)[0]
+      : null
     return {
       placeId: o.placeId, label: labelOf(o.placeId), reviews: o.reviews, rating: o.avg,
       lowRate: o.lowRate, lowCount: o.lowCount, gapToTarget: Math.max(0, o.lowRate - targetLowRate),
       lowRateRank: 0, ratingRank: 0, // assigned below
-      topIssue: w[0] ? { theme: w[0].theme, peerPercentile: w[0].peerPercentile } : null,
+      // PINNED to the worst PERCENTILE, deliberately not `w[0]`. The lever cards
+      // are now ordered by recovery impact (2026-08-18), but this field is
+      // rendered under the label "Worst-ranked issue (vs all outlets)" on Brand
+      // Health and in two decks — letting it follow the new order would make
+      // that column say something it doesn't mean.
+      topIssue: worstRanked ? { theme: worstRanked.theme, peerPercentile: worstRanked.peerPercentile } : null,
       weaknessCount: w.length,
     }
   }).sort((a, b) => b.lowRate - a.lowRate)
@@ -494,11 +535,6 @@ export function buildPredictor(input: PredictorInput): OutletPredictor {
   // ── Interactive what-if inputs. Per actionable theme, the peer-median and
   // best-quartile problem rate (the targets); per outlet, its 1–3★ review
   // theme-sets + current per-theme problem rate. ──
-  const p25 = (a: number[]): number => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor((s.length - 1) * 0.25)] : 0 }
-  const themeTargets = actionableThemes.map((t) => {
-    const rates = aggs.map((o) => o.problemRate[t])
-    return { theme: t, medianRate: median(rates), bestRate: p25(rates), worstRate: Math.max(0, ...rates) }
-  })
   const outletWhatIf: Record<string, OutletWhatIf> = {}
   for (const o of aggs) {
     outletWhatIf[o.placeId] = {

@@ -28,3 +28,12 @@ export function monthLabel(m: string): string {
   const names = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
   return `${names[Number(mo)] || mo} '${y.slice(2)}`
 }
+
+// "A", "A and B", "A, B and C" — for naming the chain's systemic drivers, which
+// are a LIST. Rendering only the first one under the word "one" was the bug this
+// exists to prevent.
+export function listWords(items: string[]): string {
+  if (items.length <= 1) return items[0] || ''
+  if (items.length === 2) return `${items[0]} and ${items[1]}`
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
+}

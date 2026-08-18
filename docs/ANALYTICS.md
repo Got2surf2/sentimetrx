@@ -1615,6 +1615,40 @@ marker.
 > Ruth's Chris); a 6-page result means something is over-spaced — treat it as a
 > defect, not a data variation.
 >
+> **Levers are ordered by IMPACT, and the systemic callout names all the drivers
+> (2026-08-18, owner).** The callout used to read *"The chain's **one** systemic
+> issue is X — and you're bottom-quartile on it. That makes it your
+> highest-leverage fix."* Two defects. (1) `predictor.brandLevers` is a **list** —
+> every actionable theme over-represented among 1–3★ reviews brand-wide (`lift =
+> pBad/pGood >= driverLift`, default 1.2, with `nBad >= 20`) — and the copy rendered
+> only `[0]` under the hardcoded word "one". On the 67-store Ruth's Chris set
+> **three** qualify (Value & Pricing 5.32× · Operational Issues 2.78× · Food
+> Quality 1.38×). (2) It then called that theme the outlet's *highest-leverage
+> fix*, conflating two different measurements: brand **lift** is a
+> *discriminator* (does this theme separate happy from unhappy guests?), not a
+> measure of local size. Value & Pricing wins on lift only because happy guests
+> almost never mention price (pGood 3.1%); Operational Issues appears in **41.9%**
+> of all 1–3★ reviews chain-wide versus 16.5%.
+>
+> The callout now names every driver (`listWords`), states which of them this
+> outlet is bottom-quartile on, and makes **no leverage claim** — that claim moved
+> to where it is computed. `ThemeStanding` gained **`soloRecovery`**: detractors
+> this outlet wins back by moving **that theme alone** to the peer median, via the
+> same pure `projectRecovery`. `outletLevers` sorts by it (ties fall back to the
+> old percentile order), each card states its own number, and the heading is
+> **"Work these — biggest win first"**. It is deliberately *solo* and therefore
+> conservative — `projectRecovery` gates each review by its least-improved theme,
+> so a theme with a wide peer gap but heavy co-occurrence lands near zero, which
+> is the correct signal (Special Occasions: a 1.5pp gap but only 1 of its 11
+> citing reviews cites it alone). Sub-1 is spelled out rather than rounded to
+> "~0 guests", which would read as *pointless* instead of *rarely arrives alone*.
+>
+> ⚠️ **`OutletSummary.topIssue` is deliberately NOT `outletLevers[0]`.** It is
+> pinned to the worst **percentile** theme, because Brand Health and two decks
+> render it under the label *"Worst-ranked issue (vs all outlets)"* — letting it
+> follow the new impact order would make that column say something it doesn't
+> mean.
+
 > **Shared wording lives in `lib/outletPeerWords.ts`** (`pct1`, `rankWord`,
 > `topWord`, `locOnly`, `monthLabel`), imported by both `OutletReportTabs.tsx` and
 > the PDF builder — that shared import is what stops the two surfaces drifting on

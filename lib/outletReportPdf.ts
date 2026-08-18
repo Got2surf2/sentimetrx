@@ -29,7 +29,7 @@ import type { OutletPdfPayload } from '@/lib/outletPdfPayload'
 import { projectRecovery } from '@/lib/outletPredictor'
 import { verbatimSupports } from '@/lib/verbatimGuard'
 import { starBarColor } from '@/lib/ratingGradient'
-import { pct1, locOnly, rankWord, topWord, monthLabel } from '@/lib/outletPeerWords'
+import { pct1, locOnly, rankWord, topWord, monthLabel, listWords } from '@/lib/outletPeerWords'
 
 const TEAL = '#0F7173'
 const ORANGE = '#E85A1A'
@@ -223,7 +223,7 @@ function trendChartSvg(trend: TrendPoint[]): string {
 // callout — one argument, so they share a block and never split apart.
 function recoveryBlock(a: {
   name: string; reviews: number; summary: OutletSummary | null; model: PredictorModel | null
-  outletCount: number; levers: ThemeStanding[]; strengths: ThemeStanding[]; brandDriver: string | null
+  outletCount: number; levers: ThemeStanding[]; strengths: ThemeStanding[]; brandDrivers: string[]
 }): string {
   if (!a.summary || !a.model) {
     return `<section class="blk"><h2>Deeper analysis — how this location compares to its peers</h2>
@@ -237,14 +237,24 @@ function recoveryBlock(a: {
       ? 'This location already runs among your best — hold the line and share what’s working.'
       : 'It isn’t a bottom-quartile performer on any single operational theme; its 1–3★ reviews are spread across topics. Work the operational basics.'
 
-  const driverState: 'weak' | 'strong' | 'mid' | null = !a.brandDriver ? null
-    : a.levers.some((l) => l.theme === a.brandDriver) ? 'weak'
-    : a.strengths.some((l) => l.theme === a.brandDriver) ? 'strong' : 'mid'
-  const driverTail = driverState === 'weak'
-    ? 'and you’re <b>bottom-quartile</b> on it. That makes it your highest-leverage fix.'
-    : driverState === 'strong'
-      ? 'and you’re <b>top-quartile</b> on it. One less thing to worry about — protect it.'
-      : 'you’re middle-of-the-pack on it. Not your biggest problem, but worth watching.'
+  // The chain usually has MORE THAN ONE systemic driver, and this used to print
+  // only the first under the words "the chain's one systemic issue" — then call
+  // it the outlet's "highest-leverage fix", conflating brand-level
+  // over-representation with local impact. The leverage claim now lives on the
+  // lever list, where it is computed. (2026-08-18, owner.)
+  const mine = new Set(a.levers.map((l) => l.theme))
+  const strong = new Set(a.strengths.map((l) => l.theme))
+  const weakDrivers = a.brandDrivers.filter((d) => mine.has(d))
+  const strongDrivers = a.brandDrivers.filter((d) => strong.has(d))
+  const tone = weakDrivers.length ? 'weak' : strongDrivers.length === a.brandDrivers.length ? 'strong' : 'mid'
+  const lead = a.brandDrivers.length === 1
+    ? `The chain’s one <b>systemic</b> issue is <b>${esc(a.brandDrivers[0])}</b> — a theme that shows up far more in 1–3★ reviews than in 4–5★ ones brand-wide.`
+    : `The chain’s <b>systemic</b> issues are <b>${esc(listWords(a.brandDrivers))}</b> — themes that show up far more in 1–3★ reviews than in 4–5★ ones brand-wide.`
+  const stand = weakDrivers.length
+    ? `You’re <b>bottom-quartile</b> on ${weakDrivers.length === a.brandDrivers.length && a.brandDrivers.length > 1 ? `all ${a.brandDrivers.length}` : `<b>${esc(listWords(weakDrivers))}</b>`}.`
+    : strongDrivers.length === a.brandDrivers.length
+      ? `You’re <b>top-quartile</b> on ${a.brandDrivers.length > 1 ? 'every one of them' : 'it'} — protect that.`
+      : 'None of them is a bottom-quartile weakness here.'
 
   return `<section class="blk">
     <h2>Deeper analysis — how this location compares to its peers</h2>
@@ -254,8 +264,17 @@ function recoveryBlock(a: {
       <b>#${n0(sm.lowRateRank)}</b> highest 1–3★ rate of ${n0(a.outletCount)} outlets (1 = worst), versus
       <b>${pct1(m.lowRate)}</b> brand average and <b>${pct1(m.bestLowRate)}</b> at your best location. ${closing}</p>
     </div>
-    ${driverState ? `<div class="callout ${driverState}">The chain’s one <b>systemic</b> issue is <b>${esc(a.brandDriver || '')}</b> — ${driverTail}</div>` : ''}
+    ${a.brandDrivers.length ? `<div class="callout ${tone}">${lead} ${stand}</div>` : ''}
   </section>`
+}
+
+// Sub-1 is spelled out rather than rounded to "~0", which would read as "this is
+// pointless" when it really means "this rarely arrives on its own" — the
+// combined what-if is where those themes pay off.
+function recoveryWords(n: number): string {
+  if (n < 0.5) return 'under 1 unhappy guest — it almost always arrives alongside another complaint'
+  const r = Math.round(n)
+  return `about ${r} unhappy guest${r === 1 ? '' : 's'}`
 }
 
 function leverCards(levers: ThemeStanding[]): string {
@@ -266,11 +285,13 @@ function leverCards(levers: ThemeStanding[]): string {
       <span class="tag bad">${esc(rankWord(l.peerPercentile))} of locations</span>
     </div>
     <p class="card-d"><b>${pct1(l.problemRate)}</b> of all reviews here are 1–3★ and cite this (${pct1(l.shareInBad)} of its 1–3★ reviews).${l.cohortSize > 1 ? ` You’re one of <b>${n0(l.cohortSize)}</b> outlets in the bottom quartile here.` : ''}</p>
+    <p class="card-d">Fixing <b>only this</b> — to the peer median — wins back <b>${esc(recoveryWords(l.soloRecovery))}</b>.</p>
     ${verbatimSupports(l.quote, 'negative') ? `<p class="q bad">“${esc(l.quote || '')}”</p>` : ''}
     ${l.exemplars.length ? `<div class="learn">★ <b>Learn from</b> ${l.exemplars.slice(0, 5).map((e) => `${esc(locOnly(e.label))}${e.rating != null ? ` (${e.rating.toFixed(1)}★)` : ''}`).join(', ')} — the top performers on this theme. Worth a call on how they run it.</div>` : ''}
   </div>`)
   return `<section class="blk flow">
-    <div class="keeptog"><h2>Where this location ranks worst vs all outlets — work these</h2>${cards[0]}</div>
+    <div class="keeptog"><h2>Work these — biggest win first</h2>
+    <p class="lede">Themes where this location is bottom-quartile vs all outlets, ordered by how many unhappy guests bringing each one to the peer median would win back — not by how unusual it is.</p>${cards[0]}</div>
     ${cards.slice(1).join('')}
   </section>`
 }
@@ -548,7 +569,7 @@ export function buildOutletReportHtml(p: OutletPdfPayload): string {
 
   ${recoveryBlock({
     name: s.name, reviews: s.reviews, summary: p.summary, model: p.model,
-    outletCount: p.outletCount, levers: p.levers, strengths: p.strengths, brandDriver: p.brandDriver,
+    outletCount: p.outletCount, levers: p.levers, strengths: p.strengths, brandDrivers: p.brandDrivers,
   })}
 
   ${leverCards(p.levers)}

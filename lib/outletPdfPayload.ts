@@ -42,7 +42,7 @@ export type OutletPdfPayload = {
   strengths: ThemeStanding[]
   summary: OutletSummary | null
   model: PredictorModel | null
-  brandDriver: string | null
+  brandDrivers: string[]   // ALL the chain's systemic drivers, not just the top one
   whatIf: WhatIfView | null
   unitLabel?: string
 }
@@ -170,6 +170,7 @@ function standing(v: unknown): ThemeStanding | null {
     shareInBad: num(v.shareInBad), cohortSize: num(v.cohortSize),
     exemplars: arr(v.exemplars, exemplar, 5),
     quote: strOrNull(v.quote),
+    soloRecovery: num(v.soloRecovery),
   }
 }
 
@@ -300,7 +301,7 @@ export function parseOutletPdfPayload(body: unknown, outlet: string): OutletPdfP
     strengths: arr(body.strengths, standing, 20),
     summary: summary(body.summary),
     model: model(body.model),
-    brandDriver: strOrNull(body.brandDriver, 120),
+    brandDrivers: arr(body.brandDrivers, (x) => (typeof x === 'string' ? x.slice(0, 120) : null), 12),
     whatIf: whatIf(body.whatIf),
     unitLabel: typeof body.unitLabel === 'string' ? body.unitLabel.slice(0, 40) : undefined,
   }

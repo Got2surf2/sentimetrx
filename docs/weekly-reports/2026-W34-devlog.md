@@ -1034,3 +1034,58 @@ One harness bug worth remembering: the "unauthenticated → 401" probe ran throu
 was silently re-testing the authed path and returned 200. A fresh context fixes
 it. And Playwright's request context sends no `Origin`, which `proxy.ts` CSRF-rejects
 with a 403 that looks exactly like a route bug — every direct probe sets it.
+
+## "Is the top banner correct?" — no, and the cards under it were sorted wrong too (2026-08-18)
+
+The owner asked of the Outlet Deep-Dive callout — *"The chain's one systemic
+issue is Value & Pricing — and you're bottom-quartile on it. That makes it your
+highest-leverage fix."* — whether it was correct, why only one issue was named,
+and whether that was the highest-impact one. Three claims; two were wrong.
+
+**"one systemic issue" was a copy bug.** `predictor.brandLevers` is a *list* —
+every actionable theme over-represented among 1–3★ reviews brand-wide — and the
+callout rendered `[0]` under a hardcoded singular. On the 67-store Ruth's Chris
+set three qualify: Value & Pricing (lift 5.32×), Operational Issues (2.78×), Food
+Quality & Preparation (1.38×). Nothing ever checked the list length.
+
+**"highest-leverage fix" was a category error.** Lift is `pBad/pGood` — how well a
+theme *discriminates* unhappy guests from happy ones. Value & Pricing wins it
+because happy guests almost never mention price (pGood 3.1%), which makes it a
+superb signal and says nothing about size. Operational Issues appears in **41.9%**
+of all 1–3★ reviews chain-wide against 16.5%. At this location it was bigger on
+every local measure: problem rate 11.8% vs 7.0%, 44.3% vs 26.2% of its own 1–3★
+reviews, gap to peer median 5.2pp vs 4.4pp, 27 of its 61 detractors vs 16. The
+banner was measuring signal-to-noise and then asserting impact.
+
+**The fix (owner picked it): compute the leverage instead of asserting it.**
+`ThemeStanding` gained `soloRecovery` — guests won back by moving *that theme
+alone* to the peer median, through the same pure `projectRecovery` the what-if
+uses. Levers now sort by it, every card states its own number, and the heading
+says "Work these — biggest win first". The callout names all the drivers and
+makes no leverage claim at all.
+
+Being *solo* is the point, and it is deliberately conservative: `projectRecovery`
+gates each review by its least-improved theme, so a theme with a wide peer gap
+but heavy co-occurrence lands near zero. Special Occasions has a 1.5pp gap and
+recovers ~0.3 guests — only 1 of its 11 citing reviews cites it alone. That is
+the correct signal, and it is one the old percentile ordering actively hid. Sub-1
+is spelled out ("under 1 unhappy guest — it almost always arrives alongside
+another complaint") rather than rounded to "~0", which would read as *pointless*
+instead of *rarely arrives alone*.
+
+A nice second-order finding: Value & Pricing and Operational Issues come out
+near-tied on solo recovery (4.42 vs 4.47) despite Ops touching 70% more
+detractors — because Value & Pricing is far more often the *sole* complaint (7 of
+16 vs 10 of 27). Both cards round to "about 4", which is the honest read: do both.
+
+**The blast radius I nearly missed.** `OutletSummary.topIssue` was `outletLevers[0]`,
+and it is rendered on Brand Health and in two PPTX decks under the label
+*"Worst-ranked issue (vs all outlets)"*. Reordering the levers would have silently
+turned that column into a lie. It is now pinned to the worst-percentile theme
+with a comment saying why. Checking who consumed the field before changing its
+ordering was the whole of that catch.
+
+The 67-outlet sweep gained two assertions — levers must be in descending
+`soloRecovery` order, and the callout must never say "one systemic issue" when
+`brandLevers.length > 1`. It immediately caught its own stale heading marker,
+which is the cheap version of the bug it exists to prevent.
