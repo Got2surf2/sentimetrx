@@ -569,3 +569,45 @@ of the silent-empty-result trap: `auth.admin.listUsers` returns
 `{ error: 'Database error finding users', users: [] }` on this project, so a reap
 that reads only `data.users` looks exactly like "nothing to clean up". It now
 resolves ids from `public.users` and checks every error.
+
+### Theme counts: one population, not two
+
+Closed the open owner decision (server 1,817 vs client 1,962). It was not a
+preference call — the client number was arithmetically inconsistent with the
+denominator it was being divided by.
+
+The theme card divides by the **substantive** comment base (the 2026-07-14
+two-count decision), and the server's per-theme counts come from
+`theme_counts_substantive` (sql/181) over that same base. But `recountThemes` —
+the client recount that runs once rows land and *overwrites* the server's
+numbers — counted matches over all **non-empty** text. Numerator and denominator
+came from different populations, so a theme could be credited with hits inside
+comments the base excludes.
+
+Fixed by gating `recountThemes` on `isSubstantiveText`, **per field**, matching
+the stored SQL map (`substantive ? fld`, any field) rather than testing the
+joined text — otherwise two short answers add up to a passing word count. Six
+tests, including that one.
+
+The verification that matters is population parity, not a spot number: the JS
+gate now selects **exactly** the rows the server counts over — 19,708/19,708,
+19,133/19,133 and 27,234/27,234 across three TEST datasets, zero divergence in
+either direction. sql/178 stores the verdict per comment precisely so JS and SQL
+can't drift; the client finally reads the same population.
+
+⚠️ **Numbers move, and the old ones were wrong.** Review datasets shift a little
+(Cheddar's Food Quality 4,455 → 4,275, 39% → 37%). Survey datasets shift a lot:
+Carrabba's GSS Food Quality read **89%** — 8,393 matches over a 9,482 substantive
+base — and now reads **58%**. Service Excellence 83% → 59%. A card claiming 89%
+of respondents raised food quality was counting one- and two-word answers the
+denominator never included. Anything exported before today won't reconcile; same
+class of one-way move as sql/191.
+
+**A verification trap I walked into and had to back out of.** My first before/after
+comparison pre-filtered rows to non-empty and passed them to `recountThemes` —
+which now applies the substantive gate itself, so it measured the new rule twice
+and printed a flat "no change" across every dataset. I nearly published that.
+The "before" arm has to compute the old rule independently
+(`commentMatchesTheme` over the non-empty set); once it did, the 89% → 58% shift
+appeared immediately. **When you change a function, your baseline cannot run
+through it.**

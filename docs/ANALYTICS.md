@@ -61,6 +61,32 @@ TextMine is **four peer sections** in a persistent **two-row bar** — the share
 - **Tokenization is Context-specific** (`contextTokens`, 2026-08-13). `trendingWords.tokenize` keeps contractions whole while its stop list carries only the uncontracted forms, so `we're`/`it's`/`they're`/`that's` topped the cloud on spoken corpora; the enclitic is now stripped and the base re-tested, which also folds possessives (`sarah's` → `sarah`). The extra function-word stop set is **deliberately narrower than WordCloud's** — the cloud drops *good/great/new/time/day*, but those are the ANSWER for a collocate ("what is food talked about with?" → good/great/delicious). Both passes and `filterCooccurringRows` share the helper, so the chip count and its drill-down can't diverge on normalization.
 - Supersedes the unwired `trendingWords.contextTermsFor` (whole-comment scoped, token-counted, no drill-down).
 
+**Theme counts are substantive-only on BOTH sides (2026-08-18).** `recountThemes`
+(`lib/themeUtils.ts`), the client recount that runs once the rows land, used to
+count matches over all **non-empty** text while the card divided by the
+**substantive** base — numerator and denominator from different populations, so a
+theme could be credited with hits inside comments the base excludes. The client
+recount always won, because it runs after the server counts arrive and overwrites
+them. It now gates on `isSubstantiveText`, per FIELD, matching the stored SQL map
+(`substantive ? fld`, any field) rather than testing the joined text — otherwise
+two short answers would add up to a passing word count.
+
+Verified against the database on three TEST datasets: the JS gate selects
+**exactly** the rows the server's `theme_counts_substantive` (sql/181) is computed
+over — 19,708/19,708, 19,133/19,133 and 27,234/27,234 agreeing, zero divergence
+either way. That parity is the point: sql/178 stores the verdict per comment
+precisely so JS and SQL cannot drift, and the client is now reading the same
+population.
+
+⚠️ **Numbers move, and the old ones were wrong.** On review datasets the shift is
+small (Cheddar's Food Quality 4,455 → 4,275, 39% → 37%). On **survey** datasets,
+where short answers are common, it is large: on Carrabba's GSS, Food Quality read
+**89%** (8,393 matches over a 9,482 substantive base) and now reads **58%**
+(5,521); Service Excellence 83% → 59%. The old figure was inflated by counting
+one- and two-word answers that the denominator never included. Anything exported
+before 2026-08-18 will not reconcile against the current cards — same class of
+one-way move as sql/191.
+
 **Metric strip — unstamped `substantive` guard (2026-08-13)**
 - The strip leads with the SUBSTANTIVE comment count (`sql/178/179`). A dataset ingested outside the stamping path (a direct-write script, a legacy import) has the flag unstamped, which counts as **zero** — and the strip used to render that as *"0 comments · 0% of 49,033 answered · Theme fit Diffuse 0%"*, a damning verdict on data that had simply never been scored, flatly contradicting the theme cards below counting the same rows in the thousands.
 - `DatasetMetricStrip` now guards on the DATA as well as the cache shape: when `substantiveRecords === 0` it falls back to the all-based `records`/`inThemes`/`themeFitPct`, **suppresses the "% of N answered" share** (rendering it off the fallback would claim 100% off a measurement never taken), and swaps the tooltip. `DatasetAboutPopover` suppresses its per-field "N substantive" clause under the same condition. Neither asserts "not scored" nor "zero substantive" — they fall back to the count they can defend.

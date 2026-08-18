@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   lexiconScore, classifySentiment, buildKwRegex, commentMatchesTheme, kwPatternFragment,
-  sampleSize95, evenSample, highlightKeywords,
+  sampleSize95, evenSample, highlightKeywords, recountThemes,
   sentColor, sentBg, ratingColor, ratingBg, getThemeColor, getRowText,
   THEME_PALETTE,
   themeFieldKey, themeModelKey, stripFieldEntries, themeFieldEntries, mergeThemeModelWrite, themeSetsForExport,
@@ -272,5 +272,71 @@ describe('themeUtils — themeSetsForExport', () => {
   it('keyless legacy blob → no sets (exporters read its top level directly)', () => {
     expect(themeSetsForExport({ themes: [{ id: 't1', name: 'X', description: '', keywords: ['x'], sentiment: 'neutral', count: 0, percentage: 0, relatedThemes: [] }], summary: '', fieldName: '' })).toEqual([])
     expect(themeSetsForExport(null)).toEqual([])
+  })
+})
+
+describe('recountThemes — the substantive base', () => {
+  // The card divides every theme count by the SUBSTANTIVE comment base, and the
+  // server's per-theme counts (sql/181 theme_counts_substantive) are over that
+  // same base. The client recount must use it too, or the numerator counts hits
+  // inside comments the denominator excludes.
+  const mk = (keywords: string[]): Theme => ({
+    id: 't1', name: 'Food', description: '', keywords,
+    sentiment: 'neutral', count: 0, percentage: 0, relatedThemes: [],
+  })
+
+  it('does NOT count a theme hit inside a non-substantive comment', () => {
+    const rows = [
+      { c: 'food cold' },                                                   // 2 words — not substantive
+      { c: 'The food was cold and the service was extremely slow tonight' }, // substantive
+    ]
+    const [t] = recountThemes([mk(['food'])], rows, 'c')
+    expect(t.count).toBe(1)
+    // …and the percentage is a share of the substantive base (1 of 1), not 1 of 2.
+    expect(t.percentage).toBe(100)
+  })
+
+  it('counts every substantive match', () => {
+    const rows = [
+      { c: 'The food here is consistently excellent and worth the trip' },
+      { c: 'Our food arrived stone cold after a very long wait indeed' },
+      { c: 'Parking was easy and the staff were welcoming throughout our visit' },
+    ]
+    const [t] = recountThemes([mk(['food'])], rows, 'c')
+    expect(t.count).toBe(2)
+    expect(t.percentage).toBe(67)
+  })
+
+  it('tests each FIELD separately — two short answers must not add up to substantive', () => {
+    // 3 words + 3 words. Joined that is 6 and would pass; per field neither does,
+    // which is what the stored SQL map (`substantive ? fld`, any field) does.
+    const rows = [{ a: 'food was cold', b: 'service was slow' }]
+    const [t] = recountThemes([mk(['food'])], rows, ['a', 'b'])
+    expect(t.count).toBe(0)
+  })
+
+  it('a substantive answer in ANY active field qualifies the row', () => {
+    const rows = [{ a: 'food was cold', b: 'the service was slow and nobody checked on us once' }]
+    const [t] = recountThemes([mk(['food'])], rows, ['a', 'b'])
+    expect(t.count).toBe(1)
+  })
+
+  it('the overall rating baseline still averages ALL rated rows, not just substantive ones', () => {
+    // Per the ratings principle: overall/aggregate ratings use every rated row;
+    // only the per-theme figures are text-scoped.
+    const rows = [
+      { c: 'The food was cold and the service was extremely slow tonight', r: '2' },
+      { c: 'ok', r: '5' },   // non-substantive but rated — must still move the baseline
+    ]
+    const [t] = recountThemes([mk(['food'])], rows, 'c', 'r')
+    expect(t.avgRating).toBe(2)
+    expect(t.ratingDelta).toBe(-1.5)   // 2 - ((2+5)/2)
+  })
+
+  it('a theme with no keywords reports zero against the substantive base', () => {
+    const rows = [{ c: 'The food was cold and the service was extremely slow tonight' }, { c: 'nope' }]
+    const [t] = recountThemes([mk([])], rows, 'c')
+    expect(t.count).toBe(0)
+    expect(t.percentage).toBe(0)
   })
 })

@@ -2,6 +2,7 @@
 // Client-safe pure utilities for theme matching, counting, and text utilities.
 // No server-only imports. Safe to use in browser components.
 
+import { isSubstantiveText } from './datasetUtils'
 import { expandLemma } from './lemmas'
 import { POSITIVE_WORDS as POS_WORDS, NEGATIVE_WORDS as NEG_WORDS, NEGATORS } from './sentimentLexicon'
 import { taxonomyFieldKey } from './dimensionFields'
@@ -255,9 +256,22 @@ export function recountThemes(
   ratingField?: string | null
 ): Theme[] {
   const fields = Array.isArray(field) ? field : [field]
+  // SUBSTANTIVE, not merely non-empty (2026-08-18). Every theme number on the
+  // TextMine card is a share of the substantive comment base — the denominator
+  // is `filteredRows.filter(r => fields.some(f => isSubstantiveText(r[f])))`,
+  // and the server's per-theme counts come from `theme_counts_substantive`
+  // (sql/181) over that same base. Counting matches here over all NON-EMPTY
+  // text put the numerator and denominator in different populations: a theme
+  // could be credited with hits inside comments the base excludes. On Darden's
+  // Food Quality that read 1,962 client-side against a server figure of 1,817,
+  // and the client recount always won because it runs once the rows land.
+  //
+  // The test is per FIELD, matching the stored SQL map (`substantive ? fld`,
+  // any field) — NOT isSubstantiveText over the joined text, which would let
+  // two short answers add up to a passing word count.
   const nonEmpty = rows.filter(function(r) {
     return fields.some(function(f) {
-      return String(r[f] || '').trim().length > 0
+      return isSubstantiveText(String(r[f] || ''))
     })
   })
   // Pre-compile keyword regexes for all themes to avoid rebuilding per row.
