@@ -32,7 +32,7 @@
     "schema:snapshot": "supabase db dump --linked --schema public -f docs/db/schema.sql",
     "check:spec-staged": "tsx scripts/check-spec-drift-staged.ts",
     "postinstall": "git config core.hooksPath .githooks 2>/dev/null || true",
-    "lint:ci": "eslint . --max-warnings 176"
+    "lint:ci": "eslint . --max-warnings 172"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1024.0",
