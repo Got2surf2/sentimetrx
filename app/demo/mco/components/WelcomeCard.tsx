@@ -1,4 +1,5 @@
 'use client'
+import Image from 'next/image'
 
 // Default landing card for the right pane of /demo/mco. Shows MCO branding,
 // a live parking snapshot pulled from /api/mco/parking, and four quick-
@@ -128,7 +129,7 @@ export default function WelcomeCard({ hint, onTileClick }: { hint: WelcomeHint; 
   return (
     <div className="canvas-card-inner welcome-card">
       <div className="welcome-hero">
-        <img src="/mco/logo-mark.png" alt="MCO" className="welcome-logo-mark" />
+        <Image src="/mco/logo-mark.png" alt="MCO" width={275} height={120} className="welcome-logo-mark" />
         <div className="welcome-airport-name">{greeting}</div>
         <div className="welcome-sub">{sub}</div>
       </div>

@@ -1,4 +1,5 @@
 'use client'
+import Image from 'next/image'
 
 // CanvasShell — landscape layout wrapping ChatPane (left, 40%) and a
 // canvas slot (right, 60%) that swaps between four card types. Mode
@@ -232,7 +233,7 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
     <div className={'canvas-shell mode-' + mode}>
       <div className="topbar">
         <div className="brand">
-          <div className="avatar avatar-mco"><img src="/mco/logo-mark.png" alt="MCO" /></div>
+          <div className="avatar avatar-mco"><Image src="/mco/logo-mark.png" alt="MCO" width={275} height={120} /></div>
           <div className="brand-stack">
             <div className="brand-name">MCO Concierge</div>
             <div className="brand-subtitle">{config.subtitle}</div>

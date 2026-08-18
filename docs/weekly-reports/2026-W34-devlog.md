@@ -611,3 +611,29 @@ The "before" arm has to compute the old rule independently
 (`commentMatchesTheme` over the non-empty set); once it did, the 89% → 58% shift
 appeared immediately. **When you change a function, your baseline cannot run
 through it.**
+
+### The four `<img>` → `next/image` conversions
+
+All four `@next/next/no-img-element` warnings were the same asset —
+`/mco/logo-mark.png` (275×120) across `demo/mco/CanvasShell`,
+`demo/mco/WelcomeCard`, `m/[code]/MobileChat` and `m/[code]/page`. Every call
+site sizes by CSS height with `width: auto`, which is the clean case: passing the
+intrinsic dimensions just gives `next/image` the ratio to reserve, and the
+existing CSS keeps controlling the rendered size. Ceiling 176 → 172.
+
+QC'd with `scripts/_verify_mco_logo.mts` (untracked, KEEP) across desktop, kiosk
+and the mobile pickup card, plus screenshots.
+
+**And the QC caught me over-asserting.** My first check was "rendered box ratio
+must match 275/120". Two sites failed it — the topbar chip measured 48×24
+(2.000) on desktop and 24×32 (0.750) in kiosk. That looked like exactly the
+distortion the conversion risked. It wasn't: `.avatar-mco img` carries
+`object-fit: contain`, so the image letterboxes inside a fixed chip and the box
+ratio is meaningless there. An A/B — stash the change, re-measure, restore —
+returned **identical** geometry on both arms, and the before/after screenshots
+are indistinguishable. The check now passes when the ratio matches **or**
+`object-fit` is `contain`.
+
+Worth stating plainly: a red check is a hypothesis, not a verdict. Two of these
+three sessions' scares came from an assertion that was wrong about the thing it
+was measuring rather than from the code under test.

@@ -1,4 +1,5 @@
 'use client'
+import Image from 'next/image'
 
 // Mobile chat surface for /m/[code]. Re-hydrates the chat thread from the
 // kiosk handoff and lets the user keep talking to the same bot on their
@@ -82,7 +83,7 @@ export default function MobileChat({ botId, initialMessages, code }: Props) {
   return (
     <div className="mob">
       <header className="mob-top">
-        <img className="mob-logo" src="/mco/logo-mark.png" alt="MCO" />
+        <Image className="mob-logo" src="/mco/logo-mark.png" alt="MCO" width={275} height={120} />
         <div>
           <div className="mob-brand">MCO Concierge</div>
           <div className="mob-sub">Continued from the kiosk · {code}</div>
