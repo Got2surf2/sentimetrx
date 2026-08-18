@@ -176,14 +176,26 @@ export default async function OutletReportPage(props: {
             {/* AI action plan (page 2 of the export) — lazily generated + cached. */}
             <OutletActionPlanSection key={s.placeId} datasetId={datasetId} outlet={s.placeId} outletName={s.name} reviews={s.reviews} themeTable={s.snapshot.themeTable} />
 
+            {/* Dimensions vs the network (page 3 of the export).
+                Its OWN card, and PRINTED — owner call 2026-08-18. It is the
+                sharpest per-location read on the page ("how does this location
+                compare to the other N on each dimension"), so burying it inside
+                the screen-only "Deeper analysis" block made the most useful
+                thing the least visible one.
+                It stays OUT of the snapshot card above: that block is
+                deliberately ABSOLUTE (GM-facing "how am I doing"), this is
+                RELATIVE to the network. A titled section of its own keeps that
+                separation legible instead of folding the two together. */}
+            <div className="mt-6 rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:mt-0 print:break-before-page print:p-6 print:shadow-none print:ring-0">
+              <h2 className="text-sm font-bold text-gray-700">
+                Dimensions <span className="font-normal text-gray-400">— how this location compares to the network</span>
+              </h2>
+              <OutletDimensionsView block={s.dimensions} outletCount={s.outletCount} />
+            </div>
+
             {/* Deeper peer-relative analysis — screen only, not part of the export. */}
             <div className="mt-6 rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:hidden">
               <h2 className="text-sm font-bold text-gray-700">Deeper analysis <span className="font-normal text-gray-400">— how this location compares to its peers</span></h2>
-              {/* Peer-relative Dimensions. Lives here, not in the printable
-                  snapshot above, because that card is deliberately ABSOLUTE
-                  (GM-facing "how am I doing"), while this is relative to the
-                  network — the same split the Deeper-analysis card already makes. */}
-              <OutletDimensionsView block={s.dimensions} outletCount={s.outletCount} />
               <OutletReportTabs
                 selected={s} levers={levers} strengths={strengths} summary={summary} model={predictor.model}
                 brandDriver={predictor.brandLevers[0]?.theme || null}

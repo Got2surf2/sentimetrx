@@ -99,10 +99,7 @@ export default function OutletDimensionsView({
 
   if (rows.length === 0) {
     return (
-      <div className="mt-6 print:mt-4 print:break-inside-avoid">
-        <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
-          Dimensions — how this {unitLabel} compares
-        </h2>
+      <div className="mt-3 print:mt-2">
         <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50/60 p-4 text-xs text-gray-500">
           No dimension differed from the network by enough to report. That is a
           result, not a gap: on the dimensions guests raise here, this {unitLabel}
@@ -119,11 +116,13 @@ export default function OutletDimensionsView({
   const worst = [...rows].reverse().find((r) => r.delta < 0 && r.quote)
 
   return (
-    <div className="mt-6 print:mt-4 print:break-inside-avoid">
+    <div className="mt-3 print:mt-2">
       <div className="mb-2.5 flex items-baseline justify-between gap-4">
-        <h2 className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">
-          Dimensions — how this {unitLabel} compares
-        </h2>
+        {/* The enclosing card supplies the section title, so this row carries
+            the reading aid rather than repeating the heading. */}
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+          Net-positive rate vs the network
+        </span>
         {/* Legend: always present, two poles. */}
         <span className="flex items-center gap-3 text-[10px] text-gray-400">
           <span className="flex items-center gap-1">

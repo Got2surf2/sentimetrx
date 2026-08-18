@@ -107,10 +107,18 @@ rendered by `OutletDimensionsView`.
 **Form.** The data is a *signed distance from the network average* per dimension,
 so it is a **diverging bar centred on that average**: position carries the sign,
 length the size, and both arms share one scale — independently-scaled arms would
-make a +4 look like a −40. It sits in the "Deeper analysis" card, not the
-printable snapshot above it, because that card is deliberately **absolute**
-(GM-facing "how am I doing") while this is **relative to the network**; that card
-is `print:hidden`, so this section is screen-only today.
+make a +4 look like a −40.
+
+**Placement (owner call, 2026-08-18).** It has its **own titled card and is
+PRINTED** — page 3 of the export, after the snapshot and the AI action plan
+(`print:break-before-page`). It first shipped inside the screen-only "Deeper
+analysis" block, which was defensible on IA grounds (that block is the
+peer-relative bucket) but made the sharpest per-location read on the page the
+least visible thing on it, and kept it out of the client deliverable entirely. It
+still stays **out of the snapshot card**: that block is deliberately **absolute**
+(GM-facing "how am I doing"), this is **relative to the network** — a titled
+section of its own keeps that distinction legible instead of folding the two
+together.
 
 **Colour.** Diverging = two poles + neutral midpoint: **teal-600 `#0d9488`**
 (ahead) ↔ **rose-600 `#e11d48`** (behind), gray centre rule. Validated with the

@@ -777,3 +777,25 @@ unit regression.
 The slide now reads: cold steak, a rude server, cold potatoes, a first-ever bad
 review from a server, "service was horrible", "not worth the $15+". Six tiles,
 one story.
+
+### Dimensions promoted to its own printed section
+
+Owner pushed back on where I'd filed it: I built the block to be the sharpest
+per-location read on the page and then put it inside the screen-only "Deeper
+analysis" card — three levels down, below the snapshot and the action plan, and
+`print:hidden`, so it never reached the client deliverable at all.
+
+The IA reasoning was sound in isolation (that card is the peer-relative bucket)
+but the net effect was that the most useful thing on the page was the least
+visible one. It now has its own titled card — **"Dimensions — how this location
+compares to the network"** — directly after the AI action plan, with
+`print:break-before-page` so it becomes page 3 of the export.
+
+It deliberately stays **out** of the snapshot card above: that block is absolute
+(GM-facing "how am I doing"), this is relative to the network, and a titled
+section of its own keeps the distinction legible rather than folding the two
+together. The block's internal `h2` was dropped where the card now supplies the
+title, leaving the legend row to carry the reading aid ("Net-positive rate vs the
+network"). Verified in print media (`block / visible`) as well as on screen — a
+`print:hidden` on the wrong wrapper would have silently dropped it from every
+client PDF.
