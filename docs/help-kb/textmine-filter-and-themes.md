@@ -34,6 +34,13 @@ Beyond themes, TextMine surfaces two more lenses:
   language (like disappointment or churn intent) shows here too, always with the
   quote as evidence.
 
+## Advanced Analytics (multi-location brands)
+
+If your dataset covers many locations, a fourth section — **Advanced Analytics** —
+appears in the same bar, with Brand Health, a Leaderboard, and a per-location
+Outlet Deep-Dive. It has to be switched on for your organisation or on the
+dataset's **Schema** tab.
+
 ## Word clouds, comparisons, and search
 
 TextMine also gives you word clouds, side-by-side segment comparisons, and

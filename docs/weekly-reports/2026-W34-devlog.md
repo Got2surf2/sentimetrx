@@ -852,3 +852,26 @@ Removed the link; `PrintButton` is now the only nav action.
 deleted: an API route is an outward-facing surface someone may have bookmarked,
 and removing it is a separate, deliberate call. Flagged in ANALYTICS.md in both
 places that described the button.
+
+### Sherpa now knows what Advanced Analytics actually is
+
+Owner kept the section name as-is, so the fix was to teach the KB the *real*
+sense rather than rename anything. Removing the wrong usages had left Sherpa
+with zero knowledge of the genuine Advanced Analytics — the multi-location
+section inside TextMine.
+
+New `advanced-analytics.md`: the three views (Brand Health · Leaderboard ·
+Outlet Deep-Dive), why it may be hidden (the `outletReporting` capability AND
+location-identifying data — pointing at the **Schema** tab for both), and how to
+read a relative comparison (*+25* means 25 points better than the network, not
+that 25% of guests said it). Cross-referenced from the TextMine article so it's
+discoverable.
+
+Both names now coexist correctly: **"Analytics"** is the module, **"Advanced
+Analytics"** is the section. The README records that explicitly so a future
+editor doesn't "fix" one into the other.
+
+Seeded TEST and PROD (22 articles → 106 chunks). Third asserted regression added:
+asked *"What is Advanced Analytics and why can I not see it?"*, the reply must
+name the views and point at the Schema tab. It answers correctly and still
+routes the module question to **Analytics**.

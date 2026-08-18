@@ -22,7 +22,9 @@ raw `docs/*.md` — so it can't leak internals, table names, or unshipped featur
   capability and invisible to most orgs. Calling the module "Advanced Analytics"
   sends users hunting for a label that sits one level deeper — and inverts the
   hierarchy, since that section is a SIBLING of TextMine, not its parent. Fixed
-  across 11 articles + the nav map on 2026-08-18.
+  across 11 articles + the nav map on 2026-08-18. **Both names are correct for
+  their own thing** — `advanced-analytics.md` documents the section, and every
+  other article says "Analytics" for the module.
 - **Only describe shipped features.** If it isn't in these articles, the agent
   doesn't claim it exists.
 - **No invented URLs / emails / prices / stats.** Ask for the real value or omit.
@@ -57,6 +59,7 @@ Status: ✅ drafted (awaiting owner review) · ⏳ to draft
 | 18 | `share-a-survey.md` | Get the survey link / QR, response limits | ✅ |
 | 19 | `dimensions-and-emotion.md` | Dimensions taxonomy + emotion-language flags | ✅ |
 | 20 | `getting-started.md` | First-time orientation / where to click first | ✅ |
+| 21 | `advanced-analytics.md` | Advanced Analytics — the multi-location section (Brand Health · Leaderboard · Outlet Deep-Dive), why it may be hidden | ✅ |
 | — | `not-sure-fallback.md` | The honest "I'm not certain" fallback copy | ✅ |
 
 **Updated 2026-08-18** — `dimensions-and-emotion.md` gained a **How do I turn
