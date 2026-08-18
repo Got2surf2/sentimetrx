@@ -290,7 +290,18 @@ function themeMatcher(keywords: string[]): RegExp | null {
 // mid-word. Recover a readable full sentence: locate the evidence inside the
 // original review and expand out to sentence boundaries. (Themes pass the whole
 // review as evidence, so this just clamps to the first sentence.)
-function extractSentence(ex: Example | null): string | null {
+/**
+ * The sentence around the evidence phrase in a real review.
+ *
+ * `requireEvidence` controls the fallback. When the phrase can't be located in
+ * the review text the default is to return the review's FIRST sentence, which is
+ * fine for "here is a 1–3★ verbatim" surfaces but WRONG where the quote is
+ * presented as the evidence for a specific polarity: a negative dimension can
+ * end up quoting a cheerful opening line ("Forgot how delicious the food is…"
+ * under a ▼ weakness — seen on Ruth's Chris, 2026-08-18). Pass true to get null
+ * instead, so the caller renders no quote rather than a contradictory one.
+ */
+function extractSentence(ex: Example | null, requireEvidence = false): string | null {
   if (!ex) return null
   const full = (ex.full || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
   const ev = (ex.ev || '').replace(/\s+/g, ' ').trim()
@@ -299,6 +310,7 @@ function extractSentence(ex: Example | null): string | null {
   let i = full.toLowerCase().indexOf(core.toLowerCase())
   if (i < 0) i = full.toLowerCase().indexOf(ev.toLowerCase())
   if (i < 0) {
+    if (requireEvidence) return null
     const first = full.split(/(?<=[.!?])\s/)[0] || full
     return clamp(first)
   }
@@ -311,7 +323,13 @@ function extractSentence(ex: Example | null): string | null {
   for (let p = end; p < full.length; p++) {
     if (/[.!?]/.test(full[p])) { stop = p + 1; break }
   }
-  return clamp(full.slice(start, stop).trim())
+  const out = clamp(full.slice(start, stop).trim())
+  // Locating the phrase is not enough: `clamp` cuts at 180 chars, so a long
+  // run-on sentence can be truncated BEFORE the evidence and still be returned
+  // — which is how a ▼ weakness ended up quoting "Forgot how delicious the food
+  // is". Under requireEvidence the quote must actually contain what it evidences.
+  if (requireEvidence && !out.toLowerCase().includes(core.toLowerCase())) return null
+  return out
 }
 
 function clamp(s: string): string {
@@ -361,12 +379,12 @@ function buildDeltas(
   const strengths = deltas
     .filter((d) => d.delta >= DELTA_THRESHOLD && d.outletNet > 0)
     .sort((a, b) => b.delta - a.delta).slice(0, 4)
-    .map((d) => ({ ...d, quote: extractSentence(d._exPos) }))
+    .map((d) => ({ ...d, quote: extractSentence(d._exPos, true) }))
     .map(({ _exPos, _exNeg, ...s }) => s)
   const weaknesses = deltas
     .filter((d) => d.delta <= -DELTA_THRESHOLD)
     .sort((a, b) => a.delta - b.delta).slice(0, 4)
-    .map((d) => ({ ...d, quote: extractSentence(d._exNeg) }))
+    .map((d) => ({ ...d, quote: extractSentence(d._exNeg, true) }))
     .map(({ _exPos, _exNeg, ...w }) => w)
   // A review matching several themes can be captured as the example for each, so
   // the same verbatim would surface under multiple cards. Keep each quote on its

@@ -687,3 +687,45 @@ so the "both off" arm is unreachable and the gate is undemonstrable there. The
 probe now runs against a non-admin org and all three arms pass. Two sessions
 running, the recurring lesson is the same shape: **check that the fixture can
 express the state you are asserting.**
+
+### Dimensions on the per-outlet report
+
+The last of the two todos. `computeOutletReport` has always produced
+`selected.dimensions`, and the only thing reading it was the narrative sentence —
+the chain-wide Leaderboard showed Dimensions beside Themes while the per-outlet
+report showed themes alone. Now rendered by `OutletDimensionsView`.
+
+**Form first, colour last.** The data is a signed distance from the network
+average, so it is a diverging bar centred on that average — position carries the
+sign, length the size, both arms on one shared scale (independently-scaled arms
+would make a +4 look like a −40). It lives in the "Deeper analysis" card rather
+than the printable snapshot, because that card is deliberately *absolute* and
+this is *relative*; that card is `print:hidden`, so the section is screen-only
+today. Say the word if it should join the export.
+
+**The colour check earned its keep.** The obvious pair for ahead/behind is
+emerald/rose — and it **FAILS**: ΔE 5.8 under deuteranopia, below the 6 floor.
+The classic green/red collapse, and I would have shipped it on taste. Ran the
+palette validator instead and landed on teal-600 `#0d9488` ↔ rose-600 `#e11d48`:
+ΔE 10.2, normal-vision 32.4, both ≥ 3:1 — all PASS. Teal is also the Datanautix
+brand colour already on the page.
+
+**Two things the screenshots caught that the types could not.** The first render
+showed `−100% positive`, because `outletNet` is (positive − negative)/total and
+goes below zero — now `−100% net`. And a ▼ weakness was quoting *"Forgot how
+delicious the food is and was pleasantly surprised"*. Chasing that down:
+`extractSentence` falls back to the review's **first sentence** when it can't
+locate the evidence, and `clamp` cuts at 180 chars so a long sentence can be
+truncated *before* the evidence and still returned. Both now guarded under a
+`requireEvidence` mode used only by `buildDeltas` (blast radius: this block
+alone — `lowQuotes`/`praiseVerbatims` keep the old fallback).
+
+Even with both guards the quote still read cheerfully, and the reason is in the
+code's own comment: the classifier's `evidence` is a **fixed-width window**, so
+the sentence around it does not reliably carry the polarity. That is evidence
+granularity, not rendering — so rather than paper over it, the UI stopped
+claiming it: quotes are now labelled *"a review mentioning each"*, and the colour
+identifies which row they belong to rather than asserting a tone.
+
+Pinned by 8 jsdom tests covering exactly the ways this can mislead: ordering, the
+shared scale, the signed net rate, the quote framing, and the named denominator.

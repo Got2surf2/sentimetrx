@@ -87,6 +87,41 @@ one- and two-word answers that the denominator never included. Anything exported
 before 2026-08-18 will not reconcile against the current cards — same class of
 one-way move as sql/191.
 
+**Dimensions on the per-outlet report (2026-08-18).** `computeOutletReport` has
+always produced `selected.dimensions: ComparisonBlock`, and until now the only
+thing that read it was the narrative sentence — the chain-wide Leaderboard showed
+Dimensions beside Themes, the per-outlet report showed themes only. It is now
+rendered by `OutletDimensionsView`.
+
+**Form.** The data is a *signed distance from the network average* per dimension,
+so it is a **diverging bar centred on that average**: position carries the sign,
+length the size, and both arms share one scale — independently-scaled arms would
+make a +4 look like a −40. It sits in the "Deeper analysis" card, not the
+printable snapshot above it, because that card is deliberately **absolute**
+(GM-facing "how am I doing") while this is **relative to the network**; that card
+is `print:hidden`, so this section is screen-only today.
+
+**Colour.** Diverging = two poles + neutral midpoint: **teal-600 `#0d9488`**
+(ahead) ↔ **rose-600 `#e11d48`** (behind), gray centre rule. Validated with the
+dataviz palette checker against this page's white surface — CVD ΔE 10.2 (deutan),
+normal-vision 32.4, both ≥ 3:1 contrast, all PASS. ⚠️ **The obvious
+emerald-600/rose-600 pair FAILS at ΔE 5.8**, below the 6 floor — the classic
+green/red collapse. Don't "restore" it. Identity is never colour-alone anyway:
+the side of the centre rule, the signed tip value and the legend each carry it.
+
+⚠️ **A quote is presented as "a review mentioning each", never as proof of the
+sentiment.** The classifier's `evidence` is a *fixed-width window*
+(`extractSentence`, `lib/outletReport.ts`), so the sentence around it does not
+reliably read as the polarity — a ▼ weakness was quoting *"Forgot how delicious
+the food is"*. Two guards followed: `extractSentence` gained a `requireEvidence`
+mode (used only by `buildDeltas`) that returns null rather than the review's
+first sentence when the phrase can't be located, **and** rejects a quote that
+`clamp` truncated before reaching its own evidence. The remaining mismatch is
+evidence granularity, not rendering, so the UI stopped claiming otherwise.
+
+**Net rates are signed.** `outletNet` is (positive − negative) / total and goes
+below zero; it renders as e.g. `−100% net`, never `−100% positive`.
+
 **Outlet reporting is an explicit capability (2026-08-18).** Until now the
 Leaderboard and Outlet Deep-Dive appeared automatically for any `google_reviews`
 dataset with ≥5 locations — no enable, no way to switch them off, and no route
