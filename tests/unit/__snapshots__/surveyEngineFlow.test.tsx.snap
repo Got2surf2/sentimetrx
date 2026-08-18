@@ -1,0 +1,39 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`useSurveyEngine — clarifier > asks the AI clarifier on a short answer and appends the follow-up to the stored answer > clarifier-transcript 1`] = `
+[
+  "bot: Hi there! I have a few quick questions.",
+  "bot: Are you ready to share your feedback?",
+  "user: Yes, let's go!",
+  "bot: What stood out to you?",
+  "user: Too slow",
+  "bot: What made it feel that way?",
+  "user: We waited forty minutes for the mains to finally arrive at our table",
+  "bot: Got it -- that's genuinely helpful.",
+  "bot: Thank you so much -- Ana really appreciates you taking a moment to share. Your feedback makes a genuine difference. 💛",
+]
+`;
+
+exports[`useSurveyEngine — full respondent flow > walks NPS → rating → q3 → q4 → psychographics → demographics → contact → done > full-flow-transcript 1`] = `
+[
+  "bot: Hi there! I have a few quick questions.",
+  "bot: Are you ready to share your feedback?",
+  "user: Yes, let's go!",
+  "bot: How likely are you to recommend us to a friend or someone you know?",
+  "user: 😊 4 - Likely",
+  "bot: How was your experience?",
+  "user: 🤩 Excellent",
+  "bot: What stood out to you?",
+  "user: The staff were genuinely welcoming and the room was spotless throughout our entire stay here",
+  "bot: Got it -- that's genuinely helpful.",
+  "bot: Anything else we should know?",
+  "user: Nothing else comes to mind right now, thanks very much for asking me today",
+  "bot: No worries at all -- thanks for being honest.",
+  "bot: Just a few quick questions to round things out -- helps us understand the range of people sharing feedback.",
+  "bot: How do you usually decide where to eat?",
+  "user: Reviews",
+  "bot: Almost done -- a couple of optional questions about you. Completely up to you.",
+  "bot: If you'd like us to follow up, please share your contact details below. Completely optional.",
+  "bot: Thank you so much -- Ana really appreciates you taking a moment to share. Your feedback makes a genuine difference. 💛",
+]
+`;

@@ -320,3 +320,48 @@ are covered by typecheck, the suite and a clean dev compile, but the browser
 extension dropped before I could re-confirm them visually after the final edit.
 
 Ceiling 201 → 195. Session total: 229 → 195.
+
+---
+
+## 2026-08-18 — A test net for `useSurveyEngine`, before refactoring it
+
+**Why.** The next piece of work is the `useSurveyEngine` dependency-graph
+refactor — 19 `exhaustive-deps` warnings that are one bottom-up restructuring,
+not 19 small fixes. The file is 2,647 lines, drives a **respondent-facing
+data-collection flow**, does ~256 direct DOM operations, and had **zero test
+coverage**: nothing under `tests/` referenced it, and `components/**` isn't even
+in the vitest coverage `include` (that's `lib/**` + `app/api/**`). Refactoring
+a callback graph with no regression net, on the code path that captures
+customers' survey answers, is not a trade worth making.
+
+So the net came first. `tests/unit/surveyEngineFlow.test.tsx` mounts the hook in
+jsdom behind a minimal host component and drives real surveys through the same
+buttons and textareas a respondent touches. It asserts on the artefact that
+must not drift: the `/api/respond` payload, which embeds the entire
+conversation transcript. Two transcripts are snapshotted, so a reordered
+bubble, a duplicated acknowledgement or a dropped question fails loudly instead
+of quietly changing what we collect.
+
+**What's covered.** The full walk (NPS → experience rating → q3 → q4 →
+psychographics → demographics → contact → closing card); the AI clarifier —
+asked, `SKIP` respected, follow-up appended to the stored answer — and the
+keyword fallback; AI deflection short-circuiting the clarifier; both `#verbose`
+commands; the kiosk vs non-kiosk device lock; all seven custom question types;
+`_end` skip logic; a required open question refusing an empty send; and hidden
+fields / `urlParams` / `?rid=` click self-reporting.
+
+**Determinism.** `Math.random` is pinned to 0 — the engine uses it to shuffle
+the psychographic bank and the custom-question pool and to vary the
+acknowledgement wording, so a fixed script would otherwise encode the shuffle
+rather than the behaviour. Timers are faked so the typing animation, the 100ms
+focus timeouts and the 2s `savePartial` debounce run instantly. jsdom under
+Node 22 exposes no Web Storage, so `localStorage`/`sessionStorage` are stubbed;
+the engine reads both.
+
+**Two things writing the tests taught me about the engine, before I changed a
+line of it.** The keyword clarifier fires even with `useAIClarify` off —
+`buildClarify`'s fallback never returns null, so any answer under 12 words gets
+probed. And `stepDemographics` falls back to age/gender/zip whenever
+`demoFields` is empty, so there is no way to switch demographics off by
+emptying that list; a focused test has to narrow `sectionOrder` instead. Both
+were assumptions I'd have carried into the refactor.
