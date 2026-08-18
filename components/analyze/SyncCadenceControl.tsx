@@ -85,6 +85,7 @@ export default function SyncCadenceControl({ sourceId }: Props) {
         throw new Error(d?.error || 'Failed to update')
       }
       setSource(function(prev) { return prev ? { ...prev, sync_frequency_hours: hours } : prev })
+      // eslint-disable-next-line react-hooks/purity -- runs in an async callback after an await, not during render
       setSavedAt(Date.now())
       setTimeout(function() { setSavedAt(null) }, 2000)
     } catch (e: unknown) {

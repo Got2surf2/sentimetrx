@@ -621,6 +621,7 @@ function BotCreatorInner() {
               {editId && loadedUpdatedAt && (
                 <span style={{ marginLeft: 8, color: '#9ca3af' }} title={new Date(loadedUpdatedAt).toLocaleString()}>
                   · Last updated {(function() {
+                    // eslint-disable-next-line react-hooks/purity -- relative-time display computed during render; if React recomputes, the elapsed value simply refreshes, which is the desired behaviour. Freezing it in state would need a ticking clock for no benefit
                     var ms = Date.now() - new Date(loadedUpdatedAt).getTime()
                     if (ms < 60000) return 'just now'
                     if (ms < 3600000) return Math.floor(ms / 60000) + 'm ago'

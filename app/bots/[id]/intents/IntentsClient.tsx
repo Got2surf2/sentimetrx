@@ -68,6 +68,7 @@ export default function IntentsClient() {
   }
 
   function timeAgo(dateStr: string): string {
+    // eslint-disable-next-line react-hooks/purity -- relative-time display computed during render; if React recomputes, the elapsed value simply refreshes, which is the desired behaviour. Freezing it in state would need a ticking clock for no benefit
     var diff = Date.now() - new Date(dateStr).getTime()
     var mins = Math.floor(diff / 60000)
     if (mins < 60) return mins + 'm ago'

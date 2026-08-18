@@ -1121,3 +1121,41 @@ zero the audit, but that games a metric with a fake package rather than fixing
 anything, and would silently break pptxgenjs if it ever un-commented that code.
 The honest resolution is upstream — pptxgenjs should drop the unused dependency.
 
+## Lint ratchet: 229 → 202 (Tier 0, 2026-08-18)
+
+First pass of a staged burn-down of the react-hooks backlog. Cleared 27, in four
+groups — with an honest split between *fixed* and *documented as intentional*:
+
+**Actually fixed (real defects):**
+- **`react-hooks/purity` in `StatsModule`** — the Statistics subsample used
+  `Math.random()` **inside a `useMemo`**. React treats `useMemo` as a performance
+  hint, not a semantic guarantee: a recompute would draw a NEW subsample and
+  silently change every statistic on screen with no user action. Replaced with
+  `deterministicSubsample` (`lib/statsUtils.ts`, seeded mulberry32), so the same
+  rows + cap always select the same sample — which also aligns the client with the
+  server-side deterministic sampling of sql/160/167. Pinned by 8 unit tests.
+- **`react-hooks/static-components` ×6 (`StepQuestions`)** — a `Row` component was
+  declared *during render*, making it a new component type every render, so React
+  unmounted and remounted the subtree instead of updating it. Hoisted to module
+  scope as `FlowRow` with the one closure it needed (`onDragEnd`) passed as a prop.
+- **Declaration-order (`ViewsBar`, `SessionDetailClient`)** — functions referenced
+  above their `const` declaration; reordered. Function-declaration hoisting made
+  this *invisible*, not correct.
+
+**Documented as intentional (scoped disables with concrete reasons, ×17):** every
+remaining `purity` site is correct code the React Compiler rule is conservative
+about — four are **server components** (rendered once per request, so there is no
+re-render to be inconsistent with), two are `useMemo`s where **re-resolving
+against a fresh `now` is the entire point** (a relative period like "current
+quarter" must stay current), two run in **async callbacks after an await** (not
+render at all), and nine are **relative-time displays** where a recompute simply
+refreshes "3 days ago" — freezing that in state would need a ticking clock for no
+benefit. These are suppression *with rationale*, not elimination; the ratchet
+still drops because a documented decision is no longer an open question.
+
+**Not attempted, and why:** three `immutability` warnings are self-referencing
+loops — two `requestAnimationFrame` draw loops in live-audio capture and one
+polling loop in Town Hall chat. Breaking the self-reference needs a ref
+indirection that trades the warning for a `react-hooks/refs` one, in real-time
+media code that is hard to verify. Left on the ratchet deliberately.
+

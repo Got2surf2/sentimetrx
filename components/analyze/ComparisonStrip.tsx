@@ -19,6 +19,7 @@ export default function ComparisonStrip() {
 
   const data = useMemo(function() {
     if (!period || !period.compare || !period.field || !rowsLoaded || !rows.length) return null
+    // eslint-disable-next-line react-hooks/purity -- re-resolving against a fresh `now` is the POINT here (a relative period like 'current quarter' must stay current); a frozen timestamp would be the bug
     const now = Date.now()
     const pRange = resolvePeriod(period.primary, { now })
     const cRange = resolveComparison(period.primary, period.compare.offset, { now })

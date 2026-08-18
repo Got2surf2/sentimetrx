@@ -812,6 +812,7 @@ function SettingsPanel({ connections, onDisconnect }: { connections: Connection[
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {connections.map(function(conn) {
               const expiresIn = conn.token_expires_at
+                // eslint-disable-next-line react-hooks/purity -- relative-time display computed during render; if React recomputes, the elapsed value simply refreshes, which is the desired behaviour. Freezing it in state would need a ticking clock for no benefit
                 ? Math.max(0, Math.floor((new Date(conn.token_expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
                 : null
 

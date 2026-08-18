@@ -143,19 +143,9 @@ export default function ViewsBar({ datasetId, primaryDateField, schemaFields, em
     setDraftName((activeView && !isViewDirty ? activeView.name : 'Snapshot') + ' · ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))
   }
 
-  function submitFreeze() {
-    const name = draftName.trim()
-    if (!name) return
-    setNaming(null)
-    if (rowsLoaded && rows.length >= 0) runCapture(name)
-    else { setPendingFreeze(name); fetchRows() }
-  }
-
-  // Once rows are in memory, capture the frozen aggregates over the filtered set.
-  useEffect(function() {
-    if (pendingFreeze && rowsLoaded) { runCapture(pendingFreeze); setPendingFreeze(null) }
-  }, [pendingFreeze, rowsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
-
+  // Declared above its callers (submitFreeze + the pendingFreeze effect):
+  // referencing it before its declaration is flagged by react-hooks/immutability,
+  // and function-declaration hoisting only makes that invisible, not correct.
   function runCapture(name: string) {
     setBusy(true)
     const schema = { fields: schemaFields, autoDetected: false, version: 1 }
@@ -178,6 +168,20 @@ export default function ViewsBar({ datasetId, primaryDateField, schemaFields, em
       .catch(function() { flash('Could not freeze a snapshot.') })
       .finally(function() { setBusy(false); setDraftName('') })
   }
+
+  function submitFreeze() {
+    const name = draftName.trim()
+    if (!name) return
+    setNaming(null)
+    if (rowsLoaded && rows.length >= 0) runCapture(name)
+    else { setPendingFreeze(name); fetchRows() }
+  }
+
+  // Once rows are in memory, capture the frozen aggregates over the filtered set.
+  useEffect(function() {
+    if (pendingFreeze && rowsLoaded) { runCapture(pendingFreeze); setPendingFreeze(null) }
+  }, [pendingFreeze, rowsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+
 
   function patchExpiry(snap: SnapshotRow, expires_at: string | null) {
     fetch(baseUrl + '/' + snap.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expires_at: expires_at }) })

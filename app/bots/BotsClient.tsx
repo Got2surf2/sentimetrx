@@ -256,6 +256,7 @@ export default function BotsClient({ orgId, isAdmin = false, orgFilter = '' }: {
           // Agent-health dot (no fetch): derived from status + recency of the
           // last conversation. Rich health (response rate, depth) lives in the
           // per-agent Report. Gray = paused/idle, green = active this week.
+          // eslint-disable-next-line react-hooks/purity -- relative-time display computed during render; if React recomputes, the elapsed value simply refreshes, which is the desired behaviour. Freezing it in state would need a ticking clock for no benefit
           var lastChatMs = bot.last_session_at ? Date.now() - new Date(bot.last_session_at).getTime() : Infinity
           var healthDot = bot.status !== 'active' ? '#9CA3AF'
             : lastChatMs < 7 * 86400000 ? '#059669'

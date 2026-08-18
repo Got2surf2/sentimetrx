@@ -99,6 +99,7 @@ export default function LivePresenter() {
   const totalSent = Object.values(sentiment).reduce((a, b) => a + b, 0) || 1
 
   // Elapsed time
+  // eslint-disable-next-line react-hooks/purity -- relative-time display computed during render; if React recomputes, the elapsed value simply refreshes, which is the desired behaviour. Freezing it in state would need a ticking clock for no benefit
   const elapsed = s.started_at ? Math.round((Date.now() - new Date(s.started_at).getTime()) / 60000) : 0
   const elapsedStr = elapsed < 60 ? elapsed + ' min' : Math.floor(elapsed / 60) + 'h ' + (elapsed % 60) + 'm'
 

@@ -72,6 +72,7 @@ export default async function AdminClientPage(props: Props) {
   const memberIds = (rawMembers || []).map((m: MemberRow) => m.id)
   let loginByUser: Record<string, { last_login_at: string | null; logins_30d: number }> = {}
   if (memberIds.length > 0) {
+    // eslint-disable-next-line react-hooks/purity -- server component: renders once per request, so there is no re-render for the timestamp to be inconsistent with
     const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
     const { data: logs } = await service
       .from('user_logins')

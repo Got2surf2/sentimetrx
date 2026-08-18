@@ -71,6 +71,7 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
   var effectiveFilters = useMemo(function() {
     var base = Object.assign({}, filters)
     if (period && period.field) {
+      // eslint-disable-next-line react-hooks/purity -- re-resolving against a fresh `now` is the POINT here (a relative period like 'current quarter' must stay current); a frozen timestamp would be the bug
       base[period.field] = periodToDateFilter(resolvePeriod(period.primary, { now: Date.now() }))
     }
     return Object.assign(base, lockedFilters)

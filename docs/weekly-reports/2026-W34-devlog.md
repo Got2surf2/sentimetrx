@@ -196,3 +196,48 @@ useful is the same one that made the layout wrong.
 Pinned by a test asserting the element's `display` is `block` and that no inline
 `marginLeft` survives; verified it fails against the inline markup.
 
+
+---
+
+## 2026-08-18 — Lint burn-down Tier 0: 229 → 202
+
+**Why**: the backlog was 229 warnings across 90 files with no plan attached.
+Analysing it first changed what "cleaning it out" should mean: `set-state-in-effect`
+is 109 warnings spread over **63 files** (a thin long tail, 1–2 each), while
+`exhaustive-deps` is 73 over 24 files and *concentrated* — three files carry 73 of
+the 229 between them. So the order matters more than the effort.
+
+Tier 0 was the part that needed no behavioural judgement. Two genuine defects came
+out of it:
+
+⭐ **`StatsModule` subsampled with `Math.random()` inside a `useMemo`.** React
+treats `useMemo` as a performance hint, not a semantic guarantee — it may discard
+and recompute at any time, which would draw a **new subsample and silently change
+every statistic on screen** with no user action. That is a numbers-credibility bug
+in the one module where numbers must reconcile, and it also contradicted the
+deterministic sampling the server side already does (sql/160/167). Replaced with a
+seeded `deterministicSubsample` in `lib/statsUtils.ts`; 8 tests pin that repeated
+calls return the identical sample.
+
+⭐ **`StepQuestions` declared a component during render.** `Row` was defined inside
+`SurveyFlowPanel`, so it was a new component type on every render and React
+unmounted/remounted the subtree rather than updating it. Hoisted to module scope as
+`FlowRow`, with the single closure it needed (`onDragEnd`) passed as a prop —
+verified all 9 usages sit inside `SurveyFlowPanel`, since the file has a *second*
+`onDragEnd` in a later component that would have bound silently.
+
+**The honest part**: 17 of the 27 cleared warnings were **documented as
+intentional**, not refactored. Every remaining `purity` site is correct code the
+rule is conservative about — server components (one render per request), `useMemo`s
+where re-resolving against a fresh `now` is the whole point, async callbacks that
+aren't render at all, and relative-time displays where a recompute just refreshes
+"3 days ago". Each carries a scoped disable naming the reason. That is suppression
+with rationale; it lowers the ceiling because a documented decision stops being an
+open question, but it is not the same as elimination and shouldn't be counted as it.
+
+**Left deliberately**: three self-referencing loops (two `requestAnimationFrame`
+draw loops in live-audio, one polling loop in Town Hall chat). Breaking the
+self-reference needs a ref indirection that trades the warning for a
+`react-hooks/refs` one, in real-time media code that is hard to verify.
+
+Ceiling lowered 229 → 202.

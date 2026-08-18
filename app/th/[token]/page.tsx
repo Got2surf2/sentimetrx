@@ -43,6 +43,7 @@ export default async function PublicTownHallReport({ params }: { params: Promise
   if (!recRow) notFound()
   const rec = recRow as unknown as RecordingRow & { share_enabled?: boolean; share_expires_at?: string | null; share_audio?: boolean }
   if (!rec.share_enabled || rec.status !== 'complete') notFound()
+  // eslint-disable-next-line react-hooks/purity -- server component: renders once per request, so there is no re-render for the timestamp to be inconsistent with
   if (rec.share_expires_at && new Date(rec.share_expires_at).getTime() < Date.now()) notFound()
 
   const [filesRes, transcriptRes, extractionsRes] = await Promise.all([

@@ -22,6 +22,7 @@ export default async function ClientReviewPage({ params }: { params: Promise<{ t
     .eq('share_token', token).maybeSingle()
 
   if (!batch || !batch.share_enabled) notFound()
+  // eslint-disable-next-line react-hooks/purity -- server component: renders once per request, so there is no re-render for the timestamp to be inconsistent with
   if (batch.share_expires_at && new Date(batch.share_expires_at).getTime() < Date.now()) notFound()
 
   const { data: bot } = await service.from('agents').select('name').eq('id', batch.bot_id).single()

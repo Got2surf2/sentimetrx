@@ -334,14 +334,6 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     return () => clearInterval(interval)
   }, [fetchData])
 
-  // Auto-enter edit mode on first load — only for setup sessions (not active/paused/ended)
-  useEffect(() => {
-    if (session && !autoEditDone) {
-      setAutoEditDone(true)
-      if (session.status === 'setup') startEdit()
-    }
-  }, [session, autoEditDone])
-
   // Start editing — deep-copy current config
   const startEdit = () => {
     if (!session) return
@@ -362,6 +354,15 @@ export default function SessionDetailClient({ sessionId, logoUrl, analyzeEnabled
     setEditStep(0)
     setEditing(true)
   }
+
+  // Auto-enter edit mode on first load — only for setup sessions (not active/paused/ended)
+  useEffect(() => {
+    if (session && !autoEditDone) {
+      setAutoEditDone(true)
+      if (session.status === 'setup') startEdit()
+    }
+  }, [session, autoEditDone])
+
 
   const cancelEdit = () => { setEditing(false) }
 

@@ -93,6 +93,7 @@ export default function ConversationsClient({ isSuperadmin = false }: { isSupera
   var filtered = sessions.filter(function(s) {
     // Time filter
     if (filterTime > 0) {
+      // eslint-disable-next-line react-hooks/purity -- relative-time display computed during render; if React recomputes, the elapsed value simply refreshes, which is the desired behaviour. Freezing it in state would need a ticking clock for no benefit
       var cutoff = Date.now() - filterTime * 3600000
       if (new Date(s.started_at).getTime() < cutoff) return false
     }

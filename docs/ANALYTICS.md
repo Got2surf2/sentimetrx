@@ -1286,6 +1286,9 @@ Three families of virtual fields are spliced into the chart field list alongside
 
 ## Statistics Module (Hypothesis Testing)
 
+> **Subsampling is DETERMINISTIC (2026-08-18).** Above the row cap the module analyses a subsample. That selection used a `Math.random()` Fisher-Yates shuffle **inside a `useMemo`** — and React treats `useMemo` as a performance hint, not a semantic guarantee, so a recompute could draw a **new subsample and silently change every statistic on screen** with no user action. It now uses `deterministicSubsample` (`lib/statsUtils.ts`, seeded mulberry32): the same rows + cap always select the same sample, so a figure is stable across recomputes, remounts and reloads, and can be reproduced when someone audits it later. This matches the server-side deterministic sampling of sql/160 / sql/167. ⚠️ **One-time effect: the selected rows differ from the old random draw, so a sampled statistic can move once.** Above-cap figures were never reproducible before, so nothing that *was* stable becomes unstable. Pinned by `tests/unit/statsUtils.test.ts`.
+
+
 ### 6 Analysis Panels
 
 Panel list lives in `ANALYSIS_TYPES` in `components/analyze/StatsModule.tsx`.

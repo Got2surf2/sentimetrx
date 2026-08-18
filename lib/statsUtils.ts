@@ -612,3 +612,47 @@ export function chiBL_naive(res: ChiSquareResult | null, rf: string, cf: string)
 
 // (Linear regression Plain-English now renders as a colour-coded JSX block \u2014
 // regrBLNode in StatsModule.tsx \u2014 so the old string generator was removed.)
+
+// ── Deterministic subsampling (2026-08-18) ───────────────────────────────────
+//
+// The Statistics module subsamples when a dataset exceeds the cap. That shuffle
+// used `Math.random()` INSIDE a `useMemo`, which is unsound twice over:
+//
+//   1. React treats `useMemo` as a performance hint, not a semantic guarantee —
+//      it may discard and recompute at any time. A recompute would draw a NEW
+//      subsample, silently changing every statistic on screen with no user
+//      action. For a module whose numbers have to reconcile, that's a
+//      credibility bug, not a lint nit (it is also what react-hooks/purity flags).
+//   2. It contradicts the deterministic-sampling doctrine the server side
+//      already follows (sql/160 / sql/167): the same dataset and cap must always
+//      select the same rows, so a figure can be reproduced and audited later.
+//
+// mulberry32 — small, fast, well-distributed enough for subsampling (it is NOT
+// cryptographic and must never be used where unpredictability matters).
+export function mulberry32(seed: number): () => number {
+  let a = seed >>> 0
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/**
+ * Take `cap` items using a Fisher-Yates shuffle driven by a seeded PRNG, so the
+ * same (length, cap) always yields the same selection. Pure and total: returns
+ * the input untouched when it already fits.
+ */
+export function deterministicSubsample<T>(items: T[], cap: number): T[] {
+  if (cap <= 0 || items.length <= cap) return items
+  // Seed from the two things that define the selection. Same inputs → same
+  // sample, across recomputes, remounts and reloads.
+  const rand = mulberry32(items.length * 2654435761 + cap)
+  const copy = items.slice()
+  for (let i = copy.length - 1; i > 0 && i >= copy.length - cap; i--) {
+    const j = Math.floor(rand() * (i + 1))
+    const tmp = copy[i]; copy[i] = copy[j]; copy[j] = tmp
+  }
+  return copy.slice(copy.length - cap)
+}

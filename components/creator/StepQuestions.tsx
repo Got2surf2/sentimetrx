@@ -799,6 +799,32 @@ function OpenEndedBankPanel({
 }
 
 // -- Survey Flow Panel (compact reorder view) ----------------
+// Declared at module scope, NOT inside SurveyFlowPanel. A component created
+// during render is a NEW component type on every render, so React unmounts and
+// remounts the whole subtree each time instead of updating it
+// (react-hooks/static-components). `onDragEnd` was the only closure it needed,
+// so it comes in as a prop.
+function FlowRow({ icon, label, sub, dim, draggable: isDraggable, onDS, onDO, onDE }: {
+  icon: string; label: string; sub?: string; dim?: boolean
+  draggable?: boolean; onDS?: () => void; onDO?: (e: React.DragEvent) => void; onDE?: () => void
+}) {
+  return (
+    <div
+      draggable={isDraggable}
+      onDragStart={onDS}
+      onDragOver={onDO}
+      onDragEnd={onDE}
+      className={'flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs transition-all ' + (dim ? 'opacity-40' : '') + (isDraggable ? ' cursor-grab hover:bg-orange-50' : '')}
+      style={{ borderLeft: '2px solid ' + (dim ? '#e5e7eb' : '#e8622a'), minHeight: 28 }}
+    >
+      {isDraggable && <span className="text-gray-300 text-xs select-none flex-shrink-0">⠿</span>}
+      <span className="flex-shrink-0">{icon}</span>
+      <span className={'font-medium truncate flex-1 ' + (dim ? 'text-gray-400' : 'text-gray-700')}>{label}</span>
+      {sub && <span className="text-gray-400 flex-shrink-0 text-xs">{sub}</span>}
+    </div>
+  )
+}
+
 function SurveyFlowPanel({ draft, onReorderQuestions, onReorderDemos }: { draft: StepProps['draft']; onReorderQuestions: (qs: SurveyQuestion[]) => void; onReorderDemos: (df: DemoField[]) => void }) {
   const [open, setOpen] = useState(false)
   const c = draft.config
@@ -849,25 +875,6 @@ function SurveyFlowPanel({ draft, onReorderQuestions, onReorderDemos }: { draft:
   const onDragEnd = () => { dragIdx.current = null; dragGroup.current = null }
 
   // Compact row renderer
-  const Row = ({ icon, label, sub, dim, draggable: isDraggable, onDS, onDO }: {
-    icon: string; label: string; sub?: string; dim?: boolean
-    draggable?: boolean; onDS?: () => void; onDO?: (e: React.DragEvent) => void
-  }) => (
-    <div
-      draggable={isDraggable}
-      onDragStart={onDS}
-      onDragOver={onDO}
-      onDragEnd={onDragEnd}
-      className={'flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs transition-all ' + (dim ? 'opacity-40' : '') + (isDraggable ? ' cursor-grab hover:bg-orange-50' : '')}
-      style={{ borderLeft: '2px solid ' + (dim ? '#e5e7eb' : '#e8622a'), minHeight: 28 }}
-    >
-      {isDraggable && <span className="text-gray-300 text-xs select-none flex-shrink-0">⠿</span>}
-      <span className="flex-shrink-0">{icon}</span>
-      <span className={'font-medium truncate flex-1 ' + (dim ? 'text-gray-400' : 'text-gray-700')}>{label}</span>
-      {sub && <span className="text-gray-400 flex-shrink-0 text-xs">{sub}</span>}
-    </div>
-  )
-
   const npsOn = c.npsEnabled !== false
   const expOn = c.experienceEnabled !== false
   const q3On  = c.q3Enabled !== false
@@ -894,22 +901,22 @@ function SurveyFlowPanel({ draft, onReorderQuestions, onReorderDemos }: { draft:
           {/* Core */}
           <div>
             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">Core Ratings</div>
-            <Row icon="⭐" label={c.ratingPrompt || 'Experience Rating'} dim={!expOn} sub={expOn ? 'On' : 'Off'} />
-            <Row icon="📊" label={c.npsPrompt || 'NPS Score'} dim={!npsOn} sub={npsOn ? 'On' : 'Off'} />
+            <FlowRow onDE={onDragEnd} icon="⭐" label={c.ratingPrompt || 'Experience Rating'} dim={!expOn} sub={expOn ? 'On' : 'Off'} />
+            <FlowRow onDE={onDragEnd} icon="📊" label={c.npsPrompt || 'NPS Score'} dim={!npsOn} sub={npsOn ? 'On' : 'Off'} />
           </div>
 
           {/* Follow-ups */}
           <div>
             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">Follow-ups</div>
-            <Row icon="💬" label="Q1 — NPS follow-up" dim={!npsOn} sub={npsOn ? 'Auto' : 'Off'} />
-            <Row icon="💬" label="Q2 — Rating follow-up" dim={!expOn} sub={expOn ? 'Auto' : 'Off'} />
+            <FlowRow onDE={onDragEnd} icon="💬" label="Q1 — NPS follow-up" dim={!npsOn} sub={npsOn ? 'Auto' : 'Off'} />
+            <FlowRow onDE={onDragEnd} icon="💬" label="Q2 — Rating follow-up" dim={!expOn} sub={expOn ? 'Auto' : 'Off'} />
           </div>
 
           {/* Conversation */}
           <div>
             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">Conversation</div>
-            <Row icon="🗣" label={'Q3 — ' + (c.q3 || 'Conversation question 3').slice(0, 50)} dim={!q3On} sub={q3On ? 'On' : 'Off'} />
-            <Row icon="🗣" label={'Q4 — ' + (c.q4 || 'Conversation question 4').slice(0, 50)} dim={!q4On} sub={q4On ? 'On' : 'Off'} />
+            <FlowRow onDE={onDragEnd} icon="🗣" label={'Q3 — ' + (c.q3 || 'Conversation question 3').slice(0, 50)} dim={!q3On} sub={q3On ? 'On' : 'Off'} />
+            <FlowRow onDE={onDragEnd} icon="🗣" label={'Q4 — ' + (c.q4 || 'Conversation question 4').slice(0, 50)} dim={!q4On} sub={q4On ? 'On' : 'Off'} />
           </div>
 
           {/* Custom — draggable */}
@@ -917,7 +924,7 @@ function SurveyFlowPanel({ draft, onReorderQuestions, onReorderDemos }: { draft:
             <div>
               <div className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">Custom Questions ({questions.length})</div>
               {questions.map((q, i) => (
-                <Row
+                <FlowRow onDE={onDragEnd}
                   key={q.id}
                   icon={TYPE_ICONS[q.type] || '❓'}
                   label={'CQ' + (i + 1) + ' — ' + (q.prompt || 'Untitled').slice(0, 50)}
@@ -935,7 +942,7 @@ function SurveyFlowPanel({ draft, onReorderQuestions, onReorderDemos }: { draft:
             <div>
               <div className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">Psychographics ({psychoBank.length})</div>
               {psychoBank.slice(0, 8).map((q: PsychoQuestion) => (
-                <Row key={q.key} icon="🧠" label={(q.exportLabel || q.q || q.key).slice(0, 50)} sub="Bank" />
+                <FlowRow onDE={onDragEnd} key={q.key} icon="🧠" label={(q.exportLabel || q.q || q.key).slice(0, 50)} sub="Bank" />
               ))}
               {psychoBank.length > 8 && (
                 <div className="text-xs text-gray-400 px-3 py-1">+{psychoBank.length - 8} more</div>
@@ -947,7 +954,7 @@ function SurveyFlowPanel({ draft, onReorderQuestions, onReorderDemos }: { draft:
           <div>
             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">Demographics ({enabledDemos.length})</div>
             {enabledDemos.map((f: DemoField, i: number) => (
-              <Row key={f.key} icon="👤" label={f.label || f.key} sub={f.type === 'select' ? 'Dropdown' : 'Text'}
+              <FlowRow onDE={onDragEnd} key={f.key} icon="👤" label={f.label || f.key} sub={f.type === 'select' ? 'Dropdown' : 'Text'}
                 draggable onDS={() => onDragStartD(i)} onDO={(e) => onDragOverD(e, i)} />
             ))}
             {enabledDemos.length === 0 && (

@@ -35,6 +35,7 @@ export default async function MobileHandoffPage(props: Props) {
     .maybeSingle()
 
   if (!row) return <ExpiredView reason="not_found" />
+  // eslint-disable-next-line react-hooks/purity -- server component: renders once per request, so there is no re-render for the timestamp to be inconsistent with
   if (new Date(row.expires_at).getTime() < Date.now()) return <ExpiredView reason="expired" />
 
   const messages: Message[] = Array.isArray(row.messages) ? row.messages : []

@@ -555,6 +555,7 @@ export default function AdminClientDetail({ org, members: initialMembers, studie
             <div className="flex flex-col divide-y divide-gray-200">
               {members.map(m => {
                 const last = m.last_login_at ? new Date(m.last_login_at) : null
+                // eslint-disable-next-line react-hooks/purity -- relative-time display computed during render; if React recomputes, the elapsed value simply refreshes, which is the desired behaviour. Freezing it in state would need a ticking clock for no benefit
                 const daysSince = last ? Math.floor((Date.now() - last.getTime()) / (1000 * 60 * 60 * 24)) : null
                 const activity = last == null ? { label: 'never logged in', cls: 'text-red-600' }
                   : daysSince! > 30 ? { label: `last login ${daysSince}d ago`, cls: 'text-red-600' }

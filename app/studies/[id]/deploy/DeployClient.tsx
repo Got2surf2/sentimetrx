@@ -345,6 +345,7 @@ export default function DeployClient({ study: initial, surveyUrl, logoUrl='', or
                 <div className="relative">
                   <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 200 }}>
                     {shareLinks.slice().sort((a, b) => new Date(a.expires_at).getTime() - new Date(b.expires_at).getTime()).map(link => {
+                      // eslint-disable-next-line react-hooks/purity -- relative-time display computed during render; if React recomputes, the elapsed value simply refreshes, which is the desired behaviour. Freezing it in state would need a ticking clock for no benefit
                       const diffH = Math.round((new Date(link.expires_at).getTime() - Date.now()) / 3600000)
                       const timeLeft = diffH < 1 ? 'expires soon' : diffH < 24 ? diffH + 'h left' : Math.round(diffH / 24) + 'd left'
                       const expiryDate = new Date(link.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })

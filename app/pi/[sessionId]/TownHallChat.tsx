@@ -231,6 +231,7 @@ export default function TownHallChat({ sessionId }: Props) {
             const picked: PsychoQuestion[] = []
             const n = Math.min(count, pool.length)
             while (picked.length < n && pool.length > 0) {
+              // eslint-disable-next-line react-hooks/purity -- runs in an async callback after an await, not during render
               const idx = Math.floor(Math.random() * pool.length)
               picked.push(...pool.splice(idx, 1))
             }

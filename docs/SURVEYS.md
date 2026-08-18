@@ -234,3 +234,15 @@ Three tabs in a single page (`TestingClient.tsx`):
 | `lib/guardrails.ts` | Content safety |
 | `lib/industryDefaults.ts` | 18 industry presets; also exports `RESTAURANT_INDUSTRIES` (casual/fine/fast) used by Analyze to auto-enable the Dimensions taxonomy for restaurant orgs |
 | `lib/surveyBlueprints.ts` | 7 study blueprints |
+
+## Survey Flow panel — row rendering (2026-08-18)
+
+`StepQuestions`' Survey Flow panel rendered its rows via a `Row` component
+**declared inside** `SurveyFlowPanel`. A component created during render is a new
+component type on every render, so React unmounted and remounted the whole row
+list instead of updating it (`react-hooks/static-components`). Hoisted to module
+scope as `FlowRow`; the one value it closed over (`onDragEnd`) is now a prop.
+Drag-to-reorder behaviour is unchanged — note the file has a **second**
+`onDragEnd` in a later component, so all nine usages were checked to be inside
+`SurveyFlowPanel` before threading the handler.
+

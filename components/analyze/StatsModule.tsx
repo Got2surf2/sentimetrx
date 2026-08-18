@@ -55,6 +55,7 @@ import {
   chiBL, chiBL_naive, regrBL,
   bootstrapCI, type MCResult,
   type TTestResult, type ANOVAResult, type ChiSquareResult, type MannWhitneyResult,
+  deterministicSubsample,
 } from '@/lib/statsUtils'
 import { buildRegVars, buildDesign, type RegVar, type OutcomeSpec, type PredictorSpec } from '@/lib/regressionDesign'
 import { axisOfDimField, isDimField, dimVirtualFields, dimFieldName, DIM_AXES, DIM_AXIS_LABEL } from '@/lib/dimensionFields'
@@ -1588,7 +1589,6 @@ function KeyDriversCard({ numFields, data, aliases }: { numFields: SchemaFieldCo
     if (!drivers.length) return { few: true as const, n: 0, k: preds.length }
     drivers.sort(function(a, b) { return Math.abs(b.r) - Math.abs(a.r) })
     return { drivers: drivers, n: Math.max.apply(null, drivers.map(function(d) { return d.n })) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- num is a pure helper over these deps
   }, [target, numFields, data])
 
   if (numFields.length < 2) return null
@@ -2462,14 +2462,11 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
   var rows = useMemo(function() {
     if (!shared.rowsLoaded) return []
     var effectiveCap = sampleCap === 0 ? STATS_HARD_CAP : sampleCap
-    if (shared.rows.length <= effectiveCap) return shared.rows
-    // Fisher-Yates subsample
-    var copy = shared.rows.slice()
-    for (var i = copy.length - 1; i > 0 && i >= copy.length - effectiveCap; i--) {
-      var j = Math.floor(Math.random() * (i + 1))
-      var tmp = copy[i]; copy[i] = copy[j]; copy[j] = tmp
-    }
-    return copy.slice(copy.length - effectiveCap)
+    // Deterministic (seeded) — NOT Math.random(). React may discard and recompute
+    // a useMemo at any time, and a re-drawn subsample would silently change every
+    // statistic on screen. Same rows + cap always select the same sample, which
+    // also matches the server-side deterministic sampling (sql/160/167).
+    return deterministicSubsample(shared.rows, effectiveCap)
   }, [shared.rows, shared.rowsLoaded, sampleCap])
   var rowsLoaded = shared.rowsLoaded
   var rowsLoading = shared.rowsLoading

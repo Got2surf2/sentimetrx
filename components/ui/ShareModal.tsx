@@ -116,6 +116,7 @@ export default function ShareModal({ type, targetId, title, onClose, metadata }:
             <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>Active links ({links.length})</div>
             <div style={{ maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {links.map(function(link) {
+                // eslint-disable-next-line react-hooks/purity -- relative-time display computed during render; if React recomputes, the elapsed value simply refreshes, which is the desired behaviour. Freezing it in state would need a ticking clock for no benefit
                 var isExpired = new Date(link.expires_at).getTime() < Date.now()
                 return (
                   <div key={link.token} style={{

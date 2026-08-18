@@ -5,7 +5,7 @@ import {
   mannWhitneyU, normCDF, tDist2p, chiSqP, chiSquareStat, chiSquareFromTable,
   olsRegression, getNum, bootstrapCI,
   formatDecimal2, formatDecimal4, formatNumber, formatPValue, sigLabel, sigTest,
-  corrBL, ttestBL,
+  corrBL, ttestBL, deterministicSubsample, mulberry32,
 } from '@/lib/statsUtils'
 
 // Pure statistical engine — reference values verified by hand / against the
@@ -225,5 +225,71 @@ describe('statsUtils — helpers & formatting', () => {
     expect(corrBL('A', 'B', 0.05, 0.5, 50, 'Pearson')).toMatch(/No significant/)
     expect(ttestBL(null, 'score')).toBe('')
     expect(ttestBL({ d: 0.1, p: 0.5, t: 0.2, df: 8, ma: 3, mb: 3.1 }, 'score')).toMatch(/No significant/)
+  })
+})
+
+// ── Deterministic subsampling (2026-08-18) ──────────────────────────────────
+// The Statistics module subsamples above its cap. That selection MUST be stable:
+// React may discard and recompute a useMemo at any time, and the old
+// Math.random() shuffle would have re-drawn the sample and silently changed
+// every statistic on screen. Same rows + cap ⇒ same sample, always.
+describe('deterministicSubsample', () => {
+  const items = Array.from({ length: 500 }, (_v, i) => i)
+
+  it('returns the identical sample on every call (the load-bearing property)', () => {
+    const a = deterministicSubsample(items, 50)
+    const b = deterministicSubsample(items, 50)
+    const c = deterministicSubsample(items.slice(), 50) // fresh array, same content
+    expect(a).toEqual(b)
+    expect(a).toEqual(c)
+  })
+
+  it('returns the input untouched when it already fits the cap', () => {
+    const small = [1, 2, 3]
+    expect(deterministicSubsample(small, 10)).toBe(small)
+    expect(deterministicSubsample(small, 3)).toBe(small)
+  })
+
+  it('returns exactly `cap` items, all drawn from the input, with no duplicates', () => {
+    const out = deterministicSubsample(items, 50)
+    expect(out).toHaveLength(50)
+    expect(new Set(out).size).toBe(50)
+    for (const v of out) expect(items).toContain(v)
+  })
+
+  it('actually samples rather than just taking a contiguous slice', () => {
+    const out = deterministicSubsample(items, 50)
+    const head = items.slice(0, 50)
+    const tail = items.slice(-50)
+    expect(out).not.toEqual(head)
+    expect(out).not.toEqual(tail)
+  })
+
+  it('changes the selection when the cap changes', () => {
+    expect(deterministicSubsample(items, 50)).not.toEqual(deterministicSubsample(items, 51).slice(0, 50))
+  })
+
+  it('is total on degenerate caps', () => {
+    expect(deterministicSubsample(items, 0)).toBe(items)
+    expect(deterministicSubsample(items, -5)).toBe(items)
+    expect(deterministicSubsample([], 10)).toEqual([])
+  })
+})
+
+describe('mulberry32', () => {
+  it('is reproducible for a given seed and varies across seeds', () => {
+    const a = mulberry32(42), b = mulberry32(42), c = mulberry32(43)
+    const seqA = [a(), a(), a()]
+    expect(seqA).toEqual([b(), b(), b()])
+    expect(seqA).not.toEqual([c(), c(), c()])
+  })
+
+  it('stays within [0, 1)', () => {
+    const r = mulberry32(7)
+    for (let i = 0; i < 2000; i++) {
+      const v = r()
+      expect(v).toBeGreaterThanOrEqual(0)
+      expect(v).toBeLessThan(1)
+    }
   })
 })
