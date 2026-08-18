@@ -42,6 +42,12 @@ export type ActionPlanInput = {
   themeTable: ThemeTableRow[]
   lowQuotes: { theme: string; quote: string }[] // one real 1–3★ verbatim per theme
   praiseVerbatims: PlanVerbatim[]
+  // This outlet's peer-relative levers, ALREADY ordered by what fixing each one
+  // alone would win back (predictor.outletLevers — see ThemeStanding.soloRecovery).
+  // Used to order the priorities so the narrated plan and the lever cards below
+  // it agree on what to do first. Optional: without it the plan falls back to
+  // pure READ severity, which is what it did before 2026-08-18.
+  leverOrder?: string[]
 }
 
 // The plan regenerates only when its inputs materially change: the outlet's
@@ -50,15 +56,36 @@ export function actionPlanBasis(reviews: number, themeTable: ThemeTableRow[]): s
   // Bump the version prefix to invalidate all cached plans after a prompt change.
   // v4 (2026-08-07): refer to "your location" (brand/outlet names can be messy)
   // — supersedes v3's specific-naming attempt; verbatim-accuracy fix stays.
-  return `v4|${reviews}|${themeTable.map((t) => `${t.theme}:${t.read}`).join(',')}`
+  // v5 (2026-08-18): priorities are ordered by the outlet's impact ranking, not
+  // READ severity, so every v4 plan can name a different first move from the
+  // lever cards under it. The inputs below are unchanged — the SELECTION rule
+  // moved — which is exactly the case the version prefix exists for. (Any data
+  // change already shifts `reviews`, so this doesn't need the lever order in it.)
+  return `v5|${reviews}|${themeTable.map((t) => `${t.theme}:${t.read}`).join(',')}`
 }
 
 // Themes to work on: FIX first, then WATCH, worst avg★ first — up to 3.
-function pickPriorityThemes(themeTable: ThemeTableRow[]): ThemeTableRow[] {
+// Themes to work on. The CANDIDATE SET is still absolute health — only FIX and
+// WATCH themes, i.e. ones actually scoring badly here — but the ORDER is now the
+// outlet's impact ranking when we have one (2026-08-18, owner).
+//
+// Before, this ranked by READ severity then worst avg★. That produced a plan
+// whose "Priority 1 · BIGGEST LEVER" could name a different theme from the
+// lever cards immediately below it, which rank by how many unhappy guests
+// fixing each one actually wins back — two sections of one page recommending
+// different first moves. Severity answers "how bad is this?"; it does not
+// answer "what do I do first?".
+//
+// Themes absent from leverOrder (notably lagging OUTCOME themes like brand
+// loyalty, which the predictor excludes as symptoms rather than levers) sort
+// last, then by the old severity rule.
+export function pickPriorityThemes(themeTable: ThemeTableRow[], leverOrder?: string[]): ThemeTableRow[] {
   const rank = (r: string) => (r === 'FIX' ? 0 : r === 'WATCH' ? 1 : 2)
+  const impact = new Map((leverOrder || []).map((t, i) => [t, i]))
+  const at = (t: ThemeTableRow) => impact.get(t.theme) ?? Number.MAX_SAFE_INTEGER
   return [...themeTable]
     .filter((t) => t.read === 'FIX' || t.read === 'WATCH')
-    .sort((a, b) => rank(a.read) - rank(b.read) || a.avgStar - b.avgStar)
+    .sort((a, b) => at(a) - at(b) || rank(a.read) - rank(b.read) || a.avgStar - b.avgStar)
     .slice(0, 3)
 }
 
@@ -107,7 +134,7 @@ function clampSentence(s: string, max: number): string {
 // Deterministic fallback plan when the LLM is unavailable / returns junk — still
 // useful (real themes, real quotes), just without the narrated operator playbook.
 function fallbackPlan(input: ActionPlanInput, generatedAt: string): ActionPlan {
-  const themes = pickPriorityThemes(input.themeTable)
+  const themes = pickPriorityThemes(input.themeTable, input.leverOrder)
   const qmap = new Map(input.lowQuotes.map((q) => [q.theme, q.quote]))
   return {
     priorities: themes.map((t, i) => ({
@@ -127,7 +154,7 @@ function fallbackPlan(input: ActionPlanInput, generatedAt: string): ActionPlan {
 
 export async function generateActionPlan(input: ActionPlanInput): Promise<ActionPlan> {
   const generatedAt = new Date().toISOString()
-  const themes = pickPriorityThemes(input.themeTable)
+  const themes = pickPriorityThemes(input.themeTable, input.leverOrder)
   if (!themes.length) {
     // Nothing scoring FIX/WATCH — a strong store. Keep-doing-only plan (no LLM).
     return fallbackPlan(input, generatedAt)

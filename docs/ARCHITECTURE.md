@@ -412,3 +412,27 @@ a transport one.
 *Add a D-entry when a decision (a) shapes more than one module, (b) would
 surprise a competent newcomer, or (c) was expensive to learn. Update
 `SPEC.md`'s pointer list if the numbering changes.*
+
+## File exports must report completion (2026-08-18)
+
+`window.location.href = url` / `window.open(url)` starts a navigation the page
+can never observe — no success, no failure, no "still working". Two exports were
+built that way and both read as dead buttons: the Outlet Deep-Dive PDF (52s) and
+the Operational Review deck (a full predictor scan + an optional live competitor
+pull + a deck render, `maxDuration = 120`).
+
+**Fetch the file instead** — `downloadFile()` in `lib/browserDownload.ts`
+resolves when the last byte lands, so a caller can drive a real busy state, keep
+a modal's form on failure, and surface the server's own error message. Used by
+`OperationalReviewExport.tsx` and by `DatasetHeader`'s report launcher, which
+also now passes `busy` to `ReportsMenu`.
+
+**HTML reports still open in a tab** — they are meant to be read, not downloaded.
+The rule is `method === 'GET' && format === 'html'` → `window.open`; everything
+else is a file.
+
+**What is NOT offered is a percentage.** These routes spend nearly all their
+wall-clock generating server-side before the first byte, so byte progress would
+sit at 0 and jump to 100 — a progress bar that lies. Elapsed time is honest and
+is what the UI shows. A real percentage would need a job record plus polling or
+SSE; do not fake one with a timer.

@@ -15,6 +15,7 @@ import ShareAnalyticsModal from '@/components/analyze/ShareAnalyticsModal'
 import SearchPanel from '@/components/analyze/textmine/SearchPanel'
 import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
 import ReportsMenu from '@/components/analyze/ReportsMenu'
+import { downloadFile } from '@/lib/browserDownload'
 import AdHocReportModal from '@/components/analyze/AdHocReportModal'
 import { availableReports, type ReportContext, type ReportType, type ReportFormat } from '@/lib/reportCatalog'
 
@@ -119,21 +120,26 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
     if (type.id === 'deck') { setShowExport(true); return }   // configurable → its own modal
     if (type.id === 'ad-hoc') { setAdHocOpen(true); return }
     var req = type.launch(dataset.id, format)
-    if (req.method === 'GET') { window.open(req.url, '_blank', 'noopener'); return }
-    // POST → fetch → blob download (collection synthesis reports, etc.)
+    // An HTML report is meant to be READ, so it still opens in a tab. Everything
+    // else is a file: fetch it so the menu can show it working and report a real
+    // failure — these builds run for tens of seconds, and a bare window.open is
+    // unobservable, so the UI had no way to say so (lib/browserDownload).
+    if (req.method === 'GET' && format === 'html') { window.open(req.url, '_blank', 'noopener'); return }
+    setReportBusy(true)
     try {
-      var res = await fetch(req.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req.body || {}) })
-      if (!res.ok) { window.alert('Could not build the report'); return }
-      var blob = await res.blob()
-      var url = URL.createObjectURL(blob)
-      var a = document.createElement('a')
-      a.href = url
-      a.download = (dataset.name || 'Report').replace(/[^\w.-]+/g, '_') + '_' + type.id + '.' + format
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch { window.alert('Network error building the report') }
+      await downloadFile(req.url, {
+        method: req.method,
+        body: req.method === 'POST' ? (req.body || {}) : undefined,
+        fallbackName: (dataset.name || 'Report').replace(/[^\w.-]+/g, '_') + '_' + type.id + '.' + format,
+      })
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Could not build the report')
+    } finally {
+      setReportBusy(false)
+    }
   }
 
+  var [reportBusy, setReportBusy] = useState(false)
   var [reviewSyncing, setReviewSyncing] = useState(false)
   var [syncing, setSyncing] = useState(false)
 
@@ -351,7 +357,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
                     paddingTop: 6, paddingBottom: 6, color: '#111827',
                   }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em', padding: '4px 14px 4px' }}>Reports</div>
-                    <ReportsMenu ctx={reportCtx} onLaunch={(type, format) => { void handleReportLaunch(type, format) }} />
+                    <ReportsMenu ctx={reportCtx} busy={reportBusy} onLaunch={(type, format) => { void handleReportLaunch(type, format) }} />
                   </div>
                 </>
               )}
@@ -428,6 +434,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
               <span style={{ fontSize: 9, color: 'rgba(255,255,255,.4)', whiteSpace: 'nowrap' }}>
                 {(() => {
                   var d = new Date(dataset.last_synced_at!)
+                  // eslint-disable-next-line react-hooks/purity -- relative-time display computed during render; if React recomputes, the elapsed value simply refreshes, which is the desired behaviour. Freezing it in state would need a ticking clock for no benefit
                   var mins = Math.round((Date.now() - d.getTime()) / 60000)
                   return mins < 1 ? 'just now' : mins < 60 ? mins + 'm ago' : mins < 1440 ? Math.floor(mins / 60) + 'h ago' : Math.floor(mins / 1440) + 'd ago'
                 })()}

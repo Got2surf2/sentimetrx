@@ -1643,6 +1643,20 @@ marker.
 > citing reviews cites it alone). Sub-1 is spelled out rather than rounded to
 > "~0 guests", which would read as *pointless* instead of *rarely arrives alone*.
 >
+> **The AI Action Plan follows the same order (2026-08-18).** `pickPriorityThemes`
+> ranked by READ severity then worst avg★, so "Priority 1 · BIGGEST LEVER" could
+> name a different theme from the lever card directly beneath it — one page
+> recommending two different first moves. The **candidate set is unchanged**
+> (still FIX/WATCH only — absolute health decides what is even a problem), but
+> the **order** is now `ActionPlanInput.leverOrder`, the impact-ranked
+> `predictor.outletLevers` themes, passed by `/outlet-action-plan` from the same
+> scan. Themes absent from that list — notably lagging OUTCOME themes like brand
+> loyalty, which the predictor excludes as symptoms — sort last, then by the old
+> severity rule. Pinned by `tests/unit/outletActionPlan.test.ts`.
+> **`actionPlanBasis` bumped `v4` → `v5`**: the selection RULE moved while its
+> inputs did not, which is exactly what the version prefix exists for. Every
+> cached plan regenerates on next view (one Sonnet call per outlet, lazily).
+
 > ⚠️ **`OutletSummary.topIssue` is deliberately NOT `outletLevers[0]`.** It is
 > pinned to the worst **percentile** theme, because Brand Health and two decks
 > render it under the label *"Worst-ranked issue (vs all outlets)"* — letting it

@@ -1089,3 +1089,64 @@ The 67-outlet sweep gained two assertions — levers must be in descending
 `soloRecovery` order, and the callout must never say "one systemic issue" when
 `brandLevers.length > 1`. It immediately caught its own stale heading marker,
 which is the cheap version of the bug it exists to prevent.
+
+## Aligning the AI plan, and making an export say it's working (2026-08-18)
+
+Two follow-ups from the lever reordering.
+
+**The AI Action Plan now follows the same order.** `pickPriorityThemes` ranked by
+READ severity then worst avg★, so "Priority 1 · BIGGEST LEVER" could name a
+different theme from the lever card immediately beneath it — one page
+recommending two different first moves. The candidate set is unchanged (FIX and
+WATCH only; absolute health still decides what counts as a problem) but the order
+is now the outlet's impact ranking, passed in as `ActionPlanInput.leverOrder` by
+`/outlet-action-plan` off the same scan. Themes with no impact rank — notably the
+lagging OUTCOME themes the predictor excludes as symptoms — sort last rather than
+first, which falls out of the ordering rather than needing a special case.
+
+`actionPlanBasis` went `v4` → `v5`. The selection RULE moved while its inputs
+didn't, which is exactly the case the version prefix exists for; without the bump
+every cached plan would keep its old ordering forever. Plans regenerate lazily,
+one Sonnet call per outlet on next view. `pickPriorityThemes` is now exported and
+pinned by five unit tests, including the two cases most likely to regress: a
+top-impact theme that scores SOLID must never be promoted into "things to work on
+next", and an unranked theme must sink, not float.
+
+**The Operational Review export now reports that it is working.** The owner asked
+for a working state on the pill and, more pointedly, whether it was *trackable to
+completion*. It wasn't, and the reason was the mechanism: `window.location.href`
+starts a navigation the page can never observe. That build is a full predictor
+scan plus an optional live competitor pull plus a deck render, `maxDuration = 120`
+— measured at 22.8s on Cheddar's — and the modal simply closed with nothing
+visible happening.
+
+Fetching the file instead makes completion knowable, so the answer is yes:
+`lib/browserDownload.ts` resolves on the last byte. The button now shows
+"Building… 0:14" with a live elapsed clock, the modal stays open and keeps the
+typed form if it fails, and the server's own error message is surfaced instead of
+a generic alert. The same helper replaced `DatasetHeader`'s `window.open` for
+report launches, which had the identical blind spot, and `ReportsMenu` finally
+gets the `busy` prop it has always accepted. HTML reports still open in a tab —
+they are meant to be read, not downloaded.
+
+What we deliberately did NOT add is a percentage. Nearly all the wall-clock is
+server-side before the first byte, so byte progress would sit at 0 and jump to
+100 — a progress bar that lies. Elapsed time is real information; a genuine
+percentage needs a job record and polling, which is a different piece of work.
+
+Two things the verification caught. The harness asserts the elapsed clock
+**advances**, not merely that it renders — a frozen counter is worse than none,
+and it is the failure a static check would sail past. And the first three runs
+failed for reasons that were all harness, not product: a polluted `ORG_ID` from
+dotenv's banner leaking into a command substitution; a stale auth user left by
+that failed run which `auth.admin.listUsers()` on this project cannot even
+enumerate ("Database error finding users"), fixed with a per-run unique email;
+and a click that landed before React had hydrated on a page that runs a full
+predictor scan, which the button silently dropped.
+
+**Lint:** touching `DatasetHeader` unmasked a pre-existing `react-hooks/purity`
+warning — the v7 compiler had been bailing out of the component, exactly the
+dynamic recorded in W33. Resolved with the convention `1ca36b53` wrote down:
+relative-time values are computed with `Date.now()` during render on purpose, so
+it takes the documented scoped disable with the same reason string used elsewhere.
+Back to the baseline count for that file.

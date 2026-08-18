@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { downloadFile } from '@/lib/browserDownload'
 
 // Client control for the "Export operational review" download. The deck triggers
 // a one-time live competitor pull and renders cover-page metadata, so generation
@@ -18,7 +19,20 @@ export default function OperationalReviewExport({ datasetId, brand }: { datasetI
   const [competitors, setCompetitors] = useState('')
   const [franchiseStates, setFranchiseStates] = useState('')
 
-  function onGenerate() {
+  const [busy, setBusy] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+  const [error, setError] = useState('')
+  const startedAt = useRef(0)
+
+  // Elapsed seconds while a build is in flight. Honest signal that something is
+  // happening, and it sets expectations on a job that can run past a minute.
+  useEffect(() => {
+    if (!busy) return
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt.current) / 1000)), 1000)
+    return () => clearInterval(id)
+  }, [busy])
+
+  async function onGenerate() {
     const params = new URLSearchParams()
     const add = (key: string, val: string) => {
       const v = val.trim()
@@ -31,9 +45,21 @@ export default function OperationalReviewExport({ datasetId, brand }: { datasetI
     add('competitors', competitors)
     add('franchiseStates', franchiseStates)
     const qs = params.toString()
-    window.location.href = `/api/datasets/${datasetId}/operational-review-deck${qs ? `?${qs}` : ''}`
-    setOpen(false)
+
+    setError(''); setElapsed(0); startedAt.current = Date.now(); setBusy(true)
+    try {
+      await downloadFile(`/api/datasets/${datasetId}/operational-review-deck${qs ? `?${qs}` : ''}`, {
+        fallbackName: `${(brand || 'Operational').replace(/[^\w.-]+/g, '_')}_Operational_Review.pptx`,
+      })
+      setOpen(false)   // only on success — a failure keeps the form as typed
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not build the deck')
+    } finally {
+      setBusy(false)
+    }
   }
+
+  const clock = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`
 
   const inputCls = 'mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-gray-900 placeholder:text-gray-400'
 
@@ -42,15 +68,17 @@ export default function OperationalReviewExport({ datasetId, brand }: { datasetI
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-700"
+        disabled={busy}
+        aria-busy={busy}
+        className={`rounded-md px-3 py-1.5 text-sm font-semibold text-white ${busy ? 'cursor-not-allowed bg-gray-400' : 'bg-gray-900 hover:bg-gray-700'}`}
       >
-        Export operational review
+        {busy ? `Building deck… ${clock}` : 'Export operational review'}
       </button>
 
       {open && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setOpen(false)}
+          onClick={() => { if (!busy) setOpen(false) }}
         >
           <div
             className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl ring-1 ring-gray-200"
@@ -60,7 +88,7 @@ export default function OperationalReviewExport({ datasetId, brand }: { datasetI
               <h2 className="text-base font-bold text-gray-900">Export operational review</h2>
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => { if (!busy) setOpen(false) }}
                 aria-label="Close"
                 className="-mr-1 -mt-1 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
               >
@@ -143,20 +171,36 @@ export default function OperationalReviewExport({ datasetId, brand }: { datasetI
               </label>
             </div>
 
+            {error && (
+              <p className="mt-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                {error} — your entries are kept, try Generate again.
+              </p>
+            )}
+
+            {busy && (
+              <p className="mt-4 text-xs text-gray-500">
+                Building the deck — reading every review, ranking locations and pulling the competitor
+                benchmark. This usually takes up to a couple of minutes; the file downloads when it's done.
+              </p>
+            )}
+
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                disabled={busy}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={onGenerate}
-                className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-700"
+                onClick={() => { void onGenerate() }}
+                disabled={busy}
+                aria-busy={busy}
+                className={`rounded-md px-3 py-1.5 text-sm font-semibold text-white ${busy ? 'cursor-not-allowed bg-gray-400' : 'bg-gray-900 hover:bg-gray-700'}`}
               >
-                Generate
+                {busy ? `Building… ${clock}` : 'Generate'}
               </button>
             </div>
           </div>

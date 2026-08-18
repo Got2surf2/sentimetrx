@@ -16,7 +16,7 @@ import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
-import { computeOutletReport } from '@/lib/outletReport'
+import { computeOutletReportWithPredictor } from '@/lib/outletReport'
 import { actionPlanBasis, getOrGenerateActionPlan } from '@/lib/outletActionPlan'
 import type { ThemeTableRow } from '@/lib/outletReport'
 
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ datasetI
     if (plan) return NextResponse.json({ plan, cached: true })
   }
 
-  const report = await computeOutletReport(datasetId, outlet)
+  const { report, predictor } = await computeOutletReportWithPredictor(datasetId, outlet)
   const s = report.selected
   if (!s || s.placeId !== outlet) return NextResponse.json({ error: 'No data for that outlet' }, { status: 404 })
 
@@ -81,6 +81,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ datasetI
     themeTable: s.snapshot.themeTable,
     lowQuotes: s.lowQuotes,
     praiseVerbatims: s.snapshot.praiseVerbatims,
+    // Impact-ordered, so the narrated priorities lead with the same theme the
+    // lever cards do. Same scan — computeOutletReportWithPredictor builds both.
+    leverOrder: (predictor.outletLevers[s.placeId] || []).map((l) => l.theme),
   }, basis)
 
   return NextResponse.json({ plan, cached })
