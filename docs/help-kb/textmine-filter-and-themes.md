@@ -1,7 +1,7 @@
 # How do I explore my results in TextMine?
 
-**TextMine** is the heart of Advanced Analytics — it turns open-ended answers into
-themes you can read, filter, and compare. Open a dataset in **Advanced Analytics**
+**TextMine** is the heart of Analytics — it turns open-ended answers into
+themes you can read, filter, and compare. Open a dataset in **Analytics**
 to get there.
 
 ## Themes

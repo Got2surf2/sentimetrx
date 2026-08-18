@@ -7,7 +7,7 @@ your dataset holds.
 
 ## Ask a question about your data
 
-Open a dataset in **Advanced Analytics** and go to **Ask Ana**. Type a question
+Open a dataset in **Analytics** and go to **Ask Ana**. Type a question
 the way you'd ask a colleague, for example:
 
 - "What did detractors say about wait times?"

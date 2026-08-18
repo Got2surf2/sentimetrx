@@ -12,9 +12,17 @@ raw `docs/*.md` — so it can't leak internals, table names, or unshipped featur
 ## Voice & rules (every article follows these)
 
 - **Second person, task-first.** "To filter TextMine, open the Filters bar and…"
-- **UI labels, not slugs or internal names.** Say "the **Schema** tab", "**Advanced
-  Analytics**", "**Ask Ana**" — never `/analyze/[id]/settings`, `dataset_rows_flat`,
-  RPC names, or `townhall_*`.
+- **UI labels, not slugs or internal names.** Say "the **Schema** tab",
+  "**Analytics**", "**Ask Ana**" — never `/analyze/[id]/settings`,
+  `dataset_rows_flat`, RPC names, or `townhall_*`.
+- ⚠️ **The `/analyze` module is "Analytics"** (`TopNav`, `MODULE_LABELS.analyze`) —
+  **never "Advanced Analytics"**. That is a *different*, real on-screen label: the
+  multi-location section INSIDE TextMine (Brand Health · Leaderboard · Outlet
+  Deep-Dive, `AnalyticsNav`), which is gated behind the `outletReporting`
+  capability and invisible to most orgs. Calling the module "Advanced Analytics"
+  sends users hunting for a label that sits one level deeper — and inverts the
+  hierarchy, since that section is a SIBLING of TextMine, not its parent. Fixed
+  across 11 articles + the nav map on 2026-08-18.
 - **Only describe shipped features.** If it isn't in these articles, the agent
   doesn't claim it exists.
 - **No invented URLs / emails / prices / stats.** Ask for the real value or omit.

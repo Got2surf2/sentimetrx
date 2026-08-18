@@ -16,7 +16,7 @@ anyone else's.
 ## How it's used
 
 Responses are analyzed — including with the help of AI services — to produce the
-themes, sentiment, and summaries you see in Advanced Analytics, on behalf of the
+themes, sentiment, and summaries you see in Analytics, on behalf of the
 organization that collected them. Your responses are **never sold** and are
 **not used for advertising**.
 

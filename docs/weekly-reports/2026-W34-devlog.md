@@ -799,3 +799,41 @@ title, leaving the legend row to carry the reading aid ("Net-positive rate vs th
 network"). Verified in print media (`block / visible`) as well as on screen — a
 `print:hidden` on the wrong wrapper would have silently dropped it from every
 client PDF.
+
+### Sherpa was calling the module by another feature's name
+
+Chasing an IA question ("is Deeper Analysis the same as Advanced Analytics?")
+turned up a live naming fault in the help agent.
+
+Three labels, two of them clashing:
+
+| What | On-screen | Source |
+|---|---|---|
+| the `/analyze` module | **Analytics** | `TopNav.tsx:108`, `MODULE_LABELS.analyze` |
+| a section inside TextMine | **Advanced Analytics** | `AnalyticsNav.tsx:24` |
+| what Sherpa called the module | **Advanced Analytics** ❌ | `helpAgent.ts:32` |
+
+So "Advanced Analytics" was simultaneously the *parent* of TextMine (per Sherpa)
+and a *sibling* of TextMine (per the actual nav). Worse, the prompt cited it as
+an example of an on-screen label — which it is, for something one level deeper
+that is gated behind `outletReporting` and invisible to most orgs. A user told
+"Open Advanced Analytics and pick your dataset" scans the top nav and finds
+**📊 Analytics**.
+
+Fixed on the help side rather than the product: 17 occurrences across 11 KB
+articles, the nav map and three prompt lines, plus `HELP_AGENT.md`. `/analyze` is
+now **Analytics** everywhere, which is what the KB's own "use UI labels" rule
+required all along. The rule now names the trap explicitly in the KB README so it
+can't quietly return.
+
+Re-seeded TEST and PROD (21 articles → 100 chunks). Added a second asserted
+regression to `_verify_help_agent.mts`: asked "where do I go to explore my survey
+results?", the reply must not contain "advanced analytics". It now answers *"Head
+to [Analytics](/analyze) and open your dataset."* Prod verified read-only — zero
+chunks still carry the old label.
+
+⚠️ Still undecided, and deliberately not touched: whether to rename the *section*
+(Brand Health · Leaderboard · Outlet Deep-Dive) to something like
+"Multi-Location". "Advanced" describes nothing, and the rename would free the
+name entirely — but it changes the UI and the Target-B IA docs, so it's an owner
+call.

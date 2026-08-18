@@ -1,9 +1,9 @@
 # How do I add data?
 
-Everything you analyze in **Advanced Analytics** lives in a **dataset**. There are
+Everything you analyze in **Analytics** lives in a **dataset**. There are
 a few ways to get one — import a file, upload a spreadsheet, or connect an outside
 source — depending on where your feedback comes from. Start a new one from
-**Advanced Analytics** and pick the source.
+**Analytics** and pick the source.
 
 ## From your survey responses
 

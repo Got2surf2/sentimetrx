@@ -22,7 +22,7 @@ Sherpa, icon = 🧭.**
 
 **The two assistants are a clean, symmetric split (owner, 2026-07-16).** Sentimetrx
 has two AI helpers that live in different places and refer to each other:
-- **Ask Ana** — embedded *inside a dataset* (Advanced Analytics). Answers about the
+- **Ask Ana** — embedded *inside a dataset* (Analytics). Answers about the
   user's **data** ("what did respondents say about parking?").
 - **Help / Sherpa (🧭)** — a **global** launcher on every page. Answers about **using
   the product** ("how do I export a deck?").
@@ -310,7 +310,7 @@ it we're guessing at coverage. One small table + one endpoint.
 **Post-MVP follow-ups — SHIPPED 2026-07-19 (owner asks):**
 - ✅ **In-app deep-linking ("take me there", lightweight).** Sherpa links to a
   **curated navigation map** of top-level destinations (`HELP_NAV_MAP` in
-  `lib/helpAgent.ts`) as markdown links, e.g. `[Advanced Analytics](/analyze)`.
+  `lib/helpAgent.ts`) as markdown links, e.g. `[Analytics](/analyze)`.
   The widget renders them clickable and navigates **client-side** (Next router).
   Feature-integrity: `scrubHelpReply` strips any in-app link outside the allow-list
   (blocks invented routes / guessed ids), keeping external-link + email scrubbing.

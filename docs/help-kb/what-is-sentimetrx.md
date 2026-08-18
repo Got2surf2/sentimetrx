@@ -14,13 +14,13 @@ answers into themes, entities, and statistics you can act on.
   that hold a real conversation with your audience (answering questions, probing
   for detail). Use an agent when you want a two-way conversation rather than a
   fixed questionnaire.
-- **Advanced Analytics** (the Analyze module) — where your responses become
+- **Analytics** — where your responses become
   insight. It includes **TextMine** (themes, entities, dimensions, sentiment,
   filtering),
   the **Statistics** tab (charts, key drivers), full-text **Search**, and
   **Ask Ana**.
 - **Ask Ana** — an AI analyst that answers questions about *your data* ("what did
-  people say about parking?"). It lives inside a dataset in Advanced Analytics.
+  people say about parking?"). It lives inside a dataset in Analytics.
 - **PulseIQ** — run a live, digital pulse/poll session and see responses come in
   in real time.
 - **Town Hall** — record an in-person meeting and turn the transcript into a

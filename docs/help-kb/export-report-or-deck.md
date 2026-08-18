@@ -1,8 +1,8 @@
 # How do I export a report or deck?
 
-When you're ready to share findings, Advanced Analytics can turn your dataset into a
+When you're ready to share findings, Analytics can turn your dataset into a
 deck, a report, or a data file — with charts and summaries already built. You'll
-find the export options on your dataset in **Advanced Analytics**.
+find the export options on your dataset in **Analytics**.
 
 ## Exports reflect your active filters
 

@@ -10,7 +10,7 @@ about, consistently, across every response.
 Dimensions are **not** on automatically — you switch them on once per dataset and a
 one-off classification pass tags every comment.
 
-1. Open the dataset, go to **Advanced Analytics** → **TextMine**, and open the
+1. Open the dataset, go to **Analytics** → **TextMine**, and open the
    **Dimensions** section.
 2. If you see *"Pick a field to analyze"*, choose an open-ended field first using
    the field toggle at the top of TextMine. You can select more than one.
@@ -38,7 +38,7 @@ straight to **Enable Dimensions**.
 
 ## The Dimensions axes
 
-Open a dataset in **Advanced Analytics**, go to **TextMine**, and open the
+Open a dataset in **Analytics**, go to **TextMine**, and open the
 **Dimensions** section. Each comment is tagged across axes such as **touchpoint**,
 **attribute**, **product**, and more. You'll see:
 

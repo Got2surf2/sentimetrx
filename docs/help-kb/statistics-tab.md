@@ -1,6 +1,6 @@
 # How do I read the Statistics tab?
 
-The **Statistics** tab (in Advanced Analytics, alongside TextMine) is for the
+The **Statistics** tab (in Analytics, alongside TextMine) is for the
 numbers behind your feedback — how ratings break down, what moves them, and
 whether differences between groups are real.
 

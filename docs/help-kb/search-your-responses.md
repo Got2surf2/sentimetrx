@@ -1,7 +1,7 @@
 # How do I search my responses?
 
 When you want to jump straight to specific comments rather than browse themes,
-**Search** finds them fast. It's part of **TextMine** in Advanced Analytics — open
+**Search** finds them fast. It's part of **TextMine** in Analytics — open
 the search box on your dataset and type what you're looking for.
 
 ## Plain keyword search
