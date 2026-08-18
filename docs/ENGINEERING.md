@@ -1226,3 +1226,62 @@ byte-identical, alongside a clean `tsc` and the full suite.
 
 **Dead code noticed, not removed:** `stepConversationExtrasRef` is assigned every
 render and never read.
+
+## What the `react-hooks` v7 compiler actually accepts (2026-08-18)
+
+Determined empirically while clearing the 32 `refs`/`purity`/`immutability`
+warnings in `useSurveyEngine` — by linting a scratch file of candidate patterns
+rather than guessing. Worth keeping, because ~176 warnings remain codebase-wide
+and they are mostly this family. **Verify against a scratch probe before assuming
+any of it still holds after a plugin bump.**
+
+| Pattern | Verdict |
+|---|---|
+| `if (ref.current === null) ref.current = make()` | **exempt** — the documented lazy-ref idiom, even when `make()` is impure |
+| `if (!ref.current) { ref.current = make() }` | **flagged** — the guard must be an explicit `=== null`, not a falsy check |
+| `useState(() => impure())`, `useMemo(() => impure(), [])` | **exempt** — a lazy initialiser is the sanctioned home for `Math.random`, `Date.now`, Web Storage |
+| `useRef(impure())` | **flagged (`purity`)** — the argument is evaluated on *every* render, not just the first |
+| assigning a ref inside `useEffect` | **allowed** |
+| mutating a *different* ref inside a `=== null` guard | **flagged** — the exemption covers only the ref being guarded |
+| reading `ref.current` in JSX / the return value | **flagged** — refs are not render data |
+| a ref declared *after* the value it stores, reassigned in an effect | **flagged (`immutability`)**: "value previously passed as an argument to a hook". Declare the ref **before** the callback |
+| naming a ref in a hook's dependency array | makes the compiler treat it as hook-owned and forbid the body from mutating it — **leave refs out of dep arrays** |
+| a self-recursive `useCallback` (`const f = useCallback(() => f(), [])`) | **flagged (`immutability`)** — route the self-call through a ref |
+
+The two counter-intuitive ones are the last three. A latest-value ref
+(`someRef.current = someFn`) is only clean if the ref is declared *ahead* of the
+function it points at and is *not* named in the syncing effect's dependency
+array — which reads backwards, but follows from the compiler's alias analysis:
+once a value has been handed to a hook it is considered hook-owned, and a ref
+created from it inherits that.
+
+### Applying it: `useSurveyEngine` 32 → 0, with nothing suppressed
+
+The scoped disables added earlier the same day are all gone; the file now reports
+zero even under `--max-warnings 0 --no-inline-config`. **The lint ceiling does not
+move** (still 176) — suppressed warnings never counted, which is exactly why the
+ratchet number is a poor measure of this kind of work.
+
+- **Per-mount initialisation** — session id, device fingerprint, hidden-field/URL
+  capture and the device lock moved from bare render-body statements into
+  `useState` lazy initialisers backed by module-scope factories
+  (`resolveSessionId`, `computeDeviceFingerprint`, `readUrlCapture`,
+  `isDeviceBlocked`). The mutable conversation state uses the `=== null` lazy-ref
+  idiom via `makeInitialState`, then is narrowed once (`stateRef as
+  RefObject<State>`) so the ~100 `state.current.x` reads below are untouched.
+- **The campaign `?rid=` click beacon moved into an effect.** It was a real side
+  effect fired from the render body: a discarded render would still have reported
+  a click for a page view that never committed.
+- **Latest-value refs** are declared in one block ahead of the callbacks they
+  point at, and synced by a single effect at the bottom of the hook. Nothing can
+  observe an unsynced ref — every caller is a DOM handler on a node the flow
+  creates, and the flow cannot start until `renderInput('start')`, which the
+  widget calls from an effect registered *after* this one.
+- **`stepPsychoQ`'s self-recursion** goes through `stepPsychoQRef`.
+- **`stepConversationExtrasRef` deleted** — assigned every render, never read.
+
+**Verification.** jsdom harness 17/17 with both transcripts unchanged; full suite
+1,730 green; and a Playwright A/B against the real client bundle on the TEST
+project — with `Math.random` seeded in the page, the complete conversation
+transcript is **byte-identical before and after** on two studies (18 and 39
+turns), and all five active studies plus a full Spanish run pass.

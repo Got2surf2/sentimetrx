@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import DOMPurify from 'isomorphic-dompurify'
 import type { Study, StudyConfig, Sentiment, SurveyPayload, OpeningFlowItem, SectionKey, RatingOption, LikertFollowUp, ContactFieldType } from '@/lib/types'
 import { US_STATES, validateContactField, BUILTIN_UI_TRANSLATIONS, SUPPORTED_LANGUAGES } from '@/lib/types'
@@ -102,6 +102,94 @@ function isQuestionOrOffTopic(text: string) {
 // Consistent duration based on message length: ~30ms per char, clamped 400–1800ms
 function typingDur(text: string) { return Math.max(400, Math.min(1800, text.length * 30)) }
 
+type UrlCapture = {
+  /** Hidden-question answers keyed by question id, read from the URL. */
+  hiddenAnswers: Record<string, string>
+  /** Every other non-internal query param, kept as dynamic fields. */
+  urlParams: Record<string, string>
+  /** Campaign recipient tracking id from ?rid=. */
+  recipientGuid: string | null
+}
+
+const newSessionId = () => 'ses_' + Math.random().toString(36).slice(2) + Date.now().toString(36)
+
+/** Kiosk gets a fresh session per guest (the component remounts between them, so
+ *  a new id here means a new respondent); everyone else resumes the tab's id. */
+function resolveSessionId(kiosk: boolean, guid: string): string {
+  if (kiosk) return newSessionId()
+  try {
+    const existing = sessionStorage.getItem('sentimetrx_session_' + guid)
+    if (existing) return existing
+    const fresh = newSessionId()
+    sessionStorage.setItem('sentimetrx_session_' + guid, fresh)
+    return fresh
+  } catch { return newSessionId() }
+}
+
+/** Screen + timezone + platform + language. */
+function computeDeviceFingerprint(): string {
+  try {
+    return [
+      screen.width + 'x' + screen.height,
+      screen.colorDepth,
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+      navigator.language,
+      navigator.platform,
+      navigator.hardwareConcurrency || 0,
+    ].join('|')
+  } catch { return 'unknown' }
+}
+
+/** Read hidden-field values and dynamic params out of the URL. Pure parse — the
+ *  ?rid= click beacon it used to fire lives in an effect now. */
+function readUrlCapture(config: StudyConfig): UrlCapture {
+  const capture: UrlCapture = { hiddenAnswers: {}, urlParams: {}, recipientGuid: null }
+  try {
+    const params = new URLSearchParams(window.location.search)
+    capture.recipientGuid = params.get('rid')
+    const hiddenKeys = new Set<string>()
+    for (const q of (config.questions ?? []).filter(q => q.type === 'hidden')) {
+      const key = q.paramKey || (q.prompt || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '')
+      if (!key) continue
+      hiddenKeys.add(key)
+      const val = params.get(key)
+      if (val) capture.hiddenAnswers[q.id] = val
+    }
+    const INTERNAL_KEYS = new Set(['rid', 'token', 'preview'])
+    params.forEach((val, key) => {
+      if (!INTERNAL_KEYS.has(key) && !hiddenKeys.has(key) && val) capture.urlParams[key] = val
+    })
+  } catch { /* no URL available (SSR) — leave the capture empty */ }
+  return capture
+}
+
+/** One response per device, unless the study allows more or this is a kiosk. */
+function isDeviceBlocked(config: StudyConfig, kiosk: boolean, guid: string): boolean {
+  if (config.allowMultipleResponses !== false || kiosk) return false
+  try { return !!localStorage.getItem('sentimetrx_completed_' + guid) } catch { return false }
+}
+
+function makeInitialState(capture: UrlCapture): State {
+  return {
+    rating: null, ratingLabel: null, sentiment: null,
+    npsScore: null, npsLabel: null,
+    answers: { q1: '', q2: '', q3: '', q4: '' },
+    questionsAsked: {},
+    clarifyCount: 0,
+    customAnswers: { ...capture.hiddenAnswers },
+    currentQuestion: '',
+    psychoQuestions: [], psychoIdx: 0, psychoAnswers: {},
+    demographics: {},
+    contactInfo: {},
+    startTime: Date.now(),
+    openingAnswers: {},
+    lastUserMsg: '',
+    conversationLog: [],
+    skipNextAck: false,
+    urlParams: { ...capture.urlParams },
+  }
+}
+
 export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scrollBottom, isLightBg = false, reducedMotion = false, onVerboseRequest, kiosk = false, onComplete }: Props) {
   const config = study.config as StudyConfig
   const confirmMode = config.confirmBeforeRecord === true
@@ -113,132 +201,51 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     return false
   }, [onVerboseRequest])
 
-  /* eslint-disable react-hooks/refs, react-hooks/purity --
-   * Render-phase lazy initialisation (session id, device fingerprint, hidden
-   * fields, device lock). These read and write refs and call Math.random /
-   * Date.now / Web Storage during render, which the react-hooks compiler rules
-   * correctly flag as impure.
-   *
-   * They are PRE-EXISTING and are NOT suppressed lightly. Until the
-   * 2026-08-18 declaration reorder, the compiler rules bailed out of this hook
-   * entirely at the first forward reference and reported nothing anywhere in
-   * the file — so this whole class was invisible, not absent. Restructuring it
-   * (useState lazy initialisers, or moving the work into an effect) changes
-   * respondent session identity, the one-response-per-device lock and the
-   * campaign ?rid= capture, which is its own piece of work with its own browser
-   * verification — not a rider on a dependency-graph refactor. Each guard here
-   * is one-shot (`if (!someRef.current)`), so a StrictMode double-render of the
-   * same mount does not re-run it.
-   */
-  const state  = useRef<State>({
-    rating: null, ratingLabel: null, sentiment: null,
-    npsScore: null, npsLabel: null,
-    answers: { q1: '', q2: '', q3: '', q4: '' },
-    questionsAsked: {},
-    clarifyCount: 0,
-    customAnswers: {},
-    currentQuestion: '',
-    psychoQuestions: [], psychoIdx: 0, psychoAnswers: {},
-    demographics: {},
-    contactInfo: {},
-    startTime: Date.now(),
-    openingAnswers: {},
-    lastUserMsg: '',
-    conversationLog: [],
-    skipNextAck: false,
-    urlParams: {},
-  })
+  // ── Per-mount initialisation ──────────────────────────────────────────────
+  //
+  // All of this is "compute exactly once for this respondent". It used to run
+  // bare in the render body, mutating refs and calling Math.random / Date.now /
+  // Web Storage as a side effect of rendering — which breaks under concurrent
+  // rendering, where a render can be discarded and restarted.
+  //
+  // Each piece now uses the form React sanctions for its job: a `useState` lazy
+  // initialiser for a value computed once and then read (React guarantees it
+  // runs once per mount), the documented `if (ref.current === null)` lazy-ref
+  // idiom for the mutable conversation state, and an effect for the one genuine
+  // side effect (the campaign click beacon). Kiosk mode still resets everything
+  // by remounting with a fresh `key` — `useState` and `useRef` both reset on
+  // remount, so that contract is unchanged.
 
-  // ── Session ID — persists for this browser tab, new on new visit ──────────
-  const sessionId = useRef<string>('')
-  if (!sessionId.current) {
-    if (kiosk) {
-      // Kiosk: a fresh session per guest. The component remounts between
-      // guests, so a new id here means a new respondent each time — never
-      // reused from sessionStorage.
-      sessionId.current = 'ses_' + Math.random().toString(36).slice(2) + Date.now().toString(36)
-    } else try {
-      var existing = sessionStorage.getItem('sentimetrx_session_' + study.guid)
-      if (existing) { sessionId.current = existing }
-      else {
-        sessionId.current = 'ses_' + Math.random().toString(36).slice(2) + Date.now().toString(36)
-        sessionStorage.setItem('sentimetrx_session_' + study.guid, sessionId.current)
-      }
-    } catch { sessionId.current = 'ses_' + Math.random().toString(36).slice(2) + Date.now().toString(36) }
-  }
+  const [sessionId] = useState(() => resolveSessionId(kiosk, study.guid))
+  const [deviceFingerprint] = useState(() => computeDeviceFingerprint())
+  const [urlCapture] = useState(() => readUrlCapture(config))
+  const [deviceBlocked] = useState(() => isDeviceBlocked(config, kiosk, study.guid))
 
-  // ── Device fingerprint — screen + timezone + platform + language ───────────
-  const deviceFingerprint = useRef<string>('')
-  if (!deviceFingerprint.current) {
+  // The mutable conversation state. Seeded with the hidden-field / urlParams
+  // capture so those values are present before the first question is asked.
+  const stateRef = useRef<State | null>(null)
+  if (stateRef.current === null) stateRef.current = makeInitialState(urlCapture)
+  // Narrowed once here so the ~100 `state.current.x` reads below stay unchanged.
+  const state = stateRef as React.RefObject<State>
+
+  // Resend's Free plan doesn't fire `email.clicked` webhooks, so opening a
+  // ?rid= survey URL self-reports the click. This is a real side effect and
+  // belongs in an effect: fired from the render body, a discarded render would
+  // still have reported a click for a page view that never committed.
+  useEffect(() => {
+    const rid = urlCapture.recipientGuid
+    if (!rid) return
+    // Fire-and-forget; the endpoint always 200s and only upgrades status from
+    // pending/sent (never overwrites completed).
     try {
-      var parts = [
-        screen.width + 'x' + screen.height,
-        screen.colorDepth,
-        Intl.DateTimeFormat().resolvedOptions().timeZone,
-        navigator.language,
-        navigator.platform,
-        navigator.hardwareConcurrency || 0,
-      ]
-      deviceFingerprint.current = parts.join('|')
-    } catch { deviceFingerprint.current = 'unknown' }
-  }
-
-  // ── Hidden fields — read URL params and inject into customAnswers ─────────
-  // Capture campaign recipient GUID from URL (?rid=xxx)
-  const recipientGuid = useRef<string | null>(null)
-  const hiddenFieldsPopulated = useRef(false)
-  if (!hiddenFieldsPopulated.current) {
-    hiddenFieldsPopulated.current = true
-    try {
-      const params = new URLSearchParams(window.location.search)
-      // Capture campaign recipient tracking ID
-      const rid = params.get('rid')
-      if (rid) {
-        recipientGuid.current = rid
-        // Resend Free plan doesn't fire `email.clicked` webhooks, so we
-        // self-track click as soon as a ?rid= survey URL is opened.
-        // Fire-and-forget; the endpoint always 200s and only upgrades
-        // status from pending/sent (never overwrites completed).
-        try {
-          fetch('/api/campaigns/click', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ rid }),
-            keepalive: true,
-          }).catch(() => {})
-        } catch {}
-      }
-      // Populate hidden field values from URL params
-      const hiddenQuestions = (config.questions ?? []).filter(q => q.type === 'hidden')
-      const hiddenKeys = new Set<string>()
-      for (const q of hiddenQuestions) {
-        const key = q.paramKey || (q.prompt || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '')
-        if (!key) continue
-        hiddenKeys.add(key)
-        const val = params.get(key)
-        if (val) {
-          state.current.customAnswers[q.id] = val
-        }
-      }
-      // Capture all remaining URL params as dynamic fields
-      const INTERNAL_KEYS = new Set(['rid', 'token', 'preview'])
-      params.forEach((val, key) => {
-        if (!INTERNAL_KEYS.has(key) && !hiddenKeys.has(key) && val) {
-          state.current.urlParams[key] = val
-        }
-      })
-    } catch {}
-  }
-
-  // ── Check device limit — returns true if already completed ────────────────
-  const deviceBlocked = useRef<boolean>(false)
-  if (config.allowMultipleResponses === false && !kiosk) {
-    try {
-      var completedKey = 'sentimetrx_completed_' + study.guid
-      if (localStorage.getItem(completedKey)) deviceBlocked.current = true
-    } catch {}
-  }
-  /* eslint-enable react-hooks/refs, react-hooks/purity */
+      fetch('/api/campaigns/click', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rid }),
+        keepalive: true,
+      }).catch(() => {})
+    } catch { /* fail silently */ }
+  }, [urlCapture.recipientGuid])
 
   // -- Translation layer -------------------------------------
   //
@@ -374,7 +381,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           agent:     study.bot_name,
           timestamp: new Date().toISOString(),
           language:  activeLang.current,
-          deviceFingerprint: deviceFingerprint.current,
+          deviceFingerprint: deviceFingerprint,
         }
         if (s.npsScore != null) partialPayload.npsRecommend = { score: s.npsScore, label: s.npsLabel || '' }
         if (s.rating != null) partialPayload.experienceRating = { score: s.rating, label: s.ratingLabel || '', sentiment: s.sentiment || 'neutral' }
@@ -395,13 +402,13 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
             study_guid:   study.guid,
             payload:      partialPayload,
             duration_sec: duration_sec,
-            session_id:   sessionId.current,
+            session_id:   sessionId,
             status:       'incomplete',
           }),
         }).catch(function() { /* fail silently */ })
       } catch { /* fail silently */ }
     }, 2000)
-  }, [study])
+  }, [deviceFingerprint, sessionId, state, study])
 
   // -- Helpers -----------------------------------------------
 
@@ -454,7 +461,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     scrollBottom()
     // `config` was listed but never read in this callback — an unused dep only
     // churns the callback's identity whenever config changes.
-  }, [chatRef, study.bot_emoji, scrollBottom])
+  }, [chatRef, scrollBottom, state, study.bot_emoji])
 
   // Testing mode: show AI reasoning panel below the latest bot message
   const showDebugPanel = useCallback((lines: string[]) => {
@@ -601,7 +608,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     // "long enough". Other answers keep the short-answer heuristic.
     if (state.current.sentiment === 'negative') return true
     return text.trim().split(/\s+/).length < 12
-  }, [config.forceClarify])
+  }, [config.forceClarify, state])
 
   // AI-powered deflection: detects questions/off-topic and generates contextual redirect
   const checkDeflect = useCallback(async (text: string, questionAsked: string) => {
@@ -666,7 +673,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     } catch {
       return false
     }
-  }, [chatRef, clearInput, config.questionRedirect, config.testing, orgName, scrollBottom, showDebugPanel, showTyping, showTypingDuring, study.bot_emoji, study.guid, study.name])
+  }, [chatRef, clearInput, config.questionRedirect, config.testing, orgName, scrollBottom, showDebugPanel, showTyping, showTypingDuring, state, study.bot_emoji, study.guid, study.name])
 
   const buildClarify = useCallback(async (text: string, qKey: 'q3' | 'q4'): Promise<string | null> => {
     const s = state.current
@@ -705,7 +712,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           studyName:       orgName || study.name,
           studyPurpose:    config.greeting,
           studyGuid:       study.guid,
-          session_id:      sessionId.current,   // per-session rate-limit key (venue-NAT safe)
+          session_id:      sessionId,   // per-session rate-limit key (venue-NAT safe)
           questionAsked:   s.currentQuestion,
           questionKey:     qKey,
           answer:          text,
@@ -733,7 +740,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       // keyword default so a transient failure still asks something sensible.
       return keywordFallback()
     }
-  }, [config.clarifiers, config.forceClarify, config.greeting, config.testing, config.useAIClarify, orgName, showDebugPanel, study.guid, study.name, tUI])
+  }, [config.clarifiers, config.forceClarify, config.greeting, config.testing, config.useAIClarify, orgName, sessionId, showDebugPanel, state, study.guid, study.name, tUI])
 
   const pickPsychoQuestions = useCallback((n = 3) => {
     const bank = [...config.psychographicBank]
@@ -743,7 +750,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       picked.push(...bank.splice(i, 1))
     }
     state.current.psychoQuestions = picked
-  }, [config.psychographicBank])
+  }, [config.psychographicBank, state])
 
   // -- Submit ------------------------------------------------
 
@@ -807,7 +814,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     }
 
     // Add device fingerprint to payload for server-side duplicate check
-    const fullPayload = Object.assign({}, payload, { deviceFingerprint: deviceFingerprint.current })
+    const fullPayload = Object.assign({}, payload, { deviceFingerprint: deviceFingerprint })
 
     const duration_sec = Math.round((Date.now() - s.startTime) / 1000)
 
@@ -819,9 +826,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           study_guid:   study.guid,
           payload:      fullPayload,
           duration_sec,
-          session_id:   sessionId.current,
+          session_id:   sessionId,
           status:       'complete',
-          recipient_guid: recipientGuid.current || undefined,
+          recipient_guid: urlCapture.recipientGuid || undefined,
         }),
       })
       if (res.ok) {
@@ -842,9 +849,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
               study_guid:   study.guid,
               payload:      fullPayload,
               duration_sec,
-              session_id:   sessionId.current,
+              session_id:   sessionId,
               status:       'complete',
-              recipient_guid: recipientGuid.current || undefined,
+              recipient_guid: urlCapture.recipientGuid || undefined,
             }),
           })
           if (retry.ok) {
@@ -860,7 +867,26 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     } catch (err) {
       console.error('Failed to submit response:', err)
     }
-  }, [config.autoTranslateResponses, kiosk, study.bot_name, study.guid])
+  }, [config.autoTranslateResponses, deviceFingerprint, kiosk, sessionId, state, study.bot_name, study.guid, urlCapture.recipientGuid])
+
+  // ── Forward references ────────────────────────────────────────────────────
+  //
+  // The flow contains one genuine cycle — progressFlow → showTextInput →
+  // handleOpenEnded → progressFlow — plus two self-references (stepPsychoQ
+  // advances to the next psychographic question by calling itself;
+  // showClarifyInput re-probes itself at depth > 1). A useCallback cannot name
+  // itself or a later sibling in its own dependency array, so imperative DOM
+  // handlers reach the current version through these refs instead.
+  //
+  // Declared here, ahead of every callback they point at: a ref created AFTER
+  // the value it stores is treated by the compiler as holding hook-owned state,
+  // and reassigning it then trips react-hooks/immutability. They are kept in
+  // sync by a single effect at the bottom of the hook.
+  const stepPsychoQRef = useRef<(() => Promise<void>) | null>(null)
+  const showClarifyInputRef = useRef<((qKey: 'q3' | 'q4', originalVal: string, depthSoFar?: number) => void) | null>(null)
+  const handleOpenEndedRef = useRef<((qKey: 'q3' | 'q4', val: string) => Promise<void>) | null>(null)
+  const progressFlowRef = useRef<((qKey: 'q3' | 'q4', skipAck?: boolean) => Promise<void>) | null>(null)
+  const savePartialRef = useRef<(() => void) | null>(null)
 
   // -- Section ordering ----------------------------------------
   // useMemo, not a bare `||`: the fallback array literal was a new identity on
@@ -1136,8 +1162,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       state.current.psychoAnswers[q.key] = origIdx >= 0 && q.opts[origIdx] ? q.opts[origIdx] : opt
       state.current.psychoIdx++
       savePartial()
-      // eslint-disable-next-line react-hooks/immutability -- self-recursive useCallback: `stepPsychoQ` is referenced inside its own body to advance to the next psychographic question. The reference is only evaluated on click, long after the declaration has been initialised.
-      void stepPsychoQ()
+      void stepPsychoQRef.current?.()
     }
     tOpts.forEach(opt => {
       const btn = document.createElement('button')
@@ -1199,7 +1224,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         addMsg('user', val)
         state.current.answers[storageKey] = originalVal + ' [+ ' + val + ']'
       }
-      savePartialRef.current()
+      savePartialRef.current?.()
       clearInput()
       // AI deflection: detect questions/off-topic and respond contextually — deflection serves as the ack
       if (val && !isDecline(val) && await checkDeflect(val, state.current.currentQuestion || '')) {
@@ -1211,7 +1236,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     inputRef.current.appendChild(wrap)
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
-  }, [addMsg, checkDeflect, checkVerbose, clearInput, config, inputRef, scrollBottom, tUI])
+  }, [addMsg, checkDeflect, checkVerbose, clearInput, config, inputRef, scrollBottom, state, tUI])
 
 
 
@@ -1261,7 +1286,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
           state.current.questionsAsked[storageKey] = state.current.currentQuestion
         }
       }
-      savePartialRef.current()
+      savePartialRef.current?.()
       clearInput()
       // Smart deflection: if respondent asked a question or went off-topic, redirect and skip clarifier
       if (v && !isDecline(v) && await checkDeflect(v, state.current.currentQuestion || '')) {
@@ -1289,7 +1314,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     inputRef.current.appendChild(wrap)
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
-  }, [addMsg, buildClarify, checkDeflect, checkVerbose, clearInput, config, inputRef, scrollBottom, shouldClarify, showLikertClarifyInput, showTypingDuring, tUI])
+  }, [addMsg, buildClarify, checkDeflect, checkVerbose, clearInput, config, inputRef, scrollBottom, shouldClarify, showLikertClarifyInput, showTypingDuring, state, tUI])
 
 
     const stepPsychoIntro = useCallback(async () => {
@@ -1306,7 +1331,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       await showTyping(400)
     }
     await stepPsychoQ()
-  }, [addMsg, clearInput, config.psychoCount, config.sectionTransitions?.psychographics, pickPsychoQuestions, showTyping, stepPsychoQ, tTransition])
+  }, [addMsg, clearInput, config.psychoCount, config.sectionTransitions?.psychographics, pickPsychoQuestions, showTyping, state, stepPsychoQ, tTransition])
 
   const stepCustomQuestions = useCallback(async () => {
     const allQuestions = (config.questions ?? []).filter(q => !q.conversationPosition && q.enabled !== false && q.type !== 'hidden')
@@ -2043,25 +2068,6 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     else await stepDone()
   }, [addMsg, checkVerbose, clearInput, config, inputRef, savePartial, scrollBottom, sectionOrder, showTyping, state, stepDone, tQuestion, tUI])
 
-  /* eslint-disable react-hooks/refs --
-   * The latest-value ref idiom: imperative DOM handlers created inside one
-   * callback have to call the CURRENT version of another, so the assignment has
-   * to happen during render. Pre-existing throughout this file, and unmasked
-   * (not introduced) by the 2026-08-18 reorder — see the note above the lazy
-   * initialisation block.
-   */
-  const stepConversationExtrasRef = useRef(stepConversationExtras)
-  stepConversationExtrasRef.current = stepConversationExtras
-
-  // Register section runners for the section ordering dispatcher
-  sectionRunners.current = {
-    customQuestions: stepCustomQuestions,
-    psychographics: stepPsychoIntro,
-    demographics: stepDemographics,
-    contact: stepContactInfo,
-    _done: stepDone,
-  }
-  /* eslint-enable react-hooks/refs */
 
   // -- Input Renderers ---------------------------------------
 
@@ -2105,15 +2111,15 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       addMsg('user', val)
       // Store immediately and save — belt-and-suspenders, don't rely solely on handleOpenEnded
       state.current.answers[qKey] = val
-      savePartialRef.current()
-      void handleOpenEndedRef.current(qKey, val)
+      savePartialRef.current?.()
+      void handleOpenEndedRef.current?.(qKey, val)
     }
 
     wrap.append(ta, sendBtn)
     inputRef.current.appendChild(wrap)
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
-  }, [addMsg, checkVerbose, config, inputRef, scrollBottom, tUI])
+  }, [addMsg, checkVerbose, config, inputRef, scrollBottom, state, tUI])
 
   const showClarifyInput = useCallback((qKey: 'q3' | 'q4', originalVal: string, depthSoFar: number = 1) => {
     if (!inputRef.current) return
@@ -2155,7 +2161,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       addMsg('user', val)
       const accumulated = isDecline(val) ? originalVal : originalVal + ' [+ ' + val + ']'
       if (!isDecline(val)) state.current.answers[qKey] = accumulated
-      savePartialRef.current()
+      savePartialRef.current?.()
       clearInput()
       // AI deflection: detect questions/off-topic and respond contextually
       const deflected = !isDecline(val) && await checkDeflect(val, state.current.currentQuestion || '')
@@ -2168,11 +2174,11 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         if (cq) {
           state.current.clarifyCount++
           addMsg('bot', cq, true)
-          showClarifyInputRef.current(qKey, accumulated, depthSoFar + 1)
+          showClarifyInputRef.current?.(qKey, accumulated, depthSoFar + 1)
           return
         }
       }
-      await progressFlowRef.current(qKey, deflected || undefined)
+      await progressFlowRef.current?.(qKey, deflected || undefined)
     }
 
     wrap.append(ta, sendBtn)
@@ -2180,10 +2186,6 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
   }, [addMsg, buildClarify, checkDeflect, checkVerbose, clearInput, config, inputRef, scrollBottom, shouldClarify, showTypingDuring, state, tUI])
-  // Ref so the recursive (depth > 1) re-probe always calls the latest version
-  const showClarifyInputRef = useRef(showClarifyInput)
-  // eslint-disable-next-line react-hooks/refs, react-hooks/immutability -- latest-value ref, assigned during render by design (see the note above sectionRunners)
-  showClarifyInputRef.current = showClarifyInput
 
 
 
@@ -2229,13 +2231,13 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       if (val) {
         addMsg('user', val)
         state.current.answers[qKey] = val
-        savePartialRef.current()
-        void handleOpenEndedRef.current(qKey, val)
+        savePartialRef.current?.()
+        void handleOpenEndedRef.current?.(qKey, val)
       } else {
         addMsg('user', 'Skip')
         state.current.answers[qKey] = ''
         clearInput()
-        void progressFlowRef.current(qKey)
+        void progressFlowRef.current?.(qKey)
       }
     }
 
@@ -2248,7 +2250,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       addMsg('user', 'Skip')
       state.current.answers[qKey] = ''
       clearInput()
-      void progressFlowRef.current(qKey)
+      void progressFlowRef.current?.(qKey)
     }
 
     row.append(ta, sendBtn)
@@ -2288,7 +2290,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       }
       await stepConversationExtras()
     }
-  }, [addMsg, config, showTextInput, showTextInputOptional, showTyping, smartAck, stepConversationExtras, t])
+  }, [addMsg, config, showTextInput, showTextInputOptional, showTyping, smartAck, state, stepConversationExtras, t])
 
   const handleOpenEnded = useCallback(async (qKey: 'q3' | 'q4', val: string) => {
     state.current.answers[qKey] = val
@@ -2314,15 +2316,33 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     await progressFlow(qKey)
   }, [addMsg, buildClarify, checkDeflect, clearInput, config, progressFlow, savePartial, shouldClarify, showClarifyInput, showTypingDuring, state])
 
-  // Refs so imperative DOM handlers always call the latest function versions
-  /* eslint-disable react-hooks/refs, react-hooks/immutability -- latest-value refs, assigned during render by design (see the note above sectionRunners) */
-  const handleOpenEndedRef = useRef(handleOpenEnded)
-  handleOpenEndedRef.current = handleOpenEnded
-  const progressFlowRef = useRef(progressFlow)
-  progressFlowRef.current = progressFlow
-  const savePartialRef = useRef(savePartial)
-  savePartialRef.current = savePartial
-  /* eslint-enable react-hooks/refs, react-hooks/immutability */
+
+  // One place that keeps every latest-value ref current. These used to be
+  // assigned in the render body, which mutates a ref as a side effect of
+  // rendering; an effect is where React allows it.
+  //
+  // Nothing can observe an unsynced ref: every caller is a DOM handler attached
+  // to a node the conversation flow creates, and the flow cannot start until
+  // renderInput('start') runs — which the consuming widget calls from its own
+  // effect, registered AFTER this one because this hook is called first.
+  useEffect(() => {
+    sectionRunners.current = {
+      customQuestions: stepCustomQuestions,
+      psychographics: stepPsychoIntro,
+      demographics: stepDemographics,
+      contact: stepContactInfo,
+      _done: stepDone,
+    }
+    stepPsychoQRef.current = stepPsychoQ
+    showClarifyInputRef.current = showClarifyInput
+    handleOpenEndedRef.current = handleOpenEnded
+    progressFlowRef.current = progressFlow
+    savePartialRef.current = savePartial
+    // NB: the refs themselves are deliberately NOT listed. They are stable, and
+    // naming one makes the compiler treat it as a value passed into this hook,
+    // which it then forbids the body from mutating.
+  }, [handleOpenEnded, progressFlow, savePartial, showClarifyInput, stepContactInfo,
+      stepCustomQuestions, stepDemographics, stepDone, stepPsychoIntro, stepPsychoQ])
 
 
   const renderInput = useCallback(async (phase: string) => {
@@ -2453,7 +2473,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         // Jump straight to Q3 after opening flow is complete
         const stepQ3 = async () => {
           if (config.q3Enabled === false) {
-            await progressFlowRef.current('q3')
+            await progressFlowRef.current?.('q3')
             return
           }
           clearInput()
@@ -2693,8 +2713,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     scrollBottom()
   }, [addMsg, chatRef, checkVerbose, clearInput, config, confirmMode, inputRef, savePartial, scrollBottom, scrollInputBottom, showLikertFollowUpInput, showTextInput, showTextInputOptional, showTyping, state, t, tFollowUp, tNpsLabel, tOpeningFlow, tRatingLabel, tUI])
 
-  // eslint-disable-next-line react-hooks/refs -- `deviceBlocked` is resolved once during the same render-phase init block above and is part of this hook's public API; the caller gates the whole widget on it before any effect runs.
-  return { renderInput, deviceBlocked: deviceBlocked.current }
+  return { renderInput, deviceBlocked }
 }
 
 

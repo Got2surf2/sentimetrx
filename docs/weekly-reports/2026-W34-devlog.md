@@ -480,3 +480,44 @@ Reproduced first as two failing tests (hidden field + custom question; conversat
 like the other two. Swept the class: `customAnswers` was the only accumulator being
 replaced — every other `State` object field is written per-key, and
 `psychoQuestions = picked` is a deliberate fresh selection, not an accumulation.
+
+### The 32 suppressed warnings, actually fixed — `useSurveyEngine` 32 → 0
+
+The scoped disables added earlier today are gone. The file now reports zero even
+under `--no-inline-config`, so nothing is hidden. **The lint ceiling does not move
+(still 176)** — suppressed warnings never counted toward it, which is precisely
+why the ratchet number is a bad measure of this kind of work.
+
+I started by *measuring* what the compiler accepts instead of guessing: a scratch
+file of ~20 candidate patterns, linted. That turned a speculative refactor into a
+mechanical one, and produced a reusable table now in ENGINEERING.md. The
+counter-intuitive findings: the lazy-ref exemption requires an explicit
+`ref.current === null` guard (a falsy `if (!ref.current)` is *not* exempt); a
+latest-value ref must be declared **before** the function it points at, or
+reassigning it trips `immutability` with "value previously passed as an argument
+to a hook"; and naming a ref in a dependency array makes the compiler treat it as
+hook-owned and forbid mutating it.
+
+What changed: per-mount initialisation (session id, device fingerprint,
+hidden-field/URL capture, device lock) moved into `useState` lazy initialisers
+over module-scope factories; the conversation state uses the `=== null` lazy-ref
+idiom and is narrowed once so the ~100 `state.current.x` reads stay untouched;
+the campaign `?rid=` click beacon moved into an effect (it is a real side effect,
+and a discarded render must not report a click); the five latest-value refs moved
+into one block ahead of their callbacks with a single syncing effect;
+`stepPsychoQ`'s self-recursion routes through a ref; and the dead
+`stepConversationExtrasRef` is deleted.
+
+**Verification, and a harness bug it exposed.** The live Playwright harness
+failed one study on "no consecutive duplicate bot message". It was not a
+regression: the Eskamani TEST study genuinely contains two pairs of questions
+with identical prompts but different ids (`q_8cd5188e` / `i_po_engage_…` and
+`q_684e6637` / `i_po_issues_…`), and my check compared adjacency in a *bot-only*
+projection of the log, which hides the respondent's answer sitting between them.
+It now compares adjacent entries in the raw log, which is the actual signature of
+a duplicated bubble. The run-to-run variation also showed the harness wasn't
+comparable across code changes, so it now seeds `Math.random` inside the page.
+With that, the decisive check: **the full conversation transcript is
+byte-identical before and after the change** on two studies (18 and 39 turns),
+against the real client bundle. All five active studies plus a full Spanish run
+pass; jsdom 17/17 with both snapshots unchanged; suite 1,730 green.

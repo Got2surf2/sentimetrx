@@ -237,9 +237,24 @@ temporal-dead-zone `ReferenceError` at render.
 
 **The one genuine cycle** — `progressFlow` → `showTextInput` → `handleOpenEnded`
 → `progressFlow` — is broken by the latest-value ref idiom (`progressFlowRef`,
-`handleOpenEndedRef`, `showClarifyInputRef`, `savePartialRef`): imperative DOM
-handlers call `someRef.current(...)` so they always reach the current version.
-When adding a new step, prefer that idiom to reintroducing a forward reference.
+`handleOpenEndedRef`, `showClarifyInputRef`, `savePartialRef`, `stepPsychoQRef`):
+imperative DOM handlers call `someRef.current?.(...)` so they always reach the
+current version. All five are declared together in one **Forward references**
+block *ahead of* the callbacks they point at, and are kept current by a single
+effect at the bottom of the hook. Both of those placements are load-bearing —
+see ENGINEERING.md, "What the `react-hooks` v7 compiler actually accepts". When
+adding a new step, prefer that idiom to reintroducing a forward reference.
+
+**Per-mount initialisation.** Session id, device fingerprint, the hidden-field /
+URL-param capture and the one-response-per-device lock are `useState` lazy
+initialisers over module-scope factories (`resolveSessionId`,
+`computeDeviceFingerprint`, `readUrlCapture`, `isDeviceBlocked`); the mutable
+conversation state uses the `if (ref.current === null)` lazy-ref idiom over
+`makeInitialState`. None of it runs as a side effect of rendering any more. The
+campaign `?rid=` click beacon is an effect, because it is a real side effect and
+a discarded render must not report a click. Kiosk mode still resets a respondent
+by remounting with a fresh `key` — `useState` and `useRef` both reset on remount,
+so that contract is unchanged.
 
 **`state.current.customAnswers` is an accumulator — MERGE, never replace.** Three
 things write into it, in this order: the hidden-field capture at mount (URL
