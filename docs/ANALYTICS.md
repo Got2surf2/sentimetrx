@@ -169,11 +169,16 @@ the same reasoning that keeps the tree derived from the data rather than an
 org-structure table. The Schema tab leads with **Location** and presents the
 hierarchy as the optional elaboration above it.
 
-⚠️ **Grandfathering.** Deploying the gate without a backfill would REMOVE these
-surfaces from every brand that has them today. `scripts/backfill-outlet-reporting.mts`
-sets the per-dataset toggle on exactly the datasets that qualified under the old
-rule (idempotent, dry-run by default, `--prod --apply` for production). Applied to
-TEST 2026-08-18 (11 datasets); **prod run still owed.**
+✅ **Grandfathering — DONE.** Deploying the gate without a backfill would have
+REMOVED these surfaces from every brand that had them.
+`scripts/backfill-outlet-reporting.mts` sets the per-dataset toggle on exactly the
+datasets that qualified under the old rule (idempotent, dry-run by default,
+`--prod --apply` for production). **Applied to TEST (11 datasets) and PRODUCTION
+(12 datasets) on 2026-08-18**, then re-run to confirm idempotency (12 already
+enabled, 0 written) and read back independently: 12 prod datasets carry the flag,
+all `google_reviews`/active, and nothing outside the qualifying set was touched.
+Prod list: BareBurger · Capital Grille (+demo) · Ruth's Chris · Zuma · Flemings
+demo · Eddie V's · Tabla · Nobu · Cheddar's · US National Park · Rubio's.
 
 ⭐ **Admin-org feature grants were three hand-written literals, two of them
 already stale.** `resolveOrg` granted admin orgs every module *including*

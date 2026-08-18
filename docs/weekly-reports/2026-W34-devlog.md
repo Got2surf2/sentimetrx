@@ -922,3 +922,39 @@ the report keys on the rows.
 
 ⏭ Rolled-up hierarchy rungs still use Print — the PDF composes one outlet's
 document and needs a `place_id`, which a rung has no equivalent of.
+
+### Outlet-reporting grandfather backfill applied to production
+
+The last thing gating today's outlet work. `scripts/backfill-outlet-reporting.mts
+--prod --apply` set `schema_config.outletReporting` on the **12** production
+datasets that qualified under the old implicit rule (`google_reviews` + ≥5
+locations): BareBurger · Capital Grille (+demo) · Ruth's Chris · Zuma · Flemings
+demo · Eddie V's · Tabla · Nobu · Cheddar's · US National Park · Rubio's.
+
+Dry-run first (12 would enable, 0 skipped for a missing `schema_config`), then
+applied, then re-run to prove idempotency (12 already enabled, 0 written), then
+read back **independently** rather than trusting the script's own tally: exactly
+12 prod datasets carry the flag, all `google_reviews`/active, and nothing outside
+the qualifying set was touched.
+
+Without this, deploying the capability gate would have removed the Leaderboard
+and Outlet Deep-Dive from every brand that has them today. With it, the behaviour
+for existing brands is unchanged — and, unlike before, it can now be switched off.
+
+### Session close — 2026-08-18
+
+Twenty-nine commits, all **LOCAL/unpushed**. `tsc` clean, 1,767 tests green, lint
+ceiling 172 exact.
+
+What shipped to production today, independent of the unpushed code: `sql` — none;
+**data** — the Sherpa KB (seeded twice: the corrected module label, then the new
+Advanced Analytics article, 22 articles → 106 chunks) and the outlet-reporting
+backfill (12 datasets). Everything else waits on a push.
+
+The through-line, in the order it emerged: a dependency-graph refactor that
+needed a test net first; a compiler that had been silently bailing out; a
+data-loss bug found while scoping the next task; an entitlement gate; two
+verbatim defects that turned into a permanent rule; and an export that had been a
+screenshot of a web page. Four of those were found by real-data sweeps that unit
+tests would not have caught, and three of my own assertions were wrong about the
+thing they were measuring before they were right.
