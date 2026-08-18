@@ -795,3 +795,14 @@ const [postFilter, setPostFilter] = useState<Record<string, string>>({})
   the `social-sync` cron runs with **bounded concurrency**
   (`GRAPH_FETCH_CONCURRENCY = 4`) instead of one serial Graph API round-trip per
   post — page syncs with many posts no longer scale linearly in wall-clock.
+
+## Relative-time rendering (2026-08-18)
+
+Screens in this area compute "3 days ago" / "expires in N hours" style values with
+`Date.now()` **during render**. `react-hooks/purity` flags that, so each site
+carries a scoped `eslint-disable-next-line` naming the reason: a recompute simply
+refreshes the elapsed value, which is the desired behaviour — freezing the
+timestamp in state would need a ticking clock to stay correct and would show a
+stale "2 days ago" until it fired. Where the same call appears in a **server
+component** the rule does not apply at all: those render once per request, so there
+is no re-render for the timestamp to be inconsistent with.

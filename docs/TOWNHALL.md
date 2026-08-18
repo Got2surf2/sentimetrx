@@ -510,3 +510,14 @@ The public participant routes (`/api/townhall/chat`, `/api/townhall/join`, `/api
 | `sql/017_townhall_ai_thinking.sql` | `ai_thinking` JSONB + `theme_label` snapshot on turns; expands `source` CHECK |
 | `sql/029_turn_sentiment.sql` | `sentiment` + `sentiment_score` on `townhall_turns` (and `bot_conversation_turns`) |
 | `sql/032_enable_rls_everywhere.sql` | Re-asserts org-scoped read policies on all 4 PulseIQ tables |
+
+## Relative-time rendering (2026-08-18)
+
+Screens in this area compute "3 days ago" / "expires in N hours" style values with
+`Date.now()` **during render**. `react-hooks/purity` flags that, so each site
+carries a scoped `eslint-disable-next-line` naming the reason: a recompute simply
+refreshes the elapsed value, which is the desired behaviour — freezing the
+timestamp in state would need a ticking clock to stay correct and would show a
+stale "2 days ago" until it fired. Where the same call appears in a **server
+component** the rule does not apply at all: those render once per request, so there
+is no re-render for the timestamp to be inconsistent with.

@@ -721,3 +721,14 @@ Pilot-only. If the prospect signs, productionizing means:
 - ~~Replace the script driver with an analyze-route trigger (or a per-dataset "classify" button)~~ **DONE 2026-06-03** — self-serve "Classify this dataset" button + `POST` route (see above); works for any Google Reviews dataset, `core` vocab.
 - Lift the closed vocab into a per-dataset / per-vertical config (the Ruth's Chris vocab is steakhouse-specific).
 - Add filter-by-axis-sub queries to the TextMine UI so the GIN indexes earn their keep.
+
+## Relative-time rendering (2026-08-18)
+
+Screens in this area compute "3 days ago" / "expires in N hours" style values with
+`Date.now()` **during render**. `react-hooks/purity` flags that, so each site
+carries a scoped `eslint-disable-next-line` naming the reason: a recompute simply
+refreshes the elapsed value, which is the desired behaviour — freezing the
+timestamp in state would need a ticking clock to stay correct and would show a
+stale "2 days ago" until it fired. Where the same call appears in a **server
+component** the rule does not apply at all: those render once per request, so there
+is no re-render for the timestamp to be inconsistent with.
