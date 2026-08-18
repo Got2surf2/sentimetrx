@@ -549,4 +549,51 @@ describe('useSurveyEngine — hidden fields + URL params', () => {
     expect(captured.some(c => c.url.includes('/api/campaigns/click'))).toBe(true)
     window.history.replaceState({}, '', '/')
   })
+
+  it('keeps hidden-field values when the study also has real custom questions', async () => {
+    // Regression: stepCustomQuestions assigned `state.current.customAnswers`
+    // wholesale from a fresh object, dropping anything the hidden-field capture
+    // had already written. Any study with BOTH a hidden field and a normal
+    // custom question silently lost its campaign/tracking metadata — and only
+    // on the final payload, since the debounced partial saves still had it.
+    window.history.replaceState({}, '', '/s/guid-abc?location=orlando')
+    const study = makeStudy(q3OnlyConfig({
+      q3Enabled: false,
+      questions: [
+        { id: 'h1', type: 'hidden', prompt: 'Location', paramKey: 'location', enabled: true },
+        { id: 'cq', type: 'radio', prompt: 'Which visit?', options: ['First', 'Repeat'], enabled: true },
+      ],
+    } as Partial<StudyConfig>))
+
+    render(<Host study={study} />)
+    await settle()
+    await clickButton("Yes, let's go!")
+    await clickButton('Repeat')
+
+    expect(finalPayload().customAnswers).toEqual({ h1: 'orlando', cq: 'Repeat' })
+    window.history.replaceState({}, '', '/')
+  })
+
+  it('keeps conversation-position answers when a later custom question runs', async () => {
+    // Same wholesale assignment: stepConversationExtras merges its answers into
+    // state, then the section dispatcher runs stepCustomQuestions, which
+    // replaced the whole map — so an in-conversation question's answer vanished
+    // from the final payload too.
+    const study = makeStudy(q3OnlyConfig({
+      q3Enabled: false,
+      questions: [
+        { id: 'inline', type: 'radio', prompt: 'Dining in or takeaway?', options: ['In', 'Takeaway'], enabled: true, conversationPosition: 'after_q4' },
+        { id: 'cq', type: 'radio', prompt: 'Which visit?', options: ['First', 'Repeat'], enabled: true },
+      ],
+    } as unknown as Partial<StudyConfig>))
+
+    render(<Host study={study} />)
+    await settle()
+    await clickButton("Yes, let's go!")
+    await clickButton('Takeaway')
+    await clickButton('Repeat')
+
+    expect(finalPayload().customAnswers).toEqual({ inline: 'Takeaway', cq: 'Repeat' })
+  })
+
 })

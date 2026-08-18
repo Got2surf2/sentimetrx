@@ -1846,8 +1846,14 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       qi++
     }
 
-    // Store all custom answers in state
-    state.current.customAnswers = customAnswers
+    // MERGE, never replace. `state.current.customAnswers` already holds the
+    // hidden-field values captured from the URL at mount, and any
+    // conversation-position answers stepConversationExtras merged in before the
+    // section dispatcher started. A wholesale assignment here dropped both from
+    // the final payload — and only from the final one, since the debounced
+    // partial saves had already shipped them, so the data appeared to be
+    // captured right up until the response was completed.
+    state.current.customAnswers = { ...state.current.customAnswers, ...customAnswers }
     savePartial()
     await advanceSection()
   }, [addMsg, advanceSection, buildClarify, checkDeflect, checkVerbose, clearInput, config, confirmMode, inputRef, savePartial, scrollBottom, scrollInputBottom, shouldClarify, showLikertFollowUpInput, showTyping, showTypingDuring, state, tFollowUp, tQuestion, tRatingLabel, tTransition, tUI])

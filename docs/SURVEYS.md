@@ -241,6 +241,16 @@ temporal-dead-zone `ReferenceError` at render.
 handlers call `someRef.current(...)` so they always reach the current version.
 When adding a new step, prefer that idiom to reintroducing a forward reference.
 
+**`state.current.customAnswers` is an accumulator — MERGE, never replace.** Three
+things write into it, in this order: the hidden-field capture at mount (URL
+params), `stepConversationExtras` (questions with a `conversationPosition`), and
+`stepCustomQuestions` (the section). Until 2026-08-18 the last of those assigned
+the map wholesale, which silently dropped the first two from the **final**
+payload — and only the final one, because the debounced partial saves had
+already shipped them, so a study looked like it was capturing its campaign
+metadata right up until the response completed. Any new writer must spread the
+existing map.
+
 **Two behaviours that surprise people reading the config:**
 
 - **The keyword clarifier fires even with `useAIClarify` off.** `buildClarify`'s

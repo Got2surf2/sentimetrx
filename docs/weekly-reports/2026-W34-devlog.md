@@ -458,3 +458,25 @@ the new language.
 One harness bug found and fixed along the way: the completion check matched the
 literal text "All done!", which is itself translated — so it failed the Spanish
 run while the engine was fine. It now matches the closing-card element instead.
+
+### Hidden fields and in-conversation answers were being dropped from the final payload
+
+Found while scoping the next lint item, which touches the render-phase block
+that captures hidden fields. `state.current.customAnswers` is an accumulator with
+three writers: the hidden-field capture at mount (URL params such as
+`?location=orlando`), `stepConversationExtras` (questions with a
+`conversationPosition`), and `stepCustomQuestions`. The first two merged into the
+map. The third assigned it **wholesale** from a fresh object — so as soon as a
+study had at least one ordinary custom question, it wiped both.
+
+The failure mode is unusually deceptive: the debounced `savePartial` calls fire
+*before* `stepCustomQuestions` completes, so the incomplete row on the way through
+**does** contain the hidden fields. Only the `status:'complete'` payload loses
+them. A study looked like it was capturing its campaign/tracking metadata right up
+to the moment the respondent finished.
+
+Reproduced first as two failing tests (hidden field + custom question; conversation
+-position question + custom question), then fixed by making the third writer spread
+like the other two. Swept the class: `customAnswers` was the only accumulator being
+replaced — every other `State` object field is written per-key, and
+`psychoQuestions = picked` is a deliberate fresh selection, not an accumulation.
