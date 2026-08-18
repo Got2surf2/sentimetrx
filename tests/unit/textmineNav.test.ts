@@ -97,19 +97,35 @@ describe('availableSections', () => {
     expect(availableSections({ datasetSource: 'upload', hasEntities: true })).toEqual(['themes', 'entities'])
   })
 
-  it('google_reviews implies Dimensions; ≥5 outlets adds Advanced', () => {
-    expect(availableSections({ datasetSource: 'google_reviews', outletCount: 4 })).toEqual(['themes', 'dimensions'])
-    expect(availableSections({ datasetSource: 'google_reviews', hasEntities: true, outletCount: 5 }))
+  it('google_reviews implies Dimensions; ≥5 outlets AND the enable add Advanced', () => {
+    expect(availableSections({ datasetSource: 'google_reviews', outletCount: 4, outletReportingEnabled: true })).toEqual(['themes', 'dimensions'])
+    expect(availableSections({ datasetSource: 'google_reviews', hasEntities: true, outletCount: 5, outletReportingEnabled: true }))
       .toEqual(['themes', 'dimensions', 'entities', 'advanced'])
   })
 
   it('returns sections in bar order', () => {
-    const all = availableSections({ datasetSource: 'google_reviews', taxonomyEnabled: true, hasEntities: true, outletCount: 10 })
+    const all = availableSections({ datasetSource: 'google_reviews', taxonomyEnabled: true, hasEntities: true, outletCount: 10, outletReportingEnabled: true })
     expect(all).toEqual(['themes', 'dimensions', 'entities', 'advanced'])
   })
 
   it('Advanced needs google_reviews, not just outlets', () => {
-    expect(availableSections({ datasetSource: 'upload', outletCount: 99 })).toEqual(['themes'])
+    expect(availableSections({ datasetSource: 'upload', outletCount: 99, outletReportingEnabled: true })).toEqual(['themes'])
+  })
+
+  // Outlet reporting became an explicit capability on 2026-08-18. Before that a
+  // google_reviews brand with ≥5 locations got the Leaderboard and Outlet
+  // Deep-Dive automatically, with no way to switch them off.
+  it('Advanced is HIDDEN when outlet reporting is not enabled, however good the data', () => {
+    expect(availableSections({ datasetSource: 'google_reviews', outletCount: 500 }))
+      .toEqual(['themes', 'dimensions'])
+    expect(availableSections({ datasetSource: 'google_reviews', outletCount: 500, outletReportingEnabled: false }))
+      .toEqual(['themes', 'dimensions'])
+  })
+
+  it('the enable alone is not enough — the data still has to support outlets', () => {
+    expect(availableSections({ datasetSource: 'upload', outletReportingEnabled: true })).toEqual(['themes'])
+    expect(availableSections({ datasetSource: 'google_reviews', outletCount: 4, outletReportingEnabled: true }))
+      .toEqual(['themes', 'dimensions'])
   })
 
   it('taxonomySuppressed hides Dimensions on a google_reviews dataset (non-restaurant)', () => {

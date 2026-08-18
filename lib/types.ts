@@ -46,6 +46,7 @@ export interface ModuleFeatures {
   bots?:          boolean   // Branded chatbots
   social?:        boolean   // Social monitoring (Facebook/Instagram)
   taxonomy?:      boolean   // Dimensions — restaurant 7-axis taxonomy on ANY analyze dataset (not just Google Reviews). Analyze sub-feature; off by default because the dictionary is restaurant-specific (enable only for restaurant clients).
+  outletReporting?: boolean // Outlet-level reporting (Leaderboard + Outlet Deep-Dive). Analyze sub-feature; OFF by default. Before 2026-08-18 these surfaced automatically for any google_reviews brand with ≥5 locations, with no way to turn them off and no way for any other dataset to get them. Now an explicit capability, OR-ed with the per-dataset `schema_config.outletReporting` toggle.
 }
 
 export const MODULE_LABELS: Record<keyof ModuleFeatures, string> = {
@@ -60,6 +61,7 @@ export const MODULE_LABELS: Record<keyof ModuleFeatures, string> = {
   bots:          'Agents',
   social:        'Social',
   taxonomy:      'Dimensions',
+  outletReporting: 'Outlet Reporting',
 }
 
 export const MODULE_KEYS = Object.keys(MODULE_LABELS) as (keyof ModuleFeatures)[]

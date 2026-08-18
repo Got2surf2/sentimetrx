@@ -327,6 +327,31 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
         </label>
       </div>
 
+      {/* Outlet reporting — per-dataset opt-in, saved with the schema */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-3">
+        <h2 className="font-bold text-gray-800">Outlet reporting</h2>
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input type="checkbox" checked={!!schema.outletReporting}
+            onChange={() => {
+              // Local state only, exactly like every other schema edit — the
+              // SchemaEditor's own Save button persists the blob. Bumping
+              // `version` keeps it consistent with how field edits mark a change.
+              handleSaveSchema({ ...schema, autoDetected: false, version: schema.version + 1, outletReporting: !schema.outletReporting })
+            }}
+            className="accent-orange-500 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-gray-700">Enable the Leaderboard &amp; Outlet Deep-Dive</p>
+            <p className="text-xs text-gray-400">
+              Multi-location reporting: rank every location against the chain on each theme and
+              dimension, and open a per-location deep-dive. Mark the column that identifies a
+              location in the <strong>Schema</strong> list below to control how locations are
+              grouped. Your organisation can also switch this on for every dataset at once —
+              ask your account team. <strong>Remember to Save the schema</strong> after changing this.
+            </p>
+          </div>
+        </label>
+      </div>
+
       {/* Schema editor */}
       <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-4" style={{ opacity: downloadComplete ? 1 : 0.5, pointerEvents: downloadComplete ? 'auto' : 'none' }}>
         <div className="flex items-start justify-between gap-4">

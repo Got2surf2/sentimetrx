@@ -1,4 +1,4 @@
-import type { ModuleFeatures, OrgFeatures } from './types'
+import { MODULE_KEYS, type ModuleFeatures, type OrgFeatures } from './types'
 import { RESTAURANT_INDUSTRIES } from './industryDefaults'
 
 /**
@@ -14,9 +14,46 @@ export function orgTaxonomyEnabled(orgFeatures: { taxonomy?: boolean; primaryInd
   return Array.isArray(inds) && inds.some(function(i) { return (RESTAURANT_INDUSTRIES as string[]).indexOf(i) !== -1 })
 }
 
+/**
+ * Whether an org gets outlet-level reporting (Leaderboard + Outlet Deep-Dive).
+ * Unlike `taxonomy` there is no industry proxy: multi-location reporting is a
+ * deliberate capability, not something inferred from the data. Pages OR this
+ * with the per-dataset `schema_config.outletReporting` toggle.
+ */
+export function orgOutletReportingEnabled(orgFeatures: { outletReporting?: boolean } | null | undefined): boolean {
+  return !!orgFeatures?.outletReporting
+}
+
+/**
+ * Every module, on. The implicit grant an admin org gets.
+ *
+ * DERIVED from MODULE_KEYS, never hand-written. There used to be two literals —
+ * one here in `resolveOrg`, one in `getUserContext` — and they had already
+ * drifted apart AND from reality: `getUserContext`'s was missing `taxonomy`, so
+ * an admin org got Dimensions on pages that read `features` through `resolveOrg`
+ * and not on pages that used `getUserContext`. A nav pill and the route behind
+ * it could disagree. Adding `outletReporting` would have made it three.
+ */
+export function allModulesOn(): ModuleFeatures {
+  return MODULE_KEYS.reduce<ModuleFeatures>(function(acc, k) { acc[k] = true; return acc }, {})
+}
+
+/**
+ * The single answer to "is outlet reporting switched on for this dataset?" —
+ * the org capability OR the dataset's own Schema-tab toggle. Every gate (the
+ * TextMine Advanced pill and both /outlet-* routes) must call THIS, or the nav
+ * and the pages drift and a hidden pill still leaves a reachable URL.
+ */
+export function outletReportingOn(
+  orgFeatures: { outletReporting?: boolean } | null | undefined,
+  schema: { outletReporting?: boolean } | null | undefined,
+): boolean {
+  return orgOutletReportingEnabled(orgFeatures) || schema?.outletReporting === true
+}
+
 const ALL_MODULE_KEYS: (keyof ModuleFeatures)[] = [
   'surveys', 'analyze', 'googleReviews', 'reddit', 'substack', 'recordings',
-  'townhall', 'campaigns', 'bots', 'social', 'taxonomy',
+  'townhall', 'campaigns', 'bots', 'social', 'taxonomy', 'outletReporting',
 ]
 
 // Features only reachable *through* the Analyze module. When analyze is off,
@@ -24,7 +61,7 @@ const ALL_MODULE_KEYS: (keyof ModuleFeatures)[] = [
 // NOTE: `recordings` was promoted out of here (2026-06) — it's the standalone
 // top-level "Town Hall" product now, independent of Analyze.
 const ANALYZE_CHILDREN: (keyof ModuleFeatures)[] = [
-  'googleReviews', 'reddit', 'substack', 'taxonomy',
+  'googleReviews', 'reddit', 'substack', 'taxonomy', 'outletReporting',
 ]
 
 type ResolvedOrg = { is_admin_org?: boolean; logo_url?: string; name?: string; features?: OrgFeatures }
@@ -33,13 +70,9 @@ export function resolveOrg(raw: unknown): ResolvedOrg | null {
   if (!raw) return null
   const org = (Array.isArray(raw) ? raw[0] : raw) as ResolvedOrg
   if (!org) return null
-  // Admin org gets all features enabled automatically
+  // Admin org gets all features enabled automatically.
   if (org.is_admin_org) {
-    org.features = {
-      ...org.features,
-      surveys: true, analyze: true, googleReviews: true, reddit: true,
-      substack: true, recordings: true, townhall: true, campaigns: true, bots: true, social: true, taxonomy: true,
-    }
+    org.features = { ...org.features, ...allModulesOn() }
   }
   return org
 }

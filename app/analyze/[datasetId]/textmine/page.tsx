@@ -5,7 +5,7 @@
 
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
-import { resolveOrg, orgTaxonomyEnabled } from '@/lib/resolveOrg'
+import { resolveOrg, orgTaxonomyEnabled, outletReportingOn } from '@/lib/resolveOrg'
 import { resolveEntityScope } from '@/lib/entityFilter'
 import TextMineModule from '@/components/analyze/TextMineModule'
 
@@ -94,6 +94,7 @@ export default async function TextMinePage(props: Props) {
         anaLibrary={dataset?.ana_library || null}
         initialOpenEditor={!!searchParams?.editThemes}
         outletCount={outletCount}
+        outletReportingEnabled={outletReportingOn(orgData?.features, schema)}
         initialHasEntities={initialHasEntities}
       />
     </div>

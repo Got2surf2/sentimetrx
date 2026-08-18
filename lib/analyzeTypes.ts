@@ -84,6 +84,13 @@ export interface SchemaConfig {
   primaryDateField?: string
   autoDetected:      boolean
   version:           number
+  // Per-dataset opt-in for outlet-level reporting (Leaderboard + Outlet
+  // Deep-Dive), OR-ed with the org's `outletReporting` feature. Lives in the
+  // schema rather than a `datasets` column because it is a property of how this
+  // dataset is SHAPED — it only means anything once a column is designated as
+  // the location (see `hierarchyLevel`) — and because the Schema tab already
+  // reads and writes this blob, so it costs no migration.
+  outletReporting?:  boolean
 }
 
 // -- Analytics types (pre-computed by /api/datasets/[id]/compute) -------

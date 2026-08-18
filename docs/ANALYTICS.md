@@ -87,6 +87,48 @@ one- and two-word answers that the denominator never included. Anything exported
 before 2026-08-18 will not reconcile against the current cards — same class of
 one-way move as sql/191.
 
+**Outlet reporting is an explicit capability (2026-08-18).** Until now the
+Leaderboard and Outlet Deep-Dive appeared automatically for any `google_reviews`
+dataset with ≥5 locations — no enable, no way to switch them off, and no route
+by which any other dataset could ever get them. They are now gated on **two
+independent conditions, both required**:
+
+1. **Enabled** — the org `outletReporting` feature OR the dataset's
+   `schema_config.outletReporting` toggle (Schema tab). One helper,
+   `outletReportingOn(features, schema)`, is the single answer; the TextMine
+   "Advanced Analytics" pill and both `/outlet-*` routes all call it. A hidden
+   pill that still leaves the URL reachable is not a gate, so the routes enforce
+   it too (they previously had no check of their own and relied on the layout's
+   `features.analyze` redirect).
+2. **The data supports it** — still `google_reviews` + ≥5 locations, because
+   outlet identity comes from `review_source_locations`. This is the clause that
+   widens when outlets can be derived from a schema-designated location column;
+   the enable above does not change.
+
+**"Location" and "hierarchy level" are one marker.** `locationField()`
+(`lib/hierarchy.ts`) returns the **deepest** designated `hierarchyLevel` — a
+client with Region → District → Store has three rungs and the Store is the
+location; a client with a single `Site` column designates one rung and that IS
+the location. Deliberately derived rather than stored as a second `isLocation`
+flag, so there is exactly one answer to "which column identifies an outlet" —
+the same reasoning that keeps the tree derived from the data rather than an
+org-structure table. The Schema tab leads with **Location** and presents the
+hierarchy as the optional elaboration above it.
+
+⚠️ **Grandfathering.** Deploying the gate without a backfill would REMOVE these
+surfaces from every brand that has them today. `scripts/backfill-outlet-reporting.mts`
+sets the per-dataset toggle on exactly the datasets that qualified under the old
+rule (idempotent, dry-run by default, `--prod --apply` for production). Applied to
+TEST 2026-08-18 (11 datasets); **prod run still owed.**
+
+⭐ **Admin-org feature grants were three hand-written literals, two of them
+already stale.** `resolveOrg` granted admin orgs every module *including*
+`taxonomy`; `getUserContext` granted a list that was *missing* `taxonomy`. So an
+admin org got Dimensions on pages reading features through `resolveOrg` and not
+on pages using `getUserContext` — a nav pill and the route behind it could
+disagree. Both now call `allModulesOn()`, derived from `MODULE_KEYS`, so a new
+feature key cannot silently miss one path again.
+
 **Metric strip — unstamped `substantive` guard (2026-08-13)**
 - The strip leads with the SUBSTANTIVE comment count (`sql/178/179`). A dataset ingested outside the stamping path (a direct-write script, a legacy import) has the flag unstamped, which counts as **zero** — and the strip used to render that as *"0 comments · 0% of 49,033 answered · Theme fit Diffuse 0%"*, a damning verdict on data that had simply never been scored, flatly contradicting the theme cards below counting the same rows in the thousands.
 - `DatasetMetricStrip` now guards on the DATA as well as the cache shape: when `substantiveRecords === 0` it falls back to the all-based `records`/`inThemes`/`themeFitPct`, **suppresses the "% of N answered" share** (rendering it off the fallback would claim 100% off a measurement never taken), and swaps the tooltip. `DatasetAboutPopover` suppresses its per-field "N substantive" clause under the same condition. Neither asserts "not scored" nor "zero substantive" — they fall back to the count they can defend.

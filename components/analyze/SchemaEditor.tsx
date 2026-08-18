@@ -106,7 +106,7 @@ function ValuePills({ values }: { values: string[] }) {
 }
 
 // Expanded inline editor
-function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRemappingChange, onEntityExtractionToggle, isPrimaryDate, onSetPrimaryDate, onHierarchyToggle }: {
+function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRemappingChange, onEntityExtractionToggle, isPrimaryDate, onSetPrimaryDate, onHierarchyToggle, deepestHierarchyLevel }: {
   f:             SchemaFieldConfig
   onTypeChange:  (field: string, baseType: AnaFieldType, sqt: AnaFieldSqt) => void
   onAliasChange: (field: string, alias: string) => void
@@ -116,9 +116,12 @@ function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRem
   isPrimaryDate: boolean
   onSetPrimaryDate: (field: string) => void
   onHierarchyToggle: (field: string) => void
+  deepestHierarchyLevel: number
 }) {
   const entityOn = f.entityExtraction !== false
   const hierOn = typeof f.hierarchyLevel === 'number' && f.hierarchyLevel > 0
+  // The deepest marked column IS the location (lib/hierarchy locationField).
+  const isLocationField = hierOn && f.hierarchyLevel === deepestHierarchyLevel
   const ut     = getActiveType(f)
   const isAuto = !f.sqt
   const vals   = f.values || []
@@ -212,10 +215,19 @@ function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRem
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, padding: '7px 10px', borderRadius: 8, background: hierOn ? '#f5f3ff' : P.bg, border: '1px solid ' + (hierOn ? '#ddd6fe' : P.border) }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: hierOn ? '#7c3aed' : P.textFaint, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>
-              {hierOn ? '✓ Hierarchy level ' + f.hierarchyLevel : 'Org Hierarchy'}
+              {hierOn
+                ? (isLocationField ? '✓ Location' : '✓ Groups locations · level ' + f.hierarchyLevel)
+                : 'Location'}
             </div>
             <div style={{ fontSize: 10, color: P.textFaint, marginTop: 2, lineHeight: 1.4 }}>
-              Group locations by this column, e.g. Region {'→'} District {'→'} Store. Reports roll up to each level.
+              {/* Lead with "Location" — that is the concept clients have. The
+                  hierarchy (Region → District above the location) is the
+                  optional elaboration, and the DEEPEST marked column is the
+                  location. One marker, two readings — see lib/hierarchy
+                  locationField(). */}
+              Mark the column that identifies a location (store, site, branch). Add
+              broader columns above it — e.g. Region {'→'} District {'→'} Store — and
+              reports roll up to each level.
             </div>
           </div>
           <button onClick={function() { onHierarchyToggle(f.field) }}
@@ -358,7 +370,7 @@ function FieldEditor({ f, onTypeChange, onAliasChange, onValueAliasChange, onRem
 }
 
 // Full-width row card
-function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAliasChange, onRemappingChange, onEntityExtractionToggle, isPrimaryDate, onSetPrimaryDate, onHierarchyToggle, readOnly, index }: {
+function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAliasChange, onRemappingChange, onEntityExtractionToggle, isPrimaryDate, onSetPrimaryDate, onHierarchyToggle, deepestHierarchyLevel, readOnly, index }: {
   f:             SchemaFieldConfig
   onTypeChange:  (field: string, baseType: AnaFieldType, sqt: AnaFieldSqt) => void
   onAliasChange: (field: string, alias: string) => void
@@ -369,6 +381,7 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAlias
   isPrimaryDate: boolean
   onSetPrimaryDate: (field: string) => void
   onHierarchyToggle: (field: string) => void
+  deepestHierarchyLevel: number
   readOnly?:     boolean
   index:         number
 }) {
@@ -571,7 +584,7 @@ function FieldCard({ f, onTypeChange, onAliasChange, onScoreToggle, onValueAlias
           </div>
           {/* Scrollable body */}
           <div style={{ padding: '16px 20px', overflowY: 'auto', flex: 1 }}>
-            <FieldEditor f={f} onTypeChange={onTypeChange} onAliasChange={onAliasChange} onValueAliasChange={onValueAliasChange} onRemappingChange={onRemappingChange} onEntityExtractionToggle={onEntityExtractionToggle} isPrimaryDate={isPrimaryDate} onSetPrimaryDate={onSetPrimaryDate} onHierarchyToggle={onHierarchyToggle} />
+            <FieldEditor f={f} onTypeChange={onTypeChange} onAliasChange={onAliasChange} onValueAliasChange={onValueAliasChange} onRemappingChange={onRemappingChange} onEntityExtractionToggle={onEntityExtractionToggle} isPrimaryDate={isPrimaryDate} onSetPrimaryDate={onSetPrimaryDate} onHierarchyToggle={onHierarchyToggle} deepestHierarchyLevel={deepestHierarchyLevel} />
           </div>
         </div>
       </div>
@@ -591,6 +604,11 @@ export default function SchemaEditor({ schema, datasetId, onChange, onSave, read
   const isDirty = JSON.stringify(schema) !== savedSnapshotRef.current
 
   function applyUpdate(next: SchemaConfig) { if (onChange) onChange(next) }
+
+  // The deepest designated rung is the LOCATION (lib/hierarchy locationField).
+  // Computed once here so every field row agrees on which one it is.
+  const designatedLevels = hierarchyLevels(schema.fields)
+  const deepestHierarchyLevel = designatedLevels.length ? designatedLevels[designatedLevels.length - 1].level : 0
 
   function handleTypeChange(field: string, baseType: AnaFieldType, sqt: AnaFieldSqt) {
     applyUpdate({ ...schema, autoDetected: false, version: schema.version + 1,
@@ -891,6 +909,7 @@ export default function SchemaEditor({ schema, datasetId, onChange, onSave, read
               isPrimaryDate={schema.primaryDateField === f.field}
               onSetPrimaryDate={handleSetPrimaryDate}
               onHierarchyToggle={handleHierarchyToggle}
+              deepestHierarchyLevel={deepestHierarchyLevel}
               readOnly={readOnly}
             />
           )

@@ -17,6 +17,7 @@ const MODULE_DESCRIPTIONS: Record<keyof ModuleFeatures, string> = {
   bots:          'Agents — create branded AI agents trained on custom content',
   social:        'Social monitoring — Facebook & Instagram comment moderation and analytics',
   taxonomy:      'Dimensions — classify any Analyze dataset into the restaurant 7-axis taxonomy (service, food, drinks, ambiance…), not just Google Reviews. Restaurant clients only — the dictionary is restaurant-specific.',
+  outletReporting: 'Outlet Reporting — the Leaderboard and Outlet Deep-Dive for multi-location clients. Needs a location column designated in the dataset\u2019s Schema tab. Can also be switched on per dataset there.',
 }
 
 interface Props {

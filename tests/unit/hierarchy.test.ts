@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { SchemaFieldConfig } from '@/lib/analyzeTypes'
 import {
   hierarchyLevels, hasHierarchy, buildHierarchy, pathOf, findNode, pluralLevel, crumbsForPath,
-  breadcrumb, rowsUnder, nodesAtDepth, UNASSIGNED,
+  breadcrumb, rowsUnder, nodesAtDepth, UNASSIGNED, locationField, hasLocationField,
 } from '@/lib/hierarchy'
 
 const FIELDS: SchemaFieldConfig[] = [
@@ -201,5 +201,42 @@ describe('crumbsForPath', () => {
   it('names each rung after its own level, not the one below it', () => {
     expect(crumbsForPath(['East', 'Downtown'], LEVELS).map(c => c.levelLabel))
       .toEqual(['All', 'Region', 'District'])
+  })
+})
+
+describe('locationField — the deepest rung is the location', () => {
+  const f = (field: string, level?: number): SchemaFieldConfig =>
+    ({ field, type: 'categorical', ...(level ? { hierarchyLevel: level } : {}) }) as SchemaFieldConfig
+
+  it('picks the deepest designated level', () => {
+    const fields = [f('Region', 1), f('District', 2), f('Store', 3), f('Comment')]
+    expect(locationField(fields)?.field).toBe('Store')
+    expect(hasLocationField(fields)).toBe(true)
+  })
+
+  it('a single designated column IS the location', () => {
+    // The common case: a client with one `Site` column and no hierarchy above
+    // it. hasHierarchy() is false (one rung is not a tree) but the location is
+    // still designated — the two questions are separate.
+    const fields = [f('Site', 1), f('Comment')]
+    expect(locationField(fields)?.field).toBe('Site')
+    expect(hasLocationField(fields)).toBe(true)
+    expect(hasHierarchy(fields)).toBe(false)
+  })
+
+  it('is independent of declaration order', () => {
+    const fields = [f('Store', 3), f('Region', 1), f('District', 2)]
+    expect(locationField(fields)?.field).toBe('Store')
+  })
+
+  it('no designated column → no location', () => {
+    expect(locationField([f('Region'), f('Comment')])).toBeNull()
+    expect(hasLocationField([f('Region'), f('Comment')])).toBe(false)
+    expect(hasLocationField(undefined)).toBe(false)
+  })
+
+  it('an ignored column cannot be the location', () => {
+    const fields = [f('Region', 1), { ...f('Store', 2), type: 'ignore' } as SchemaFieldConfig]
+    expect(locationField(fields)?.field).toBe('Region')
   })
 })

@@ -13,7 +13,7 @@
 // user-level overrides (see lib/resolveOrg.ts:effectiveFeatures).
 
 import type { ModuleFeatures } from './types'
-import { effectiveFeatures } from './resolveOrg'
+import { effectiveFeatures, allModulesOn } from './resolveOrg'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { logError } from './log'
 
@@ -74,12 +74,13 @@ export async function getUserContext(supabase: SupabaseClient): Promise<UserCont
   if (orgRowErr) void logError('userContext.getUserContext', orgRowErr, { orgId: userRow.org_id })
   if (!orgRow) return null
 
-  // Admin orgs get every feature implicitly.
+  // Admin orgs get every feature implicitly. DERIVED from MODULE_KEYS, never a
+  // hand-written literal: the literal this replaces had silently gone stale and
+  // was missing `taxonomy`, so admin orgs did not get Dimensions through this
+  // path even though `resolveOrg` (which reads `features` directly) gave it to
+  // them — the two disagreed, and every feature added since inherited the bug.
   const orgFeatures: ModuleFeatures = orgRow.is_admin_org
-    ? {
-        surveys: true, analyze: true, googleReviews: true, reddit: true,
-        substack: true, recordings: true, townhall: true, campaigns: true, bots: true, social: true,
-      }
+    ? allModulesOn()
     : (orgRow.features as ModuleFeatures) || {}
 
   const userFeatures: ModuleFeatures | null = userRow.features as ModuleFeatures || null

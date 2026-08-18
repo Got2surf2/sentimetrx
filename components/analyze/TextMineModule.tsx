@@ -171,7 +171,8 @@ interface Props {
   taxonomySuppressed?: boolean // AI detected non-food-service → hide Dimensions even for google_reviews (overrides only the source proxy, not an explicit enable)
   anaLibrary?:       string | null
   initialOpenEditor?: boolean
-  outletCount?:      number    // # of locations — gates the Outlets sub-tab link (google_reviews + ≥5)
+  outletCount?:      number    // # of locations — the DATA half of the Advanced gate (google_reviews + ≥5)
+  outletReportingEnabled?: boolean  // the CAPABILITY half: org feature OR the dataset's Schema toggle
   initialHasEntities?: boolean  // server-prefetched (scope has ≥1 non-hidden catalog entity) so the Entities pill doesn't pop in after the client catalog fetch; only seeds the gate while that fetch is in flight, then the live catalog governs
 }
 
@@ -1075,7 +1076,7 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
 
 // ─── Main TextMineModule ───────────────────────────────────────────────────────
 
-export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, taxonomyEnabled, taxonomySuppressed, anaLibrary, initialOpenEditor, outletCount, initialHasEntities }: Props) {
+export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, taxonomyEnabled, taxonomySuppressed, anaLibrary, initialOpenEditor, outletCount, outletReportingEnabled, initialHasEntities }: Props) {
   const totalRows = analytics?.totalRows ?? 0
   const { rows, rowsLoaded, rowsLoading, rowsError, fetchRows: triggerRowFetch, sampled: rowsSampled, sampledCount, totalRows: rowsTotalRows, rowsProgressBytes, rowsProgressRows, rowsExpected } = useRows()
   // Live progress caption for the bulk row load — a ≥50K-row sample is tens of
@@ -1369,7 +1370,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // is still in flight, fall back to the server-prefetched flag so the Entities
   // pill renders on first paint instead of popping in (steady state unchanged —
   // if the catalog comes back empty, the pill drops as before).
-  const sectionGate = { datasetSource: datasetSource, taxonomyEnabled: taxonomyEnabled, taxonomySuppressed: taxonomySuppressed, hasEntities: entityCatalogRows.length > 0 || (entityCatalogLoading && !!initialHasEntities), outletCount: outletCount }
+  const sectionGate = { datasetSource: datasetSource, taxonomyEnabled: taxonomyEnabled, taxonomySuppressed: taxonomySuppressed, hasEntities: entityCatalogRows.length > 0 || (entityCatalogLoading && !!initialHasEntities), outletCount: outletCount, outletReportingEnabled: outletReportingEnabled }
   function sectionAvailable(s: Section): boolean {
     return availableSections(sectionGate).indexOf(s) >= 0
   }
@@ -1412,7 +1413,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     window.addEventListener('popstate', onPop)
     return function() { window.removeEventListener('popstate', onPop) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dimensionsEnabled, entityCatalogRows.length, datasetSource, outletCount])
+  }, [dimensionsEnabled, entityCatalogRows.length, datasetSource, outletCount, outletReportingEnabled])
 
   // Listen for Ana theme mutations and refetch theme model
   useEffect(function() {

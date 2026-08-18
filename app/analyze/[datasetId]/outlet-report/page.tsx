@@ -10,6 +10,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import { computeOutletReportWithPredictor, computeHierarchyReport } from '@/lib/outletReport'
 import { hierarchyLevels, crumbsForPath } from '@/lib/hierarchy'
+import { outletReportingOn } from '@/lib/resolveOrg'
 import type { SchemaConfig } from '@/lib/analyzeTypes'
 import OutletPicker from './OutletPicker'
 import OutletReportTabs from './OutletReportTabs'
@@ -44,6 +45,12 @@ export default async function OutletReportPage(props: {
   // Network view and drills down; picking a location switches to the per-outlet
   // deep-dive below. Datasets without a hierarchy are untouched.
   const { data: stateRow } = await service.from('dataset_state').select('schema_config').eq('dataset_id', datasetId).maybeSingle()
+
+  // Outlet reporting is an explicit capability (2026-08-18): the org feature or
+  // this dataset's Schema-tab toggle. Enforced HERE as well as on the nav pill —
+  // a hidden pill that still leaves the URL reachable is not a gate.
+  if (!outletReportingOn(ctx.features, stateRow?.schema_config as SchemaConfig | null)) notFound()
+
   const schemaFields = (stateRow?.schema_config as SchemaConfig | null)?.fields
   const levels = hierarchyLevels(schemaFields)
   const hasHierarchy = levels.length >= 2

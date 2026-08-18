@@ -2,6 +2,26 @@
 
 > **Update (2026-06-01).** `getUserContext` previously selected a non-existent `users.is_admin` column (admin status lives in `users.role` / `organizations.is_admin_org`), which made the query error and bounce authenticated pages to `/login`; it now derives `isAdmin` from `org.is_admin_org`. Feature visibility remains the org∩user intersection in `effectiveFeatures` (`lib/resolveOrg.ts`), now with Analytics as the parent gate for its sub-features (googleReviews / reddit / substack / **taxonomy** — the 2026-06-05 Dimensions capability, an analyze-child forced off when Analytics is off; `orgTaxonomyEnabled()` treats it as on for restaurant-industry orgs too, and a per-dataset `datasets.taxonomy_enabled` flag can also grant it — gating only, no data access change). (Recordings was promoted out to the top-level Town Hall product 2026-06-04 — gated on `features.recordings` alone.)
 
+> **Update (2026-08-18) — admin-org feature grants unified; outlet reporting became an entitlement.**
+> The implicit "an admin org holds every module" grant existed as **three**
+> hand-written literals, two of them already stale: `resolveOrg` granted every
+> module *including* `taxonomy`, while `getUserContext` granted a list that was
+> *missing* it. An admin org therefore had Dimensions on pages that read features
+> through `resolveOrg` and not on pages that used `getUserContext` — the same
+> dataset could show a nav pill and 404 on the route behind it. Both now call
+> `allModulesOn()` (`lib/resolveOrg.ts`), derived from `MODULE_KEYS`, so a newly
+> added feature key cannot silently miss one path. **Gating only — no data-access
+> change**, and the org∩user intersection in `effectiveFeatures` is untouched.
+>
+> Same change added `outletReporting`, an analyze-child (forced off with
+> Analytics) that gates the Leaderboard and Outlet Deep-Dive. Those two routes
+> previously carried **no gate of their own** and relied on the `[datasetId]`
+> layout's `features.analyze` redirect; they now enforce
+> `outletReportingOn(ctx.features, schema)` directly — per the repo rule that an
+> internal/derived surface gates from day one rather than inheriting. The pill
+> and the routes call the same helper so nav visibility and URL reachability
+> cannot drift apart.
+
 The security disciplines this codebase is held to, the controls that
 enforce them, and the answers we'd give a buyer's technical-DD reviewer
 or a SOC2 auditor. Linked from `CLAUDE.md` (operational) — this doc is

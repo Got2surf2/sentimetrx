@@ -637,3 +637,53 @@ are indistinguishable. The check now passes when the ratio matches **or**
 Worth stating plainly: a red check is a hypothesis, not a verdict. Two of these
 three sessions' scares came from an assertion that was wrong about the thing it
 was measuring rather than from the code under test.
+
+### Outlet reporting becomes a capability instead of an accident
+
+Owner: *"outlet level reporting being made available automatically is overkill —
+this should be gated… flag a field as location so we can do intelligent things
+with it, but then enable advanced analytics at the org or schema level."*
+
+What was actually there (`lib/textmineNav.ts`): `datasetSource === 'google_reviews'
+&& outletCount >= 5`. One line, and wrong on both axes — automatic within Google
+reviews (no enable, no way off), and impossible everywhere else (a CSV with a
+Location column could never qualify).
+
+Two conditions now, both required. **Enabled** — the org `outletReporting`
+feature OR the dataset's `schema_config.outletReporting` toggle, resolved by a
+single `outletReportingOn(features, schema)` that the TextMine pill and both
+`/outlet-*` routes all call. The routes had **no gate of their own** and leaned
+on the layout's `features.analyze` redirect; a hidden pill over a reachable URL
+is not a gate, so they enforce it now. **Data supports it** — still
+`google_reviews` + ≥5 locations, because outlet identity comes from
+`review_source_locations`. That is the clause which widens later; the enable does
+not.
+
+**Location and hierarchy level are one marker, not two.** `locationField()`
+returns the deepest designated `hierarchyLevel`: Region → District → Store means
+the Store is the location, and a lone `Site` column is a one-rung hierarchy whose
+location is itself. Storing a separate `isLocation` flag would create two answers
+to "which column identifies an outlet" — the exact drift the hierarchy design note
+set out to avoid. The Schema tab now leads with **Location** and treats the
+hierarchy as the optional elaboration above it.
+
+Grandfathered with `scripts/backfill-outlet-reporting.mts` (idempotent, dry-run by
+default). Without it the deploy would have stripped these surfaces from every
+brand that has them. Applied to TEST — 11 datasets — and **the prod run is still
+owed**.
+
+**The bug this turned up.** Verifying the gate, the pill and the route disagreed.
+The cause was three hand-written admin-org feature literals, two already stale:
+`resolveOrg` granted admin orgs every module *including* `taxonomy`, while
+`getUserContext` granted a list *missing* it. So an admin org got Dimensions on
+pages that read features through `resolveOrg` and not on pages using
+`getUserContext` — pre-existing, invisible, and adding `outletReporting` would
+have made it a third copy. Both now call `allModulesOn()` derived from
+`MODULE_KEYS`.
+
+**And a test that could not have passed.** My gate probe ran against
+`[CLONE] Datanautix`, which is an **admin org** — implicitly holding every module,
+so the "both off" arm is unreachable and the gate is undemonstrable there. The
+probe now runs against a non-admin org and all three arms pass. Two sessions
+running, the recurring lesson is the same shape: **check that the fixture can
+express the state you are asserting.**

@@ -9,6 +9,8 @@ import { notFound, redirect } from 'next/navigation'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import { computeOutletLeaderboard } from '@/lib/outletReport'
+import { outletReportingOn } from '@/lib/resolveOrg'
+import type { SchemaConfig } from '@/lib/analyzeTypes'
 import PrintButton from '../outlet-report/PrintButton'
 import AnalyticsNav from '../AnalyticsNav'
 import LeaderboardClient from './LeaderboardClient'
@@ -29,6 +31,13 @@ export default async function OutletLeaderboardPage(props: {
   const { data: ds } = await service.from('datasets').select('org_id, name').eq('id', datasetId).maybeSingle()
   if (!ds) notFound()
   if (!ctx.isAdminOrg && ds.org_id !== ctx.orgId) notFound()
+
+  const { data: stateRow } = await service.from('dataset_state').select('schema_config').eq('dataset_id', datasetId).maybeSingle()
+
+  // Outlet reporting is an explicit capability (2026-08-18): the org feature or
+  // this dataset's Schema-tab toggle. Enforced HERE as well as on the nav pill —
+  // a hidden pill that still leaves the URL reachable is not a gate.
+  if (!outletReportingOn(ctx.features, stateRow?.schema_config as SchemaConfig | null)) notFound()
 
   const lb = await computeOutletLeaderboard(datasetId)
 

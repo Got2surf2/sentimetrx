@@ -67,6 +67,27 @@ export function hasHierarchy(fields: SchemaFieldConfig[] | undefined): boolean {
   return hierarchyLevels(fields).length >= 2
 }
 
+/**
+ * The LOCATION column — the deepest designated rung.
+ *
+ * "Location" and "hierarchy level" are the same marker seen from two ends
+ * (owner direction 2026-08-18). A client with Region → District → Store has
+ * three levels and the Store is the location; a client with just a `Site`
+ * column designates one level and that IS the location. Keeping it derived
+ * rather than storing a second `isLocation` flag means there is exactly one
+ * answer to "which column identifies an outlet" — the same reasoning that keeps
+ * the tree derived from the data instead of an org-structure table.
+ */
+export function locationField(fields: SchemaFieldConfig[] | undefined): HierarchyLevel | null {
+  const levels = hierarchyLevels(fields)
+  return levels.length ? levels[levels.length - 1] : null
+}
+
+/** True when the schema designates a column as the location. */
+export function hasLocationField(fields: SchemaFieldConfig[] | undefined): boolean {
+  return locationField(fields) !== null
+}
+
 function cellValue(row: Record<string, unknown>, field: string): string {
   const v = row?.[field]
   const s = v == null ? '' : String(v).trim()

@@ -66,12 +66,30 @@ export function viewLocked(section: Section, view: LensView, hasThemes: boolean)
 // taxonomySuppressed: AI detected non-food-service data → hide the restaurant
 // taxonomy even for google_reviews. It overrides ONLY the source proxy, never an
 // explicit taxonomyEnabled (manual opt-in / restaurant-org capability).
-export interface SectionGateOpts { datasetSource?: string; taxonomyEnabled?: boolean; taxonomySuppressed?: boolean; hasEntities?: boolean; outletCount?: number }
+export interface SectionGateOpts {
+  datasetSource?: string; taxonomyEnabled?: boolean; taxonomySuppressed?: boolean
+  hasEntities?: boolean; outletCount?: number
+  /** Org `outletReporting` feature OR the dataset's `schema_config.outletReporting`. */
+  outletReportingEnabled?: boolean
+}
 export function availableSections(opts: SectionGateOpts): Section[] {
   const out: Section[] = ['themes']   // Themes is always available (the mining home)
   if (opts.taxonomyEnabled || (opts.datasetSource === 'google_reviews' && !opts.taxonomySuppressed)) out.push('dimensions')
   if (opts.hasEntities) out.push('entities')
-  if (opts.datasetSource === 'google_reviews' && (opts.outletCount || 0) >= 5) out.push('advanced')
+  // Advanced = outlet-level reporting (Leaderboard + Outlet Deep-Dive).
+  //
+  // Two independent conditions, both required (2026-08-18, owner direction):
+  //   1. ENABLED — the org capability or the per-dataset Schema toggle. Until
+  //      today there was no enable at all: every google_reviews brand with ≥5
+  //      locations got these surfaces automatically, with no way to turn them
+  //      off, and no other dataset could ever get them.
+  //   2. The data can actually support it. Outlet identity still comes from
+  //      `review_source_locations`, so that remains google_reviews + ≥5. Once
+  //      outlets can be derived from a schema-designated location column
+  //      (`hierarchyLevel`), THIS is the clause that widens — the enable above
+  //      does not change.
+  const outletDataReady = opts.datasetSource === 'google_reviews' && (opts.outletCount || 0) >= 5
+  if (opts.outletReportingEnabled && outletDataReady) out.push('advanced')
   return out
 }
 // Default landing section = the first AVAILABLE section (always Themes today,
