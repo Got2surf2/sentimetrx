@@ -837,3 +837,18 @@ chunks still carry the old label.
 "Multi-Location". "Advanced" describes nothing, and the rename would free the
 name entirely — but it changes the UI and the Target-B IA docs, so it's an owner
 call.
+
+### GM deck removed from the Outlet Deep-Dive
+
+Owner. The "GM deck (PPTX)" link was the *secondary* export, kept in July when
+the page's print output became the primary one. Two buttons on one page handing
+back two different documents is a choice the reader shouldn't have to make, and
+the PPTX had drifted from being the thing anyone actually wanted.
+
+Removed the link; `PrintButton` is now the only nav action.
+
+⚠️ `app/api/datasets/[datasetId]/outlet-plan-deck/route.ts` and
+`lib/pptx/outletPlanDeck.ts` are now **unreferenced**. Left in place rather than
+deleted: an API route is an outward-facing surface someone may have bookmarked,
+and removing it is a separate, deliberate call. Flagged in ANALYTICS.md in both
+places that described the button.

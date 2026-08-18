@@ -134,14 +134,12 @@ export default async function OutletReportPage(props: {
     <div className="min-h-screen bg-gray-100 py-8 print:bg-white print:py-0">
       <div className="mx-auto max-w-4xl px-4 print:max-w-none print:px-0">
         <div className="print:hidden">
-          <AnalyticsNav datasetId={datasetId} active="outlet" outlet={s?.placeId} action={
-            s ? (
-              <div className="flex items-center gap-2">
-                <a href={`/api/datasets/${datasetId}/outlet-plan-deck?outlet=${s.placeId}`} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50">GM deck (PPTX)</a>
-                <PrintButton />
-              </div>
-            ) : undefined
-          } />
+          {/* The "GM deck (PPTX)" link was removed 2026-08-18 (owner). It was the
+              secondary export kept when print became the primary one in July;
+              two export buttons offering different documents from one page was
+              the confusion, not a feature. The route and lib/pptx/outletPlanDeck
+              still exist but are now unreferenced — delete deliberately. */}
+          <AnalyticsNav datasetId={datasetId} active="outlet" outlet={s?.placeId} action={s ? <PrintButton /> : undefined} />
           {/* Arrived from a rolled-up rung — keep the trail so the way back up
               is one click, and the location reads as part of its branch. */}
           {hasHierarchy && nodePath.length > 0 && s && (
