@@ -1,5 +1,6 @@
 import 'server-only'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { verbatimSupports, pickSupportingSentence, type VerbatimPremise } from '@/lib/verbatimGuard'
 import { logError } from '@/lib/log'
 import { lexiconScore } from '@/lib/themeUtils'
 import { buildPredictor, type OutletPredictor, type PredReview, type PredExample } from '@/lib/outletPredictor'
@@ -332,8 +333,27 @@ function extractSentence(ex: Example | null, requireEvidence = false): string | 
   return out
 }
 
+/**
+ * A quote for a surface whose premise is a POLARITY.
+ *
+ * Prefer the sentence around the classifier's evidence — it is the topically
+ * relevant one — but only if it actually carries the premise. Otherwise take the
+ * strongest-carrying sentence in the review, and if the review has none, return
+ * null so the caller shows one fewer quote rather than one that argues the
+ * opposite. See lib/verbatimGuard for why a rating check is not enough.
+ */
+function premiseQuote(full: string, ev: string, premise: VerbatimPremise): string | null {
+  const evidenceSentence = extractSentence({ full, ev })
+  if (verbatimSupports(evidenceSentence, premise)) return evidenceSentence
+  return pickSupportingSentence(full, premise)
+}
+
 function clamp(s: string): string {
   let out = s.replace(/\s+/g, ' ').trim()
+  // Drop leading punctuation left behind by the sentence-boundary walk — a tile
+  // reading ", at the 39640 LBJ Freeway Location was very rude" looks broken on
+  // a client deck even when the quote itself is right.
+  out = out.replace(/^[\s,;:.!?)\]}"'\u2019\u201d\-–—]+/, '')
   if (out.length > 180) out = out.slice(0, 180).replace(/\s\S*$/, '') + '…'
   return out.charAt(0).toUpperCase() + out.slice(1)
 }
@@ -379,12 +399,12 @@ function buildDeltas(
   const strengths = deltas
     .filter((d) => d.delta >= DELTA_THRESHOLD && d.outletNet > 0)
     .sort((a, b) => b.delta - a.delta).slice(0, 4)
-    .map((d) => ({ ...d, quote: extractSentence(d._exPos, true) }))
+    .map((d) => ({ ...d, quote: premiseQuote(d._exPos?.full || '', d._exPos?.ev || '', 'positive') }))
     .map(({ _exPos, _exNeg, ...s }) => s)
   const weaknesses = deltas
     .filter((d) => d.delta <= -DELTA_THRESHOLD)
     .sort((a, b) => a.delta - b.delta).slice(0, 4)
-    .map((d) => ({ ...d, quote: extractSentence(d._exNeg, true) }))
+    .map((d) => ({ ...d, quote: premiseQuote(d._exNeg?.full || '', d._exNeg?.ev || '', 'negative') }))
     .map(({ _exPos, _exNeg, ...w }) => w)
   // A review matching several themes can be captured as the example for each, so
   // the same verbatim would surface under multiple cards. Keep each quote on its
@@ -569,14 +589,17 @@ async function scanDataset(datasetId: string): Promise<Scan> {
           if (isLow) {
             const k = `${o.placeId}|${tm.label}`
             if (!lowSeen.has(k)) {
-              const q = extractSentence({ full: text, ev })
+              // Premise: "what UNHAPPY guests said". A 1–3★ review whose first
+              // sentence is "I got seated fast!" must not fill this slot.
+              const q = premiseQuote(text, ev, 'negative')
               if (q) { lowSeen.add(k); lowExamples.push({ placeId: o.placeId, theme: tm.label, quote: q }) }
             }
           } else if (isHigh && polarity === 'pos') {
             // A 4–5★ review citing the theme = "what guests praise" — strength evidence.
             const k = `${o.placeId}|${tm.label}`
             if (!highSeen.has(k)) {
-              const q = extractSentence({ full: text, ev })
+              // Premise: "what guests PRAISE".
+              const q = premiseQuote(text, ev, 'positive')
               if (q) { highSeen.add(k); highExamples.push({ placeId: o.placeId, theme: tm.label, quote: q, rating: rt }) }
             }
           }

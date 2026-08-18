@@ -729,3 +729,51 @@ identifies which row they belong to rather than asserting a tone.
 
 Pinned by 8 jsdom tests covering exactly the ways this can mislead: ordering, the
 shared scale, the signed net rate, the quote framing, and the named denominator.
+
+### Verbatims must support the premise they illustrate — applied across everything
+
+Owner, on a Cheddar's deck slide: *"we're trying to communicate a story — let's
+make it be supported by the comments. 2 of 6 are off-target. This should be a
+general you apply, ACROSS EVERYTHING."*
+
+"What Guests Are Telling You", subtitled *"Verbatim 1–3★ reviews from the
+lowest-rated outlets"*, had shipped *"I got seated fast!"* and *"So I had a
+steak, med rare, steak was good."* Two of six tiles arguing against the headline.
+
+**Root cause, and why a rating check isn't enough: a rating is a property of the
+REVIEW; a premise is a property of the TEXT YOU DISPLAY.** Row selection was
+right every time — genuine 1–3★ reviews. What failed was the sentence lifted out
+of them: `extractSentence` falls back to the review's *first* sentence when it
+can't locate the classifier's evidence, and complaints often open pleasantly.
+The same defect produced this morning's ▼ dimension quoting *"Forgot how
+delicious the food is"* — one bug, two surfaces.
+
+`lib/verbatimGuard` now carries the rule. `verbatimSupports(text, premise)` is
+the display-side check; `pickSupportingSentence(fullReview, premise)` is the
+better fix where the whole review is available — a 1–3★ review almost always
+*contains* a sentence that says why, so pick that one. That matters: a plain
+filter would have emptied the slide, whereas picking kept all six tiles and
+made every one of them on-message. Scoring reuses `lexiconScore` and
+`detectEmotionAssertions` rather than restating their patterns, with a short
+guard-local cue list for gaps (`not worth`, `waste of`, `immaculate`) that is
+deliberately **not** added to `sentimentLexicon` — that list drives theme
+sentiment product-wide and widening it would move published numbers.
+
+Applied at both ends: the source (`premiseQuote` in `lib/outletReport`, feeding
+`lowExamples` / `highExamples` / `buildDeltas`) and every display site (three
+deck builders, the outlet weakness/strength cards, the snapshot praise block).
+The display-side check is the one a new upstream path can't bypass.
+
+**Two things worth keeping.** First, I walked straight into the trap I had
+diagnosed an hour earlier: the guard scored a sentence and *then* truncated the
+winner, so a qualifying sentence whose signal sat past `maxLen` shipped as a
+neutral fragment — the same shape as `clamp` cutting before the evidence.
+**Validate the string you will SHOW, not the one you scored.** Second, unit tests
+alone would have missed it: a sweep over 178 real Cheddar's outlets found the two
+survivors. Both harnesses are kept (`_verify_verbatim_premise.mts`,
+`_verify_deck_quotes.mts`), and the two quotes that actually shipped are now the
+unit regression.
+
+The slide now reads: cold steak, a rude server, cold potatoes, a first-ever bad
+review from a server, "service was horrible", "not worth the $15+". Six tiles,
+one story.

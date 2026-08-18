@@ -1322,3 +1322,63 @@ the resource whose contention it exists to report.**
 - I then read a screenshot from a *previous* run (an edit had silently dropped
   the screenshot call) and concluded the fix hadn't worked. **Confirm the
   artefact you are reading was produced by the run you think it was.**
+
+## Verbatims must support the premise they illustrate (2026-08-18)
+
+**The rule: test any verbatim slotted for display against the premise of the
+thing it illustrates, and drop it if it fails. Everywhere.**
+
+A quote on a slide, card or report is not decoration — it is **evidence**. When
+the selected text doesn't carry the claim above it, the surface argues against
+itself, and the reader discounts the whole document rather than that one tile.
+
+**How it went wrong twice in one day.** The Operational Review deck's "What
+Guests Are Telling You" slide, subtitled *"Verbatim 1–3★ reviews from the
+lowest-rated outlets"*, shipped six tiles of which two read *"I got seated
+fast!"* and *"So I had a steak, med rare, steak was good."* The same morning, the
+per-outlet Dimensions block quoted *"Forgot how delicious the food is"* under a
+▼ weakness.
+
+⭐ **The root cause, and why a rating check is not enough: a rating is a property
+of the REVIEW; a premise is a property of the TEXT YOU DISPLAY.** The row
+selection was right every time — a genuine 1–3★ review, a genuine negative
+assertion. What failed was the sentence lifted out of it. `extractSentence` falls
+back to the review's *first* sentence when it can't locate the classifier's
+evidence, and a complaint often opens pleasantly.
+
+**The mechanism: `lib/verbatimGuard.ts`.**
+- `verbatimSupports(text, 'negative' | 'positive')` — the display-side check.
+  Deliberately strict: text with no detectable polarity fails too, because
+  silence is not support. A false negative costs one quote; a false positive
+  costs the credibility of the page.
+- `pickSupportingSentence(fullReview, premise)` — the better fix where the whole
+  review is available. A 1–3★ review almost always *contains* a sentence that
+  says why; choose that one rather than the first. This keeps tiles full **and**
+  on-message, which a plain filter does not.
+- Scoring reuses `lexiconScore` and `detectEmotionAssertions` rather than
+  restating their patterns, plus a short guard-local cue list for gaps that
+  matter to evidence selection (`not worth`, `waste of`, `immaculate`, …).
+  Those cues are deliberately **not** added to `lib/sentimentLexicon`: that list
+  drives theme sentiment product-wide, so widening it to fix quote picking would
+  move published numbers.
+
+**Applied at both ends** — at the source (`lib/outletReport` `premiseQuote`, used
+by `lowExamples` / `highExamples` / `buildDeltas`) *and* at every display site
+(the three deck builders, the outlet weakness/strength cards, the snapshot praise
+block). The display-side check is the one that can't be bypassed by a new
+upstream path.
+
+⚠️ **The trap inside the guard, which I walked into while writing it: validate
+the string you are going to SHOW, not the one you scored.** The first version
+scored a sentence and *then* truncated the winner to `maxLen` — so a qualifying
+sentence whose signal sat past the limit shipped as a neutral fragment. A
+real-data sweep over 178 outlets found two survivors. It is the same failure as
+`clamp` cutting before the evidence in `extractSentence`, reintroduced an hour
+after diagnosing it. `pickSupportingSentence` now truncates first and verifies
+the truncated output.
+
+**Verification is a real-data sweep, not a unit test alone.** Both
+`scripts/_verify_verbatim_premise.mts` (walks real outlets, asserts every
+polarity-premised quote) and `scripts/_verify_deck_quotes.mts` (rebuilds the real
+DeckSpec and checks every tile) are untracked-KEEP harnesses. The unit tests pin
+the two quotes that actually shipped.

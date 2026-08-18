@@ -6,6 +6,7 @@
 // predictor object backs both. Every figure is real (no fabricated data).
 
 import type { OutletPredictor } from '@/lib/outletPredictor'
+import { verbatimSupports } from '@/lib/verbatimGuard'
 import type { DeckSpec, SlideSpec } from './slideRenderer'
 import { DN, trunc } from './shared'
 
@@ -113,7 +114,9 @@ export function buildImprovementPlanDeck(p: OutletPredictor, brand: string): Dec
   const quotes: { text: string; attribution?: string }[] = []
   for (const o of p.outletSummaries) {
     if (quotes.length >= 6) break
-    const lever = (p.outletLevers[o.placeId] || []).find((l) => l.quote)
+    // Premise is the subtitle: "Verbatim 1–3★ reviews from the lowest-rated
+    // outlets". A quote that doesn't read as a complaint contradicts it.
+    const lever = (p.outletLevers[o.placeId] || []).find((l) => verbatimSupports(l.quote, 'negative'))
     if (!lever?.quote) continue
     const key = lever.quote.slice(0, 60).toLowerCase()
     if (seen.has(key)) continue

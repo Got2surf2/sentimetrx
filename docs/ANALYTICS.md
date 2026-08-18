@@ -87,6 +87,17 @@ one- and two-word answers that the denominator never included. Anything exported
 before 2026-08-18 will not reconcile against the current cards — same class of
 one-way move as sql/191.
 
+**Every displayed verbatim is premise-checked (2026-08-18).** A quote is
+evidence, so it must carry the claim above it. `lib/verbatimGuard` gates every
+polarity-premised quote surface — the outlet weakness/strength cards, the
+snapshot's "What guests consistently praise" block, the per-outlet Dimensions
+evidence, and the three deck builders' quote slides. **A rating selects the
+REVIEW; the premise is a property of the TEXT DISPLAYED** — a 1–3★ review whose
+first sentence is "I got seated fast!" is correctly selected and wrongly quoted.
+Where the whole review is available the guard picks the strongest *supporting*
+sentence rather than filtering the tile away, so surfaces stay full as well as
+on-message. Full rationale in ENGINEERING.md.
+
 **Dimensions on the per-outlet report (2026-08-18).** `computeOutletReport` has
 always produced `selected.dimensions: ComparisonBlock`, and until now the only
 thing that read it was the narrative sentence — the chain-wide Leaderboard showed

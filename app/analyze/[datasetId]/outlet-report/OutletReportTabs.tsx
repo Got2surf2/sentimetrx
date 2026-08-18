@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { verbatimSupports } from '@/lib/verbatimGuard'
 import type { OutletReport, TrendPoint } from '@/lib/outletReport'
 import type { OutletLever, OutletSummary, PredictorModel } from '@/lib/outletPredictor'
 import WhatIfPanel, { type WhatIfData } from './WhatIfPanel'
@@ -35,7 +36,7 @@ function LeverCard({ l, rank }: { l: OutletLever; rank: number }) {
         <span className="font-medium text-gray-700">{pct1(l.problemRate)}</span> of all reviews here are 1–3★ and cite this ({pct1(l.shareInBad)} of its 1–3★ reviews).
         {l.cohortSize > 1 && <> You’re one of <span className="font-medium text-gray-700">{l.cohortSize}</span> outlets in the bottom quartile here.</>}
       </div>
-      {l.quote && (
+      {verbatimSupports(l.quote, 'negative') && (
         <p className="mt-2 border-l-2 border-rose-300 pl-2 text-xs italic text-gray-600">“{l.quote}”</p>
       )}
       {l.exemplars.length > 0 && (
@@ -68,7 +69,7 @@ function StrengthCard({ t }: { t: OutletLever }) {
       <div className="mt-1.5 text-xs text-gray-500">
         Only <span className="font-medium text-gray-700">{pct1(t.problemRate)}</span> of reviews here are 1–3★ and cite this — among the best in the brand. Protect it.
       </div>
-      {t.quote && (
+      {verbatimSupports(t.quote, 'positive') && (
         <p className="mt-2 border-l-2 border-emerald-300 pl-2 text-xs italic text-gray-600">“{t.quote}”</p>
       )}
     </div>

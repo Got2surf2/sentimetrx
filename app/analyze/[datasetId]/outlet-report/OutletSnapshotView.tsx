@@ -4,6 +4,7 @@
 // single clean page (the report's print output IS the export).
 
 import type { OutletSnapshot, ReadVerdict, RatingBucket } from '@/lib/outletReport'
+import { verbatimSupports } from '@/lib/verbatimGuard'
 import { starBarColor } from '@/lib/ratingGradient'
 
 const TEAL = '#0F7173'
@@ -92,6 +93,11 @@ export default function OutletSnapshotView({
 }) {
   const arrow = s.recent?.direction === 'up' ? '▲' : s.recent?.direction === 'down' ? '▼' : ''
   const arrowColor = s.recent?.direction === 'up' ? 'text-emerald-600' : s.recent?.direction === 'down' ? 'text-rose-600' : 'text-gray-400'
+
+  // "What guests consistently praise" — every verbatim under that heading must
+  // read as praise. See lib/verbatimGuard: the rating selects the review, it
+  // does not vouch for the sentence lifted out of it.
+  const praise = s.praiseVerbatims.filter((v) => verbatimSupports(v.quote, 'positive'))
 
   return (
     <section className="outlet-print-page">
@@ -191,7 +197,7 @@ export default function OutletSnapshotView({
       )}
 
       {/* Praise */}
-      {(s.praiseChips.length > 0 || s.praiseVerbatims.length > 0) && (
+      {(s.praiseChips.length > 0 || praise.length > 0) && (
         <div className="mt-6 print:mt-4 print:break-inside-avoid">
           <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-400">What guests consistently praise</h2>
           <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4">
@@ -203,11 +209,11 @@ export default function OutletSnapshotView({
                 ))}
               </div>
             )}
-            {s.praiseVerbatims.length > 0 && (
+            {praise.length > 0 && (
               <div className="mt-3 space-y-1.5 text-xs italic leading-relaxed text-gray-600">
-                {s.praiseVerbatims.map((v, i) => (
+                {praise.map((v, i) => (
                   <span key={i}>
-                    <span className="not-italic font-semibold text-emerald-700">{v.rating}★</span> “{v.quote}”{i < s.praiseVerbatims.length - 1 ? '  ·  ' : ''}
+                    <span className="not-italic font-semibold text-emerald-700">{v.rating}★</span> “{v.quote}”{i < praise.length - 1 ? '  ·  ' : ''}
                   </span>
                 ))}
               </div>

@@ -6,6 +6,7 @@
 // does best. Same predictor object backs both. Every figure is real.
 
 import type { OutletPredictor } from '@/lib/outletPredictor'
+import { verbatimSupports } from '@/lib/verbatimGuard'
 import type { DeckSpec, SlideSpec } from './slideRenderer'
 import { DN, trunc } from './shared'
 
@@ -71,7 +72,9 @@ export function buildOutletPlanDeck(p: OutletPredictor, placeId: string, brand: 
   }
 
   // 3. In guests' words — the complaints behind the weaknesses.
-  const wq = weaknesses.filter((w) => w.quote).slice(0, 6).map((w) => ({ text: trunc(w.quote!, 180), attribution: w.theme }))
+  // "the complaints behind the weaknesses" — so each quote must read as one.
+  const wq = weaknesses.filter((w) => verbatimSupports(w.quote, 'negative')).slice(0, 6)
+    .map((w) => ({ text: trunc(w.quote!, 180), attribution: w.theme }))
   if (wq.length >= 2) {
     slides.push({ type: 'quotes', title: 'What Your Unhappy Guests Said', subtitle: 'Verbatim 1–3★ reviews behind the themes above', quotes: wq })
   }
@@ -79,7 +82,8 @@ export function buildOutletPlanDeck(p: OutletPredictor, placeId: string, brand: 
   // 4. What you do best — only when there's real substance: ≥2 praise quotes
   // (the evidence), or ≥3 top-quartile themes (breadth). A single "0.0% flag it"
   // strength is a pointless slide, so it's skipped.
-  const sq = strengths.filter((sx) => sx.quote)
+  // "What You Do Best" — praise evidence, so the quote must read as praise.
+  const sq = strengths.filter((sx) => verbatimSupports(sx.quote, 'positive'))
   if (sq.length >= 2) {
     slides.push({
       type: 'quotes',

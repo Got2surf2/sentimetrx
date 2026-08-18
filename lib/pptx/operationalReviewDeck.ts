@@ -8,6 +8,7 @@
 // or `opts.dimensions` — no fabrication.
 
 import type { OutletPredictor } from '@/lib/outletPredictor'
+import { verbatimSupports } from '@/lib/verbatimGuard'
 import type { DiligenceData } from '@/lib/diligenceData'
 import type { TaxonomyRollup } from '@/lib/taxonomyRollup'
 import type { DeckSpec, SlideSpec } from './slideRenderer'
@@ -343,7 +344,13 @@ export function buildOperationalReviewDeck(
   const quotes: { text: string; attribution?: string }[] = []
   for (const o of outlets) {
     if (quotes.length >= 6) break
-    const lever = (p.outletLevers[o.placeId] || []).find((l) => l.quote)
+    // The slide's premise is in its own subtitle: "Verbatim 1–3★ reviews from
+    // the lowest-rated outlets". A quote that doesn't read as a complaint
+    // argues against the headline, so it doesn't get a tile — it shipped with
+    // "I got seated fast!" and "steak was good" on 2026-08-18. Guarded at the
+    // source too (lib/outletReport premiseQuote); this is the display-side
+    // check, which is the one that can't be bypassed by a new upstream path.
+    const lever = (p.outletLevers[o.placeId] || []).find((l) => verbatimSupports(l.quote, 'negative'))
     if (!lever?.quote) continue
     const key = lever.quote.slice(0, 60).toLowerCase()
     if (seen.has(key)) continue
