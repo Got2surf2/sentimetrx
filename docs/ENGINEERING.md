@@ -1382,3 +1382,36 @@ the truncated output.
 polarity-premised quote) and `scripts/_verify_deck_quotes.mts` (rebuilds the real
 DeckSpec and checks every tile) are untracked-KEEP harnesses. The unit tests pin
 the two quotes that actually shipped.
+
+## Composed PDFs beat print-to-PDF (2026-08-18)
+
+The Outlet Deep-Dive's export was the browser's print rendering of the page —
+"one component → screen + PDF, no drift" (2026-07-15). Defensible, but it makes
+the deliverable a screenshot of a web page: web spacing, web type scale, and no
+control over where pages break. Owner: *"we look half baked."*
+
+It now composes the document server-side (`lib/outletReportPdf.ts`) from the same
+computed values the page renders, and goes through the existing
+`htmlToPdfBuffer` + `brandedPdfChrome` path. Two things worth carrying to the
+next one:
+
+- **Don't force a page break per section.** The first pass put
+  `break-before:page` on each block and produced three pages, two of them a third
+  full, with a lone "Keep doing" card orphaned on page 3. Flowing the document
+  with `break-inside:avoid` on sections **and** on each repeated card — and
+  `break-inside:auto` on the one long list section — gave a dense 2 pages from
+  identical data. Density is a quality signal in a client document; whitespace
+  reads as padding.
+- **Gate the export exactly like the surface.** The PDF route repeats the page's
+  `outletReportingOn` check and 404s without it. An export that bypasses a
+  capability gate is a hole, not a convenience.
+
+⚠️ Every headless-Chrome route must be added to `next.config.js`
+`outputFileTracingIncludes` with `@sparticuz/chromium/bin/**` — the binary is
+loaded at runtime via a computed path the static tracer can't see, and the
+function dies on Vercel with "input directory .../bin does not exist".
+
+Shared cache: `getOrGenerateActionPlan` moved into `lib/outletActionPlan.ts` so
+the page's fetch route and the PDF route read/write one cache. Without that, a
+download would silently pay for a second AI generation of a plan the page had
+already made.

@@ -875,3 +875,50 @@ Seeded TEST and PROD (22 articles → 106 chunks). Third asserted regression add
 asked *"What is Advanced Analytics and why can I not see it?"*, the reply must
 name the views and point at the Schema tab. It answers correctly and still
 routes the module question to **Analytics**.
+
+### The Outlet Deep-Dive export is a real PDF now
+
+Owner: *"I don't like the PDF being an export of the print view — we need to
+generate a real PDF otherwise we look half baked."* Right on both counts. Since
+July the export had been `window.print()` on the page, which makes the
+deliverable a screenshot of a web page: web spacing, web type scale, and no say
+in where pages break.
+
+The nav action is now **Download PDF** →
+`/api/datasets/[datasetId]/outlet-report-pdf?outlet=<place_id>`. The document is
+typeset server-side (`lib/outletReportPdf.ts`) from the **same computed values
+the page renders** and rendered through the existing `htmlToPdfBuffer` +
+`brandedPdfChrome` path, so it gets the branded header, the confidentiality line,
+the datanautix wordmark and real page numbers. Narrative order: snapshot KPIs →
+rating distribution (network average as a tick on each bar) → theme table →
+praise → Dimensions vs the network → action plan.
+
+**The layout lesson is the interesting part.** My first pass forced
+`break-before:page` on each section — and produced three pages, two of them a
+third full, with a lone "Keep doing" card orphaned on page 3. That is *precisely*
+the half-baked look being complained about, arrived at by a different route.
+Flowing the document instead, with `break-inside:avoid` on each section and each
+priority card (and `break-inside:auto` on the action plan, which is a list of
+self-contained cards), gives a dense **2 pages from identical data**. Density is
+a quality signal in a client document; whitespace reads as padding.
+
+Two things I made sure of rather than assumed:
+
+- **The export is gated exactly like the surface.** The route repeats the page's
+  `outletReportingOn` check. Verified over real HTTP: 401 unauthenticated, 200
+  with a 433 KB PDF authed, and **404 with the capability switched off** — an
+  export must not be a way around a hidden surface.
+- **A download doesn't pay for a second AI call.** `getOrGenerateActionPlan`
+  moved into `lib/outletActionPlan.ts` so the page's fetch route and the PDF
+  route share one cache rather than each generating its own plan.
+
+Two false alarms worth noting for the next session. A `Module not found:
+nodemailer` trace through the new route looked like a broken import — it is a
+deliberately optional dependency (`try { require('nodemailer') } catch`) that
+warns on every route importing `lib/ai`. And the route probe 404'd with "No data
+for that outlet" until I stopped taking the id from `review_source_locations`:
+on cloned demo datasets that table and the rows carry **different place_ids**, and
+the report keys on the rows.
+
+⏭ Rolled-up hierarchy rungs still use Print — the PDF composes one outlet's
+document and needs a `place_id`, which a rung has no equivalent of.

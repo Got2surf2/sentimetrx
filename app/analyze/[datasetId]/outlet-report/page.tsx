@@ -17,6 +17,9 @@ import OutletReportTabs from './OutletReportTabs'
 import OutletSnapshotView from './OutletSnapshotView'
 import OutletDimensionsView from './OutletDimensionsView'
 import OutletActionPlanSection from './OutletActionPlanSection'
+// Rolled-up hierarchy rungs (Network / Region / District) still print: the PDF
+// route composes ONE outlet's document and needs a place_id, which a rung has
+// no equivalent of. Per-outlet gets the real PDF; rungs keep Print for now.
 import PrintButton from './PrintButton'
 import AnalyticsNav from '../AnalyticsNav'
 import { HierarchyBreadcrumb, HierarchyChildren, HierarchyOutlets } from './HierarchyNav'
@@ -139,7 +142,14 @@ export default async function OutletReportPage(props: {
               two export buttons offering different documents from one page was
               the confusion, not a feature. The route and lib/pptx/outletPlanDeck
               still exist but are now unreferenced — delete deliberately. */}
-          <AnalyticsNav datasetId={datasetId} active="outlet" outlet={s?.placeId} action={s ? <PrintButton /> : undefined} />
+          <AnalyticsNav datasetId={datasetId} active="outlet" outlet={s?.placeId} action={
+            s ? (
+              <a href={`/api/datasets/${datasetId}/outlet-report-pdf?outlet=${encodeURIComponent(s.placeId)}`}
+                 className="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-700">
+                Download PDF
+              </a>
+            ) : undefined
+          } />
           {/* Arrived from a rolled-up rung — keep the trail so the way back up
               is one click, and the location reads as part of its branch. */}
           {hasHierarchy && nodePath.length > 0 && s && (

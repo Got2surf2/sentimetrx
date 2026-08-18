@@ -1,6 +1,7 @@
 import 'server-only'
 import { callAI } from '@/lib/ai'
 import { logError } from '@/lib/log'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ThemeTableRow } from '@/lib/outletReport'
 
 // LLM-narrated "3 things to work on next" action plan for one outlet — the PDF's
@@ -12,6 +13,8 @@ import type { ThemeTableRow } from '@/lib/outletReport'
 // nothing is fabricated. Cached per outlet (see sql/183) keyed by `basis`.
 
 export type PlanVerbatim = { rating: number; quote: string }
+
+
 
 export type PlanPriority = {
   tag: string          // short kicker, e.g. "BIGGEST LEVER"
@@ -209,4 +212,41 @@ Return JSON exactly: {"priorities":[{"tag","title","theme","diagnosis","verbatim
 
   const keepDoing = clampSentence(String(parsed.keepDoing || ''), 800) || fallbackPlan(input, generatedAt).keepDoing
   return { priorities, keepDoing, generatedAt }
+}
+
+// ── Get-or-generate, shared ──────────────────────────────────────────────────
+// Both the report page's fetch route and the PDF route need "the plan for this
+// outlet", with identical cache semantics. Keeping the read/generate/write-back
+// in one place is what stops the PDF from silently regenerating a plan the page
+// already cached (an extra AI call per download), or the two drifting on when a
+// plan counts as stale.
+
+type PlanCacheEntry = { basis: string; plan: ActionPlan; generatedAt: string }
+
+export async function getOrGenerateActionPlan(
+  service: SupabaseClient,
+  datasetId: string,
+  outlet: string,
+  input: ActionPlanInput,
+  basis: string,
+): Promise<{ plan: ActionPlan; cached: boolean }> {
+  const { data: state } = await service
+    .from('dataset_state').select('outlet_action_plans').eq('dataset_id', datasetId).maybeSingle()
+  const cache = (state?.outlet_action_plans || {}) as Record<string, PlanCacheEntry>
+  const hit = cache[outlet]
+  if (hit && hit.basis === basis && hit.plan) return { plan: hit.plan, cached: true }
+
+  const plan = await generateActionPlan(input)
+
+  // Write-through with an atomic top-level merge (per-outlet key), so concurrent
+  // generation for different outlets can't lose-update the map. p_patch must be a
+  // jsonb OBJECT — a stringified string arrives as a scalar and corrupts `||`.
+  try {
+    const entry: PlanCacheEntry = { basis, plan, generatedAt: plan.generatedAt }
+    await service.from('dataset_state').upsert({ dataset_id: datasetId }, { onConflict: 'dataset_id', ignoreDuplicates: true })
+    await service.rpc('merge_outlet_action_plan', { p_dataset_id: datasetId, p_patch: { [outlet]: entry } })
+  } catch (e) {
+    void logError('outletActionPlan.cache', e) // non-fatal — still return the fresh plan
+  }
+  return { plan, cached: false }
 }

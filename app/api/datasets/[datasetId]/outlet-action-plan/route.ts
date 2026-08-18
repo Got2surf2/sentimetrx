@@ -9,13 +9,10 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { computeOutletReport } from '@/lib/outletReport'
-import { generateActionPlan, actionPlanBasis, type ActionPlan } from '@/lib/outletActionPlan'
-import { logError } from '@/lib/log'
+import { actionPlanBasis, getOrGenerateActionPlan } from '@/lib/outletActionPlan'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
-
-type CacheEntry = { basis: string; plan: ActionPlan; generatedAt: string }
 
 export async function GET(req: NextRequest, props: { params: Promise<{ datasetId: string }> }) {
   const { datasetId } = await props.params
@@ -37,15 +34,9 @@ export async function GET(req: NextRequest, props: { params: Promise<{ datasetId
 
   const basis = actionPlanBasis(s.reviews, s.snapshot.themeTable)
 
-  // Serve the cached plan if its basis still matches.
-  const { data: state } = await service.from('dataset_state').select('outlet_action_plans').eq('dataset_id', datasetId).maybeSingle()
-  const cache = (state?.outlet_action_plans || {}) as Record<string, CacheEntry>
-  const hit = cache[outlet]
-  if (hit && hit.basis === basis && hit.plan) {
-    return NextResponse.json({ plan: hit.plan, cached: true })
-  }
-
-  const plan = await generateActionPlan({
+  // Cache read / generate / write-back lives in lib/outletActionPlan so the PDF
+  // route shares the exact same semantics (see getOrGenerateActionPlan).
+  const { plan, cached } = await getOrGenerateActionPlan(service, datasetId, outlet, {
     orgId: ds.org_id,
     brand: report.brand,
     outletName: s.name,
@@ -56,20 +47,8 @@ export async function GET(req: NextRequest, props: { params: Promise<{ datasetId
     themeTable: s.snapshot.themeTable,
     lowQuotes: s.lowQuotes,
     praiseVerbatims: s.snapshot.praiseVerbatims,
-  })
+  }, basis)
 
-  // Write-through the cache with an atomic top-level merge (per-outlet key), so
-  // concurrent generation for different outlets can't lose-update the map.
-  try {
-    const entry: CacheEntry = { basis, plan, generatedAt: plan.generatedAt }
-    // Ensure a dataset_state row exists, then atomically merge the one key in.
-    // p_patch must be a jsonb OBJECT (not a stringified string, which arrives as
-    // a scalar and corrupts the `||` merge).
-    await service.from('dataset_state').upsert({ dataset_id: datasetId }, { onConflict: 'dataset_id', ignoreDuplicates: true })
-    await service.rpc('merge_outlet_action_plan', { p_dataset_id: datasetId, p_patch: { [outlet]: entry } })
-  } catch (e) {
-    void logError('outlet-action-plan.cache', e) // non-fatal — still return the fresh plan
-  }
+  return NextResponse.json({ plan, cached })
 
-  return NextResponse.json({ plan, cached: false })
 }
