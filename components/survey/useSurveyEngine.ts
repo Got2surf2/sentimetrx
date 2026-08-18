@@ -54,6 +54,33 @@ interface State {
   urlParams:       Record<string, string>
 }
 
+// Hoisted to MODULE scope: every value here is a hard-coded constant, so the
+// object never needed to be rebuilt per render. Declared inside the hook it was
+// a fresh identity every time, which is why ~14 useCallback deps lists were
+// flagged for missing `C.*` fields — adding them would have churned those
+// callbacks on every render. At module scope it is stable and drops out of the
+// dependency question entirely (react-hooks/exhaustive-deps).
+// iMessage-style colors — always light background with gray bot bubbles / blue user bubbles
+const IMSG_BLUE = '#007AFF'
+const IMSG_GRAY = '#E9E9EB'
+const C = {
+  text:       'rgba(0,0,0,0.85)',
+  textMid:    'rgba(0,0,0,0.65)',
+  textMute:   'rgba(0,0,0,0.4)',
+  textFaint:  'rgba(0,0,0,0.25)',
+  bubbleBg:   IMSG_GRAY,
+  bubbleBdr:  'transparent',
+  userBubbleBg: IMSG_BLUE,
+  inputBg:    'rgba(0,0,0,0.04)',
+  inputBdr:   'rgba(0,0,0,0.12)',
+  btnBg:      'rgba(0,0,0,0.05)',
+  btnBdr:     'rgba(0,0,0,0.15)',
+  btnHoverBg: 'rgba(0,0,0,0.10)',
+  btnHoverBdr: 'rgba(0,0,0,0.22)',
+  disabledBg: 'rgba(0,0,0,0.08)',
+  disabledTx: 'rgba(0,0,0,0.3)',
+}
+
 export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scrollBottom, isLightBg = false, reducedMotion = false, onVerboseRequest, kiosk = false, onComplete }: Props) {
   const config = study.config as StudyConfig
   const confirmMode = config.confirmBeforeRecord === true
@@ -63,26 +90,6 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     if (/^#verbose$/i.test(v)) { if (ta) ta.value = ''; if (onVerboseRequest) onVerboseRequest(); return true }
     if (/^#sanjay\s+mvuli609$/i.test(v)) { if (ta) ta.value = ''; if (onVerboseRequest) onVerboseRequest('bypass'); return true }
     return false
-  }
-  // iMessage-style colors — always light background with gray bot bubbles / blue user bubbles
-  const IMSG_BLUE = '#007AFF'
-  const IMSG_GRAY = '#E9E9EB'
-  const C = {
-    text:       'rgba(0,0,0,0.85)',
-    textMid:    'rgba(0,0,0,0.65)',
-    textMute:   'rgba(0,0,0,0.4)',
-    textFaint:  'rgba(0,0,0,0.25)',
-    bubbleBg:   IMSG_GRAY,
-    bubbleBdr:  'transparent',
-    userBubbleBg: IMSG_BLUE,
-    inputBg:    'rgba(0,0,0,0.04)',
-    inputBdr:   'rgba(0,0,0,0.12)',
-    btnBg:      'rgba(0,0,0,0.05)',
-    btnBdr:     'rgba(0,0,0,0.15)',
-    btnHoverBg: 'rgba(0,0,0,0.10)',
-    btnHoverBdr: 'rgba(0,0,0,0.22)',
-    disabledBg: 'rgba(0,0,0,0.08)',
-    disabledTx: 'rgba(0,0,0,0.3)',
   }
   const state  = useRef<State>({
     rating: null, ratingLabel: null, sentiment: null,
@@ -282,7 +289,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
 
     chatRef.current.appendChild(wrap)
     scrollBottom()
-  }, [chatRef, config, study.bot_emoji, scrollBottom])
+    // `config` was listed but never read in this callback — an unused dep only
+    // churns the callback's identity whenever config changes.
+  }, [chatRef, study.bot_emoji, scrollBottom])
 
   // Testing mode: show AI reasoning panel below the latest bot message
   const showDebugPanel = useCallback((lines: string[]) => {

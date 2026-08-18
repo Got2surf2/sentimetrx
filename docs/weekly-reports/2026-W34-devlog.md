@@ -241,3 +241,36 @@ self-reference needs a ref indirection that trades the warning for a
 `react-hooks/refs` one, in real-time media code that is hard to verify.
 
 Ceiling lowered 229 → 202.
+
+---
+
+## 2026-08-18 (later) — Lint Tier 1 started, and stopped early on purpose
+
+Target was `useSurveyEngine.ts` — 20 `exhaustive-deps`, the most concentrated
+single file in the backlog. Two findings changed the plan.
+
+**1. The big structural win didn't move the number.** 14 of the 20 were "missing
+dependency `C.something`". `C` is the theme object — and it turned out to be a
+**constant literal of hard-coded colour strings** that was simply declared inside
+the hook, so it got a fresh identity every render. Adding its fields to the
+dependency lists (what the rule literally asks for) would have churned 14
+callbacks on every render — the opposite of the intent. Hoisted `C` and its two
+`IMSG_*` constants to module scope: now stable forever and out of the dependency
+question entirely. **But the count stayed at 20**, because `C` had been masking 14
+other genuine dependency issues (`reducedMotion`, `typingSpeed`, `submitResponse`,
+`savePartial`, …) that only surfaced once it was gone. Net for the file: 20 → 19,
+via one genuinely unnecessary dep (`config`, listed but never read).
+
+That is worth recording as a pattern: **a warning count can be a poor progress
+signal.** The code is materially better and the number barely moved.
+
+**2. `useSurveyEngine` has ZERO test coverage.** No test references it, and
+`components/**` isn't even in the coverage `include` (which is `lib/**` +
+`app/api/**`). I picked this file to start Tier 1 *because* I assumed the survey
+runtime was well covered — it isn't. So the remaining 18 are individual dependency
+judgements on a 2,638-line, respondent-facing, data-collecting runtime with no
+automated safety net, where the only verification is manually walking every branch
+(NPS, rating, follow-ups, psychographics, demographics, contact, clarify, deflect,
+verbose) in a browser.
+
+Stopped there rather than pressing on. Ceiling 202 → 201.
