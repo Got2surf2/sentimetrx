@@ -200,6 +200,122 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     } catch {}
   }
 
+  // -- Main renderInput dispatcher ---------------------------
+
+  // Active language for multi-language surveys
+  const activeLang = useRef<string>('en')
+
+  // Get translated content for the active language
+  function t(key: string, fallback: string): string {
+    if (activeLang.current === 'en' || !config.translations) return fallback
+    const trans = config.translations[activeLang.current]
+    if (!trans) return fallback
+    return (trans as unknown as Record<string, string>)[key] || fallback
+  }
+
+  function tQuestion(qId: string, field: 'prompt' | 'options' | 'likertLabels', fallback: string | string[]): string | string[] {
+    if (activeLang.current === 'en' || !config.translations) return fallback
+    const trans = config.translations[activeLang.current]
+    if (!trans?.questions?.[qId]) return fallback
+    if (field === 'options') return trans.questions[qId].options || fallback
+    if (field === 'likertLabels') return trans.questions[qId].likertLabels || fallback
+    return trans.questions[qId].prompt || fallback
+  }
+
+  function tUI(key: string, fallback: string): string {
+    if (activeLang.current === 'en') return fallback
+    // Check stored translation first
+    const trans = config.translations?.[activeLang.current]
+    if (trans?.ui && (trans.ui as unknown as Record<string, string>)[key]) return (trans.ui as unknown as Record<string, string>)[key]
+    // Fall back to built-in translations
+    const builtin = BUILTIN_UI_TRANSLATIONS[activeLang.current]
+    if (builtin?.[key]) return builtin[key]
+    return fallback
+  }
+
+  function tRatingLabel(englishLabel: string): string {
+    if (activeLang.current === 'en') return englishLabel
+    const trans = config.translations?.[activeLang.current]
+    if (trans?.ui?.ratingLabels?.[englishLabel]) return trans.ui.ratingLabels[englishLabel]
+    // Fall back to built-in rating labels if available
+    const builtin = BUILTIN_UI_TRANSLATIONS[activeLang.current]
+    if (builtin?.['rating_' + englishLabel]) return builtin['rating_' + englishLabel]
+    return englishLabel
+  }
+
+  function tNpsLabel(englishLabel: string): string {
+    if (activeLang.current === 'en') return englishLabel
+    const trans = config.translations?.[activeLang.current]
+    if (trans?.ui?.npsLabels?.[englishLabel]) return trans.ui.npsLabels[englishLabel]
+    // Fall back to built-in NPS labels
+    const builtin = BUILTIN_UI_TRANSLATIONS[activeLang.current]
+    if (builtin?.['nps_' + englishLabel]) return builtin['nps_' + englishLabel]
+    return englishLabel
+  }
+
+  function tTransition(sectionKey: string, fallback: string): string {
+    if (activeLang.current === 'en') return fallback
+    const trans = config.translations?.[activeLang.current]
+    if (trans?.ui?.transitions?.[sectionKey]) return trans.ui.transitions[sectionKey]
+    // Fall back to built-in transition translations
+    const builtin = BUILTIN_UI_TRANSLATIONS[activeLang.current]
+    if (builtin?.['transition_' + sectionKey]) return builtin['transition_' + sectionKey]
+    return fallback
+  }
+
+  function tPsycho(key: string, field: 'q' | 'opts', fallback: string | string[]): string | string[] {
+    if (activeLang.current === 'en' || !config.translations) return fallback
+    const trans = config.translations[activeLang.current]
+    if (!trans?.psychographics?.[key]) return fallback
+    if (field === 'opts') return trans.psychographics[key].opts || fallback
+    return trans.psychographics[key].q || fallback
+  }
+
+  // Translate adaptive follow-up prompts (experience, NPS, custom question)
+  function tFollowUp(followUpKey: string, score: number, sharedPrompt: string, perResponse?: Record<string, { prompt: string }>): string {
+    const pr = perResponse?.[score]
+    const englishPrompt = pr ? pr.prompt : sharedPrompt
+    if (activeLang.current === 'en' || !config.translations) return englishPrompt
+    const trans = config.translations[activeLang.current]
+    if (!trans?.followUps?.[followUpKey]) return englishPrompt
+    const fu = trans.followUps[followUpKey]
+    if (pr && fu.perResponse?.[score]) return fu.perResponse[score]
+    if (fu.sharedPrompt) return fu.sharedPrompt
+    return englishPrompt
+  }
+
+  // Translate opening flow open-end prompts
+  function tOpeningFlow(itemId: string, fallback: string): string {
+    if (activeLang.current === 'en' || !config.translations) return fallback
+    const trans = config.translations[activeLang.current]
+    return trans?.openingFlow?.[itemId] || fallback
+  }
+
+  // Translate demographic labels and options
+  function tDemoLabel_(key: string, fallback: string): string {
+    if (activeLang.current === 'en' || !config.translations) return fallback
+    const trans = config.translations[activeLang.current]
+    return trans?.demoLabels?.[key] || tUI('demo_' + key, fallback)
+  }
+  function tDemoOption(fieldKey: string, optIndex: number, fallback: string): string {
+    if (activeLang.current === 'en' || !config.translations) return fallback
+    const trans = config.translations[activeLang.current]
+    return trans?.demoOptions?.[fieldKey]?.[optIndex] || tUI('demo_opt_' + fallback.toLowerCase().replace(/\s+/g, '_'), fallback)
+  }
+
+  // Translate contact field labels
+  function tContactLabel(key: string, fallback: string): string {
+    if (activeLang.current === 'en' || !config.translations) return fallback
+    const trans = config.translations[activeLang.current]
+    return trans?.contactLabels?.[key] || fallback
+  }
+
+  // Translate contact transition
+  function tContactTransition(fallback: string): string {
+    if (activeLang.current === 'en' || !config.translations) return fallback
+    const trans = config.translations[activeLang.current]
+    return trans?.contactTransition || tUI('transition_contact', fallback)
+  }
   // ── Partial save — debounced fire-and-forget POST after each answered question ──
   const savePartialTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savePartial = useCallback(() => {
@@ -1021,6 +1137,47 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     if (confirmMode) scrollInputBottom()
   }, [addMsg, clearInput, config, inputRef, scrollBottom, showTyping, state, advanceSection])
 
+  // Clarify input for likert follow-ups (q1/q2)
+  const showLikertClarifyInput = useCallback((storageKey: 'q1' | 'q2', originalVal: string, next: () => Promise<void>) => {
+    if (!inputRef.current) return
+    const wrap = document.createElement('div')
+    wrap.className = 'flex gap-2 items-end w-full mt-1.5'
+    const ta = document.createElement('textarea'); ta.lang = activeLang.current
+    ta.cols = 1
+    ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
+    ta.rows = 1
+    ta.placeholder = tUI('clarifyPlaceholder', 'Feel free to add a bit more...')
+    ta.style.cssText = 'background:' + C.inputBg + ';border:1.5px solid ' + config.theme.primaryColor + '28;color:' + C.text + ';outline:none;font-family:inherit;max-height:110px;'
+    ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
+    ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
+    ta.oninput  = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 110) + 'px' }
+    ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click() } }
+    const sendBtn = document.createElement('button')
+    sendBtn.textContent = '→'
+    sendBtn.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base transition-all'
+    sendBtn.style.cssText = `background:${config.theme.primaryColor};color:#fff;border:none;cursor:pointer;font-family:inherit;`
+    sendBtn.onclick = async () => {
+      const val = ta.value.trim()
+      if (checkVerbose(val, ta)) return
+      wrap.querySelectorAll<HTMLTextAreaElement | HTMLButtonElement>('textarea,button').forEach((el) => { el.disabled = true })
+      if (val && !isDecline(val)) {
+        addMsg('user', val)
+        state.current.answers[storageKey] = originalVal + ' [+ ' + val + ']'
+      }
+      savePartialRef.current()
+      clearInput()
+      // AI deflection: detect questions/off-topic and respond contextually — deflection serves as the ack
+      if (val && !isDecline(val) && await checkDeflect(val, state.current.currentQuestion || '')) {
+        state.current.skipNextAck = true
+      }
+      await next()
+    }
+    wrap.append(ta, sendBtn)
+    inputRef.current.appendChild(wrap)
+    setTimeout(() => ta.focus(), 100)
+    scrollBottom()
+  }, [addMsg, clearInput, config, inputRef, scrollBottom])
+
 
 
   
@@ -1098,47 +1255,6 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
   }, [addMsg, clearInput, config, inputRef, scrollBottom, showTyping])
-
-  // Clarify input for likert follow-ups (q1/q2)
-  const showLikertClarifyInput = useCallback((storageKey: 'q1' | 'q2', originalVal: string, next: () => Promise<void>) => {
-    if (!inputRef.current) return
-    const wrap = document.createElement('div')
-    wrap.className = 'flex gap-2 items-end w-full mt-1.5'
-    const ta = document.createElement('textarea'); ta.lang = activeLang.current
-    ta.cols = 1
-    ta.className = 'flex-1 min-w-0 resize-none text-base leading-relaxed rounded-2xl px-4 py-2.5'
-    ta.rows = 1
-    ta.placeholder = tUI('clarifyPlaceholder', 'Feel free to add a bit more...')
-    ta.style.cssText = 'background:' + C.inputBg + ';border:1.5px solid ' + config.theme.primaryColor + '28;color:' + C.text + ';outline:none;font-family:inherit;max-height:110px;'
-    ta.onfocus  = () => { ta.style.borderColor = config.theme.primaryColor }
-    ta.onblur   = () => { ta.style.borderColor = `${config.theme.primaryColor}28` }
-    ta.oninput  = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 110) + 'px' }
-    ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click() } }
-    const sendBtn = document.createElement('button')
-    sendBtn.textContent = '→'
-    sendBtn.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base transition-all'
-    sendBtn.style.cssText = `background:${config.theme.primaryColor};color:#fff;border:none;cursor:pointer;font-family:inherit;`
-    sendBtn.onclick = async () => {
-      const val = ta.value.trim()
-      if (checkVerbose(val, ta)) return
-      wrap.querySelectorAll<HTMLTextAreaElement | HTMLButtonElement>('textarea,button').forEach((el) => { el.disabled = true })
-      if (val && !isDecline(val)) {
-        addMsg('user', val)
-        state.current.answers[storageKey] = originalVal + ' [+ ' + val + ']'
-      }
-      savePartialRef.current()
-      clearInput()
-      // AI deflection: detect questions/off-topic and respond contextually — deflection serves as the ack
-      if (val && !isDecline(val) && await checkDeflect(val, state.current.currentQuestion || '')) {
-        state.current.skipNextAck = true
-      }
-      await next()
-    }
-    wrap.append(ta, sendBtn)
-    inputRef.current.appendChild(wrap)
-    setTimeout(() => ta.focus(), 100)
-    scrollBottom()
-  }, [addMsg, clearInput, config, inputRef, scrollBottom])
 
 
     const stepPsychoIntro = useCallback(async () => {
@@ -1898,70 +2014,6 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     _done: stepDone,
   }
 
-  const progressFlow = useCallback(async (qKey: 'q3' | 'q4', skipAck?: boolean) => {
-    // Also check flag set by deflection in clarify/likert handlers
-    if (state.current.skipNextAck) { skipAck = true; state.current.skipNextAck = false }
-    const lastMsg = state.current.lastUserMsg || ''
-    if (qKey === 'q3') {
-      // Skip Q4 if disabled
-      if (config.q4Enabled === false) {
-        if (!skipAck) { const ack = smartAck(lastMsg); await showTyping(typingDur(ack)); addMsg('bot', ack, true) }
-        await stepConversationExtras()
-        return
-      }
-      if (!skipAck) { const ack = smartAck(lastMsg); await showTyping(typingDur(ack)); addMsg('bot', ack, true) }
-      const q4Text = t('q4', config.q4)
-      await showTyping(typingDur(q4Text))
-      addMsg('bot', q4Text)
-      state.current.currentQuestion = config.q4
-      // q4: optional by default, required if q4Required === true
-      if (config.q4Required === true) {
-        showTextInput('q4')
-      } else {
-        showTextInputOptional('q4')
-      }
-    } else {
-      if (!skipAck && !isDecline(lastMsg)) {
-        const ack = smartAck(lastMsg)
-        await showTyping(typingDur(ack))
-        addMsg('bot', ack, true)
-      }
-      await stepConversationExtras()
-    }
-  }, [addMsg, config, showTyping, stepConversationExtras])
-
-  const handleOpenEnded = useCallback(async (qKey: 'q3' | 'q4', val: string) => {
-    state.current.answers[qKey] = val
-    state.current.questionsAsked[qKey] = state.current.currentQuestion
-    savePartial()
-    clearInput()
-    // Smart deflection: if respondent asked a question, redirect and skip clarifier
-    if (!isDecline(val) && await checkDeflect(val, state.current.currentQuestion || '')) {
-      await progressFlow(qKey, true)
-      return
-    }
-    // Only attempt clarification if enabled for this question (default: on)
-    const clarifyEnabled = qKey === 'q3' ? config.q3Clarify !== false : config.q4Clarify !== false
-    if (clarifyEnabled && state.current.clarifyCount < (config.maxClarifierCount || 5) && shouldClarify(val)) {
-      const cq = await showTypingDuring(buildClarify(val, qKey), 800)
-      if (cq) {
-        state.current.clarifyCount++
-        addMsg('bot', cq, true)
-        showClarifyInput(qKey, val)
-        return
-      }
-    }
-    await progressFlow(qKey)
-  }, [addMsg, clearInput, config, progressFlow, savePartial, showTyping, state])
-
-  // Refs so imperative DOM handlers always call the latest function versions
-  const handleOpenEndedRef = useRef(handleOpenEnded)
-  handleOpenEndedRef.current = handleOpenEnded
-  const progressFlowRef = useRef(progressFlow)
-  progressFlowRef.current = progressFlow
-  const savePartialRef = useRef(savePartial)
-  savePartialRef.current = savePartial
-
   // -- Input Renderers ---------------------------------------
 
   const showTextInput = useCallback((qKey: 'q3' | 'q4') => {
@@ -2156,122 +2208,70 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     scrollBottom()
   }, [addMsg, clearInput, config, inputRef, scrollBottom, state])
 
-  // -- Main renderInput dispatcher ---------------------------
+  const progressFlow = useCallback(async (qKey: 'q3' | 'q4', skipAck?: boolean) => {
+    // Also check flag set by deflection in clarify/likert handlers
+    if (state.current.skipNextAck) { skipAck = true; state.current.skipNextAck = false }
+    const lastMsg = state.current.lastUserMsg || ''
+    if (qKey === 'q3') {
+      // Skip Q4 if disabled
+      if (config.q4Enabled === false) {
+        if (!skipAck) { const ack = smartAck(lastMsg); await showTyping(typingDur(ack)); addMsg('bot', ack, true) }
+        await stepConversationExtras()
+        return
+      }
+      if (!skipAck) { const ack = smartAck(lastMsg); await showTyping(typingDur(ack)); addMsg('bot', ack, true) }
+      const q4Text = t('q4', config.q4)
+      await showTyping(typingDur(q4Text))
+      addMsg('bot', q4Text)
+      state.current.currentQuestion = config.q4
+      // q4: optional by default, required if q4Required === true
+      if (config.q4Required === true) {
+        showTextInput('q4')
+      } else {
+        showTextInputOptional('q4')
+      }
+    } else {
+      if (!skipAck && !isDecline(lastMsg)) {
+        const ack = smartAck(lastMsg)
+        await showTyping(typingDur(ack))
+        addMsg('bot', ack, true)
+      }
+      await stepConversationExtras()
+    }
+  }, [addMsg, config, showTyping, stepConversationExtras])
 
-  // Active language for multi-language surveys
-  const activeLang = useRef<string>('en')
+  const handleOpenEnded = useCallback(async (qKey: 'q3' | 'q4', val: string) => {
+    state.current.answers[qKey] = val
+    state.current.questionsAsked[qKey] = state.current.currentQuestion
+    savePartial()
+    clearInput()
+    // Smart deflection: if respondent asked a question, redirect and skip clarifier
+    if (!isDecline(val) && await checkDeflect(val, state.current.currentQuestion || '')) {
+      await progressFlow(qKey, true)
+      return
+    }
+    // Only attempt clarification if enabled for this question (default: on)
+    const clarifyEnabled = qKey === 'q3' ? config.q3Clarify !== false : config.q4Clarify !== false
+    if (clarifyEnabled && state.current.clarifyCount < (config.maxClarifierCount || 5) && shouldClarify(val)) {
+      const cq = await showTypingDuring(buildClarify(val, qKey), 800)
+      if (cq) {
+        state.current.clarifyCount++
+        addMsg('bot', cq, true)
+        showClarifyInput(qKey, val)
+        return
+      }
+    }
+    await progressFlow(qKey)
+  }, [addMsg, clearInput, config, progressFlow, savePartial, showTyping, state])
 
-  // Get translated content for the active language
-  function t(key: string, fallback: string): string {
-    if (activeLang.current === 'en' || !config.translations) return fallback
-    const trans = config.translations[activeLang.current]
-    if (!trans) return fallback
-    return (trans as unknown as Record<string, string>)[key] || fallback
-  }
+  // Refs so imperative DOM handlers always call the latest function versions
+  const handleOpenEndedRef = useRef(handleOpenEnded)
+  handleOpenEndedRef.current = handleOpenEnded
+  const progressFlowRef = useRef(progressFlow)
+  progressFlowRef.current = progressFlow
+  const savePartialRef = useRef(savePartial)
+  savePartialRef.current = savePartial
 
-  function tQuestion(qId: string, field: 'prompt' | 'options' | 'likertLabels', fallback: string | string[]): string | string[] {
-    if (activeLang.current === 'en' || !config.translations) return fallback
-    const trans = config.translations[activeLang.current]
-    if (!trans?.questions?.[qId]) return fallback
-    if (field === 'options') return trans.questions[qId].options || fallback
-    if (field === 'likertLabels') return trans.questions[qId].likertLabels || fallback
-    return trans.questions[qId].prompt || fallback
-  }
-
-  function tUI(key: string, fallback: string): string {
-    if (activeLang.current === 'en') return fallback
-    // Check stored translation first
-    const trans = config.translations?.[activeLang.current]
-    if (trans?.ui && (trans.ui as unknown as Record<string, string>)[key]) return (trans.ui as unknown as Record<string, string>)[key]
-    // Fall back to built-in translations
-    const builtin = BUILTIN_UI_TRANSLATIONS[activeLang.current]
-    if (builtin?.[key]) return builtin[key]
-    return fallback
-  }
-
-  function tRatingLabel(englishLabel: string): string {
-    if (activeLang.current === 'en') return englishLabel
-    const trans = config.translations?.[activeLang.current]
-    if (trans?.ui?.ratingLabels?.[englishLabel]) return trans.ui.ratingLabels[englishLabel]
-    // Fall back to built-in rating labels if available
-    const builtin = BUILTIN_UI_TRANSLATIONS[activeLang.current]
-    if (builtin?.['rating_' + englishLabel]) return builtin['rating_' + englishLabel]
-    return englishLabel
-  }
-
-  function tNpsLabel(englishLabel: string): string {
-    if (activeLang.current === 'en') return englishLabel
-    const trans = config.translations?.[activeLang.current]
-    if (trans?.ui?.npsLabels?.[englishLabel]) return trans.ui.npsLabels[englishLabel]
-    // Fall back to built-in NPS labels
-    const builtin = BUILTIN_UI_TRANSLATIONS[activeLang.current]
-    if (builtin?.['nps_' + englishLabel]) return builtin['nps_' + englishLabel]
-    return englishLabel
-  }
-
-  function tTransition(sectionKey: string, fallback: string): string {
-    if (activeLang.current === 'en') return fallback
-    const trans = config.translations?.[activeLang.current]
-    if (trans?.ui?.transitions?.[sectionKey]) return trans.ui.transitions[sectionKey]
-    // Fall back to built-in transition translations
-    const builtin = BUILTIN_UI_TRANSLATIONS[activeLang.current]
-    if (builtin?.['transition_' + sectionKey]) return builtin['transition_' + sectionKey]
-    return fallback
-  }
-
-  function tPsycho(key: string, field: 'q' | 'opts', fallback: string | string[]): string | string[] {
-    if (activeLang.current === 'en' || !config.translations) return fallback
-    const trans = config.translations[activeLang.current]
-    if (!trans?.psychographics?.[key]) return fallback
-    if (field === 'opts') return trans.psychographics[key].opts || fallback
-    return trans.psychographics[key].q || fallback
-  }
-
-  // Translate adaptive follow-up prompts (experience, NPS, custom question)
-  function tFollowUp(followUpKey: string, score: number, sharedPrompt: string, perResponse?: Record<string, { prompt: string }>): string {
-    const pr = perResponse?.[score]
-    const englishPrompt = pr ? pr.prompt : sharedPrompt
-    if (activeLang.current === 'en' || !config.translations) return englishPrompt
-    const trans = config.translations[activeLang.current]
-    if (!trans?.followUps?.[followUpKey]) return englishPrompt
-    const fu = trans.followUps[followUpKey]
-    if (pr && fu.perResponse?.[score]) return fu.perResponse[score]
-    if (fu.sharedPrompt) return fu.sharedPrompt
-    return englishPrompt
-  }
-
-  // Translate opening flow open-end prompts
-  function tOpeningFlow(itemId: string, fallback: string): string {
-    if (activeLang.current === 'en' || !config.translations) return fallback
-    const trans = config.translations[activeLang.current]
-    return trans?.openingFlow?.[itemId] || fallback
-  }
-
-  // Translate demographic labels and options
-  function tDemoLabel_(key: string, fallback: string): string {
-    if (activeLang.current === 'en' || !config.translations) return fallback
-    const trans = config.translations[activeLang.current]
-    return trans?.demoLabels?.[key] || tUI('demo_' + key, fallback)
-  }
-  function tDemoOption(fieldKey: string, optIndex: number, fallback: string): string {
-    if (activeLang.current === 'en' || !config.translations) return fallback
-    const trans = config.translations[activeLang.current]
-    return trans?.demoOptions?.[fieldKey]?.[optIndex] || tUI('demo_opt_' + fallback.toLowerCase().replace(/\s+/g, '_'), fallback)
-  }
-
-  // Translate contact field labels
-  function tContactLabel(key: string, fallback: string): string {
-    if (activeLang.current === 'en' || !config.translations) return fallback
-    const trans = config.translations[activeLang.current]
-    return trans?.contactLabels?.[key] || fallback
-  }
-
-  // Translate contact transition
-  function tContactTransition(fallback: string): string {
-    if (activeLang.current === 'en' || !config.translations) return fallback
-    const trans = config.translations[activeLang.current]
-    return trans?.contactTransition || tUI('transition_contact', fallback)
-  }
 
   const renderInput = useCallback(async (phase: string) => {
     if (phase !== 'start') return

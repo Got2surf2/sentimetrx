@@ -365,3 +365,29 @@ probed. And `stepDemographics` falls back to age/gender/zip whenever
 `demoFields` is empty, so there is no way to switch demographics off by
 emptying that list; a focused test has to narrow `sectionOrder` instead. Both
 were assumptions I'd have carried into the refactor.
+
+### Step 1 of the refactor — move the declarations, change nothing else
+
+`useSurveyEngine`'s 19 `exhaustive-deps` warnings could not simply be fixed by
+adding the missing dependencies, because several of the missing values are
+declared *below* the callback that needs them. `progressFlow` (was line 1901)
+calls `showTextInput` (1967) and `showTextInputOptional` (2093); `handleOpenEnded`
+(1933) calls `showClarifyInput` (2017); `showLikertFollowUpInput` (1032) calls
+`showLikertClarifyInput` (1103). Those work today only because the calls happen
+inside closures that run on a click, long after render. Naming them in a
+dependency array evaluates them **during** render — which is a temporal-dead-zone
+`ReferenceError`, not a lint fix. The thirteen translation helpers had the same
+problem in the other direction: they sat at the very bottom of the hook (2161+)
+as hoisted `function` declarations, so the ~40 callbacks above them could call
+them but could never depend on them.
+
+So this commit is a pure move: the translation block goes to the top of the
+hook, `showLikertClarifyInput` goes above its caller, and the three input
+renderers go above `progressFlow`/`handleOpenEnded`. Verified mechanically — the
+file before and after contains the exact same multiset of 2,648 lines, so nothing
+was edited, only relocated — and the new jsdom harness passes unchanged, both
+snapshotted transcripts included.
+
+The cycle that genuinely exists (`progressFlow` → `showTextInput` →
+`handleOpenEnded` → `progressFlow`) is still broken where it always was, by the
+`progressFlowRef`/`handleOpenEndedRef` latest-value refs the file already used.
