@@ -1527,6 +1527,11 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     }
   }, [openFields.length])
 
+  // Extracted from the dependency array below: a call expression inline in deps
+  // is re-evaluated on every render and eslint cannot verify it, so it hides
+  // whether the effect's real inputs changed.
+  var activeFieldsKey = activeFields.join(',')
+
   // Auto-switch away from empty fields once rows load
   useEffect(function() {
     if (!rowsLoaded || !rows.length || !activeFields.length || openFields.length === 0) return
@@ -1557,7 +1562,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         return
       }
     }
-  }, [rowsLoaded, rows.length, activeFields.join(',')])
+  }, [rowsLoaded, rows.length, activeFieldsKey])
 
   // Load API key and AI enabled state from localStorage
   useEffect(function() {
@@ -1876,9 +1881,15 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   }, [effectiveFilters])
 
   // Inject signal_tier for Reddit/Substack datasets (dynamic, respects filter + threshold changes)
+  // Depend on the two PRIMITIVES rather than the cutoffs object: `signalCutoffs`
+  // is exactly { mainstream, noise }, so this is both complete and stricter than
+  // depending on the object, which would rebuild on any new identity carrying the
+  // same two numbers. Rebuilt inside the memo so the deps are exactly its inputs.
+  var cutMainstream = signalCutoffs.mainstream
+  var cutNoise = signalCutoffs.noise
   var filteredRows: Record<string, unknown>[] = useMemo(function(): Record<string, unknown>[] {
-    return injectSignalTier(_filteredBase, datasetSource || '', signalCutoffs)
-  }, [_filteredBase, datasetSource, signalCutoffs.mainstream, signalCutoffs.noise])
+    return injectSignalTier(_filteredBase, datasetSource || '', { mainstream: cutMainstream, noise: cutNoise })
+  }, [_filteredBase, datasetSource, cutMainstream, cutNoise])
 
   // When the opinion modal is scoped to a theme, it must READ that theme's rows —
   // not the whole dataset. Otherwise the mention count (numerator) is drawn from
@@ -1910,6 +1921,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // Recount theme hits against filtered data — deferred to let UI paint loading state
   var _recountFields = effectiveFields.length > 0 ? effectiveFields
     : (themes?.fieldNames || (themes?.fieldName ? [themes.fieldName] : []))
+  // Extracted from the dependency array below — same reason as activeFieldsKey:
+  // an inline call expression in deps can't be verified by the rule.
+  var _recountFieldsKey = _recountFields.join(',')
   useEffect(function() {
     if (!themes) { setDisplayThemes(null); return }
     if (filteredRows.length === 0 || _recountFields.length === 0) {
@@ -1935,7 +1949,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       setComputing(false)
     }, 20)
     return function() { clearTimeout(timer) }
-  }, [themes, filteredRows.length, _recountFields.join(','), activeFilterCount, ratingField])
+  }, [themes, filteredRows.length, _recountFieldsKey, activeFilterCount, ratingField])
 
   // Stats for active fields (on filtered data)
   var activeFieldRows = useMemo(function() {

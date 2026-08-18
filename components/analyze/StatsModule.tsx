@@ -33,10 +33,13 @@ function PlotlyChart({ data, layout, style }: { data: unknown[]; layout?: Record
     void getPlotly().then(function(Plotly) {
       if (ref.current) Plotly.newPlot(ref.current, data, merged, { responsive: true, displayModeBar: false })
     })
+    // Captured at setup: by the time cleanup runs, `ref.current` may already
+    // point elsewhere (or be null), so purging it could miss the node this
+    // effect actually created (react-hooks/exhaustive-deps ref warning).
+    const node = ref.current
     return function() {
-      const el = ref.current
-      if (!el) return
-      void getPlotly().then(function(Plotly) { try { Plotly.purge(el) } catch {} })
+      if (!node) return
+      void getPlotly().then(function(Plotly) { try { Plotly.purge(node) } catch {} })
     }
   }, [data, layout])
   return <div ref={ref} style={style || { width: '100%', height: 260 }} />
@@ -64,6 +67,10 @@ import { useFilters } from '@/components/analyze/FilterContext'
 import { useRows } from '@/components/analyze/RowsContext'
 import type { SchemaConfig, SchemaFieldConfig } from '@/lib/analyzeTypes'
 import { smartOrder } from '@/lib/scaleUtils'
+
+// Module scope: a constant, so it is not a hook dependency. Declared inside the
+// component it read as one (react-hooks/exhaustive-deps).
+const STATS_HARD_CAP = 5000
 
 // Module-level drag tracker — allows dragOver handlers to preview the drop target without dataTransfer
 var _statsDrag: { field: string; type: string; label: string; dual?: boolean } | null = null
@@ -2432,7 +2439,6 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
   var shared = useRows()
   var { effectiveFilters: filters } = useFilters()
 
-  var STATS_HARD_CAP = 5000
   var [sampleCap, setSampleCap] = useState(2000)
   var [statsRestored, setStatsRestored] = useState(false)
 
@@ -2564,7 +2570,9 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
       })
       return enriched
     })
-  }, [filteredData, hasThemes, allSchemaFields, effectiveThemeModel, themeSourceField, activeThemeNames, themeEnrichKey])
+    // `themeEnrichKey` was listed but never read here — an unused dep only
+    // forces the enrichment to recompute when nothing it uses has changed.
+  }, [filteredData, hasThemes, allSchemaFields, effectiveThemeModel, themeSourceField, activeThemeNames])
 
   var mappedFields = useMemo(function() {
     return allSchemaFields.filter(function(f) { return f.type === 'categorical' && f.remapping && Object.keys(f.remapping).length > 0 })

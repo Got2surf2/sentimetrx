@@ -274,3 +274,49 @@ automated safety net, where the only verification is manually walking every bran
 verbose) in a browser.
 
 Stopped there rather than pressing on. Ceiling 202 → 201.
+
+---
+
+## 2026-08-18 (later²) — Lint Tier 1 on TextMine + Stats: 201 → 195
+
+Switched off `useSurveyEngine` (zero coverage) to the two modules I can actually
+verify. Took only the changes that are provably equivalent, not the behavioural
+ones.
+
+**`TextMineModule` 19 → 16**
+- Two `activeFields.join(',')` / `_recountFields.join(',')` call expressions
+  extracted out of dependency arrays into named values. An inline call in deps is
+  re-evaluated every render and the rule can't verify it, so it hides whether the
+  effect's real inputs changed. Same value, named.
+- The `filteredRows` memo depended on `signalCutoffs.mainstream` /
+  `.noise` while passing the whole `signalCutoffs` object, so the rule asked for
+  the object. Depending on the object would be *less* precise (a new identity with
+  identical numbers would recompute). `signalCutoffs` is exactly those two
+  numbers, so the memo now takes the two primitives and rebuilds the argument —
+  complete, and stricter than what the rule asked for.
+
+**`StatsModule` 32 → 29**
+- `STATS_HARD_CAP = 5000` was declared *inside* the component, so a constant read
+  as a hook dependency. Hoisted to module scope — the same shape of problem as
+  `C` in the survey engine.
+- Dropped `themeEnrichKey` from a `useMemo`'s deps: listed but never read, so it
+  only forced the enrichment to recompute when nothing it used had changed.
+- The Plotly cleanup read `ref.current` *at cleanup time*, by which point it may
+  point elsewhere or be null — it could purge the wrong node or miss one. Now
+  captured at effect setup.
+
+**Verification.** The change with real behavioural risk is the deterministic
+subsample from Tier 0, so that got the browser check: Statistics on the 56,117-row
+Carrabba's set renders 2,000 sampled rows, and **after a full reload the figures
+are byte-identical** (1,596 observations, mean 4.731, median 5.000, SD 0.797,
+variance 0.636) — which is exactly the property the old `Math.random()` shuffle
+could not provide. The Plotly distribution chart renders and purges cleanly after
+the ref change.
+
+TextMine's three changes are semantically-equivalent transformations (a named
+value in place of an inline call; the same two numbers passed a different way,
+on a code path that returns early for anything that isn't Reddit/Substack). They
+are covered by typecheck, the suite and a clean dev compile, but the browser
+extension dropped before I could re-confirm them visually after the final edit.
+
+Ceiling 201 → 195. Session total: 229 → 195.
