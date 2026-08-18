@@ -218,13 +218,47 @@ Three tabs in a single page (`TestingClient.tsx`):
 
 ---
 
+## Engine internals (2026-08-18)
+
+The engine's own structure is load-bearing enough to write down, because it is
+not obvious from reading top to bottom.
+
+**Declaration order is a constraint, not a style choice.** Roughly forty callbacks
+in the hook depend on the thirteen translation helpers (`t`, `tUI`, `tQuestion`,
+`tFollowUp`, …), so those are declared at the **top** of the hook. Each reads
+exactly two things — the `activeLang` ref and `config.translations` — and is a
+`useCallback` keyed on the latter, which makes it stable for the life of the study
+config. Anything that calls a value must be declared **below** it: the input
+renderers (`showTextInput`, `showClarifyInput`, `showTextInputOptional`) sit above
+`progressFlow`/`handleOpenEnded`, and `showLikertClarifyInput` sits above
+`showLikertFollowUpInput`. Moving a declaration up or down is therefore a real
+change — a callback that names a value declared below it throws a
+temporal-dead-zone `ReferenceError` at render.
+
+**The one genuine cycle** — `progressFlow` → `showTextInput` → `handleOpenEnded`
+→ `progressFlow` — is broken by the latest-value ref idiom (`progressFlowRef`,
+`handleOpenEndedRef`, `showClarifyInputRef`, `savePartialRef`): imperative DOM
+handlers call `someRef.current(...)` so they always reach the current version.
+When adding a new step, prefer that idiom to reintroducing a forward reference.
+
+**Two behaviours that surprise people reading the config:**
+
+- **The keyword clarifier fires even with `useAIClarify` off.** `buildClarify`'s
+  fallback never returns `null` — it returns the matched keyword clarifier or
+  `clarifiers.default` — so any open-ended answer under 12 words gets probed
+  once. Turning off AI clarification does not turn off clarification.
+- **`demoFields: []` does not disable demographics.** `stepDemographics` falls
+  back to age/gender/ZIP whenever the list is empty. The only way to skip the
+  section is to leave `demographics` out of `sectionOrder`.
+
 ## Key Files
 
 | File | Purpose |
 |------|---------|
 | `app/studies/new/` | Creator wizard (10 steps) |
 | `components/survey/SurveyWidget.tsx` | Widget wrapper |
-| `components/survey/useSurveyEngine.ts` | Core conversation logic (~2.6k lines) |
+| `components/survey/useSurveyEngine.ts` | Core conversation logic (~2.7k lines) |
+| `tests/unit/surveyEngineFlow.test.tsx` | jsdom end-to-end harness for the engine — drives real surveys and pins the `/api/respond` payload + conversation transcript |
 | `components/creator/SmartStudyWizard.tsx` | AI-powered study generation |
 | `app/api/clarify/route.ts` | AI follow-up generation |
 | `app/api/respond/route.ts` | Response submission |

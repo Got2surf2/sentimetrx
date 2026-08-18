@@ -1159,3 +1159,70 @@ polling loop in Town Hall chat. Breaking the self-reference needs a ref
 indirection that trades the warning for a `react-hooks/refs` one, in real-time
 media code that is hard to verify. Left on the ratchet deliberately.
 
+
+## Lint ratchet: 195 → 176 (`useSurveyEngine` dependency graph, 2026-08-18)
+
+`components/survey/useSurveyEngine.ts` held 19 `react-hooks/exhaustive-deps`
+warnings — all of one shape (missing dependency), all cascading from a handful
+of unstable roots. It is now at **zero**.
+
+**⚠️ The finding that matters more than the number: a lint count can be low
+because the analyzer crashed.** The `react-hooks` v7 rule set is compiler-based,
+and the compiler **bails out of an entire component** when it hits a construct it
+cannot model — reporting *nothing* from `react-hooks/refs`, `/purity` and
+`/immutability` for that component. This hook contained several forward
+references (callbacks calling `const` values declared below them), which is
+exactly such a construct. Reordering the declarations — a change provably
+containing **zero edited lines**, verified as the same multiset of 2,648 lines
+before and after — took the file from **19 warnings to 51**. The 32 new ones were
+always true; they were invisible, not absent.
+
+Treat this as a general rule: **on a file with unusual structure, a low
+`react-hooks/*` count is not evidence of health until you have confirmed the
+compiler actually analysed it.** The corollary is that fixing a structural
+problem in such a file can legitimately *raise* the count, and that is progress,
+not regression.
+
+**The refactor.** The 19 warnings could not be fixed by adding the missing
+dependencies, because several of the missing values were declared *below* the
+callback that needed them — naming one in a dependency array evaluates it during
+render, which is a temporal-dead-zone `ReferenceError`, not a lint fix. So it had
+to run bottom-up:
+
+1. **Reorder** (its own commit, zero content change): translation helpers to the
+   top of the hook, `showLikertClarifyInput` above its caller, the three input
+   renderers above `progressFlow`/`handleOpenEnded`.
+2. **Stabilise the roots.** `isDecline`, `isQuestionOrOffTopic` and `typingDur`
+   close over nothing and moved to module scope. The thirteen translation helpers
+   read exactly two things — the `activeLang` ref and `config.translations` — so
+   each became a `useCallback` keyed on `config.translations`. `checkVerbose`,
+   `smartAck`, `shouldClarify`, `checkDeflect`, `buildClarify`,
+   `pickPsychoQuestions` and `submitResponse` became `useCallback`s;
+   `sectionOrder`'s `||` fallback array literal became a `useMemo`.
+3. **Then** fill in the dependency arrays. Fixing top-down would have achieved
+   nothing: `savePartial` and `showTypingDuring` were *already* `useCallback`s and
+   still churned on every render, because their own dependencies were unstable.
+   Five dependencies turned out to be **unnecessary** (`config` on two typing
+   callbacks, `showTyping` on two that only use `showTypingDuring`,
+   `progressFlow` on `renderInput` which goes through `progressFlowRef`); each was
+   confirmed unreferenced in the callback body before removal.
+
+**Left as documented suppressions (32).** The `refs` / `purity` / `immutability`
+warnings the reorder unmasked are three pre-existing clusters: render-phase lazy
+initialisation (session id, device fingerprint, hidden-field capture, device
+lock), the latest-value ref idiom (`someRef.current = someFn` during render), and
+one self-recursive `useCallback`. They carry scoped disables with concrete
+reasons rather than a file-level blanket, so the rules stay live everywhere else
+in the file. Restructuring them touches respondent session identity, the
+one-response-per-device lock and the campaign `?rid=` capture — its own piece of
+work with its own browser verification, not a rider on a dependency refactor.
+
+**Verification.** The precondition for doing this at all was
+`tests/unit/surveyEngineFlow.test.tsx` (previous commit): the hook had **zero**
+coverage, and `components/**` isn't in the vitest coverage `include`. The harness
+drives real surveys in jsdom and pins the `/api/respond` payload including two
+snapshotted conversation transcripts. Both transcripts came through the refactor
+byte-identical, alongside a clean `tsc` and the full suite.
+
+**Dead code noticed, not removed:** `stepConversationExtrasRef` is assigned every
+render and never read.

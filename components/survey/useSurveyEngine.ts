@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import DOMPurify from 'isomorphic-dompurify'
 import type { Study, StudyConfig, Sentiment, SurveyPayload, OpeningFlowItem, SectionKey, RatingOption, LikertFollowUp, ContactFieldType } from '@/lib/types'
 import { US_STATES, validateContactField, BUILTIN_UI_TRANSLATIONS, SUPPORTED_LANGUAGES } from '@/lib/types'
@@ -81,16 +81,55 @@ const C = {
   disabledTx: 'rgba(0,0,0,0.3)',
 }
 
+// Pure text predicates — they close over nothing in the hook, so at module scope
+// they are stable identities and drop out of the dependency question entirely.
+function isDecline(text: string) {
+  const t = text.toLowerCase().trim()
+  if (!t) return true   // genuinely empty — nothing to clarify
+  // Match actual refusal phrases only. NOT a blanket length cap: terse but
+  // meaningful answers ("cold", "rude", "slow", "loud") are real feedback that
+  // SHOULD earn a clarifier, not be brushed off as a non-answer.
+  return /^(no|nope|nah|not really|nothing|none|n\/a|na|no thanks|skip|pass|all good|that'?s? (all|it)|i'?m good|nothing else|not at the moment)\.?$/.test(t)
+}
+
+function isQuestionOrOffTopic(text: string) {
+  const t = text.trim().toLowerCase()
+  if (t.endsWith('?')) return true
+  if (/\b(who are you|what are you|tell me|what is this|what do you|how do you|where (is|are|can)|can you tell|could you tell|explain|help me)\b/i.test(t)) return true
+  return false
+}
+
+// Consistent duration based on message length: ~30ms per char, clamped 400–1800ms
+function typingDur(text: string) { return Math.max(400, Math.min(1800, text.length * 30)) }
+
 export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scrollBottom, isLightBg = false, reducedMotion = false, onVerboseRequest, kiosk = false, onComplete }: Props) {
   const config = study.config as StudyConfig
   const confirmMode = config.confirmBeforeRecord === true
 
   // Verbose/debug command check — returns true if command was handled (caller should return early)
-  function checkVerbose(v: string, ta?: HTMLTextAreaElement): boolean {
+  const checkVerbose = useCallback((v: string, ta?: HTMLTextAreaElement): boolean => {
     if (/^#verbose$/i.test(v)) { if (ta) ta.value = ''; if (onVerboseRequest) onVerboseRequest(); return true }
     if (/^#sanjay\s+mvuli609$/i.test(v)) { if (ta) ta.value = ''; if (onVerboseRequest) onVerboseRequest('bypass'); return true }
     return false
-  }
+  }, [onVerboseRequest])
+
+  /* eslint-disable react-hooks/refs, react-hooks/purity --
+   * Render-phase lazy initialisation (session id, device fingerprint, hidden
+   * fields, device lock). These read and write refs and call Math.random /
+   * Date.now / Web Storage during render, which the react-hooks compiler rules
+   * correctly flag as impure.
+   *
+   * They are PRE-EXISTING and are NOT suppressed lightly. Until the
+   * 2026-08-18 declaration reorder, the compiler rules bailed out of this hook
+   * entirely at the first forward reference and reported nothing anywhere in
+   * the file — so this whole class was invisible, not absent. Restructuring it
+   * (useState lazy initialisers, or moving the work into an effect) changes
+   * respondent session identity, the one-response-per-device lock and the
+   * campaign ?rid= capture, which is its own piece of work with its own browser
+   * verification — not a rider on a dependency-graph refactor. Each guard here
+   * is one-shot (`if (!someRef.current)`), so a StrictMode double-render of the
+   * same mount does not re-run it.
+   */
   const state  = useRef<State>({
     rating: null, ratingLabel: null, sentiment: null,
     npsScore: null, npsLabel: null,
@@ -199,30 +238,38 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       if (localStorage.getItem(completedKey)) deviceBlocked.current = true
     } catch {}
   }
+  /* eslint-enable react-hooks/refs, react-hooks/purity */
 
-  // -- Main renderInput dispatcher ---------------------------
+  // -- Translation layer -------------------------------------
+  //
+  // Declared here, at the top of the hook, because ~40 callbacks below depend
+  // on these. Every one reads exactly two things: the `activeLang` ref (stable
+  // by definition) and `config.translations`. Wrapping each in useCallback keyed
+  // on `config.translations` therefore makes them stable for the life of the
+  // study config — which is what lets the callbacks downstream name them as
+  // dependencies instead of silently capturing a stale closure.
 
   // Active language for multi-language surveys
   const activeLang = useRef<string>('en')
 
   // Get translated content for the active language
-  function t(key: string, fallback: string): string {
+  const t = useCallback((key: string, fallback: string): string => {
     if (activeLang.current === 'en' || !config.translations) return fallback
     const trans = config.translations[activeLang.current]
     if (!trans) return fallback
     return (trans as unknown as Record<string, string>)[key] || fallback
-  }
+  }, [config.translations])
 
-  function tQuestion(qId: string, field: 'prompt' | 'options' | 'likertLabels', fallback: string | string[]): string | string[] {
+  const tQuestion = useCallback((qId: string, field: 'prompt' | 'options' | 'likertLabels', fallback: string | string[]): string | string[] => {
     if (activeLang.current === 'en' || !config.translations) return fallback
     const trans = config.translations[activeLang.current]
     if (!trans?.questions?.[qId]) return fallback
     if (field === 'options') return trans.questions[qId].options || fallback
     if (field === 'likertLabels') return trans.questions[qId].likertLabels || fallback
     return trans.questions[qId].prompt || fallback
-  }
+  }, [config.translations])
 
-  function tUI(key: string, fallback: string): string {
+  const tUI = useCallback((key: string, fallback: string): string => {
     if (activeLang.current === 'en') return fallback
     // Check stored translation first
     const trans = config.translations?.[activeLang.current]
@@ -231,9 +278,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     const builtin = BUILTIN_UI_TRANSLATIONS[activeLang.current]
     if (builtin?.[key]) return builtin[key]
     return fallback
-  }
+  }, [config.translations])
 
-  function tRatingLabel(englishLabel: string): string {
+  const tRatingLabel = useCallback((englishLabel: string): string => {
     if (activeLang.current === 'en') return englishLabel
     const trans = config.translations?.[activeLang.current]
     if (trans?.ui?.ratingLabels?.[englishLabel]) return trans.ui.ratingLabels[englishLabel]
@@ -241,9 +288,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     const builtin = BUILTIN_UI_TRANSLATIONS[activeLang.current]
     if (builtin?.['rating_' + englishLabel]) return builtin['rating_' + englishLabel]
     return englishLabel
-  }
+  }, [config.translations])
 
-  function tNpsLabel(englishLabel: string): string {
+  const tNpsLabel = useCallback((englishLabel: string): string => {
     if (activeLang.current === 'en') return englishLabel
     const trans = config.translations?.[activeLang.current]
     if (trans?.ui?.npsLabels?.[englishLabel]) return trans.ui.npsLabels[englishLabel]
@@ -251,9 +298,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     const builtin = BUILTIN_UI_TRANSLATIONS[activeLang.current]
     if (builtin?.['nps_' + englishLabel]) return builtin['nps_' + englishLabel]
     return englishLabel
-  }
+  }, [config.translations])
 
-  function tTransition(sectionKey: string, fallback: string): string {
+  const tTransition = useCallback((sectionKey: string, fallback: string): string => {
     if (activeLang.current === 'en') return fallback
     const trans = config.translations?.[activeLang.current]
     if (trans?.ui?.transitions?.[sectionKey]) return trans.ui.transitions[sectionKey]
@@ -261,18 +308,18 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     const builtin = BUILTIN_UI_TRANSLATIONS[activeLang.current]
     if (builtin?.['transition_' + sectionKey]) return builtin['transition_' + sectionKey]
     return fallback
-  }
+  }, [config.translations])
 
-  function tPsycho(key: string, field: 'q' | 'opts', fallback: string | string[]): string | string[] {
+  const tPsycho = useCallback((key: string, field: 'q' | 'opts', fallback: string | string[]): string | string[] => {
     if (activeLang.current === 'en' || !config.translations) return fallback
     const trans = config.translations[activeLang.current]
     if (!trans?.psychographics?.[key]) return fallback
     if (field === 'opts') return trans.psychographics[key].opts || fallback
     return trans.psychographics[key].q || fallback
-  }
+  }, [config.translations])
 
   // Translate adaptive follow-up prompts (experience, NPS, custom question)
-  function tFollowUp(followUpKey: string, score: number, sharedPrompt: string, perResponse?: Record<string, { prompt: string }>): string {
+  const tFollowUp = useCallback((followUpKey: string, score: number, sharedPrompt: string, perResponse?: Record<string, { prompt: string }>): string => {
     const pr = perResponse?.[score]
     const englishPrompt = pr ? pr.prompt : sharedPrompt
     if (activeLang.current === 'en' || !config.translations) return englishPrompt
@@ -282,40 +329,40 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     if (pr && fu.perResponse?.[score]) return fu.perResponse[score]
     if (fu.sharedPrompt) return fu.sharedPrompt
     return englishPrompt
-  }
+  }, [config.translations])
 
   // Translate opening flow open-end prompts
-  function tOpeningFlow(itemId: string, fallback: string): string {
+  const tOpeningFlow = useCallback((itemId: string, fallback: string): string => {
     if (activeLang.current === 'en' || !config.translations) return fallback
     const trans = config.translations[activeLang.current]
     return trans?.openingFlow?.[itemId] || fallback
-  }
+  }, [config.translations])
 
   // Translate demographic labels and options
-  function tDemoLabel_(key: string, fallback: string): string {
+  const tDemoLabel_ = useCallback((key: string, fallback: string): string => {
     if (activeLang.current === 'en' || !config.translations) return fallback
     const trans = config.translations[activeLang.current]
     return trans?.demoLabels?.[key] || tUI('demo_' + key, fallback)
-  }
-  function tDemoOption(fieldKey: string, optIndex: number, fallback: string): string {
+  }, [config.translations, tUI])
+  const tDemoOption = useCallback((fieldKey: string, optIndex: number, fallback: string): string => {
     if (activeLang.current === 'en' || !config.translations) return fallback
     const trans = config.translations[activeLang.current]
     return trans?.demoOptions?.[fieldKey]?.[optIndex] || tUI('demo_opt_' + fallback.toLowerCase().replace(/\s+/g, '_'), fallback)
-  }
+  }, [config.translations, tUI])
 
   // Translate contact field labels
-  function tContactLabel(key: string, fallback: string): string {
+  const tContactLabel = useCallback((key: string, fallback: string): string => {
     if (activeLang.current === 'en' || !config.translations) return fallback
     const trans = config.translations[activeLang.current]
     return trans?.contactLabels?.[key] || fallback
-  }
+  }, [config.translations])
 
   // Translate contact transition
-  function tContactTransition(fallback: string): string {
+  const tContactTransition = useCallback((fallback: string): string => {
     if (activeLang.current === 'en' || !config.translations) return fallback
     const trans = config.translations[activeLang.current]
     return trans?.contactTransition || tUI('transition_contact', fallback)
-  }
+  }, [config.translations, tUI])
   // ── Partial save — debounced fire-and-forget POST after each answered question ──
   const savePartialTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savePartial = useCallback(() => {
@@ -429,8 +476,6 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
   }, [chatRef, config.testing, scrollBottom])
 
   const typingSpeed = config.typingSpeed ?? 0.5
-  // Consistent duration based on message length: ~30ms per char, clamped 400–1800ms
-  const typingDur = (text: string) => Math.max(400, Math.min(1800, text.length * 30))
 
   // Start typing indicator (returns remove function)
   const startTypingIndicator = useCallback(() => {
@@ -458,7 +503,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     chatRef.current.appendChild(t)
     scrollBottom()
     return () => { document.getElementById('typing-indicator')?.remove() }
-  }, [chatRef, config, study.bot_emoji, scrollBottom])
+  }, [chatRef, reducedMotion, scrollBottom, study.bot_emoji])
 
   // Show typing during an async operation. The typing indicator stays visible
   // for at least minDur AND until the promise resolves — whichever is longer.
@@ -469,7 +514,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     const [result] = await Promise.all([promise, minWait])
     removeIndicator()
     return result
-  }, [startTypingIndicator])
+  }, [reducedMotion, startTypingIndicator, typingSpeed])
 
   const showTyping = useCallback((dur = 1000): Promise<void> => {
     dur = Math.round(dur * typingSpeed)
@@ -500,7 +545,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       scrollBottom()
       setTimeout(() => { document.getElementById('typing-indicator')?.remove(); res() }, dur)
     })
-  }, [chatRef, config, study.bot_emoji, scrollBottom])
+  }, [chatRef, reducedMotion, scrollBottom, study.bot_emoji, typingSpeed])
 
   // -- Utility -----------------------------------------------
 
@@ -510,17 +555,8 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     setTimeout(() => { el.scrollTop = el.scrollHeight }, 60)
   }, [inputRef])
 
-  const isDecline = (text: string) => {
-    const t = text.toLowerCase().trim()
-    if (!t) return true   // genuinely empty — nothing to clarify
-    // Match actual refusal phrases only. NOT a blanket length cap: terse but
-    // meaningful answers ("cold", "rude", "slow", "loud") are real feedback that
-    // SHOULD earn a clarifier, not be brushed off as a non-answer.
-    return /^(no|nope|nah|not really|nothing|none|n\/a|na|no thanks|skip|pass|all good|that'?s? (all|it)|i'?m good|nothing else|not at the moment)\.?$/.test(t)
-  }
-
   // Rules-based acknowledgment that adapts to what the respondent said
-  const smartAck = (text: string): string => {
+  const smartAck = useCallback((text: string): string => {
     const t = text.trim().toLowerCase()
     // Decline / refusal / negative
     if (isDecline(t) || /^(no|nope|nah|not really|nothing|i don'?t know|idk|unsure|not sure|can'?t think)/.test(t)) {
@@ -551,16 +587,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       tUI('ackDefault3', 'Appreciate you sharing that -- it makes a difference.'),
     ]
     return opts[Math.floor(Math.random() * opts.length)]
-  }
+  }, [tUI])
 
-  const isQuestionOrOffTopic = (text: string) => {
-    const t = text.trim().toLowerCase()
-    if (t.endsWith('?')) return true
-    if (/\b(who are you|what are you|tell me|what is this|what do you|how do you|where (is|are|can)|can you tell|could you tell|explain|help me)\b/i.test(t)) return true
-    return false
-  }
-
-  const shouldClarify = (text: string) => {
+  const shouldClarify = useCallback((text: string) => {
     if (isDecline(text) || isQuestionOrOffTopic(text)) return false
     // Force mode (config.forceClarify): always probe — even long, detailed answers —
     // so a demo shows a tailored follow-up every time. Declines/off-topic still skip (above).
@@ -572,10 +601,10 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     // "long enough". Other answers keep the short-answer heuristic.
     if (state.current.sentiment === 'negative') return true
     return text.trim().split(/\s+/).length < 12
-  }
+  }, [config.forceClarify])
 
   // AI-powered deflection: detects questions/off-topic and generates contextual redirect
-  const checkDeflect = async (text: string, questionAsked: string) => {
+  const checkDeflect = useCallback(async (text: string, questionAsked: string) => {
     const qr = config.questionRedirect
     if (!qr?.enabled) return false
     try {
@@ -637,9 +666,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     } catch {
       return false
     }
-  }
+  }, [chatRef, clearInput, config.questionRedirect, config.testing, orgName, scrollBottom, showDebugPanel, showTyping, showTypingDuring, study.bot_emoji, study.guid, study.name])
 
-  const buildClarify = async (text: string, qKey: 'q3' | 'q4'): Promise<string | null> => {
+  const buildClarify = useCallback(async (text: string, qKey: 'q3' | 'q4'): Promise<string | null> => {
     const s = state.current
 
     // Keyword fallback (always available, used if AI disabled or fails)
@@ -704,9 +733,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       // keyword default so a transient failure still asks something sensible.
       return keywordFallback()
     }
-  }
+  }, [config.clarifiers, config.forceClarify, config.greeting, config.testing, config.useAIClarify, orgName, showDebugPanel, study.guid, study.name, tUI])
 
-  const pickPsychoQuestions = (n = 3) => {
+  const pickPsychoQuestions = useCallback((n = 3) => {
     const bank = [...config.psychographicBank]
     const picked = []
     while (picked.length < n && bank.length > 0) {
@@ -714,11 +743,11 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       picked.push(...bank.splice(i, 1))
     }
     state.current.psychoQuestions = picked
-  }
+  }, [config.psychographicBank])
 
   // -- Submit ------------------------------------------------
 
-  const submitResponse = async () => {
+  const submitResponse = useCallback(async () => {
     // Cancel any pending partial save to prevent it from overwriting the complete status
     if (savePartialTimer.current) { clearTimeout(savePartialTimer.current); savePartialTimer.current = null }
     const s = state.current
@@ -831,10 +860,15 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     } catch (err) {
       console.error('Failed to submit response:', err)
     }
-  }
+  }, [config.autoTranslateResponses, kiosk, study.bot_name, study.guid])
 
   // -- Section ordering ----------------------------------------
-  const sectionOrder: SectionKey[] = config.sectionOrder || ['customQuestions', 'psychographics', 'demographics', 'contact']
+  // useMemo, not a bare `||`: the fallback array literal was a new identity on
+  // every render, which churned every callback that depends on the ordering.
+  const sectionOrder: SectionKey[] = useMemo(
+    () => config.sectionOrder || ['customQuestions', 'psychographics', 'demographics', 'contact'],
+    [config.sectionOrder],
+  )
   const sectionIdx = useRef(0)
   const sectionRunners = useRef<Record<string, () => Promise<void>>>({} as Record<string, () => Promise<void>>)
 
@@ -890,7 +924,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     clearInput()
     await submitResponse()
     onComplete?.()
-  }, [addMsg, chatRef, clearInput, config, scrollBottom, showTyping, study, onComplete])
+  }, [addMsg, chatRef, clearInput, config, onComplete, scrollBottom, showTyping, study, submitResponse, t, tUI])
 
   const stepDemographics = useCallback(async () => {
     // Get enabled demo fields from config, or default to age/gender/zip
@@ -967,7 +1001,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     wrap.appendChild(submitBtn)
     inputRef.current.appendChild(wrap)
     scrollBottom()
-  }, [addMsg, clearInput, config, inputRef, scrollBottom, showTyping, state, advanceSection])
+  }, [addMsg, advanceSection, clearInput, config, inputRef, savePartial, scrollBottom, showTyping, state, tDemoLabel_, tDemoOption, tTransition, tUI])
 
   const stepContactInfo = useCallback(async () => {
     var contactFields = config.contactFields
@@ -1076,7 +1110,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     wrap.appendChild(continueBtn)
     inputRef.current.appendChild(wrap)
     scrollBottom()
-  }, [addMsg, clearInput, config, inputRef, scrollBottom, showTyping, state, advanceSection])
+  }, [addMsg, advanceSection, clearInput, config, inputRef, savePartial, scrollBottom, showTyping, state, tContactLabel, tContactTransition, tUI])
 
   const stepPsychoQ = useCallback(async () => {
     const s = state.current
@@ -1102,6 +1136,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       state.current.psychoAnswers[q.key] = origIdx >= 0 && q.opts[origIdx] ? q.opts[origIdx] : opt
       state.current.psychoIdx++
       savePartial()
+      // eslint-disable-next-line react-hooks/immutability -- self-recursive useCallback: `stepPsychoQ` is referenced inside its own body to advance to the next psychographic question. The reference is only evaluated on click, long after the declaration has been initialised.
       void stepPsychoQ()
     }
     tOpts.forEach(opt => {
@@ -1135,7 +1170,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     inputRef.current.appendChild(col)
     scrollBottom()
     if (confirmMode) scrollInputBottom()
-  }, [addMsg, clearInput, config, inputRef, scrollBottom, showTyping, state, advanceSection])
+  }, [addMsg, advanceSection, clearInput, config, confirmMode, inputRef, savePartial, scrollBottom, scrollInputBottom, showTyping, state, tPsycho, tUI])
 
   // Clarify input for likert follow-ups (q1/q2)
   const showLikertClarifyInput = useCallback((storageKey: 'q1' | 'q2', originalVal: string, next: () => Promise<void>) => {
@@ -1176,7 +1211,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     inputRef.current.appendChild(wrap)
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
-  }, [addMsg, clearInput, config, inputRef, scrollBottom])
+  }, [addMsg, checkDeflect, checkVerbose, clearInput, config, inputRef, scrollBottom, tUI])
 
 
 
@@ -1254,7 +1289,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     inputRef.current.appendChild(wrap)
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
-  }, [addMsg, clearInput, config, inputRef, scrollBottom, showTyping])
+  }, [addMsg, buildClarify, checkDeflect, checkVerbose, clearInput, config, inputRef, scrollBottom, shouldClarify, showLikertClarifyInput, showTypingDuring, tUI])
 
 
     const stepPsychoIntro = useCallback(async () => {
@@ -1271,7 +1306,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       await showTyping(400)
     }
     await stepPsychoQ()
-  }, [addMsg, clearInput, showTyping, stepPsychoQ])
+  }, [addMsg, clearInput, config.psychoCount, config.sectionTransitions?.psychographics, pickPsychoQuestions, showTyping, stepPsychoQ, tTransition])
 
   const stepCustomQuestions = useCallback(async () => {
     const allQuestions = (config.questions ?? []).filter(q => !q.conversationPosition && q.enabled !== false && q.type !== 'hidden')
@@ -1815,7 +1850,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     state.current.customAnswers = customAnswers
     savePartial()
     await advanceSection()
-  }, [addMsg, clearInput, config, inputRef, scrollBottom, showLikertFollowUpInput, showTyping, state, advanceSection])
+  }, [addMsg, advanceSection, buildClarify, checkDeflect, checkVerbose, clearInput, config, confirmMode, inputRef, savePartial, scrollBottom, scrollInputBottom, shouldClarify, showLikertFollowUpInput, showTyping, showTypingDuring, state, tFollowUp, tQuestion, tRatingLabel, tTransition, tUI])
 
   // Run conversation-position extras (questions shown after Q4, before custom-Q phase)
   const stepConversationExtras = useCallback(async () => {
@@ -2000,8 +2035,15 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     const firstRunner = sectionRunners.current[sectionOrder[0]]
     if (firstRunner) await firstRunner()
     else await stepDone()
-  }, [addMsg, clearInput, config, inputRef, savePartial, scrollBottom, showTyping, state, sectionOrder, stepDone])
+  }, [addMsg, checkVerbose, clearInput, config, inputRef, savePartial, scrollBottom, sectionOrder, showTyping, state, stepDone, tQuestion, tUI])
 
+  /* eslint-disable react-hooks/refs --
+   * The latest-value ref idiom: imperative DOM handlers created inside one
+   * callback have to call the CURRENT version of another, so the assignment has
+   * to happen during render. Pre-existing throughout this file, and unmasked
+   * (not introduced) by the 2026-08-18 reorder — see the note above the lazy
+   * initialisation block.
+   */
   const stepConversationExtrasRef = useRef(stepConversationExtras)
   stepConversationExtrasRef.current = stepConversationExtras
 
@@ -2013,6 +2055,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     contact: stepContactInfo,
     _done: stepDone,
   }
+  /* eslint-enable react-hooks/refs */
 
   // -- Input Renderers ---------------------------------------
 
@@ -2064,7 +2107,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     inputRef.current.appendChild(wrap)
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
-  }, [addMsg, config, inputRef, scrollBottom])
+  }, [addMsg, checkVerbose, config, inputRef, scrollBottom, tUI])
 
   const showClarifyInput = useCallback((qKey: 'q3' | 'q4', originalVal: string, depthSoFar: number = 1) => {
     if (!inputRef.current) return
@@ -2130,9 +2173,10 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     inputRef.current.appendChild(wrap)
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
-  }, [addMsg, clearInput, config, inputRef, scrollBottom, state])
+  }, [addMsg, buildClarify, checkDeflect, checkVerbose, clearInput, config, inputRef, scrollBottom, shouldClarify, showTypingDuring, state, tUI])
   // Ref so the recursive (depth > 1) re-probe always calls the latest version
   const showClarifyInputRef = useRef(showClarifyInput)
+  // eslint-disable-next-line react-hooks/refs, react-hooks/immutability -- latest-value ref, assigned during render by design (see the note above sectionRunners)
   showClarifyInputRef.current = showClarifyInput
 
 
@@ -2206,7 +2250,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
     inputRef.current.appendChild(wrap)
     setTimeout(() => ta.focus(), 100)
     scrollBottom()
-  }, [addMsg, clearInput, config, inputRef, scrollBottom, state])
+  }, [addMsg, checkVerbose, clearInput, config, inputRef, scrollBottom, state, tUI])
 
   const progressFlow = useCallback(async (qKey: 'q3' | 'q4', skipAck?: boolean) => {
     // Also check flag set by deflection in clarify/likert handlers
@@ -2238,7 +2282,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       }
       await stepConversationExtras()
     }
-  }, [addMsg, config, showTyping, stepConversationExtras])
+  }, [addMsg, config, showTextInput, showTextInputOptional, showTyping, smartAck, stepConversationExtras, t])
 
   const handleOpenEnded = useCallback(async (qKey: 'q3' | 'q4', val: string) => {
     state.current.answers[qKey] = val
@@ -2262,15 +2306,17 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
       }
     }
     await progressFlow(qKey)
-  }, [addMsg, clearInput, config, progressFlow, savePartial, showTyping, state])
+  }, [addMsg, buildClarify, checkDeflect, clearInput, config, progressFlow, savePartial, shouldClarify, showClarifyInput, showTypingDuring, state])
 
   // Refs so imperative DOM handlers always call the latest function versions
+  /* eslint-disable react-hooks/refs, react-hooks/immutability -- latest-value refs, assigned during render by design (see the note above sectionRunners) */
   const handleOpenEndedRef = useRef(handleOpenEnded)
   handleOpenEndedRef.current = handleOpenEnded
   const progressFlowRef = useRef(progressFlow)
   progressFlowRef.current = progressFlow
   const savePartialRef = useRef(savePartial)
   savePartialRef.current = savePartial
+  /* eslint-enable react-hooks/refs, react-hooks/immutability */
 
 
   const renderInput = useCallback(async (phase: string) => {
@@ -2639,8 +2685,9 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
 
     inputRef.current.appendChild(row)
     scrollBottom()
-  }, [addMsg, clearInput, config, inputRef, progressFlow, scrollBottom, showLikertFollowUpInput, showTextInput, showTyping, state])
+  }, [addMsg, chatRef, checkVerbose, clearInput, config, confirmMode, inputRef, savePartial, scrollBottom, scrollInputBottom, showLikertFollowUpInput, showTextInput, showTextInputOptional, showTyping, state, t, tFollowUp, tNpsLabel, tOpeningFlow, tRatingLabel, tUI])
 
+  // eslint-disable-next-line react-hooks/refs -- `deviceBlocked` is resolved once during the same render-phase init block above and is part of this hook's public API; the caller gates the whole widget on it before any effect runs.
   return { renderInput, deviceBlocked: deviceBlocked.current }
 }
 

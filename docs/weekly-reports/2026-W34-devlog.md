@@ -391,3 +391,70 @@ snapshotted transcripts included.
 The cycle that genuinely exists (`progressFlow` → `showTextInput` →
 `handleOpenEnded` → `progressFlow`) is still broken where it always was, by the
 `progressFlowRef`/`handleOpenEndedRef` latest-value refs the file already used.
+
+### Step 2 — stabilise the roots, then fill in the arrays. 19 → 0.
+
+With the declarations in an order that permits it, the actual refactor is
+bottom-up. Three predicates (`isDecline`, `isQuestionOrOffTopic`, `typingDur`)
+close over nothing and went to module scope. The thirteen translation helpers
+each read exactly two things — the `activeLang` ref and `config.translations` —
+so each became a `useCallback` keyed on the latter, stable for the life of the
+study config. Then `checkVerbose`, `smartAck`, `shouldClarify`, `checkDeflect`,
+`buildClarify`, `pickPsychoQuestions` and `submitResponse`; then `sectionOrder`'s
+`||` fallback array literal, which was a fresh identity every render, into a
+`useMemo`. Only after all of that did the dependency arrays get filled in.
+
+Fixing top-down would have achieved nothing, which is the whole point:
+`savePartial` and `showTypingDuring` were *already* `useCallback`s and still
+churned on every render, because their own dependencies were unstable.
+
+Five dependencies turned out to be **unnecessary** — `config` on two typing
+callbacks that never read it, `showTyping` on two that only use
+`showTypingDuring`, and `progressFlow` on `renderInput`, which goes through
+`progressFlowRef`. Each was confirmed unreferenced in its callback body before
+removal. `exhaustive-deps` on this file: **19 → 0**. Repo ceiling **195 → 176**,
+exact, no slack.
+
+**⚠️ The thing worth remembering from today is not the number.** Step 1's
+reorder — provably zero edited lines — took this file from **19 warnings to 51**.
+The `react-hooks` v7 rules are compiler-based, and the compiler **bails out of an
+entire component** when it hits a construct it can't model, reporting nothing
+from `refs`/`purity`/`immutability` for that component. The forward references
+were exactly such a construct. Those 32 findings were always true; they were
+invisible, not absent. So: **a low `react-hooks/*` count on a structurally odd
+file is not evidence of health until you've confirmed the compiler actually
+analysed it** — and fixing a structural problem there can legitimately raise the
+count, which is progress, not regression.
+
+The 32 unmasked warnings are three pre-existing clusters — render-phase lazy
+initialisation (session id, device fingerprint, hidden-field capture, device
+lock), the latest-value ref idiom, and one self-recursive `useCallback`. They got
+scoped disables with concrete reasons rather than a file-level blanket, so the
+rules stay live everywhere else in the file. Restructuring them touches
+respondent session identity, the one-response-per-device lock and the campaign
+`?rid=` capture; that is its own piece of work with its own browser verification,
+not a rider on this one. Also noticed and deliberately left alone:
+`stepConversationExtrasRef` is assigned every render and never read.
+
+**Verification.** Both snapshotted transcripts came through byte-identical,
+`tsc` clean, full suite 1,728 green.
+
+On top of that, `scripts/_verify_survey_engine_live.mts` (untracked, KEEP) drives
+the **real client bundle** with Playwright against `npm run dev` on the TEST
+project — actual React 19 runtime, actual Next build, actual `/api/respond`
+round-trip, which jsdom cannot prove. It walks a survey to its closing card and
+asserts: exactly one `complete` POST, partial saves fired, a conversation log
+captured, a score and an open-ended answer stored, **no consecutive duplicate bot
+message** (the shape a stale-closure regression would take), and zero console
+errors. All five active TEST studies pass, including the Anna Eskamani survey
+(4 languages) and a full **Spanish** run of the Vindman campaign — greeting, ready
+prompt, NPS labels, adaptive follow-ups, `smartAck`, psychographics, section
+transitions and the closing card all translated correctly, which is the single
+best evidence that memoising the thirteen translation helpers on
+`config.translations` changed nothing: they still read `activeLang` through the
+ref at call time, so a callback captured before the language switch still resolves
+the new language.
+
+One harness bug found and fixed along the way: the completion check matched the
+literal text "All done!", which is itself translated — so it failed the Spanish
+run while the engine was fine. It now matches the closing-card element instead.
