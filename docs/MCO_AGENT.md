@@ -76,9 +76,18 @@ The canvas shell is brand-agnostic; the agent's `personality` field carries the 
   plain `<img>`, not `next/image`, each with a scoped `eslint-disable-next-line @next/next/no-img-element` naming
   the reason inline. The QR is a `data:` URL, which Next cannot optimize without `unoptimized` (leaving the
   wrapper as pure overhead); the indoor map is a **remote SVG**, which Next declines to optimize unless
-  `dangerouslyAllowSVG` is enabled — not worth widening for a demo surface. The MCO logo marks
-  (`CanvasShell`, `WelcomeCard`) are static local assets where `next/image` *would* be correct; they remain on
-  the lint ratchet as real debt rather than being suppressed.
+  `dangerouslyAllowSVG` is enabled — not worth widening for a demo surface. Both remain scoped disables, not
+  ratchet debt.
+- **Logo marks converted to `next/image` (2026-08-18, `8767a919`)** — supersedes the sentence above that left them
+  as debt. All four call sites for `/mco/logo-mark.png` (`CanvasShell`, `WelcomeCard`, `m/[code]/MobileChat`,
+  `m/[code]/page`) now use `next/image`, taking `no-img-element` to zero (lint ceiling 176 → 172). The asset is a
+  static local PNG, so the objections above don't apply. **Every call site sizes by CSS height with `width:auto`,
+  so the intrinsic 275×120 is passed only to give `next/image` an aspect ratio to reserve — the existing CSS still
+  controls rendered size.** Anyone re-styling these must keep that pairing; passing intrinsic dimensions without
+  the CSS override would change the rendered geometry.
+  ⚠️ QC note worth keeping: the topbar chip (`.avatar-mco img`) sets `object-fit: contain`, so its rendered box
+  ratio does NOT match the asset ratio (48×24 desktop, 24×32 kiosk) and never did. A ratio assertion there fails
+  and looks exactly like conversion distortion; an A/B returned identical geometry on both arms.
 - Input is bottom-anchored, always visible. Suggested chips above it pre-populate the input.
 - When the canvas is empty (initial state), it shows an idle "panorama" — looping ambient terminal photo with the day's parking-availability summary as a centered overlay.
 

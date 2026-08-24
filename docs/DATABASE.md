@@ -382,6 +382,21 @@ instance of a much larger class still open. **✅ APPLIED TO PROD 2026-08-16** (
 commit). Verified by `scripts/_verify_sql189.mts` on TEST and by direct catalog
 + anon-probe checks against prod.
 
+sql/193 (2026-08-24) is a **data-only** migration and the only one of its kind
+here: no DDL, so `docs/db/schema.sql` does not move. It grandfathers the datasets
+that had outlet reporting under the old *implicit* rule (google_reviews + ≥5
+`review_source_locations`) into the explicit capability added by 61543cc9 —
+without it, shipping the gate would have removed the Leaderboard and Outlet
+Deep-Dive from every brand that had them. **The effect was already applied to
+prod on 2026-08-18** by `scripts/backfill-outlet-reporting.mts --prod --apply`
+(cd84dedf); this file exists so the change is reconstructable from git +
+`schema_migrations` instead of only from a script invocation (2026-W35 audit).
+Idempotent by construction — the WHERE clause excludes rows already flagged —
+and **verified read-only against prod: 12 qualify, 12 already flagged, 0 rows
+would write**. It deliberately skips rows with a NULL `schema_config`: writing a
+bare `{"outletReporting": true}` there would invent a `schema_config` the app
+then treats as authoritative for field types and hierarchy levels.
+
 sql/190 (2026-08-16) is a **grants-only** migration: it locks every SECURITY
 DEFINER function in `public` to `service_role`. Postgres grants EXECUTE to
 PUBLIC on a new function by default and Supabase's `anon`/`authenticated` roles
