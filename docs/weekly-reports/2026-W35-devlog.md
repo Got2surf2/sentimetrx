@@ -118,3 +118,49 @@ no read path, so Sentry was unreachable. Vercel's own runtime-error API had the
 same data. Also had to upgrade the Vercel CLI (53.1.1 → 59.5.0): the old version
 silently wrote **empty values** for all 57 env vars on `env pull`, which looks
 exactly like "the vars aren't set".
+
+---
+
+## 2026-08-26 — The audit's Tests metric was measuring the build directory
+
+**Why**: Documentation dropped a point in W35 and Tests had been stuck at 7 since
+W34 despite the suite growing every week. Asking *why* we had a file-count ratio
+at all turned up something worse than miscalibration.
+
+**The metric was non-deterministic.** `audit-codebase.md` Category 5 excluded
+`node_modules`, `.git` and `dist` from the source count — but not `.next`. Run it
+with a build present and the ratio is **0.05**; without one, **0.21**. Both the
+W34 (0.22) and W35 (0.17) reports noticed the number moving and each wrote it off
+as a "counting discrepancy" without identifying the cause. Neither figure
+described the codebase.
+
+Three more problems underneath. It counted **files, not test cases**, so the
+1,646 cases in 179 files scored worse than the same tests split across 1,646
+stub files — it rewarded fragmentation. Its denominator swept in `scripts/`
+one-offs, config and pages that are not unit-testable, so it measured repo shape.
+And its coverage fallback **never fired**: the rubric reads
+`coverage/coverage-summary.json`, but `vitest.config.ts` emitted only `text` and
+`html`, so the auditor had no coverage data whatsoever and scored on the broken
+ratio alone. By the rubric's own bands, 0.17 sits in **1-3** — we were scored 7,
+which means the number wasn't driving the score at all. The auditor was
+overriding its own rubric on judgment, and judgment is exactly why it wobbled.
+
+**Rewritten to measure enforcement, not volume.** The denominator is now scoped
+to the surface the project declares coverable (vitest's own `include`), cases are
+counted alongside files, and the bands reward an enforced coverage floor that is
+*close to actual and rising* — because a suite CI doesn't gate is documentation,
+and a floor 10pp under the real number is decoration that will pass a large
+regression silently. `json-summary` is now emitted so real coverage is available.
+
+Measured at the rewrite: **31.25 / 24.51 / 34.37 / 31.83** against an enforced
+floor of **30 / 23 / 33 / 30** — every metric within ~2pp of its gate, 2.73 cases
+per source file. That scores **7**, unchanged, but now for a true reason with a
+stated path: raise the floor toward 50%.
+
+**Also constrained the trend block.** W35 opened with "W33: 86.0 / 100
+(baseline)" when W33's own table totals **77.0** and W34 names its predecessor
+explicitly. That invented figure turned W34's **+4.0** — the biggest gain in the
+series — into a narrated "−5.0 regression", and had us hunting a fix for a drop
+that never happened. The command template never asked for a trend section at all,
+so nothing constrained it. It now does, with the instruction to read the prior
+score **out of the file** and never from recall.

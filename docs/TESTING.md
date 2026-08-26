@@ -594,3 +594,42 @@ Five cases pin the word modal's share readout — **which denominator** it is ag
 ### statsUtils.test.ts — deterministic subsampling (added 2026-08-18)
 8 cases on `deterministicSubsample` / `mulberry32`. The load-bearing one is that repeated calls return the **identical** sample: the Statistics module subsamples above its cap inside a `useMemo`, and React may discard and recompute a memo at any time — with the old `Math.random()` shuffle that would have re-drawn the sample and silently changed every statistic on screen. Also pins that it samples rather than slicing, returns exactly `cap` distinct items, is total on degenerate caps, and that the PRNG is reproducible per seed and stays in `[0, 1)`.
 
+## How the weekly audit scores Tests (rewritten 2026-08-26)
+
+`.claude/commands/audit-codebase.md` Category 5 used a **test-file to
+source-file ratio**. It produced two weeks of meaningless scores and is worth
+recording as an anti-pattern.
+
+**It measured build state.** The denominator excluded `node_modules`, `.git` and
+`dist` — but not `.next`. With a build present the same repo scored **0.05**;
+without one, **0.21**. That is the "counting discrepancy" the W34 (0.22) and W35
+(0.17) reports each noted and neither could explain. Neither number described the
+codebase.
+
+**It counted files, not tests.** 1,646 cases live in 179 files here. Splitting
+them into 1,646 single-case files would have tripled the score while testing
+nothing new — the metric rewarded fragmentation.
+
+**Its denominator included untestable code** — one-off scripts, config, pages —
+so it scored repo shape rather than testing discipline.
+
+**And its fallback never fired.** The rubric reads
+`coverage/coverage-summary.json` when present, but `vitest.config.ts` emitted
+only `text` and `html`, so that file never existed and the auditor had *no*
+coverage data at all. `json-summary` is now in the reporter list, and
+`npm run test:coverage` writes it.
+
+**What replaced it.** The denominator is scoped to the surface the project itself
+declares coverable (`lib/**` + `app/api/**`, matching vitest's `include`), test
+**cases** are counted alongside files, and scoring weights **enforcement** over
+volume: a suite CI does not gate is documentation, and a coverage floor far below
+actual is decoration — it will pass a large regression without complaining. The
+bands reward the enforced floor rising, which is the behaviour the ratchet in
+`vitest.config.ts` already encodes.
+
+Measured at the rewrite: **31.25% statements · 24.51% branches · 34.37%
+functions · 31.83% lines**, against an enforced floor of **30/23/33/30** — every
+metric within ~2pp of its gate, and 2.73 test cases per coverage-surface source
+file. That is a **7** under the new bands, the same score as before but for a
+reason that is true and actionable: raising the enforced floor toward 50% is what
+moves it to 8-9.

@@ -150,32 +150,68 @@ find . -type f -name "*-*" -not -path "*/node_modules/*" -not -path "*/.git/*" 2
 
 Assess test coverage, test quality, and testing practices.
 
+**Three rules, learned the hard way (2026-08-26). Read before scoring.**
+
+1. **Never let build output into the denominator.** The previous version excluded
+   only `node_modules`/`.git`/`dist`, so `.next/` (2,234 generated files here)
+   counted as source. The same repo scored a 0.05 ratio with a build present and
+   0.21 without. That is not a measurement; it is local state. This is the real
+   cause of the "counting discrepancy" between the W34 (0.22) and W35 (0.17)
+   reports — neither number described the codebase.
+2. **Count test CASES, not just files.** A file-count ratio punishes dense,
+   well-organised test files and rewards splitting one file into ten. Here 1,646
+   cases live in 179 files; fragmenting them would triple a file ratio while
+   testing nothing new.
+3. **Scope the denominator to what the project declares as coverable.** Use the
+   coverage tool's own `include` globs. Counting every `.ts` in the repo drags in
+   one-off scripts, config and pages that are not unit-testable in isolation, so
+   the score measures repo shape rather than testing discipline.
+
 ```bash
-# Test file count vs source file count
-TEST_COUNT=$(find . -type f \( -name "*.test.*" -o -name "*.spec.*" -o -name "test_*" -o -path "*/test/*" -o -path "*/__tests__/*" \) \
-  -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | wc -l)
-SRC_COUNT=$(find . -type f \( -name "*.ts" -o -name "*.js" -o -name "*.py" -o -name "*.go" -o -name "*.java" \) \
-  -not -name "*.test.*" -not -name "*.spec.*" -not -name "test_*" \
-  -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/dist/*" 2>/dev/null | wc -l)
-echo "Test files: $TEST_COUNT | Source files: $SRC_COUNT | Ratio: $(echo "scale=2; $TEST_COUNT / ($SRC_COUNT + 1)" | bc)"
+# Which files the project itself declares as the coverage surface.
+# (vitest.config.ts `include:` — here lib/**/*.ts + app/api/**/*.ts)
+grep -A3 "coverage:" vitest.config.* 2>/dev/null | grep "include:"
 
-# Coverage config presence
-for cfg in jest.config.* vitest.config.* .nycrc .coveragerc pytest.ini setup.cfg; do
-  [ -f "$cfg" ] && echo "OK: $cfg exists"
-done
+COVERED_SRC=$(find lib app/api -type f -name "*.ts" ! -name "*.test.*" ! -name "*.d.ts" 2>/dev/null | wc -l)
+TEST_FILES=$(find tests -type f \( -name "*.test.*" -o -name "*.spec.*" \) 2>/dev/null | wc -l)
+# Test CASES — it(...) / test(...) declarations, the unit of actual assertion.
+TEST_CASES=$(grep -rhoE "^[[:space:]]*(it|test)(\.[a-z]+)?\(" tests 2>/dev/null | wc -l)
+echo "Test cases: $TEST_CASES in $TEST_FILES files | Coverage-surface source files: $COVERED_SRC"
+echo "Cases per source file: $(echo "scale=2; $TEST_CASES / ($COVERED_SRC + 1)" | bc)"
 
-# Coverage report (if available)
-[ -d "coverage" ] && [ -f "coverage/coverage-summary.json" ] && cat coverage/coverage-summary.json | jq '.total' 2>/dev/null
+# Coverage: prefer a real report, fall back to the ENFORCED floor.
+if [ -f "coverage/coverage-summary.json" ]; then
+  jq '.total | {statements:.statements.pct, branches:.branches.pct, functions:.functions.pct, lines:.lines.pct}' coverage/coverage-summary.json
+else
+  echo "No coverage report in this clone — reading the ENFORCED thresholds instead:"
+  grep -A6 "thresholds:" vitest.config.* 2>/dev/null
+fi
 
-# Snapshot test count (potential maintenance burden)
-find . -name "*.snap" -not -path "*/node_modules/*" 2>/dev/null | wc -l
+# Is the suite actually gated in CI? An unenforced test suite is documentation.
+grep -rlE "npm (run )?test|vitest|jest" .github/workflows/ 2>/dev/null
+
+# Snapshot maintenance burden
+find . -name "*.snap" -not -path "*/node_modules/*" -not -path "*/.next/*" 2>/dev/null | wc -l
 ```
 
-**Scoring:**
-- 10: >0.8 test ratio, coverage >80%, CI runs tests, no stale snapshots
-- 7-9: >0.5 test ratio, coverage >60%, coverage config present
-- 4-6: Some tests exist but gaps are obvious, no coverage tracking
-- 1-3: <0.2 test ratio or no tests at all
+**Scoring** — weight ENFORCEMENT over volume. A suite CI does not gate is
+documentation, and a coverage floor set far below the real number is decoration,
+not a gate: it will pass a large regression without complaining.
+
+- **10**: enforced coverage floor ≥70%, CI-gated, floor raised within the last
+  quarter, no stale snapshots
+- **8-9**: enforced floor ≥50%, CI-gated, floor within ~10pp of actual coverage
+- **6-7**: enforced floor ≥25%, CI-gated, floor within ~10pp of actual, and ≥2
+  test cases per coverage-surface source file
+- **4-5**: tests exist and run in CI, but no enforced floor — or a floor >10pp
+  below actual, which gates nothing
+- **1-3**: no CI test run, or no meaningful suite
+
+Do **not** deduct for a low case-per-file ratio when coverage is enforced and
+ratcheting; say what would raise the floor instead. If a number moves between
+weeks, reconcile it against the previous report before calling it a regression —
+a change in counting method is not a change in the codebase, and must be reported
+as a methodology note rather than a score movement.
 
 ---
 
@@ -280,6 +316,26 @@ Round to one decimal place.
 | Imports | X/10 | 10% | X.XX | [one-line summary] |
 | AI Patterns | X/10 | 20% | X.XX | [one-line summary] |
 | **Overall** | | **100%** | **X.XX** | |
+
+### Trend vs the previous report
+
+**Read the prior score out of the file. Never recall it.**
+
+```bash
+ls -1 docs/weekly-reports/*.md | grep -vE "devlog|spec-drift" | tail -3
+grep -E "\*\*Total\*\*|Overall Score" docs/weekly-reports/<previous>.md
+```
+
+Quote the previous total and each previous category score from that file, then
+state the delta. If no prior report exists, say so — do not supply a baseline
+from memory.
+
+This section exists because the 2026-W35 report opened with "W33: 86.0 / 100
+(baseline)" when W33's own table totals **77.0**, and W34 states its predecessor
+explicitly. That invented baseline turned W34's **+4.0** — the largest gain in
+the series — into a narrated "−5.0 regression", and sent the humans looking for
+a fix to a drop that never happened. The category tables are computed from the
+repo and are trustworthy; a remembered trend line is not.
 
 ### Detailed Findings
 

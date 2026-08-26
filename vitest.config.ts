@@ -19,7 +19,11 @@ export default defineConfig({
     environment: 'node',
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'html'],
+      // json-summary writes coverage/coverage-summary.json, which is what the
+      // weekly audit reads (.claude/commands/audit-codebase.md, Category 5).
+      // Without it the audit has NO coverage data and falls back to a file-count
+      // ratio — the proxy that produced two weeks of meaningless Tests scores.
+      reporter: ['text', 'html', 'json-summary'],
       include: ['lib/**/*.ts', 'app/api/**/*.ts'],
       exclude: ['**/*.test.*', 'tests/**'],
       // Ratcheting floor — set just below the current baseline so unrelated
