@@ -4,7 +4,7 @@
 // Source selector → Upload (CSV) or Google Reviews wizard
 
 import { postJsonWithRetry } from '@/lib/postJsonWithRetry'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { autoDetectSchema } from '@/lib/datasetUtils'
 import LottieLoader from '@/components/ui/LottieLoader'
@@ -197,6 +197,14 @@ export default function UploadClient() {
   const [uploadMsg,   setUploadMsg]   = useState('')
   const [error,       setError]       = useState('')
   const [fieldInclude, setFieldInclude] = useState<Record<string, boolean>>({})
+  // The upload is a long async loop. If the user navigates away mid-flight we let
+  // the remaining batches FINISH — aborting would strand a half-loaded dataset
+  // with no rollback — but nothing may touch the UI afterwards, including the
+  // router.push at the end, which would otherwise yank them back to a page they
+  // deliberately left.
+  const mountedRef = useRef(true)
+  useEffect(function() { return function() { mountedRef.current = false } }, [])
+  const lastTickRef = useRef(0)
   const [fieldAlias,   setFieldAlias]   = useState<Record<string, string>>({})
 
   function handleFile(file: File) {
@@ -244,6 +252,19 @@ export default function UploadClient() {
     if (file) handleFile(file)
   }, [])
 
+  // Both setters are called together so React batches them into ONE render, and
+  // at most ~4×/second. Previously setUploadMsg fired at the top of each batch and
+  // setUploadPct at the bottom, separated by an `await` — different ticks, so two
+  // unbatched renders per batch (~4,000 at 100K rows).
+  function progress(pct: number | null, msg: string, force = false) {
+    if (!mountedRef.current) return
+    const now = Date.now()
+    if (!force && now - lastTickRef.current < 250) return
+    lastTickRef.current = now
+    if (pct !== null) setUploadPct(pct)
+    setUploadMsg(msg)
+  }
+
   async function handleCreate() {
     if (!parsed || !name.trim()) return
     setCreating(true); setError(''); setUploadPct(0); setUploadMsg('Preparing data...')
@@ -271,13 +292,12 @@ export default function UploadClient() {
         body: JSON.stringify({ name: name.trim(), description: description || null, source: 'upload', visibility, brand_tag: brandTag.trim() || null, taxonomy_enabled: applyDimensions }),
       })
       const dsData = await dsRes.json()
-      if (!dsRes.ok) { setError(dsData.error || 'Failed to create dataset'); return }
+      if (!dsRes.ok) { if (mountedRef.current) setError(dsData.error || 'Failed to create dataset'); return }
 
       // 2. Upload rows in safe-sized chunks — track batches for rollback
       const chunks = splitChunks(filteredRows)
       const uploadedBatches: number[] = []
       for (let i = 0; i < chunks.length; i++) {
-        setUploadMsg('Uploading rows — batch ' + (i + 1) + ' of ' + chunks.length)
         // Retries a transient upstream blip. Without it a single dropped
         // socket on one batch out of hundreds took the rollback branch below —
         // deleting every uploaded batch AND the dataset itself. Seen twice in
@@ -291,16 +311,20 @@ export default function UploadClient() {
             try { await fetch('/api/datasets/' + dsData.id + '/rows', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ batch_indexes: uploadedBatches }) }) } catch {}
           }
           try { await fetch('/api/datasets/' + dsData.id, { method: 'DELETE' }) } catch {}
-          setError('Upload failed on batch ' + (i + 1) + ': ' + (e.error || 'server error') + '. Upload rolled back.')
+          if (mountedRef.current) setError('Upload failed on batch ' + (i + 1) + ': ' + (e.error || 'server error') + '. Upload rolled back.')
           return
         }
         const resData = await res.json().catch(function() { return {} })
         if (resData.batch_index != null) uploadedBatches.push(resData.batch_index)
-        setUploadPct(Math.round(((i + 1) / (chunks.length + 2)) * 100))
+        progress(
+          Math.round(((i + 1) / (chunks.length + 2)) * 100),
+          'Uploading rows — batch ' + (i + 1) + ' of ' + chunks.length,
+          i === chunks.length - 1,
+        )
       }
 
       // 3. Save schema to state
-      setUploadMsg('Saving schema...')
+      progress(null, 'Saving schema...', true)
       await fetch('/api/datasets/' + dsData.id + '/state', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -311,32 +335,35 @@ export default function UploadClient() {
           filter_state:  {},
         }),
       })
-      setUploadPct(Math.round(((chunks.length + 1) / (chunks.length + 2)) * 100))
+      progress(Math.round(((chunks.length + 1) / (chunks.length + 2)) * 100), 'Saving schema...', true)
 
       // 4. Trigger analytics compute (non-blocking on failure — user can re-trigger from settings)
-      setUploadMsg('Computing analytics...')
+      progress(null, 'Computing analytics...', true)
       const computeRes = await fetch('/api/datasets/' + dsData.id + '/compute', { method: 'POST' })
       if (!computeRes.ok) {
         console.warn('[upload] analytics compute failed — will show stale until re-triggered')
       }
-      setUploadPct(100)
+      progress(100, 'Computing analytics...', true)
 
+      // Dead component: never navigate. The dataset is fully written either way.
+      if (!mountedRef.current) return
       router.push('/analyze/' + dsData.id + '/settings')
     } catch (err) {
-      setError('Unexpected error: ' + String(err))
+      if (mountedRef.current) setError('Unexpected error: ' + String(err))
     } finally {
-      setCreating(false)
+      if (mountedRef.current) setCreating(false)
     }
   }
 
   const includedColsList = parsed ? parsed.columns.filter(function(c) { return fieldInclude[c] !== false }) : []
-  const previewRows = parsed ? parsed.rows.map(function(row) {
-    const filtered: Record<string, unknown> = {}
-    includedColsList.forEach(function(c) { filtered[c] = row[c] })
-    return filtered
-  }) : []
-  const chunks         = previewRows.length ? splitChunks(previewRows) : []
-  const estimatedChunks = chunks.length
+  // Was: a full copy of every row, then a real splitChunks() pass — JSON.stringify
+  // per chunk — recomputed on EVERY render, purely to show this one number. During
+  // an upload that ran thousands of times (see handleCreate's throttled progress)
+  // and saturated the main thread: measured 78ms per render at 100K rows × ~4,000
+  // renders. Typing on the page went sporadic because keystrokes queued behind it.
+  // The count is derivable arithmetically; oversized rows can still split a chunk
+  // further at upload time, so treat it as the estimate its name always claimed.
+  const estimatedChunks = parsed ? Math.ceil(parsed.rows.length / CHUNK_SIZE) : 0
 
   return (
     <div className="flex flex-col gap-6">
@@ -560,7 +587,7 @@ export default function UploadClient() {
               ['Rows',       parsed.rows.length.toLocaleString()],
               ['Columns',    includedColsList.length + ' of ' + parsed.columns.length],
               ['Format',     parsed.sourceFormat === 'surveymonkey' ? 'SurveyMonkey (auto-detected)' : parsed.sourceFormat === 'tsv' ? 'TSV' : parsed.sourceFormat === 'json' ? 'JSON' : 'CSV'],
-              ['Batches',    estimatedChunks + ' × ' + CHUNK_SIZE + ' rows'],
+              ['Batches',    '≈' + estimatedChunks + ' × up to ' + CHUNK_SIZE + ' rows'],
               ['Visibility', visibility],
             ] as [string, string][]).map(function([label, val]) {
               return (

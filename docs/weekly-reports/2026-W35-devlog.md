@@ -227,3 +227,42 @@ tails `192_org_snapshot_runs.sql` / `191_…`, and still exactly 12 datasets car
 `outletReporting`. This is the good case of the ambiguity recorded earlier in the
 year, where a **502 mid-apply** left the DDL applied but the ledger unwritten — a
 connect-time failure is unambiguous, but it still gets checked.
+
+---
+
+## 2026-08-26 — Upload page jank: O(rows) in the render body × a render per batch
+
+**Why**: typing on the new-dataset page went sporadic during a large upload. The
+question was "what race conditions" — there was one, but it wasn't the cause.
+
+`UploadClient` computed `previewRows` (a filtered copy of every row) and then ran
+a real `splitChunks()` pass — `JSON.stringify` + `new Blob` per chunk — **in the
+component body, unmemoised**. Both existed only to show the batch count on the
+summary card. The upload loop then called `setUploadMsg` at the top of each batch
+and `setUploadPct` at the bottom, separated by an `await` — different ticks, so
+React could not batch them: two renders per chunk.
+
+Measured before changing anything: **78ms per render body at 100K rows × ~4,000
+renders ≈ 312s** of blocked main thread. Keystrokes were queuing behind it.
+
+Worth recording that my first guess was **wrong**: I assumed the one-time
+`splitChunks` before the upload was the cost. Benchmarked at 76ms for 100K rows —
+irrelevant. The damage was that same work running four thousand times.
+
+**What changed**:
+- `UploadClient` — deleted both render-body derivations. The count is now
+  `Math.ceil(rows / CHUNK_SIZE)`, verified against the real chunker: identical for
+  typical reviews and 2KB verbatims, diverging only when one cell is large enough
+  to force a byte-split, so the label reads "≈N × up to 50 rows" rather than
+  asserting a number that can be 4× off.
+- `UploadClient` — one throttled `progress()` helper sets both values together
+  (so React batches them) at most ~4×/second, forced at milestones and on the
+  final batch.
+- `UploadClient` — `mountedRef` guard. The loop had no unmount protection, so
+  leaving the page mid-upload kept it calling `setState` on a dead component and
+  ran `router.push` at the end, dragging the user back to a page they had left.
+  The remaining batches deliberately still FINISH — aborting would strand a
+  half-loaded dataset with no rollback — only the UI writes are suppressed.
+
+`SettingsClient`'s append loop was checked and does **not** have this problem: it
+sets state only at the start and end, not per batch.

@@ -2201,3 +2201,31 @@ returned unchanged), and the POST answers **503 + `Retry-After`** rather than
 returned untouched so the existing rollback/error handling is unchanged. Both
 `UploadClient` (initial) and `SettingsClient` (append) use it — they had the same
 loop, and a shared helper beat a third copy. See `docs/ARCHITECTURE.md`.
+
+### Upload page responsiveness (2026-08-26)
+
+Typing on the new-dataset page went sporadic during a large upload. Not a race —
+**O(rows) work in the render body, multiplied by a render per batch.**
+
+`UploadClient` derived `previewRows` (a filtered copy of *every* row) and then ran
+a real `splitChunks()` pass — `JSON.stringify` + `new Blob` per chunk — directly in
+the component body, unmemoised. Both existed solely to display one number, the
+batch count. Meanwhile the upload loop called `setUploadMsg` at the top of each
+batch and `setUploadPct` at the bottom, separated by an `await`, so React could not
+batch them: **two renders per chunk**.
+
+Measured: one render body cost **78ms at 100K rows**, and the upload produced
+**~4,000 renders** — roughly *312 seconds* of blocked main thread, which is why
+keystrokes queued.
+
+Fixed by deleting the derivations (the count is `Math.ceil(rows / CHUNK_SIZE)`,
+verified identical to the real chunker for normal data — it only diverges when a
+single cell is large enough to force a byte-split, so the label now reads
+"≈N × up to 50 rows") and by routing progress through one throttled helper that
+sets both values together, capped at ~4 updates/second.
+
+**Also fixed a genuine race**: the loop had no unmount guard, so navigating away
+mid-upload left it calling `setState` on a dead component and — worse — running
+`router.push` at the end, yanking the user back to a page they had left. The
+remaining batches are deliberately allowed to FINISH (aborting would strand a
+half-loaded dataset with no rollback); only the UI writes are suppressed.
