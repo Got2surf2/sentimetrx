@@ -669,6 +669,22 @@ Constraints:
   hook after every check passes). A red typecheck/test/isolation
   run now means NO deploy, instead of a broken build going live
   while CI ran.
+- ⚠️ **The corollary: "CI didn't run" means "production didn't
+  deploy" — silently.** Because the deploy hook is fired BY the
+  workflow, a push that produces no workflow run leaves `main`
+  ahead of production with nothing red to notice. This happened
+  on 2026-08-26: `ba1773f4..93dbdf34` moved `origin/main` and
+  GitHub created **no run at all** for that sha (Actions enabled,
+  no path filters, and the push before it ran fine on the same
+  credentials). Three commits sat unlanded in production.
+  **After any authorised push, confirm a run exists FOR THAT SHA:**
+  `gh api "repos/<owner>/<repo>/actions/runs?head_sha=$(git rev-parse origin/main)" --jq .total_count`.
+  `gh run list` alone shows the PREVIOUS run at the top and reads
+  like success. Use the full sha — an abbreviated or hand-padded
+  one returns 0 and is indistinguishable from "no run".
+  `ci.yml` carries a **`workflow_dispatch`** trigger for exactly
+  this: re-run the workflow manually rather than pushing a no-op
+  commit to force one.
 - **Pushing is gated on EVERY branch, not just `main`** (CLAUDE.md
   push policy). No `git push` to a feature / `claude/*` / PR branch
   without explicit human say-so.

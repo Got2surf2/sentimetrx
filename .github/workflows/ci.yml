@@ -4,6 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Manual re-run. On 2026-08-26 a push to main landed (ba1773f4..93dbdf34) and
+  # GitHub created NO workflow run for it — Actions enabled, no path filters,
+  # same credentials as the push before it, which ran fine. Because the Vercel
+  # deploy hook is fired by this workflow, "CI didn't run" silently means
+  # "production didn't deploy", and without a dispatch trigger there was no way
+  # to recover except pushing another commit.
+  workflow_dispatch:
 
 jobs:
   test:

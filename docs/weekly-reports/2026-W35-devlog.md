@@ -164,3 +164,29 @@ series — into a narrated "−5.0 regression", and had us hunting a fix for a d
 that never happened. The command template never asked for a trend section at all,
 so nothing constrained it. It now does, with the instruction to read the prior
 score **out of the file** and never from recall.
+
+---
+
+## 2026-08-26 — A push landed on main and CI never ran, so production never deployed
+
+`ba1773f4..93dbdf34` pushed cleanly and `origin/main` moved. GitHub then created
+**no workflow run at all** for that sha — confirmed against the Actions API, not
+just `gh run list`. Actions enabled, `ci.yml` triggers on a plain
+`push: branches: [main]` with no path filter, and the push immediately before it
+(`3176cdd4`) ran fine on identical credentials.
+
+The consequence is the part worth remembering: **this repo deploys behind CI, and
+the deploy hook is fired BY the workflow** (`curl -X POST "$VERCEL_DEPLOY_HOOK_MAIN"`,
+gated on a non-docs diff). So "CI didn't run" does not mean "CI is pending" — it
+means **production silently did not deploy**. Three commits sat on `main` while
+prod stayed on the previous build, with nothing failing and nothing red to notice.
+
+`ci.yml` had no `workflow_dispatch`, so there was no way to recover except pushing
+another commit. It has one now. If this recurs: run the workflow manually rather
+than pushing a no-op.
+
+**Check that catches it:** after any authorised push, confirm a run exists *for
+that sha* — `gh api "repos/<owner>/<repo>/actions/runs?head_sha=$(git rev-parse origin/main)" --jq .total_count`.
+`gh run list` alone shows the previous run sitting at the top and reads like
+success. Use the full sha; an abbreviated or hand-padded one silently returns 0
+and looks identical to "no run".
