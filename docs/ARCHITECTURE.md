@@ -436,3 +436,42 @@ wall-clock generating server-side before the first byte, so byte progress would
 sit at 0 and jump to 100 — a progress bar that lies. Elapsed time is honest and
 is what the UI shows. A real percentage would need a job record plus polling or
 SSE; do not fake one with a timer.
+
+## Transport failures are not application answers (2026-08-26)
+
+A dropped connection means the request never got a verdict. Treating it as one
+cost a production upload: two `TypeError: fetch failed` /
+`SocketError: other side closed (UND_ERR_SOCKET)` errors against Supabase inside
+eight minutes, in the middle of a batch upload that logged **587 successful
+inserts**. This is undici reusing a pooled keep-alive socket the far side had
+already closed — intermittent by construction, and correlated with exactly the
+bursty pattern a row upload produces.
+
+Two failure shapes, both wrong:
+
+- **A false 401.** `getCallerOrgContext` discarded the `error` from
+  `supabase.auth.getUser()`, so "couldn't reach auth" was indistinguishable from
+  "not signed in". A network blip signed the user out mid-request.
+- **A destroyed dataset.** One `!res.ok` batch out of ~590 took the rollback
+  branch in `analyze/new/UploadClient`, which deletes every uploaded batch **and
+  the dataset itself**. Both dataset ids from that day are gone from production.
+
+**The rule: retry transport failures, never application errors.** A 4xx, a
+constraint violation or a statement timeout is a real answer — repeating it is
+just load. `lib/retryTransient.ts` owns the boundary (`isTransientTransportError`
+walks the `cause` chain, because undici reports a bare `TypeError: fetch failed`
+whose cause carries the code) and is covered by
+`tests/unit/retryTransient.test.ts`.
+
+Applied in two layers, because either alone leaves a hole:
+
+1. **Server** — `retryTransient` around the row insert, and
+   `retryTransientResult` around the auth + user lookup so all ~83
+   `getCallerOrgContext` callers benefit. Turning an exhausted retry into a
+   *throw* is opt-in via `requireReachable`, since public/anonymous surfaces
+   legitimately treat "no user" as valid and should degrade rather than error.
+   Mutating routes should opt in; `/api/datasets/[id]/rows` POST does, and
+   answers **503 + Retry-After** instead of 401.
+2. **Client** — `lib/postJsonWithRetry.ts` retries 429/502/503/504 and network
+   rejections (honouring `Retry-After`), used by both upload flows. A 4xx is
+   returned untouched so existing error handling is unchanged.

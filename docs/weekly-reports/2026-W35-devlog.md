@@ -69,3 +69,52 @@ Documentation sat at 9/10, joint-highest in the repo. Keeping specs in sync is
 the baseline expectation, not a bonus; **drift is the only lever that moves that
 number, and it only moves down.** One unjustified bypass therefore costs a full
 point that no amount of good docs work can earn back in the same week.
+
+---
+
+## 2026-08-26 — A dropped socket deleted an in-progress dataset
+
+**Why**: "failed on loading". Vercel runtime errors showed two failures eight
+minutes apart, both `TypeError: fetch failed` / `SocketError: other side closed
+(UND_ERR_SOCKET)` against Supabase — one a **500** at `datasets.rows.insert`,
+one a **401** raised inside `supabase.auth.getUser()`. The same deployment
+logged **587 successful `201`s** in that window, so the upload was working: one
+batch out of ~590 hit a stale pooled keep-alive socket.
+
+Two things turned a blip into a disaster.
+
+**The 401 was a lie.** `getCallerOrgContext` destructured only `data` from
+`getUser()` and threw the `error` away, so a dead socket and "not signed in"
+were the same thing. The user gets logged out mid-upload for a network hiccup.
+
+**The rollback is nuclear.** `analyze/new/UploadClient` treats any `!res.ok` as
+fatal: it deletes every uploaded batch *and the dataset itself*. That is why
+both dataset ids from the logs — `7e131ffe` and `d037f7f8` — no longer exist in
+production. One dropped connection destroyed the whole load.
+
+**Fix, in two layers.** `lib/retryTransient.ts` draws the boundary: retry
+transport failures, never application errors. A constraint violation or a
+statement timeout is a real answer and repeating it is just load — there are
+tests pinning both directions, including the `57014` statement timeout that
+must *not* retry. Detection walks the `cause` chain, because undici reports a
+bare `TypeError: fetch failed` whose cause carries `UND_ERR_SOCKET`; matching
+the top-level message alone misses every one of them.
+
+Server side, the insert is wrapped, and so is the auth call — which benefits all
+~83 `getCallerOrgContext` callers without changing anyone's semantics, since the
+retry usually just succeeds. Escalating an exhausted retry to a *throw* is
+opt-in (`requireReachable`): public surfaces legitimately treat "no user" as a
+valid state and should degrade, not error. The rows POST opts in and answers
+**503 + Retry-After** rather than 401.
+
+Client side, `lib/postJsonWithRetry.ts` retries 429/502/503/504 and network
+rejections, honouring `Retry-After`. Both upload flows use it — `UploadClient`
+and `SettingsClient` had the same batch loop, which is the second occurrence
+that earns a shared helper rather than a third copy.
+
+**Note on getting here**: the Sentry credentials are marked *sensitive* in
+Vercel, which makes them write-only — the CLI returns `[SENSITIVE]` and there is
+no read path, so Sentry was unreachable. Vercel's own runtime-error API had the
+same data. Also had to upgrade the Vercel CLI (53.1.1 → 59.5.0): the old version
+silently wrote **empty values** for all 57 env vars on `env pull`, which looks
+exactly like "the vars aren't set".

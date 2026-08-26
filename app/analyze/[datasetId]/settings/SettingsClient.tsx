@@ -3,6 +3,7 @@
 // app/analyze/[datasetId]/settings/SettingsClient.tsx
 // Rename, visibility, schema editor, archive, delete
 
+import { postJsonWithRetry } from '@/lib/postJsonWithRetry'
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import TransferOrg from '@/components/ui/TransferOrg'
@@ -115,11 +116,11 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
       var total = 0
       for (var i = 0; i < appendPreview.rows.length; i += BATCH) {
         var chunk = appendPreview.rows.slice(i, i + BATCH)
-        var res = await fetch('/api/datasets/' + dataset.id + '/rows', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rows: chunk, source_ref: appendFile?.name || 'append' }),
-        })
+        // Retries a transient upstream blip rather than losing the append — a
+        // single dropped socket used to abort the whole upload. See
+        // lib/postJsonWithRetry; the server retries the insert too.
+        var res = await postJsonWithRetry('/api/datasets/' + dataset.id + '/rows',
+          { rows: chunk, source_ref: appendFile?.name || 'append' })
         if (!res.ok) throw new Error('Upload failed at batch ' + Math.floor(i / BATCH + 1))
         var resData = await res.json().catch(function() { return {} })
         if (resData.batch_index != null) uploadedBatches.push(resData.batch_index)

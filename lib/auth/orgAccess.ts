@@ -17,6 +17,7 @@
 import 'server-only'
 import type { createClient as createBrowserClient } from '@/lib/supabase/server'
 import { logError } from '@/lib/log'
+import { retryTransientResult, isTransientTransportError, AuthUnavailableError } from '@/lib/retryTransient'
 
 type AuthCookiedClient = Awaited<ReturnType<typeof createBrowserClient>>
 
@@ -26,15 +27,36 @@ export interface CallerOrgContext {
   isAdmin: boolean
 }
 
-export async function getCallerOrgContext(supabase: AuthCookiedClient): Promise<CallerOrgContext> {
-  const { data: { user } } = await supabase.auth.getUser()
+export async function getCallerOrgContext(
+  supabase: AuthCookiedClient,
+  opts?: { requireReachable?: boolean },
+): Promise<CallerOrgContext> {
+  // The `error` from getUser() used to be discarded, which made "the socket to
+  // Supabase died" indistinguishable from "not signed in" — so a dropped
+  // connection returned 401 and logged the user out mid-request. Seen twice in
+  // production on 2026-08-26 during a row upload. See lib/retryTransient.
+  //
+  // The retry is unconditional and benefits all ~83 call sites: a stale pooled
+  // socket is fixed by the very next attempt, so the blip never surfaces.
+  // Turning an exhausted retry into a THROW is opt-in (`requireReachable`),
+  // because public/anonymous surfaces legitimately treat "no user" as a valid
+  // state and should degrade rather than error. Mutating routes should opt in —
+  // silently treating an unreachable auth service as "anonymous" is how a write
+  // gets rejected as unauthorized when the caller was signed in all along.
+  const { data, error } = await retryTransientResult(() => supabase.auth.getUser())
+  if (error && isTransientTransportError(error)) {
+    void logError('orgAccess.authUnreachable', error)
+    if (opts?.requireReachable) throw new AuthUnavailableError(error)
+    return { userId: null, orgId: null, isAdmin: false }
+  }
+  const user = data?.user
   if (!user) return { userId: null, orgId: null, isAdmin: false }
 
-  const { data: userData, error: userDataErr } = await supabase
+  const { data: userData, error: userDataErr } = await retryTransientResult(async () => await supabase
     .from('users')
     .select('org_id, organizations(is_admin_org)')
     .eq('id', user.id)
-    .single()
+    .single())
   if (userDataErr) void logError('orgAccess.getCallerOrgContext', userDataErr)
 
   type OrgRel = { is_admin_org?: boolean | null }

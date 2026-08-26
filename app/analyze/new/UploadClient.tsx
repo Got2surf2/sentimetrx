@@ -3,6 +3,7 @@
 // app/analyze/new/UploadClient.tsx
 // Source selector → Upload (CSV) or Google Reviews wizard
 
+import { postJsonWithRetry } from '@/lib/postJsonWithRetry'
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { autoDetectSchema } from '@/lib/datasetUtils'
@@ -277,10 +278,12 @@ export default function UploadClient() {
       const uploadedBatches: number[] = []
       for (let i = 0; i < chunks.length; i++) {
         setUploadMsg('Uploading rows — batch ' + (i + 1) + ' of ' + chunks.length)
-        const res = await fetch('/api/datasets/' + dsData.id + '/rows', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rows: chunks[i], source_ref: parsed.filename }),
-        })
+        // Retries a transient upstream blip. Without it a single dropped
+        // socket on one batch out of hundreds took the rollback branch below —
+        // deleting every uploaded batch AND the dataset itself. Seen twice in
+        // production on 2026-08-26. See lib/postJsonWithRetry.
+        const res = await postJsonWithRetry('/api/datasets/' + dsData.id + '/rows',
+          { rows: chunks[i], source_ref: parsed.filename })
         if (!res.ok) {
           const e = await res.json().catch(function() { return {} })
           // Rollback: delete uploaded batches and the dataset itself

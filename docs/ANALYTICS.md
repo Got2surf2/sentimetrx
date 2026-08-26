@@ -2180,3 +2180,24 @@ open-ended / date / id / ignore).
 
 
 **Likert axis colours follow the rating (2026-07-15).** Ordinal/Likert bars are coloured by the underlying RATING VALUE — low = red … high = green — via `ordinalBarColors(rawValues, remapping)` (ChartsModule), not by bar position. Previously the gradient assumed best-first and painted the worst rating green on a worst→best (smartOrder low→high) axis. Now it reads the field remapping (Likerts are auto-mapped), else the recognized scale rank, else falls back to position. Applied to both the count/% bar and the average bar.
+
+## Row upload resilience (2026-08-26)
+
+An upload is hundreds of sequential `POST /api/datasets/[datasetId]/rows` calls
+(`CHUNK_SIZE`/`BATCH` of 50), which makes it the likeliest thing in the app to
+meet a stale keep-alive socket. One did: a single batch out of ~590 failed with
+`UND_ERR_SOCKET` while the same deployment logged 587 successful `201`s.
+
+Both call sites treated any `!res.ok` as fatal, and `analyze/new/UploadClient`
+goes further — it rolls back every uploaded batch **and deletes the dataset**.
+So one dropped connection destroyed an entire in-progress load; both dataset ids
+from that incident are gone from production.
+
+Now defended in two layers. **Server**: the `dataset_rows_flat` insert is
+wrapped in `retryTransient` (transport failures only — a constraint violation is
+returned unchanged), and the POST answers **503 + `Retry-After`** rather than
+401 when auth is unreachable. **Client**: `lib/postJsonWithRetry.ts` retries
+429/502/503/504 and network rejections, honouring `Retry-After`; a 4xx is
+returned untouched so the existing rollback/error handling is unchanged. Both
+`UploadClient` (initial) and `SettingsClient` (append) use it — they had the same
+loop, and a shared helper beat a third copy. See `docs/ARCHITECTURE.md`.

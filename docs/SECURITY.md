@@ -276,6 +276,25 @@ test project exists.
 
 ## 3. Authentication & authorization
 
+> **A transport failure is not a failed login (2026-08-26).**
+> `getCallerOrgContext` destructured only `data` from `supabase.auth.getUser()`
+> and discarded the `error`, so an unreachable auth backend was
+> indistinguishable from an unauthenticated caller and the route answered
+> **401**. In production a dropped keep-alive socket to Supabase
+> (`UND_ERR_SOCKET`) signed a user out in the middle of a row upload. The call
+> is now wrapped in `retryTransientResult` (`lib/retryTransient.ts`), which
+> retries transport failures only — this benefits all ~83 call sites with no
+> change in semantics, because the retry normally just succeeds. Escalating an
+> exhausted retry to a **throw** (`AuthUnavailableError`) is **opt-in** via
+> `getCallerOrgContext(supabase, { requireReachable: true })`: public and
+> anonymous surfaces legitimately treat "no user" as a valid state and must
+> degrade rather than error, while **mutating routes should opt in** — silently
+> treating an unreachable auth service as "anonymous" rejects a signed-in
+> caller's write as unauthorized. `/api/datasets/[datasetId]/rows` POST opts in
+> and answers **503 + `Retry-After`**. Never widen this to blanket-throw without
+> auditing the anonymous surfaces.
+
+
 - **Identity:** Supabase Auth (email + password and magic links).
   Session cookies are `HttpOnly`, `Secure`, `SameSite=Lax`.
 - **Authorization model:**

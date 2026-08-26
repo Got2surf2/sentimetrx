@@ -26,6 +26,7 @@ import { ROWS_PER_BATCH } from '@/lib/constants'
 import { memberRowCounts } from '@/lib/signalStats'
 import { stripReservedRowKeys } from '@/lib/taxonomyEmbed'
 import { serverError } from '@/lib/apiError'
+import { retryTransient, AuthUnavailableError } from '@/lib/retryTransient'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60   // the O(sample) bulk sample fetches only ~50K rows via the idx_drf_sample index — flat ~16-21s at any dataset size
@@ -75,9 +76,24 @@ function seedFromString(s: string): number {
   for (let i = 0; i < s.length; i++) h = (((h << 5) + h) + s.charCodeAt(i)) | 0
   return h
 }
-async function authCheck(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const ctx = await getCallerOrgContext(supabase)
+async function authCheck(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  opts?: { requireReachable?: boolean },
+) {
+  const ctx = await getCallerOrgContext(supabase, opts)
   return { user: ctx.userId ? { id: ctx.userId } : null, orgId: ctx.orgId, isAdmin: ctx.isAdmin }
+}
+
+// A dropped connection to Supabase is not a failed login. Uploads run hundreds
+// of sequential POSTs, so they are the likeliest thing to catch a stale pooled
+// socket — and answering 401 there tells the user they're signed out and throws
+// away the rest of the upload. 503 + Retry-After says what actually happened.
+// (Production, 2026-08-26: exactly this, mid-upload.) See lib/retryTransient.
+function serviceUnavailable(): NextResponse {
+  return NextResponse.json(
+    { error: 'Upstream temporarily unavailable — please retry.', retryable: true },
+    { status: 503, headers: { 'Retry-After': '2' } },
+  )
 }
 
 // Project a row down to only the requested fields. Unprojected rows are
@@ -357,7 +373,13 @@ async function handleCollectionRows(req: Request, datasetId: string, orgId: stri
 export async function POST(req: Request, props: Params) {
   const params = await props.params;
   const supabase = await createClient()
-  const auth = await authCheck(supabase)
+  let auth: Awaited<ReturnType<typeof authCheck>>
+  try {
+    auth = await authCheck(supabase, { requireReachable: true })
+  } catch (e) {
+    if (e instanceof AuthUnavailableError) return serviceUnavailable()
+    throw e
+  }
   if (!auth.user || !auth.orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: dsCheck } = await supabase.from('datasets').select('org_id, row_count').eq('id', params.datasetId).single()
@@ -389,7 +411,11 @@ export async function POST(req: Request, props: Params) {
   const flatRows = rows.map(function(r: Record<string, unknown>, i: number) {
     return stampRowSubstantive({ dataset_id: params.datasetId, row_index: nextIndex * ROWS_PER_BATCH + i, data: r })
   })
-  const insertResult = await service.from('dataset_rows_flat').insert(flatRows)
+  // Retried on TRANSPORT failure only — a constraint violation or any other
+  // Postgres error is a real answer and is returned unchanged. Without this a
+  // single stale keep-alive socket failed one batch out of ~590 and aborted the
+  // whole upload, leaving the dataset partially loaded (production 2026-08-26).
+  const insertResult = await retryTransient(async () => await service.from('dataset_rows_flat').insert(flatRows))
   if (insertResult.error) return serverError(insertResult.error, 'datasets.rows.insert', { orgId: auth.orgId })
 
   // Running total — an exact count(*) over the whole dataset per appended batch
