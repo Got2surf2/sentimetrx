@@ -651,6 +651,19 @@ restart locally and a deploy to reach prod.
 
 ---
 
+> **Verification bar (2026-08-26).** CLAUDE.md carries four rules added after two
+> defects shipped in one day that `tsc`, lint and 1,800 passing tests could not
+> have caught — both because the unit written was verified and the path the user
+> takes was not. In short: **UI changes are browser-verified before the commit**;
+> **a new shared helper gets one test against the real shape it wraps** (a
+> throw-based retry was wrapped around a supabase-js call that *returns* its
+> errors, so it never fired); **the repo's own gates run before committing**
+> (`check:sql-tx` would have caught a migration missing `BEGIN`/`COMMIT` that
+> turned CI red); and **nothing billable is triggered to route around a slow
+> passive path** (a force-dispatched CI run cost a duplicate ~$8–10 build when
+> GitHub's queue then delivered the original). Hypotheses are stated as
+> hypotheses and measured before being called causes.
+
 ## 12. Release process
 
 Today: push to `main` → CI (typecheck, lint ratchet, unit +

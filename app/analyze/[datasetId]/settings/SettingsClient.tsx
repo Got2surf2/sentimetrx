@@ -4,6 +4,7 @@
 // Rename, visibility, schema editor, archive, delete
 
 import { postJsonWithRetry } from '@/lib/postJsonWithRetry'
+import { ROWS_PER_BATCH } from '@/lib/constants'
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import TransferOrg from '@/components/ui/TransferOrg'
@@ -112,7 +113,9 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
     setAppendError('')
     var uploadedBatches: number[] = []
     try {
-      var BATCH = 50
+      // Matches the server's ROWS_PER_BATCH stride — see UploadClient's note; it
+      // must not exceed it or the rollback DELETE spans the wrong row_index range.
+      var BATCH = ROWS_PER_BATCH
       var total = 0
       for (var i = 0; i < appendPreview.rows.length; i += BATCH) {
         var chunk = appendPreview.rows.slice(i, i + BATCH)

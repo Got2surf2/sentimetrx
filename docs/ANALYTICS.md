@@ -2248,3 +2248,23 @@ component's whole life and every guarded `setState` is silently skipped. Caught 
 watching a real upload — the modal sat at "Preparing data… 0%" for three minutes
 while batches uploaded fine behind it. `tsc`, lint and 1,800 unit tests all
 passed. The same fault would hit production on any genuine remount.
+
+**Client chunk size = the server stride (2026-08-26).** `CHUNK_SIZE` was **50**
+against a `ROWS_PER_BATCH` of **200** — a quarter of what the server already
+supports. Every batch pays ~6 fixed Supabase round trips (auth `getUser`, users
+lookup, dataset check, `MAX(row_index)`, insert, `row_count` update) regardless of
+payload, so a 125,897-row upload made **2,518** of them instead of 630. Both
+upload paths now import `ROWS_PER_BATCH` rather than repeating a literal.
+
+⚠️ **It must never exceed the stride.** The route writes
+`row_index = batch_index * ROWS_PER_BATCH + offset`, and the rollback DELETE spans
+exactly `[batch*STRIDE, batch*STRIDE + STRIDE)`. A larger client chunk overlaps the
+next batch's index range: batches collide and a rollback deletes another batch's
+rows. Pinned by `tests/unit/uploadChunking.test.ts`.
+
+**Why wide datasets are slow regardless.** Insert cost scales with *column count*,
+not just rows — measured 70ms (4 cols) → 174ms (20) → **626ms (52)** per 50 rows.
+A `BEFORE INSERT` trigger (`drf_tsv_trigger`) loops every JSONB key in plpgsql with
+a regex per value to build the tsvector, then two GIN indexes (`data`, `tsv`) are
+maintained. A 52-column dataset pays ~9× a 4-column one. Not a bug — worth knowing
+before promising an upload time.

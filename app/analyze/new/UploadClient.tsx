@@ -7,6 +7,7 @@ import { postJsonWithRetry } from '@/lib/postJsonWithRetry'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { autoDetectSchema } from '@/lib/datasetUtils'
+import { ROWS_PER_BATCH } from '@/lib/constants'
 import LottieLoader from '@/components/ui/LottieLoader'
 import GoogleReviewsWizard from '@/components/analyze/GoogleReviewsWizard'
 import BrandTagInput from '@/components/analyze/BrandTagInput'
@@ -15,8 +16,17 @@ import SubstackWizard from '@/components/analyze/SubstackWizard'
 import RegulationsWizard from '@/components/analyze/RegulationsWizard'
 
 const HERMES     = '#E8632A'
-const CHUNK_SIZE = 50                   // rows per POST
-const MAX_BYTES  = 3 * 1024 * 1024     // 3 MB safety ceiling per POST
+// Rows per POST. MUST NOT EXCEED lib/constants ROWS_PER_BATCH (200) — the server
+// writes row_index = batch_index * ROWS_PER_BATCH + offset, and the rollback
+// DELETE spans exactly that stride, so a larger client chunk would collide
+// indices across batches and make rollback delete the wrong rows.
+//
+// Was 50, i.e. a quarter of the stride the server already supports. Every batch
+// pays ~6 fixed Supabase round trips regardless of size, so a 125,897-row upload
+// was making 2,518 of them instead of 630 (2026-08-26, measured at ~8.7s/batch in
+// production).
+export const CHUNK_SIZE = ROWS_PER_BATCH  // rows per POST — the server's stride
+export const MAX_BYTES = 3 * 1024 * 1024  // 3 MB safety ceiling per POST
 
 type SourceMode = 'select' | 'upload' | 'google_reviews' | 'reddit' | 'substack' | 'regulations'
 type Step = 1 | 2 | 3

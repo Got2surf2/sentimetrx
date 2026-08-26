@@ -301,3 +301,41 @@ fault would hit production on any genuine remount.
 
 Verified live against the TEST project with a 6,000-row CSV: "Uploading rows —
 batch 5 of 120", 4%, bar filling, "about a minute left".
+
+---
+
+## 2026-08-26 — A 125,897-row upload was making 2,518 round trips instead of 630
+
+**Why**: a real upload (ANES 1984–2024, 125,897 rows × 52 columns) was hours in
+and barely a third done. Production logs: 207 batches in 30 minutes — **~8.7s per
+50-row batch**.
+
+**Measured, not guessed** — and two of my first three hypotheses were wrong,
+which is the point of measuring:
+
+- ❌ The one-time `splitChunks` before upload — 76ms at 100K rows. Irrelevant.
+- ❌ An unindexed `MAX(row_index)` per batch growing with the table —
+  `idx_drf_dataset_idx (dataset_id, row_index)` exists; it's an index scan.
+- ✅ **Browser render work**: ~859ms per render at this shape × 2 unbatched
+  renders per batch ≈ **1.2 hours of pure browser work** across the upload. Fixed
+  earlier the same day but not yet deployed, which the screenshot confirmed.
+- ✅ **Insert cost scales with COLUMN COUNT**: 70ms (4 cols) → 174ms (20) →
+  **626ms (52)** per 50 rows. `drf_tsv_trigger` loops every JSONB key in plpgsql
+  with a regex per value, then two GIN indexes are maintained.
+- ✅ **The round-trip count**: `CHUNK_SIZE` was 50 against a server
+  `ROWS_PER_BATCH` of 200.
+
+**What changed**: both upload paths now use `ROWS_PER_BATCH` directly — 2,518
+batches become 630 for that dataset. Each batch carries ~6 fixed Supabase round
+trips no matter its size, so this is the cheapest available win.
+
+It **cannot** go higher without changing the server stride: `row_index =
+batch_index * ROWS_PER_BATCH + offset`, and the rollback DELETE spans exactly that
+range, so an oversized chunk would collide indices and make a rollback delete
+another batch's rows. `tests/unit/uploadChunking.test.ts` pins the invariant.
+
+**Verified in a browser before committing**, per the new rule: a 4,000-row × 52-col
+CSV uploaded end to end — 20 batches (was 80), modal reading "batch 4 of 20 · 18% ·
+about 25 seconds left". Then checked the thing that actually matters for a stride
+change: **4,000 rows stored, 4,000 distinct row_index, 0 duplicates, max 3999** —
+contiguous, no collision.

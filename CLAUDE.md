@@ -93,6 +93,39 @@ After multi-file sweeps, run `rm tsconfig.tsbuildinfo && npx tsc --noEmit` — i
 - **Bulk burn-downs** (when a batch of warnings accumulates) use the proven harness `scripts/_wf-eslint-burndown.js` (untracked): one agent per file in an isolated git worktree, annotation-only typing, `tsc`-verified in isolation, then a consolidation pass runs global `tsc` + the full test suite and reconciles cross-file conflicts before committing. Method + baseline are documented in `docs/ENGINEERING.md`.
 - The remaining ~269 warnings are mostly **`react-hooks/*`** — a separate behavior-sensitive effort (an unmemoized effect web caused the Statistics-tab infinite loop); they ride the ratchet, don't bulk-churn them without intent and per-file browser verification.
 
+## Verification bar — what "done" requires before a commit
+
+Written 2026-08-26 after two defects shipped in one day that `tsc`, lint and
+1,800 passing tests could not have caught. Both had the same cause: **the unit
+that was written got verified; the path the user takes did not.**
+
+1. **A UI change is verified in a browser BEFORE the commit, not after.** Render
+   it, drive the real flow, look at it. A progress modal sat frozen at
+   "Preparing data… 0%" through an entire upload because a `mountedRef` was left
+   `false` by React's StrictMode remount — typechecked, linted, fully unit-tested,
+   completely broken. Screenshots of a static render do not count; the bug only
+   appeared once batches were actually running.
+2. **A new shared helper needs one test against the REAL shape it wraps**, not
+   just the helper in isolation. `retryTransient` was wrapped around a
+   supabase-js call that *returns* `{ data, error }` instead of throwing, so the
+   retry never fired. Every test passed — they all exercised the helper directly
+   and none exercised the call site. If it wraps a library, pin that library's
+   actual behaviour in a test.
+3. **Run the repo's own gates before committing, not just `tsc` + `npm test`.**
+   `npm run check:sql-tx`, the pre-commit hooks, lint on the touched files. A
+   migration missing `BEGIN`/`COMMIT` turned CI red and cost a cycle; the guard
+   that catches it was one command away.
+4. **Never trigger anything billable to route around a slow passive path.** Each
+   production build costs ~$8–10. A CI run that hadn't appeared yet was
+   force-dispatched, GitHub's queue then delivered the original, and the same
+   commit built twice. Wait, or ask.
+
+**And state hypotheses as hypotheses.** Measure before calling a cause. On one
+investigation three plausible culprits were named and all three were wrong
+(one-time chunking, an unindexed `MAX(row_index)`, a "never-created" CI run);
+the real causes only appeared once each was measured. Saying "I think X, let me
+check" costs nothing. Saying "it's X" and being wrong costs trust.
+
 ## Content rules for shipped UI
 
 - **No fabricated market data.** Don't invent TAM/SAM, segment $, CAGRs, or % statistics. Use qualitative claims, user-provided data, or cited sources only.
