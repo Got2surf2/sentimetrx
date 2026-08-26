@@ -2229,3 +2229,22 @@ mid-upload left it calling `setState` on a dead component and — worse — runn
 `router.push` at the end, yanking the user back to a page they had left. The
 remaining batches are deliberately allowed to FINISH (aborting would strand a
 half-loaded dataset with no rollback); only the UI writes are suppressed.
+
+**Upload progress is a modal (2026-08-26, owner).** It was an inline block low on
+a long form, so during a large upload the only thing on screen was a spinner and
+"batch 233 of 2518" — no sense of how far along it was. Now a centred, dimmed,
+non-dismissable dialog: Lottie, current phase, **percentage**, progress bar, and
+a **time-remaining estimate** derived from measured throughput (mean
+seconds-per-batch so far × batches remaining), withheld until 3 batches are done
+because the first one or two include connection setup. `formatEta` rounds
+deliberately — "about 2 minutes", "about 35 seconds" — since a per-second
+countdown on a moving estimate reads as broken. Not dismissable on purpose: there
+is no cancel path that wouldn't strand a half-loaded dataset.
+
+⚠️ **`mountedRef` must be set true in the effect BODY**, not left to its initial
+value. React's dev StrictMode mounts → unmounts → remounts, so the cleanup fires
+once before the real mount; without the assignment the ref stays `false` for the
+component's whole life and every guarded `setState` is silently skipped. Caught by
+watching a real upload — the modal sat at "Preparing data… 0%" for three minutes
+while batches uploaded fine behind it. `tsc`, lint and 1,800 unit tests all
+passed. The same fault would hit production on any genuine remount.

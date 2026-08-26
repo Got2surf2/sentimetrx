@@ -266,3 +266,38 @@ irrelevant. The damage was that same work running four thousand times.
 
 `SettingsClient`'s append loop was checked and does **not** have this problem: it
 sets state only at the start and end, not per batch.
+
+---
+
+## 2026-08-26 — Upload progress modal, and a StrictMode ref bug only a real run could find
+
+**Why**: owner — during a large upload the page showed a spinner and "batch 233
+of 2518" and nothing else. No percentage, no sense of remaining time, and it sat
+inline low on a long form.
+
+**What changed**: a centred, dimmed, non-dismissable dialog with the current
+phase, a percentage, a progress bar and a **time-remaining estimate**. The ETA is
+measured, not guessed — mean seconds-per-batch so far × batches remaining —
+withheld until 3 batches complete, because the first one or two carry connection
+setup and produce a wild figure. `formatEta` rounds on purpose ("about 2
+minutes", "about 35 seconds"): a per-second countdown on an estimate that keeps
+moving reads as broken. Not dismissable by design — there is no cancel path that
+wouldn't strand a half-loaded dataset.
+
+**The bug worth recording.** The guard added earlier the same day —
+`useEffect(() => () => { mountedRef.current = false }, [])` — is wrong. React's
+dev StrictMode mounts, unmounts, then remounts; the cleanup fires once *before*
+the real mount, and nothing ever sets the ref back to `true`. So it stayed
+`false` for the component's entire life and every guarded `setState` was silently
+skipped. The modal froze at "Preparing data… 0%" for three full minutes while
+batches uploaded perfectly well behind it.
+
+`tsc` was clean, lint was clean, and 1,800 unit tests passed. Nothing but
+watching an actual upload would have caught it — the first screenshot attempt
+caught the modal at 0% and I nearly wrote it off as dev-server slowness. Polling
+for three minutes is what turned "slow" into "frozen", which is a different bug.
+Fix is one line: assign `mountedRef.current = true` in the effect body. The same
+fault would hit production on any genuine remount.
+
+Verified live against the TEST project with a 6,000-row CSV: "Uploading rows —
+batch 5 of 120", 4%, bar filling, "about a minute left".

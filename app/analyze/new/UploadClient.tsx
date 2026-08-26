@@ -164,6 +164,18 @@ function bytesOf(rows: Record<string, unknown>[]): number {
   return new Blob([JSON.stringify(rows)]).size
 }
 
+// "about 2 min", "about 40s". Deliberately coarse: a per-second countdown on an
+// estimate that moves is worse than a rounded one, and rounding communicates
+// that it IS an estimate.
+export function formatEta(ms: number): string {
+  const secs = Math.round(ms / 1000)
+  if (secs < 10) return 'a few seconds'
+  if (secs < 60) return 'about ' + (Math.ceil(secs / 5) * 5) + ' seconds'
+  const mins = Math.round(secs / 60)
+  if (mins === 1) return 'about a minute'
+  return 'about ' + mins + ' minutes'
+}
+
 function splitChunks(rows: Record<string, unknown>[]): Record<string, unknown>[][] {
   const chunks: Record<string, unknown>[][] = []
   let i = 0
@@ -193,8 +205,7 @@ export default function UploadClient() {
   const [visibility,  setVisibility]  = useState<'private' | 'public'>('private')
   const [applyDimensions, setApplyDimensions] = useState(false)  // per-dataset Dimensions (restaurant taxonomy) opt-in
   const [creating,    setCreating]    = useState(false)
-  const [uploadPct,   setUploadPct]   = useState(0)
-  const [uploadMsg,   setUploadMsg]   = useState('')
+  const [prog, setProg] = useState<{ pct: number; msg: string; etaMs: number | null }>({ pct: 0, msg: '', etaMs: null })
   const [error,       setError]       = useState('')
   const [fieldInclude, setFieldInclude] = useState<Record<string, boolean>>({})
   // The upload is a long async loop. If the user navigates away mid-flight we let
@@ -203,8 +214,18 @@ export default function UploadClient() {
   // router.push at the end, which would otherwise yank them back to a page they
   // deliberately left.
   const mountedRef = useRef(true)
-  useEffect(function() { return function() { mountedRef.current = false } }, [])
+  // MUST set true in the effect body, not just rely on the initial value:
+  // React's dev StrictMode mounts → unmounts → remounts, so the cleanup below
+  // fires once before the real mount. Without the assignment the ref stays false
+  // for the component's whole life and every guarded setState is skipped — the
+  // progress modal froze at "Preparing data… 0%" for the entire upload. The same
+  // would happen in production on any genuine remount.
+  useEffect(function() {
+    mountedRef.current = true
+    return function() { mountedRef.current = false }
+  }, [])
   const lastTickRef = useRef(0)
+  const startedAtRef = useRef(0)
   const [fieldAlias,   setFieldAlias]   = useState<Record<string, string>>({})
 
   function handleFile(file: File) {
@@ -256,18 +277,21 @@ export default function UploadClient() {
   // at most ~4×/second. Previously setUploadMsg fired at the top of each batch and
   // setUploadPct at the bottom, separated by an `await` — different ticks, so two
   // unbatched renders per batch (~4,000 at 100K rows).
-  function progress(pct: number | null, msg: string, force = false) {
+  function progress(pct: number | null, msg: string, force = false, eta?: number | null) {
     if (!mountedRef.current) return
     const now = Date.now()
     if (!force && now - lastTickRef.current < 250) return
     lastTickRef.current = now
-    if (pct !== null) setUploadPct(pct)
-    setUploadMsg(msg)
+    setProg(function(p) {
+      return { pct: pct === null ? p.pct : pct, msg, etaMs: eta === undefined ? p.etaMs : eta }
+    })
   }
 
   async function handleCreate() {
     if (!parsed || !name.trim()) return
-    setCreating(true); setError(''); setUploadPct(0); setUploadMsg('Preparing data...')
+    setCreating(true); setError('')
+    setProg({ pct: 0, msg: 'Preparing data…', etaMs: null })
+    startedAtRef.current = 0
     try {
       // Filter rows to only include selected fields
       const includedCols = parsed.columns.filter(function(c) { return fieldInclude[c] !== false })
@@ -297,6 +321,7 @@ export default function UploadClient() {
       // 2. Upload rows in safe-sized chunks — track batches for rollback
       const chunks = splitChunks(filteredRows)
       const uploadedBatches: number[] = []
+      startedAtRef.current = Date.now()
       for (let i = 0; i < chunks.length; i++) {
         // Retries a transient upstream blip. Without it a single dropped
         // socket on one batch out of hundreds took the rollback branch below —
@@ -316,15 +341,22 @@ export default function UploadClient() {
         }
         const resData = await res.json().catch(function() { return {} })
         if (resData.batch_index != null) uploadedBatches.push(resData.batch_index)
+        // Measured throughput, not a guess: mean seconds-per-batch so far applied
+        // to the batches left. Withheld until 3 are done — the first one or two
+        // include connection setup and would produce a wild number.
+        const done = i + 1
+        const elapsed = Date.now() - startedAtRef.current
+        const eta = done >= 3 ? Math.round((elapsed / done) * (chunks.length - done)) : null
         progress(
-          Math.round(((i + 1) / (chunks.length + 2)) * 100),
-          'Uploading rows — batch ' + (i + 1) + ' of ' + chunks.length,
+          Math.round((done / (chunks.length + 2)) * 100),
+          'Uploading rows — batch ' + done.toLocaleString() + ' of ' + chunks.length.toLocaleString(),
           i === chunks.length - 1,
+          eta,
         )
       }
 
       // 3. Save schema to state
-      progress(null, 'Saving schema...', true)
+      progress(null, 'Saving schema…', true, null)
       await fetch('/api/datasets/' + dsData.id + '/state', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -335,15 +367,15 @@ export default function UploadClient() {
           filter_state:  {},
         }),
       })
-      progress(Math.round(((chunks.length + 1) / (chunks.length + 2)) * 100), 'Saving schema...', true)
+      progress(Math.round(((chunks.length + 1) / (chunks.length + 2)) * 100), 'Saving schema…', true, null)
 
       // 4. Trigger analytics compute (non-blocking on failure — user can re-trigger from settings)
-      progress(null, 'Computing analytics...', true)
+      progress(null, 'Computing analytics…', true, null)
       const computeRes = await fetch('/api/datasets/' + dsData.id + '/compute', { method: 'POST' })
       if (!computeRes.ok) {
         console.warn('[upload] analytics compute failed — will show stale until re-triggered')
       }
-      progress(100, 'Computing analytics...', true)
+      progress(100, 'Finishing up…', true, null)
 
       // Dead component: never navigate. The dataset is fully written either way.
       if (!mountedRef.current) return
@@ -608,15 +640,51 @@ export default function UploadClient() {
             </div>
           </div>
 
+          {/* Front-and-centre modal (owner, 2026-08-26). It used to be an inline
+              block low on a long form, so on a big upload the only thing on
+              screen was a spinner and "batch 233 of 2518" with no sense of how
+              far along it was. Deliberately NOT dismissable — there is no
+              cancel path that wouldn't strand a half-loaded dataset. */}
           {creating && (
-            <div className="flex flex-col gap-3 items-center py-2">
-              <LottieLoader size={96} message={uploadMsg || 'Uploading...'} />
-              <div className="w-full flex flex-col gap-1">
-                <div className="flex justify-between text-xs text-gray-400">
-                  <span>{uploadPct}% complete</span>
-                </div>
-                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full transition-all duration-300" style={{ width: uploadPct + '%', background: HERMES }} />
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="upload-progress-title"
+            >
+              <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl ring-1 ring-gray-200">
+                <div className="flex flex-col items-center gap-4">
+                  <LottieLoader size={96} message="" />
+
+                  <div className="text-center">
+                    <h2 id="upload-progress-title" className="text-base font-bold text-gray-900">
+                      {prog.msg || 'Uploading…'}
+                    </h2>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Keep this tab open until it finishes.
+                    </p>
+                  </div>
+
+                  <div className="w-full">
+                    <div className="mb-1.5 flex items-baseline justify-between">
+                      <span className="text-2xl font-bold tabular-nums text-gray-900">{prog.pct}%</span>
+                      {prog.etaMs !== null && (
+                        <span className="text-xs text-gray-500">{formatEta(prog.etaMs)} left</span>
+                      )}
+                    </div>
+                    <div
+                      className="h-2 w-full overflow-hidden rounded-full bg-gray-100"
+                      role="progressbar"
+                      aria-valuenow={prog.pct}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                    >
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{ width: prog.pct + '%', background: HERMES }}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
