@@ -27,6 +27,8 @@
 -- left for an explicit Schema-tab decision. The original script skipped them for
 -- the same reason and reported 0 such rows on prod.
 
+BEGIN;
+
 UPDATE dataset_state ds
 SET    schema_config = ds.schema_config || '{"outletReporting": true}'::jsonb
 FROM   datasets d
@@ -41,3 +43,5 @@ WHERE  d.id = ds.dataset_id
          JOIN   review_sources rs ON rs.id = rsl.review_source_id
          WHERE  rs.dataset_id = d.id
        ) >= 5;
+
+COMMIT;
