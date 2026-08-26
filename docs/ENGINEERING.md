@@ -684,7 +684,12 @@ Constraints:
   one returns 0 and is indistinguishable from "no run".
   `ci.yml` carries a **`workflow_dispatch`** trigger for exactly
   this: re-run the workflow manually rather than pushing a no-op
-  commit to force one.
+  commit to force one. **The deploy job accepts `workflow_dispatch`
+  as well as `push`** — added the same day, because a dispatch that
+  verifies CI but skips the deploy leaves production behind with a
+  green tick next to it, which is a worse failure than a red one.
+  No privilege change: dispatching needs the same write access as
+  pushing.
 - **Pushing is gated on EVERY branch, not just `main`** (CLAUDE.md
   push policy). No `git push` to a feature / `claude/*` / PR branch
   without explicit human say-so.

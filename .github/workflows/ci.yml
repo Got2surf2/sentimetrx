@@ -162,7 +162,13 @@ jobs:
     # its code). Manual fallback if the hook path is ever broken:
     # `vercel deploy --prod` from an authorized laptop.
     needs: [test, isolation, e2e]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # workflow_dispatch deploys too, otherwise the manual recovery path can
+    # verify CI but never ship — which is exactly the hole that stranded
+    # f4fec8eb: green on dispatch, deploy skipped, production left behind.
+    # No privilege change: dispatching requires the same write access as pushing.
+    # The gate below sees no `github.event.before` on a dispatch and takes its
+    # "push range unknown → deploy" branch, which is the intended behaviour.
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency:
