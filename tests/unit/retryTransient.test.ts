@@ -100,3 +100,48 @@ describe('retryTransientResult', () => {
     expect(res.error).toBeTruthy()
   })
 })
+
+// The bug this file exists to prevent a second time.
+//
+// The row-insert shipped wrapped in `retryTransient` — the THROW-based helper —
+// against a supabase-js call. supabase-js does not throw on a transport failure;
+// it RETURNS `{ error: { message: 'TypeError: fetch failed', code: '' } }`.
+// So the retry never fired, and the "fix" for a production incident was a no-op
+// that typechecked, passed review and deployed.
+describe('supabase-js result shape (the wrapper must match the client)', () => {
+  // Verified against the real client on 2026-08-26 by pointing it at an
+  // unroutable host: THREW? false. This is the exact object it hands back.
+  const supabaseTransportError = {
+    message: 'TypeError: fetch failed',
+    details: 'TypeError: fetch failed\n\nCaused by: Error: bad port',
+    hint: '',
+    code: '',
+  }
+
+  it('classifies the RETURNED postgrest error as transient (code is empty — match on message)', () => {
+    expect(isTransientTransportError(supabaseTransportError)).toBe(true)
+  })
+
+  it('retryTransientResult RETRIES it — the value-based path', async () => {
+    let calls = 0
+    const res = await retryTransientResult(async () => {
+      calls++
+      return calls === 1 ? { data: null, error: supabaseTransportError } : { data: [{ id: 1 }], error: null }
+    }, { baseMs: 1 })
+    expect(calls).toBe(2)
+    expect(res.error).toBeNull()
+  })
+
+  it('retryTransient does NOT retry it — proving the two are not interchangeable', async () => {
+    // Nothing throws, so the throw-based helper returns the first result
+    // untouched. This assertion is the regression guard: if someone swaps the
+    // wrapper back, the insert silently stops retrying again.
+    let calls = 0
+    const out = await retryTransient(async () => {
+      calls++
+      return { data: null, error: supabaseTransportError }
+    }, { baseMs: 1 })
+    expect(calls).toBe(1)
+    expect(out.error).toBe(supabaseTransportError)
+  })
+})

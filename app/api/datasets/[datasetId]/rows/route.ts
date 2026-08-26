@@ -26,7 +26,7 @@ import { ROWS_PER_BATCH } from '@/lib/constants'
 import { memberRowCounts } from '@/lib/signalStats'
 import { stripReservedRowKeys } from '@/lib/taxonomyEmbed'
 import { serverError } from '@/lib/apiError'
-import { retryTransient, AuthUnavailableError } from '@/lib/retryTransient'
+import { retryTransientResult, AuthUnavailableError } from '@/lib/retryTransient'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60   // the O(sample) bulk sample fetches only ~50K rows via the idx_drf_sample index — flat ~16-21s at any dataset size
@@ -415,7 +415,12 @@ export async function POST(req: Request, props: Params) {
   // Postgres error is a real answer and is returned unchanged. Without this a
   // single stale keep-alive socket failed one batch out of ~590 and aborted the
   // whole upload, leaving the dataset partially loaded (production 2026-08-26).
-  const insertResult = await retryTransient(async () => await service.from('dataset_rows_flat').insert(flatRows))
+  // retryTransientRESULT, not retryTransient: supabase-js does NOT throw on a
+  // transport failure — it RETURNS `{ error: { message: 'TypeError: fetch
+  // failed', code: '' } }`. A throw-based wrapper here silently never retries,
+  // which is exactly the bug this line shipped with on 2026-08-26. Pinned by
+  // tests/unit/retryTransient.test.ts.
+  const insertResult = await retryTransientResult(async () => await service.from('dataset_rows_flat').insert(flatRows))
   if (insertResult.error) return serverError(insertResult.error, 'datasets.rows.insert', { orgId: auth.orgId })
 
   // Running total — an exact count(*) over the whole dataset per appended batch
