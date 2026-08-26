@@ -190,3 +190,40 @@ that sha* — `gh api "repos/<owner>/<repo>/actions/runs?head_sha=$(git rev-pars
 `gh run list` alone shows the previous run sitting at the top and reads like
 success. Use the full sha; an abbreviated or hand-padded one silently returns 0
 and looks identical to "no run".
+
+---
+
+## 2026-08-26 — `npm run migrate` can't reach prod: the direct DB host is IPv6-only
+
+**Why**: applying `sql/193` to production failed at connect. The error points at
+the wrong thing, which is the part worth recording:
+
+```
+LegacyDbConfigConnectTempRoleError: failed to connect as temp role:
+failed to connect to postgres: PgClient: Connection timed out
+suggestion: set the env var correctly: SUPABASE_DB_PASSWORD
+```
+
+That suggestion sends you hunting for a password. The real cause is the network.
+`--linked` *does* use the Management API — the CLI is authenticated and
+`supabase projects list` works — but it then provisions a **temp role** and
+connects to the project's **direct** host to execute the statement.
+`db.foubvgcarhwzjqwaxnod.supabase.co` resolves to `2600:1f18:…` and has **no A
+record**, so on an IPv4-only network it simply times out. The `TEST_DB_URL`
+already in `.env.local` works precisely because it points at the **pooler**
+(`aws-0-us-east-1.pooler.supabase.com`), which is IPv4.
+
+**What changed**:
+- `scripts/apply-migration.ts` — honours `PROD_DB_URL` (or `SUPABASE_DB_URL`)
+  and routes the apply, the ledger insert **and** the schema dump through
+  `--db-url`. Previously all three hardcoded `--linked`, so a working connection
+  string couldn't be used even if you had one. Also loads `.env.local` itself,
+  since `npm run migrate` is a bare `tsx` invocation with no env loading.
+- `docs/DATABASE.md` — the gotcha, next to the sql/193 note.
+
+**Safety note**: the failed attempt applied nothing — it died at connect, before
+any SQL ran. Verified against prod afterwards rather than assumed: ledger still
+tails `192_org_snapshot_runs.sql` / `191_…`, and still exactly 12 datasets carry
+`outletReporting`. This is the good case of the ambiguity recorded earlier in the
+year, where a **502 mid-apply** left the DDL applied but the ledger unwritten — a
+connect-time failure is unambiguous, but it still gets checked.

@@ -382,6 +382,17 @@ instance of a much larger class still open. **✅ APPLIED TO PROD 2026-08-16** (
 commit). Verified by `scripts/_verify_sql189.mts` on TEST and by direct catalog
 + anon-probe checks against prod.
 
+> ⚠️ **`npm run migrate` needs `PROD_DB_URL` on an IPv4-only network (2026-08-26).**
+> `--linked` goes through the Management API, but the CLI then provisions a
+> **temp role** and connects to the project's DIRECT host to run the statement.
+> `db.<ref>.supabase.co` resolves to **IPv6 only**, so without IPv6 it fails with
+> `LegacyDbConfigConnectTempRoleError: … Connection timed out` — whose suggestion
+> blames `SUPABASE_DB_PASSWORD` and sends you after the wrong thing. Put the
+> **session pooler** string (`aws-0-<region>.pooler.supabase.com`, IPv4 — same
+> shape as the `TEST_DB_URL` already in `.env.local`) in `PROD_DB_URL` and
+> `scripts/apply-migration.ts` routes the apply, the ledger insert AND the schema
+> dump through it. It loads `.env.local` itself.
+
 sql/193 (2026-08-24) is a **data-only** migration and the only one of its kind
 here: no DDL, so `docs/db/schema.sql` does not move. It grandfathers the datasets
 that had outlet reporting under the old *implicit* rule (google_reviews + ≥5
