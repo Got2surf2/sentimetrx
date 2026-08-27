@@ -339,3 +339,70 @@ CSV uploaded end to end — 20 batches (was 80), modal reading "batch 4 of 20 ·
 about 25 seconds left". Then checked the thing that actually matters for a stride
 change: **4,000 rows stored, 4,000 distinct row_index, 0 duplicates, max 3999** —
 contiguous, no collision.
+
+## 2026-08-27 — ANES 1984-2024: rescuing a half-loaded production upload
+
+**Reported as three problems** — "no schema shows up", "AI theme mining is
+disabled", "the original file had over 120K records, the dataset has half that."
+They were one problem.
+
+The 2026-08-26 upload of `anes_1984_2024_evaluations.csv` into dataset
+`7ece9ec9-4854-4bf6-a5e7-92cd902123dc` stopped at **batch 1,337 of 2,518** —
+66,850 of 125,897 rows. Crucially there was **no error and no rollback**: the
+client rolls back and deletes the dataset when a batch fails, and neither
+happened, so the loop did not fail — the browser tab stopped running. At the
+~8.7s/batch measured that day, the file is a **~6.1 hour foreground tab**; it
+survived ~3.2 hours.
+
+Saving the schema is step 3, *after* every batch. It never ran, so
+`dataset_state.schema_config` was still the creation default `{fields: []}` —
+and `TextMineModule` derives its open-ended fields from `schema.fields`
+(`:1480`), so `canMine` was false and the Mine button was greyed out
+(`:2624`). The "AI is disabled" report was a symptom of the truncated upload,
+not an AI setting.
+
+One red herring worth recording: stored `row_index` values are **sparse**
+(0-49, 200-249, 400-449…). That is not data loss — the server reserves
+`ROWS_PER_BATCH` (200) index slots per batch while production's client posts 50.
+Prod runs `2e4b28b5`; the 50→200 commit is still local.
+
+**Fix**: `scripts/oneoff/_load_anes_dataset.ts` re-loads the file server-side —
+the real `autoDetectSchema()`, the real `stampRowSubstantive()`, the real
+`row_index = batch_index * ROWS_PER_BATCH + offset` contract — in **4m39s**
+instead of ~6 hours, then verifies and exits non-zero if anything is off. Two
+things it had to handle: an unbounded `DELETE` over the partial rows exceeds
+PostgREST's statement timeout (walk `row_index` in windows instead), and one
+insert hit `TypeError: fetch failed` mid-run and recovered on retry — the exact
+transient that has been killing these uploads.
+
+**Two deliberate departures from the UI path, both measured:**
+
+1. `parseCSV()` in `UploadClient.tsx` toggles on every `"` and never emits one,
+   so interior quote marks are dropped. On this file that mangles **2,796 of
+   125,897 rows** (3,073 fields), all of them in the verbatim columns that are
+   the point of the dataset: `I like when Reagan says, "God bless you"` loads as
+   `I like when Reagan says, God bless you`. The script uses an RFC4180 splitter.
+   Column counts and every other value are identical. **This is a live bug in the
+   shipped upload path and is not yet fixed** — see below.
+2. `autoDetectSchema` types a column open-ended when it reads as prose
+   (`avgWords >= 4`, `datasetUtils.ts:215`). ANES stores full codebook labels
+   ("2. No, no one in household belongs to a labor union"), so **nine
+   single-choice columns with 2-8 distinct values** were typed open-ended and
+   offered as theme-mining targets, with `primaryTextField` landing on
+   *Education*. The detector's own categorical rule one line earlier is
+   `uniqueArr.length <= 15 && avgWords < 3` — same cardinality test plus a
+   word-count gate these labels fail. The script re-applies the cardinality half
+   alone and attaches the `values` list. Result: 20 categorical / 26 numeric /
+   1 id / **5 open-ended** (the real verbatims), `primaryTextField` = *Like About*.
+
+**Verified in the browser on live production before committing**: Schema tab
+renders 52 fields (Rating Scale 26 · ID 1 · Single Select 20 · Open Text 5) with
+the nine corrected fields showing their true unique counts; TextMine reaches
+"TextMine is ready", 50,000 of 125,897 sampled across 5 open-ended fields, and
+**"Mine themes — 5 questions" is enabled**.
+
+**Follow-ups, not done here:** (a) the `parseCSV` quote-dropping bug above;
+(b) the upload path has no resume — a dataset stranded mid-load looks "active"
+with a silently empty schema and nothing tells the user. A terminal status on
+`datasets` set only after step 3 would make this self-evident instead of a
+three-symptom bug report.
