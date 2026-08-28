@@ -429,3 +429,17 @@ counts) on the test project's 128K Outback dataset; full 50K walk there:
 mount, modal opens instantly, `cached: true` on warm requests, cache row
 written with correct fingerprint. Prod v1 baseline for ANES captured
 pre-migration for a byte-level diff after `npm run migrate sql/194_...`.
+
+**Prod apply + verification (same day):** `npm run migrate` could not reach prod
+from this network — `.env.local`'s `PROD_DB_URL` had the WRONG POOLER HOST
+(guessed `aws-0-us-east-1` on 8/27; prod is `aws-1-us-east-1`), and even with
+the right host the session pooler (:5432) times out from here (only :6543
+connects, which rejects multi-statement files). Applied instead via the
+**Supabase Management API** (`POST /v1/projects/{ref}/database/query`,
+owner-run `scripts/_apply_194_prod.mjs`, token from the CLI's keychain entry —
+go-keyring base64-wraps it). Ledger row recorded; anon still locked out.
+**Verified:** the new function's full 10-page ANES walk is **byte-identical**
+to the pre-migration v1 baseline (all 51 fields, all pages) and runs in **19s
+warm** vs 42.6s (single page 1.4s vs 4s; cost now ~flat in field count). The
+deployed route benefits immediately; instant-open (cache + prefetch) ships
+with the next push.
