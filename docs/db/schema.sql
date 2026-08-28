@@ -2177,31 +2177,37 @@ CREATE OR REPLACE FUNCTION "public"."sampled_filter_options_blocks"("p_dataset_i
     SELECT (e ->> 'field') AS field, (e ->> 'type') AS type, ord
     FROM jsonb_array_elements(p_fields) WITH ORDINALITY AS x(e, ord)
   ),
-  -- one (field, row) cell with the RAW extracted text value (untrimmed).
+  -- ONE jsonb parse per row (the sql/194 fix): explode to (key, value) pairs
+  -- and join to the requested fields, instead of `data ->> field` re-parsing
+  -- the row once per field (~80ms/field/5K-page on ANES's 51 fields).
   cells AS MATERIALIZED (
-    SELECT fl.ord, fl.field, fl.type, (p.data ->> fl.field) AS raw
-    FROM fld fl CROSS JOIN page p
+    SELECT fl.ord, fl.field, fl.type, kv.value AS raw
+    FROM page p
+    CROSS JOIN LATERAL jsonb_each_text(p.data) kv
+    JOIN fld fl ON fl.field = kv.key
   ),
   agg AS (
-    SELECT ord, field, type,
+    -- Anchor on fld (LEFT JOIN): a field with no cells on this page — absent
+    -- key in every row — still emits its output row (nonempty=0, NULL min/max),
+    -- matching the v191 all-NULL-cells result for the same case.
+    SELECT fl.ord, fl.field, fl.type,
       -- non-empty = count_nonempty_rows (sql/161): trim, all-whitespace is blank
-      count(*) FILTER (WHERE NULLIF(btrim(raw), '') IS NOT NULL) AS nonempty,
+      count(*) FILTER (WHERE NULLIF(btrim(c.raw), '') IS NOT NULL) AS nonempty,
       -- numeric min/max = numeric_field_stats predicate (no trim)
-      min(CASE WHEN type = 'numeric' AND raw ~ '^-?[0-9]+\.?[0-9]*$' THEN raw::double precision END) AS num_min,
-      max(CASE WHEN type = 'numeric' AND raw ~ '^-?[0-9]+\.?[0-9]*$' THEN raw::double precision END) AS num_max,
+      min(CASE WHEN fl.type = 'numeric' AND c.raw ~ '^-?[0-9]+\.?[0-9]*$' THEN c.raw::double precision END) AS num_min,
+      max(CASE WHEN fl.type = 'numeric' AND c.raw ~ '^-?[0-9]+\.?[0-9]*$' THEN c.raw::double precision END) AS num_max,
       -- date min/max = legacy .order('data->>field') probe: raw lexical, blanks out
-      min(CASE WHEN type = 'date' AND raw IS NOT NULL AND raw <> '' THEN raw END) AS date_min,
-      max(CASE WHEN type = 'date' AND raw IS NOT NULL AND raw <> '' THEN raw END) AS date_max
-    FROM cells
-    GROUP BY ord, field, type
+      min(CASE WHEN fl.type = 'date' AND c.raw IS NOT NULL AND c.raw <> '' THEN c.raw END) AS date_min,
+      max(CASE WHEN fl.type = 'date' AND c.raw IS NOT NULL AND c.raw <> '' THEN c.raw END) AS date_max
+    FROM fld fl LEFT JOIN cells c ON c.ord = fl.ord
+    GROUP BY fl.ord, fl.field, fl.type
   ),
   vc AS (
     -- distinct value counts = count_field_values (raw data->>field, exclude
     -- null/''; NO trim). ONLY for categorical fields — the Filters modal value-
-    -- filters categorical/numeric/date; open-ended is never a checkbox list, so
-    -- counting its (high-cardinality free-text) distincts was pure waste and the
-    -- ~40s-at-1M cost driver. Capped per page at 2000 by frequency; the Node
-    -- caller merges across pages and caps the final list at 500.
+    -- filters categorical/numeric/date; open-ended is never a checkbox list.
+    -- Capped per page at 2000 by frequency; the Node caller merges across pages
+    -- and caps the final list at 500.
     SELECT ord, field,
            jsonb_agg(jsonb_build_object('v', raw, 'c', c) ORDER BY rn) FILTER (WHERE rn <= 2000) AS values,
            count(*) AS distinct_n
@@ -5424,7 +5430,8 @@ CREATE TABLE IF NOT EXISTS "public"."dataset_state" (
     "updated_by" "uuid",
     "analytics" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
     "session_state" "jsonb",
-    "outlet_action_plans" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL
+    "outlet_action_plans" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
+    "filter_options" "jsonb"
 );
 
 
@@ -5436,6 +5443,10 @@ COMMENT ON COLUMN "public"."dataset_state"."session_state" IS 'Saved workspace s
 
 
 COMMENT ON COLUMN "public"."dataset_state"."outlet_action_plans" IS 'Cache of per-outlet LLM action plans for the Outlet Report, keyed by place_id: {place_id: {basis, plan, generatedAt}}. Regenerated when basis (review count + theme READ verdicts) changes.';
+
+
+
+COMMENT ON COLUMN "public"."dataset_state"."filter_options" IS 'Cache of the filter-options route''s computed per-field options: {fingerprint, computedAt, fields}. Fingerprint = row count + schema fields signature + last_synced_at; the route recomputes when it no longer matches (sql/194).';
 
 
 

@@ -406,3 +406,26 @@ the nine corrected fields showing their true unique counts; TextMine reaches
 with a silently empty schema and nothing tells the user. A terminal status on
 `datasets` set only after step 3 would make this self-evident instead of a
 three-symptom bug report.
+
+## 2026-08-28 — Filters modal: 41.5s → instant (sql/194 + cache + prefetch)
+
+**Why:** Owner: "filters take a really long time to come up — should be
+instantaneous — check the ANES dataset." Measured the filter-options walk on
+ANES (125,897 rows, 51 filterable fields): **41.5s** — the sql/191 RPC's cells
+CTE re-parsed each row's jsonb once PER FIELD (~80ms/field per 5K page; 0
+fields = 114ms, perfectly field-count-linear).
+
+**What:** (1) sql/194 rewrites the cells CTE to one `jsonb_each_text` parse per
+row, hash-joined to the field list. (2) The route caches the computed options in
+`dataset_state.filter_options` keyed by a fingerprint (row count +
+last_synced_at + fields-signature sha1) — warm requests are one head-count
+query. (3) `DatasetShell` prefetches `/filter-options` on mount instead of on
+first modal open.
+
+**Verified:** new function's page-1 output matched an independent JS
+recomputation of the same stratified sample on all 18 fields (incl. per-value
+counts) on the test project's 128K Outback dataset; full 50K walk there:
+**4.8s** (was ~40s-shape). Browser-verified on the dev server: prefetch fires on
+mount, modal opens instantly, `cached: true` on warm requests, cache row
+written with correct fingerprint. Prod v1 baseline for ANES captured
+pre-migration for a byte-level diff after `npm run migrate sql/194_...`.

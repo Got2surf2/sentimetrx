@@ -89,9 +89,12 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
       .catch(function() {})
   }, [datasetId, dataset.source])
 
-  // Fetch lightweight filter options when filter modal opens (not all rows)
+  // Fetch lightweight filter options on mount (not all rows) so the Filters
+  // modal opens instantly — the route serves its sql/194 cache in ~150ms when
+  // the data hasn't changed, and the loading state below covers a click that
+  // beats a cold recompute.
   useEffect(function() {
-    if (!showFilters || rowsLoaded || loadingRows) return
+    if (rowsLoaded || loadingRows) return
     setLoadingRows(true)
     void (async function() {
       try {
@@ -143,7 +146,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
       } catch {}
       setLoadingRows(false)
     })()
-  }, [showFilters, rowsLoaded, loadingRows, datasetId])
+  }, [rowsLoaded, loadingRows, datasetId])
 
   const fCount = filterCount(filters) + filterCount(lockedFilters)
 

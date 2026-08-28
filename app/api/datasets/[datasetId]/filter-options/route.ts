@@ -2,7 +2,12 @@
 // Returns distinct values and numeric ranges for filter UI.
 // Uses dataset_rows_flat with SQL functions — instant at any scale.
 // Falls back to pre-computed analytics if flat table is empty.
+// The computed options are cached in dataset_state.filter_options (sql/194)
+// keyed by a fingerprint of (row count, schema fields signature,
+// last_synced_at) — the sampled walk only re-runs when data or schema changed,
+// so a warm open is one head-count query instead of a 50K-row scan.
 
+import { createHash } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
@@ -27,7 +32,7 @@ export async function GET(_req: Request, props: Props) {
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // Verify access (admin Phase E: super-admins cross-org)
-  const { data: dataset } = await supabase.from('datasets').select('org_id').eq('id', params.datasetId).single()
+  const { data: dataset } = await supabase.from('datasets').select('org_id, last_synced_at').eq('id', params.datasetId).single()
   if (!dataset) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
   if (!isAdmin && dataset.org_id !== orgId) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
 
@@ -57,6 +62,29 @@ export async function GET(_req: Request, props: Props) {
     .eq('dataset_id', params.datasetId)
 
   const hasFlat = (flatCount || 0) > 0
+
+  // Cache fingerprint: options only change when the data or the schema does.
+  // Row count + last_synced_at cover data changes (datasets append/replace,
+  // never edit in place); the fields signature covers schema edits (type/label/
+  // hidden changes alter what gets computed and the labels baked into it).
+  const fieldsSig = createHash('sha1')
+    .update(JSON.stringify(fields.map(f => [f.field, f.type, f.label || ''])))
+    .digest('hex')
+  const fingerprint = (flatCount || 0) + ':' + (dataset.last_synced_at || '') + ':' + fieldsSig
+
+  // Serve the sql/194 cache when it still matches. Read in its own query so a
+  // database that doesn't have the column yet (deploy-order) just misses.
+  if (hasFlat) {
+    const { data: cacheRow } = await service
+      .from('dataset_state')
+      .select('filter_options')
+      .eq('dataset_id', params.datasetId)
+      .single()
+    const cached = (cacheRow as { filter_options?: { fingerprint?: string; fields?: Record<string, unknown> } | null } | null)?.filter_options
+    if (cached && cached.fingerprint === fingerprint && cached.fields) {
+      return NextResponse.json({ fields: cached.fields, cached: true })
+    }
+  }
 
   const options: Record<string, { type: string; label: string; values?: string[]; min?: number; max?: number; dateMin?: string; dateMax?: string; blanks?: number; valuesCapped?: boolean; sampled?: boolean }> = {}
 
@@ -97,6 +125,12 @@ export async function GET(_req: Request, props: Props) {
         }
         options[f.field] = opt
       }
+      // Store for next time (sql/194). Best-effort: a database without the
+      // column yet (deploy-order) just errors and the response is unaffected.
+      await service
+        .from('dataset_state')
+        .update({ filter_options: { fingerprint, computedAt: new Date().toISOString(), fields: options } })
+        .eq('dataset_id', params.datasetId)
       return NextResponse.json({ fields: options })
     } catch {
       // sampled_filter_options unavailable (PGRST202) or errored — fall through

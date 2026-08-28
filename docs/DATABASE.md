@@ -225,6 +225,13 @@ probes) that 57014'd at 1M, so the Filters modal opens at any scale; ≤50K
 scans every row = exact (500 distinct values, fixing the "missing values"
 bug), above the cap it samples and the caller labels blanks/values "~";
 service_role-only, per-field semantics match the functions it replaces.
+sql/194 (2026-08-28) rewrote the blocks twin's cells CTE to ONE
+`jsonb_each_text` parse per row (the cross-join re-parsed each row's
+jsonb once per field — ~80ms/field per 5K page on ANES's 51 fields, a
+41.5s walk) and added `dataset_state.filter_options` — the route's cache
+of the computed options `{fingerprint, computedAt, fields}`, fingerprint
+= flat count + last_synced_at + fields-signature sha1, invalidated by
+recompute-on-mismatch.
 
 sql/169 (2026-07-13, perf review §7 Brief C) reworked the five scalar
 `/aggregate` RPCs — `crosstab_counts`, `group_numeric_stats`,
