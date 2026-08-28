@@ -443,3 +443,38 @@ to the pre-migration v1 baseline (all 51 fields, all pages) and runs in **19s
 warm** vs 42.6s (single page 1.4s vs 4s; cost now ~flat in field count). The
 deployed route benefits immediately; instant-open (cache + prefetch) ships
 with the next push.
+
+## 2026-08-28 — ANES: Year as a breakdown axis, and a 2008 file that would have undone a distinction
+
+`Year` was typed Rating Scale by `autoDetectSchema` (all-numeric column), which
+makes it a range control rather than a breakdown axis. Flipped to Single Select.
+It had already been flipped by a parallel session but was left half-done —
+`sqt` set, no `values` list, and `min`/`max`/`avg` still attached, so Charts
+would still have offered a numeric range for a field that no longer had one.
+`scripts/oneoff/_set_field_type.ts` mirrors `SchemaEditor.handleTypeChange`
+(`:613`) and additionally writes `values` and drops the numeric domain — the UI
+skips `values` because the settings page back-fills it from
+`analytics.fieldSummaries` at render (`settings/page.tsx:79-88`), which a
+server-side flip never gets.
+
+**`anes_2008_evaluations.csv` was NOT loaded, deliberately.** Diffed against the
+6,894 2008 rows already in the dataset: same 52 columns, same row order, same
+IDs, and **identical in 51 of 52 columns**. The only difference is that it fills
+`Top Problem` with a byte-exact copy of `Top Problem - Political` — 6,278 rows,
+zero differing. Loading it would have merged 2008's differently-worded question
+("most important *political* problem") into the cross-year `Top Problem` series,
+which is the opposite of the intent. The separation the owner asked for is
+already what's stored: 2008 is the only year with `Top Problem` empty and
+`Top Problem - Political` / `- Personal` populated.
+
+Worth recording for anyone reading the year coverage: **2004 has no problem
+verbatim at all** (all three columns empty, 1,723 rows), and the file skips
+1994, 2002, 2006, 2010, 2014, 2018 and 2022 entirely.
+
+**Theme models are keyed by field, never by year** (`themeModelKey`,
+`themeUtils.ts:103` → `theme_model.fields`). A model mined on `Top Problem`
+therefore cannot reach 2008, whose rows are blank in that column, and 2008 would
+get its own independent vocabulary. To get ONE comparable theme set across all
+years, both columns must be selected together in TextMine — `mineThemes()` saves
+`fieldNames: effectiveFields` (`TextMineModule.tsx:2140`) and mines a combined
+corpus, producing a single model keyed to the pair.
