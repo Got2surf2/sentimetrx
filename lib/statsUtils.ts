@@ -5,7 +5,7 @@
 export interface TTestResult { t: number; df: number; p: number; ma: number; mb: number; sa: number; sb: number; na: number; nb: number; d: number; se: number }
 export interface ANOVAResult { F: number; dfB: number; dfW: number; p: number; eta2: number; SSB: number; SSW: number; MSB: number; MSW: number; groupStats: Record<string, { n: number; mean: number; sd: number }>; pairwise: { a: string; b: string; t: number; df: number; p: number; ma: number; mb: number; pAdj: number }[]; k: number; N: number }
 export interface ChiSquareResult { chi2: number; df: number; p: number; V: number; N: number; rows: string[]; cols: string[]; table: Record<string, Record<string, number>>; rowSums: Record<string, number>; colSums: Record<string, number> }
-export interface RegressionResult { coefs: { name: string; beta: number; se: number; t: number; p: number; ci: [number, number] }[]; R2: number; R2adj: number; F: number; Fp: number; n: number; p: number; SSE: number; SST: number; MSE: number; yhat: number[]; resid: number[]; names: string[] }
+export interface RegressionResult { coefs: { name: string; beta: number; se: number; t: number; p: number; ci: [number, number] }[]; R2: number; R2adj: number; F: number; Fp: number; n: number; p: number; SSE: number; SST: number; MSE: number; yhat: number[]; resid: number[]; names: string[]; vcov: number[][] }
 export interface MannWhitneyResult { U: number; z: number; p: number; na: number; nb: number }
 export interface DescStats { n: number; mn: number; sd: number; med: number; skew: number; sw?: { W: number; p: number } | null }
 export interface TTestBL { t: number; df: number; p: number; ma: number; mb: number; d: number }
@@ -289,7 +289,11 @@ export function olsRegression(y: number[], X: number[][], names: string[]): Regr
   var se = inv.map(function(row, i) { return Math.sqrt(Math.abs(row[i] * MSE)) })
   var tStats = beta.map(function(b, i) { return b / se[i] }), pVals = tStats.map(function(t) { return tDist2p(Math.abs(t), n - q) })
   var coefs = ['Intercept'].concat(names).map(function(nm, i): RegressionResult['coefs'][number] { return { name: nm, beta: beta[i], se: se[i], t: tStats[i], p: pVals[i], ci: [beta[i] - 1.96 * se[i], beta[i] + 1.96 * se[i]] } })
-  return { coefs: coefs, R2: R2, R2adj: R2adj, F: FF, Fp: Fp, n: n, p: q - 1, SSE: SSE, SST: SST, MSE: MSE, yhat: yhat, resid: resid, names: names }
+  // Full coefficient covariance matrix, intercept first: Var(beta) = (X'X)^-1 * MSE.
+  // The per-coef `se` above is its diagonal's sqrt; the off-diagonals feed the
+  // simulator export's coefficient-uncertainty block (lib/simulatorExport.ts).
+  var vcov = inv.map(function(row) { return row.map(function(v) { return v * MSE } ) })
+  return { coefs: coefs, R2: R2, R2adj: R2adj, F: FF, Fp: Fp, n: n, p: q - 1, SSE: SSE, SST: SST, MSE: MSE, yhat: yhat, resid: resid, names: names, vcov: vcov }
 }
 
 // ─── Logistic regression (binary outcome) ────────────────────────────────
@@ -306,6 +310,8 @@ export interface LogisticResult {
   lr: number; lrDf: number; lrP: number; aic: number
   iterations: number; converged: boolean; separation: boolean; regularized: boolean
   names: string[]
+  /** Coefficient covariance (inverse Hessian at the optimum), intercept first. */
+  vcov: number[][]
 }
 
 function sigmoid(z: number): number { return z >= 0 ? 1 / (1 + Math.exp(-z)) : Math.exp(z) / (1 + Math.exp(z)) }
@@ -375,7 +381,7 @@ export function logisticRegression(y: number[], X: number[][], names: string[], 
     return { name: nm, beta: beta[i], se: se[i], z: z, p: pv, or: Math.exp(beta[i]), orCI: [Math.exp(beta[i] - 1.96 * se[i]), Math.exp(beta[i] + 1.96 * se[i])] }
   })
   var nPos = y.reduce(function(s, v) { return s + (v === 1 ? 1 : 0) }, 0)
-  return { coefs: coefs, n: n, nPos: nPos, nNeg: n - nPos, ll: ll, ll0: ll0, pseudoR2: pseudoR2, lr: lr, lrDf: lrDf, lrP: lrP, aic: aic, iterations: iter, converged: converged, separation: separation, regularized: regularized, names: names }
+  return { coefs: coefs, n: n, nPos: nPos, nNeg: n - nPos, ll: ll, ll0: ll0, pseudoR2: pseudoR2, lr: lr, lrDf: lrDf, lrP: lrP, aic: aic, iterations: iter, converged: converged, separation: separation, regularized: regularized, names: names, vcov: fitR.cov }
 }
 
 // ─── Multicollinearity: VIF + iterative pruning ──────────────────────────

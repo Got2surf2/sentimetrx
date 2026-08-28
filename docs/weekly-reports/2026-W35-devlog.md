@@ -478,3 +478,25 @@ get its own independent vocabulary. To get ONE comparable theme set across all
 years, both columns must be selected together in TextMine — `mineThemes()` saves
 `fieldNames: effectiveFields` (`TextMineModule.tsx:2140`) and mines a combined
 corpus, producing a single model keyed to the pair.
+
+## 2026-08-28 — Driver Simulator JSON export from the Statistics Regression panels
+
+**Why:** owner built a standalone HTML Monte-Carlo Driver Simulator that consumes
+a single self-contained JSON model payload (simulator-payload-spec v1.0, linear
+`identity` + binary logistic `logit` links); the platform needed to emit it from
+the regression pieces of the Statistics page.
+
+**What:** `lib/simulatorExport.ts` builds and asserts the payload (log-odds not
+odds ratios, sigma = residual SD identity-only, estimation-sample moments,
+dummy sd = √(p(1−p)), PD-checked se+corr, separation blocked); both fitters in
+`lib/statsUtils` now return the full coefficient covariance (`vcov`) they
+already computed internally; both Model Fit headers gained "Download simulation
+model (.json)". The linear panel's estimation sample was factored into ONE
+builder shared by fit and export so slider moments can never desync from the
+model.
+
+**Verified:** 11 new unit tests incl. the spec's acceptance identities; in the
+browser on the dev server both a logistic (Outback, Cleanliness top-box, theme
+dummy) and a linear (Truth Social favourites drivers) model exported, and both
+files pass a mirror of the simulator's §15 consumer validation
+(`scripts/_validate_sim_payload.mjs`, untracked harness — KEEP).

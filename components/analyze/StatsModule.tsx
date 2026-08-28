@@ -61,6 +61,7 @@ import {
   deterministicSubsample,
 } from '@/lib/statsUtils'
 import { buildRegVars, buildDesign, type RegVar, type OutcomeSpec, type PredictorSpec } from '@/lib/regressionDesign'
+import { buildLinearSimulatorPayload, buildLogisticSimulatorPayload, simulatorFilename } from '@/lib/simulatorExport'
 import { axisOfDimField, isDimField, dimVirtualFields, dimFieldName, DIM_AXES, DIM_AXIS_LABEL } from '@/lib/dimensionFields'
 import { applyFilters, filterCount } from '@/lib/filterUtils'
 import { useFilters } from '@/components/analyze/FilterContext'
@@ -99,11 +100,12 @@ interface RegressionCoef { name: string; beta: number; se: number; t: number; p:
 interface RegressionResult {
   coefs: RegressionCoef[]; R2: number; R2adj: number; F: number; Fp: number
   n: number; p: number; SSE: number; SST: number; MSE: number
-  yhat: number[]; resid: number[]; names: string[]
+  yhat: number[]; resid: number[]; names: string[]; vcov: number[][]
 }
 
 interface Props {
   datasetId: string
+  datasetName?: string
   schema: SchemaConfig
   themeModel?: ThemeModel | null
   datasetSource?: string
@@ -865,8 +867,8 @@ var MAX_PREDICTORS = 12
 // ordinal, or theme → mentioned/not) predicting a binary outcome. Self-contained:
 // owns its picker + binarization state; delegates the math to
 // buildDesign → pruneCollinear → logisticRegression.
-function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, datasetId }: {
-  fields: SchemaFieldConfig[]; data: Record<string, unknown>[]; themeModel: ThemeModel | null | undefined; themeSourceField: string; aliases: Record<string, string>; datasetId: string
+function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, datasetId, datasetName }: {
+  fields: SchemaFieldConfig[]; data: Record<string, unknown>[]; themeModel: ThemeModel | null | undefined; themeSourceField: string; aliases: Record<string, string>; datasetId: string; datasetName?: string
 }) {
   var _lk = 'statsLogit_' + datasetId
   var regVars = useMemo(function() { return buildRegVars(fields, themeModel, themeSourceField) }, [fields, themeModel, themeSourceField])
@@ -960,6 +962,7 @@ function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, da
 
   var outcomeVar = varByKey[outcomeKey] || null
   var res = fit && 'res' in fit ? fit.res : null
+  var design = fit && 'd' in fit && fit.d ? fit.d : null
   var dropped: { name: string; vif: number }[] = fit && 'dropped' in fit && Array.isArray(fit.dropped) ? fit.dropped : []
 
   // Expert register — one dense odds-ratio sentence.
@@ -1142,7 +1145,25 @@ function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, da
             <Card style={{ padding: 0, overflow: 'hidden' }}>
               <div style={{ padding: '11px 16px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Model Fit</span>
-                <SigBadge p={res.lrP} />
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                  <SimulatorExportButton
+                    filename={simulatorFilename(datasetName || 'sentimetrx', design ? design.outcomeLabel : 'model')}
+                    build={function() {
+                      if (!res || !design) return { ok: false as const, error: 'No fitted model.' }
+                      var d = design
+                      // Map the fit's kept columns (post-VIF-prune) back to their
+                      // design-matrix columns — the estimation sample the model saw.
+                      var idx = res.names.map(function(nm) { return d.colNames.indexOf(nm) })
+                      if (idx.some(function(i) { return i < 0 })) return { ok: false as const, error: 'Could not map model columns to the design matrix.' }
+                      return buildLogisticSimulatorPayload(res, {
+                        name: (datasetName ? datasetName + ' — ' : '') + d.outcomeLabel,
+                        outcome: d.outcomeLabel,
+                        predictorLabels: res.names.map(function(nm) { return aliases[nm] || nm }),
+                        sampleColumns: idx.map(function(i) { return d.X.map(function(row) { return row[i] }) }),
+                      })
+                    }} />
+                  <SigBadge p={res.lrP} />
+                </span>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)' }}>
                 {[
@@ -1194,7 +1215,44 @@ function LogisticPanel({ fields, data, themeModel, themeSourceField, aliases, da
   )
 }
 
-function RegressionPanel({ numFields, catFields, data, aliases, datasetId, themeModel, themeSourceField }: { numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string>; datasetId: string; themeModel?: ThemeModel | null; themeSourceField?: string }) {
+// Hand a client-built simulator payload (lib/simulatorExport) to the browser as
+// a .json download — spec §1's "Download simulation model" path. Pure client
+// blob; nothing goes to the server.
+function downloadSimulatorJson(payload: unknown, filename: string) {
+  var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+  var url = URL.createObjectURL(blob)
+  try {
+    var a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+// "Download simulation model (.json)" — enabled when the fitted model exports
+// cleanly, otherwise shows WHY the export is blocked (spec §12/§15 assertions).
+function SimulatorExportButton({ build, filename }: { build: () => { ok: true; payload: unknown } | { ok: false; error: string }; filename: string }) {
+  var [err, setErr] = useState<string | null>(null)
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+      {err && <span style={{ fontSize: 11, color: T.red, maxWidth: 340 }}>{err}</span>}
+      <button
+        onClick={function() {
+          var out = build()
+          if (out.ok) { setErr(null); downloadSimulatorJson(out.payload, filename) }
+          else setErr(out.error)
+        }}
+        title="Export this fitted model as a self-contained JSON payload for the Driver Simulator"
+        style={{ fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 7, border: '1px solid ' + T.accentMid, background: T.accentBg, color: T.accent, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+        {'\u2913'} Download simulation model (.json)
+      </button>
+    </span>
+  )
+}
+
+function RegressionPanel({ numFields, catFields, data, aliases, datasetId, datasetName, themeModel, themeSourceField }: { numFields: SchemaFieldConfig[]; catFields: SchemaFieldConfig[]; data: Record<string, unknown>[]; aliases: Record<string, string>; datasetId: string; datasetName?: string; themeModel?: ThemeModel | null; themeSourceField?: string }) {
   var _rk = 'statsReg_' + datasetId
   var [outcomes, setOutcomes] = useState<Set<string>>(function() { return new Set() })
   var [predictors, setPredictors] = useState<Set<string>>(function() { return new Set() })
@@ -1242,23 +1300,33 @@ function RegressionPanel({ numFields, catFields, data, aliases, datasetId, theme
     })
   }
 
+  // Estimation sample for one outcome: the listwise-deleted rows that enter the
+  // fit. ONE builder shared by the fit and the simulator export, so the export's
+  // slider moments can never desync from the model (simulator-payload-spec §5).
+  var estimationSample = function(oc: string): { y: number[]; X: number[][]; preds: string[] } | null {
+    var preds = Array.from(predictors).filter(function(p) { return p !== oc })
+    if (!preds.length) return null
+    var filtered = data.filter(function(r) {
+      return !isNaN(parseFloat(String(r[oc] || '').replace(/,/g, ''))) &&
+        preds.every(function(p) { return !isNaN(parseFloat(String(r[p] || '').replace(/,/g, ''))) })
+    })
+    if (filtered.length < preds.length + 2) return null
+    var y = filtered.map(function(r) { return parseFloat(String(r[oc]).replace(/,/g, '')) })
+    var X = filtered.map(function(r) { return preds.map(function(p) { return parseFloat(String(r[p]).replace(/,/g, '')) }) })
+    return { y: y, X: X, preds: preds }
+  }
+
   var results = useMemo(function() {
     var out: Record<string, RegressionResult> = {}
     if (!outcomes.size || !predictors.size) return out
     outcomes.forEach(function(oc) {
-      var preds = Array.from(predictors).filter(function(p) { return p !== oc })
-      if (!preds.length) return
-      var filtered = data.filter(function(r) {
-        return !isNaN(parseFloat(String(r[oc] || '').replace(/,/g, ''))) &&
-          preds.every(function(p) { return !isNaN(parseFloat(String(r[p] || '').replace(/,/g, ''))) })
-      })
-      if (filtered.length < preds.length + 2) return
-      var y = filtered.map(function(r) { return parseFloat(String(r[oc]).replace(/,/g, '')) })
-      var X = filtered.map(function(r) { return preds.map(function(p) { return parseFloat(String(r[p]).replace(/,/g, '')) }) })
-      var res = olsRegression(y, X, preds)
+      var sample = estimationSample(oc)
+      if (!sample) return
+      var res = olsRegression(sample.y, sample.X, sample.preds)
       if (res) out[oc] = res
     })
     return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- estimationSample is a pure closure over exactly these deps
   }, [outcomes, predictors, data])
 
   // Keep activeOutcome in sync if its OLS result was removed
@@ -1336,7 +1404,7 @@ function RegressionPanel({ numFields, catFields, data, aliases, datasetId, theme
       </div>
 
       {regMode === 'logistic' ? (
-        <LogisticPanel fields={numFields.concat(catFields).filter(function(f) { return !isMappedId(f.field) })} data={data} themeModel={themeModel} themeSourceField={themeSourceField || ''} aliases={aliases} datasetId={datasetId} />
+        <LogisticPanel fields={numFields.concat(catFields).filter(function(f) { return !isMappedId(f.field) })} data={data} themeModel={themeModel} themeSourceField={themeSourceField || ''} aliases={aliases} datasetId={datasetId} datasetName={datasetName} />
       ) : numFields.length < 2 ? (
         <StatsEmpty icon={'\u27CB'} msg="Need at least 2 numeric fields" sub="Activate more numeric fields or map categorical values to numbers." />
       ) : (<>
@@ -1440,9 +1508,25 @@ function RegressionPanel({ numFields, catFields, data, aliases, datasetId, theme
                 <>
                   {<BottomLine text={regrBL(activeResult, aliases[activeOutcome] || activeOutcome, aliases)} naiveNode={regrBLNode(activeResult, aliases[activeOutcome] || activeOutcome, aliases)} />}
                   <Card style={{ padding: 0, overflow: 'hidden' }}>
-                    <div style={{ padding: '11px 16px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ padding: '11px 16px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Model Fit — {aliases[activeOutcome] || activeOutcome}</span>
-                      <SigBadge p={activeResult.Fp} />
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                        <SimulatorExportButton
+                          filename={simulatorFilename(datasetName || 'sentimetrx', aliases[activeOutcome] || activeOutcome)}
+                          build={function() {
+                            var sample = estimationSample(activeOutcome)
+                            if (!sample) return { ok: false as const, error: 'No estimation sample for this outcome.' }
+                            var sm = sample
+                            var outLabel = aliases[activeOutcome] || activeOutcome
+                            return buildLinearSimulatorPayload(activeResult, {
+                              name: (datasetName ? datasetName + ' — ' : '') + outLabel + ' drivers',
+                              outcome: outLabel,
+                              predictorLabels: sm.preds.map(function(pd) { return aliases[pd] || pd }),
+                              sampleColumns: sm.preds.map(function(_pd, j) { return sm.X.map(function(row) { return row[j] }) }),
+                            })
+                          }} />
+                        <SigBadge p={activeResult.Fp} />
+                      </span>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)' }}>
                       {[
@@ -2426,7 +2510,7 @@ function FieldSidebarGroups({ fields, T, fl: flFn, isAssigned, diag }: {
   )
 }
 
-export default function StatsModule({ datasetId, schema, themeModel, datasetSource, taxonomyEnabled }: Props) {
+export default function StatsModule({ datasetId, datasetName, schema, themeModel, datasetSource, taxonomyEnabled }: Props) {
   // Defaults-only init for SSR-safety; restore from sessionStorage post-mount.
   var _statKey = 'stats_' + datasetId
 
@@ -2802,7 +2886,7 @@ export default function StatsModule({ datasetId, schema, themeModel, datasetSour
               {activePanel === 'descriptives' && <DescriptivesPanel numFields={numFields} data={enrichedData} mcResults={mcResults} mcRunning={mcRunning} confidenceLevel={confidenceLevel} datasetId={datasetId} />}
               {activePanel === 'correlations' && <CorrelationsPanel numFields={numFields} data={enrichedData} aliases={aliases} datasetId={datasetId} />}
               {activePanel === 'grouptests' && <GroupTestsPanel numFields={numFields} catFields={groupTestCatFields} data={enrichedData} aliases={aliases} datasetId={datasetId} dimFieldKey={themeSourceField || undefined} filteredRowIds={dimFilteredRowIds} />}
-              {activePanel === 'regression' && <RegressionPanel numFields={numFields} catFields={catFields} data={enrichedData} aliases={aliases} datasetId={datasetId} themeModel={effectiveThemeModel} themeSourceField={themeSourceField} />}
+              {activePanel === 'regression' && <RegressionPanel numFields={numFields} catFields={catFields} data={enrichedData} aliases={aliases} datasetId={datasetId} datasetName={datasetName} themeModel={effectiveThemeModel} themeSourceField={themeSourceField} />}
               {activePanel === 'insights' && <AutoInsightsPanel numFields={numFields} catFields={catFields} data={enrichedData} aliases={aliases} />}
               {activePanel === 'outliers' && <OutlierAnalysisPanel numFields={numFields} catFields={catFields} data={enrichedData} datasetId={datasetId} />}
             </>

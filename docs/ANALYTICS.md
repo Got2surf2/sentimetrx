@@ -620,6 +620,21 @@ overall rating from its own sub-scores), escalates a small L2 ridge until it ret
 predictor should be dropped — so the model no longer silently disappears. Empty states now name the concrete
 reason (too few complete rows for the predictor count, both-classes, all-collinear, or unfittable).
 
+**Driver Simulator export (2026-08-28).** Both regression modes carry a **"Download simulation model
+(.json)"** action in the Model Fit header, emitting the self-contained payload the standalone Monte-Carlo
+Driver Simulator consumes (simulator-payload-spec v1.0). Builders live in `lib/simulatorExport.ts`:
+linear → `link:"identity"` with `sigma` = residual SD (`sqrt(MSE)`); logistic → `link:"logit"` with
+**log-odds** coefficients (`beta`, never the displayed odds ratios) and NO sigma. `se` + `corr` come from
+the full `(k+1)×(k+1)` coefficient covariance both fitters now return (`RegressionResult.vcov` =
+`(X'X)⁻¹·MSE`; `LogisticResult.vcov` = inverse Hessian), intercept first, Cholesky-verified positive
+definite before emit. Per-predictor `mean/sd/min/max` are computed from the **estimation sample** — the
+linear panel's listwise-deleted rows come from the same `estimationSample` builder the fit uses, and the
+logistic panel maps its post-VIF-prune kept columns back to `buildDesign`'s matrix — so sliders always
+match the model; a 0/1 dummy column emits `sd = sqrt(p(1−p))` per the spec's categorical rule. Export is
+refused (with the reason shown inline) for separated/non-converged logistic fits, `|coef| > 15`,
+`se > 10`, constant predictors, or any non-finite number. Tests: `tests/unit/simulatorExport.test.ts`
+(mirrors the spec's consumer validation §15 and acceptance identities §16).
+
 **"Sampled" chip on the metric-strip row (2026-07-14).** When the active dataset exceeds the 50K
 cap (`RowsContext.sampled && totalRows > sampledCount`), `DatasetShell` leads the shared metric-strip
 row (the one carrying comments · Theme fit · themes) with a compact blue chip "◱ Sampled P% ·
