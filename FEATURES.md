@@ -295,6 +295,10 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 - Theme recounting without re-mining
 - Statistical significance testing (chi-square) for theme distributions
 
+### Statistics Module (Regression)
+- OLS linear regression (multi-outcome) and binary logistic regression (categorical/ordinal/theme predictors, VIF pruning, separation guard) — `docs/ANALYTICS.md`
+- **Driver Simulator export (2026-08-28)**: "Download simulation model (.json)" on both regression Model Fit cards emits the self-contained payload the standalone Monte-Carlo Driver Simulator consumes (simulator-payload-spec v1.0; `lib/simulatorExport.ts`) — identity + logit links, coefficient-uncertainty block, estimation-sample slider stats; unexportable models (separation, runaway coefficients) are refused with the reason shown
+
 ### Entity Discovery & Catalog
 - AI-extracts named entities (dishes, drinks, places, people, brands) from row text
 - Persisted to `entity_catalog` per scope (dataset or brand-collection)
