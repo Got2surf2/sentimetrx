@@ -500,3 +500,9 @@ browser on the dev server both a logistic (Outback, Cleanliness top-box, theme
 dummy) and a linear (Truth Social favourites drivers) model exported, and both
 files pass a mirror of the simulator's §15 consumer validation
 (`scripts/_validate_sim_payload.mjs`, untracked harness — KEEP).
+
+---
+
+## 2026-08-31 — Weekly governance report generated (W36)
+
+Automated governance routine produced `docs/weekly-reports/2026-W36.md` and `docs/weekly-reports/2026-W36-spec-drift.md`. Score: **83.0/100** (+2.0 from W34). Zero spec drift (7 specs updated in range). Top 3 progression items: (1) fix parseCSV quote-dropping bug, (2) raise enforced coverage floor, (3) apply sql/191 and sql/192 to prod.
