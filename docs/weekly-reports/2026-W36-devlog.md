@@ -113,3 +113,24 @@ KB-suppression regression), contrast_mode opponent injection, super capability
 town-hall turn with no topics (facilitation skips; the mirror is awaited with
 the townHallId). chatCore 26.9% → 34.2% statements / 38.3% lines. Overall
 33.95/26.05/36.05/34.90; floors → **33/25/35/34**.
+
+## 2026-09-01 — outletReport tests (0% → 73%)
+
+**Why**: `lib/outletReport.ts` was the largest 0% PRODUCT file (589
+statements) — it computes every figure on the outlet report, leaderboard, and
+the outlet PDF/deck exports, and several of its behaviors encode hard-won
+rules (the verbatim-premise guard, the never-rank-thin-samples floors, the
+"dirty soda" classifier noise filter).
+
+**What**: `tests/unit/outletReport.test.ts` — 11 tests driving
+`computeOutletReport`/`computeOutletLeaderboard` over a synthetic 2-outlet
+chain, faking only the service client; lexicon + verbatim guard + delta math
+run real. Pins: options ordering + location-name resolution (brand-only name
+falls back to City, State), rank/percentile/narrative, Service strength and
+weakness with premise-supporting quotes, Food held under MIN_N_CHAIN on every
+surface, snapshot distribution/owner-band/theme verdicts (STRENGTH and FIX
+bands), fleet null under 200 reviews, leaderboard ranking + floors, and the
+DIRTY_NOISE clean:neg filter — fixture sized (24 assertions, 12/outlet) so
+the filter, not the floors, is what keeps Clean off the board. 0% → 73%
+statements. Overall 35.03/26.82/37.63/35.95; floors → **34/26/36/35**.
+Remaining gap: the predictor + hierarchy entry points (960–1107).
