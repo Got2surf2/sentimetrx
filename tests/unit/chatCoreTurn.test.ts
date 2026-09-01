@@ -42,10 +42,13 @@ import { handleChatTurn, type ChatAgent, type ChatCoreContext } from '@/lib/chat
 // resolves { data, error }. `tables` supplies SELECT results per table name;
 // inserts are recorded in `inserts`; `insertError` fails the next insert.
 interface Recorded { table: string; rows: unknown }
+interface RpcCall { name: string; params: Record<string, unknown> }
 function makeService(state: {
   tables?: Record<string, unknown[]>
   inserts?: Recorded[]
   insertError?: { message: string } | null
+  rpc?: (name: string, params: Record<string, unknown>) => { data: unknown; error: unknown }
+  rpcCalls?: RpcCall[]
 }) {
   const tables = state.tables || {}
   const inserts = (state.inserts = state.inserts || [])
@@ -73,9 +76,13 @@ function makeService(state: {
     })
     return proxy
   }
+  const rpcCalls = (state.rpcCalls = state.rpcCalls || [])
   return {
     from: (table: string) => chain(table, 'select'),
-    rpc: async () => ({ data: [], error: null }),
+    rpc: async (name: string, params: Record<string, unknown> = {}) => {
+      rpcCalls.push({ name, params })
+      return state.rpc ? state.rpc(name, params) : { data: [], error: null }
+    },
   }
 }
 
@@ -280,5 +287,142 @@ describe('handleChatTurn — main turn', () => {
     expect(res.ended).toBe(false)
     expect(callAIMock).not.toHaveBeenCalled()
     expect(state.inserts).toHaveLength(0) // over-length is not a conduct violation
+  })
+})
+
+// ── RAG injection ───────────────────────────────────────────────────────
+function mainSystem(): string {
+  const call = callAIMock.mock.calls.find((c) => (c[0] as { tier?: string }).tier === 'advanced')
+  expect(call).toBeDefined()
+  return (call![0] as { system: Array<{ text: string }> }).system.map((b) => b.text).join('\n')
+}
+const CHUNK = (over: Record<string, unknown> = {}) => ({
+  id: 'k1', title: 'Parking policy', content: 'Lot B is free after 6pm.', confidence: 0.92, metadata: {}, ...over,
+})
+const ask = (content = 'Where can I park downtown in the evening?') => ({ messages: [{ role: 'user' as const, content }] })
+
+describe('handleChatTurn — RAG injection', () => {
+  it('injects HIGHLY RELEVANT knowledge (answer-only framing) above 85% confidence, via the semantic RPC', async () => {
+    const state = { rpc: () => ({ data: [CHUNK()], error: null }), rpcCalls: [] as RpcCall[] }
+    const service = makeService(state)
+    await handleChatTurn(makeCtx(makeAgent(), service), ask())
+    const sys = mainSystem()
+    expect(sys).toContain('HIGHLY RELEVANT KNOWLEDGE')
+    expect(sys).toContain('Lot B is free after 6pm.')
+    expect(state.rpcCalls[0].name).toBe('search_knowledge_semantic') // embedding present → semantic path
+    expect(state.rpcCalls[0].params.p_limit).toBe(5) // standard ragChunks knob
+  })
+
+  it('injects the honest-answer framing at mid confidence', async () => {
+    const service = makeService({ rpc: () => ({ data: [CHUNK({ confidence: 0.5 })], error: null }) })
+    await handleChatTurn(makeCtx(makeAgent(), service), ask())
+    const sys = mainSystem()
+    expect(sys).toContain('--- RELEVANT KNOWLEDGE ---')
+    expect(sys).not.toContain('HIGHLY RELEVANT')
+    expect(sys).toContain("don't make things up")
+  })
+
+  it('skips injection entirely under 5% confidence (no-relevant-match guard)', async () => {
+    const service = makeService({ rpc: () => ({ data: [CHUNK({ confidence: 0.01 })], error: null }) })
+    await handleChatTurn(makeCtx(makeAgent(), service), ask())
+    const sys = mainSystem()
+    expect(sys).not.toContain('RELEVANT KNOWLEDGE')
+    expect(sys).not.toContain('Lot B is free after 6pm.')
+  })
+
+  it('deflects instead of quoting when every matching chunk is negative (negMode deflect)', async () => {
+    const service = makeService({
+      rpc: () => ({ data: [CHUNK({ metadata: { sentiment: 'negative' }, content: 'Scandal claims…' })], error: null }),
+    })
+    await handleChatTurn(makeCtx(makeAgent({ negative_content_mode: 'deflect', subject: 'Ana' }), service), ask())
+    const sys = mainSystem()
+    expect(sys).toContain('Do NOT engage with the negative framing')
+    expect(sys).not.toContain('Scandal claims…')
+  })
+
+  it('falls back to the keyword RPC when semantic errors, normalizing rank → confidence', async () => {
+    const state = {
+      rpc: (name: string) =>
+        name === 'search_knowledge_semantic'
+          ? { data: null, error: { message: 'boom' } }
+          : { data: [{ id: 'k1', title: 'Parking policy', content: 'Lot B is free after 6pm.', rank: 3 }], error: null },
+      rpcCalls: [] as RpcCall[],
+    }
+    const service = makeService(state)
+    const consoleErr = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await handleChatTurn(makeCtx(makeAgent(), service), ask())
+    consoleErr.mockRestore()
+    expect(state.rpcCalls.map((c) => c.name)).toEqual(['search_knowledge_semantic', 'search_knowledge_chunks'])
+    const sys = mainSystem()
+    // rank 3 / 8.5 ≈ 0.35 — injected in the mid band, so the D1 keyword
+    // fallback does not silently suppress the whole KB
+    expect(sys).toContain('--- RELEVANT KNOWLEDGE ---')
+    expect(sys).toContain('Lot B is free after 6pm.')
+  })
+
+  it('adds opponent contrast when contrast_mode is always and safe chunks exist', async () => {
+    const service = makeService({
+      rpc: () => ({
+        data: [CHUNK(), CHUNK({ id: 'k2', title: 'Rival record', content: 'Rival voted no.', metadata: { opponent: true } })],
+        error: null,
+      }),
+    })
+    await handleChatTurn(
+      makeCtx(makeAgent({ contrast_mode: 'always', opponents: [{ name: 'Rival Smith' }], subject: 'Ana' }), service),
+      ask(),
+    )
+    const sys = mainSystem()
+    expect(sys).toContain('--- OPPONENT CONTRAST ---')
+    expect(sys).toContain('Rival Smith')
+  })
+})
+
+// ── Super agents (tool-loop stream path) ────────────────────────────────
+describe('handleChatTurn — super capability', () => {
+  it('streams through the tool loop with super knobs and multi-query retrieval', async () => {
+    callAIMock.mockResolvedValue({ text: 'parking availability downtown evenings', usage: { inputTokens: 5, outputTokens: 5 } })
+    callAIStreamMock.mockResolvedValue({
+      text: 'Here is the full parking picture.', stopReason: 'end_turn', toolUses: [], contentBlocks: [],
+      usage: { inputTokens: 20, outputTokens: 20 },
+    })
+    const state = { rpc: () => ({ data: [CHUNK()], error: null }), rpcCalls: [] as RpcCall[] }
+    const service = makeService(state)
+    const res = await handleChatTurn(makeCtx(makeAgent({ capability: 'super' }), service), ask())
+    expect(res.reply).toBe('Here is the full parking picture.')
+    // Multi-query: the raw question AND the rewrite both hit retrieval
+    const semantic = state.rpcCalls.filter((c) => c.name === 'search_knowledge_semantic')
+    expect(semantic).toHaveLength(2)
+    expect(semantic.map((c) => c.params.p_query)).toContain('parking availability downtown evenings')
+    expect(semantic[0].params.p_limit).toBe(12) // super ragChunks knob
+    // The main call goes through the STREAM path with super token budget
+    expect(callAIStreamMock).toHaveBeenCalledTimes(1)
+    expect((callAIStreamMock.mock.calls[0][0] as { maxTokens: number }).maxTokens).toBe(1200)
+    // Super turns log as chat_super (quota-countable), rewrite logs separately
+    const events = logUsageMock.mock.calls.map((c) => (c[0] as { event_type?: string }).event_type)
+    expect(events).toContain('chat_super')
+    expect(events).toContain('query_rewrite')
+    expect(events).not.toContain('chat')
+  })
+})
+
+// ── Town-hall (PulseIQ) context ─────────────────────────────────────────
+describe('handleChatTurn — townHallContext', () => {
+  it('completes a turn with no topics configured and AWAITS the mirror with the town hall id', async () => {
+    const state = {
+      tables: { pulseiq_sessions: [{ cohort_config: {}, response_counter: 0 }], pulseiq_topics: [] },
+      inserts: [] as Recorded[],
+    }
+    const service = makeService(state)
+    const ctx = makeCtx(makeAgent(), service)
+    ctx.townHallContext = { townHallId: 'th1', participantId: 'p1', slug: 'main-street-plan' }
+    const res = await handleChatTurn(ctx, {
+      messages: [{ role: 'user', content: 'Traffic on Vine St is my main concern.' }],
+      session_id: 'th1:p1',
+    })
+    expect(res.reply).toBe('Thanks for sharing that. What stood out most?')
+    // Turn storage mirrored with the town-hall linkage (facilitation policy
+    // reads budgets from the mirror, so this write is awaited, not dropped)
+    const mirrorArgs = mirrorTurnsMock.mock.calls.map((c) => c[1] as { townHallId?: string | null })
+    expect(mirrorArgs.some((a) => a.townHallId === 'th1')).toBe(true)
   })
 })

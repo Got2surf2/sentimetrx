@@ -96,3 +96,20 @@ removed. It was runtime-dead but not source-dead — `operationalReviewDeck.ts`
 imported its `DiligenceOpts` type, so the 6-line interface moved there (the
 operational deck already carried the copied slide logic; its header notes the
 origin). Coverage exclude entry dropped; fresh-cache `tsc` + full suite green.
+
+## 2026-09-01 — chatCore RAG / super / town-hall scenarios (27% → 34%)
+
+**Why**: continue week plan item #2 — the RAG injection block, the super
+tool-loop stream path, and the town-hall entry were the biggest untested
+branches left in the engine after the morning suite.
+
+**What**: 8 more tests on the same harness (now with an `rpc` handler + call
+recorder on the fake service): confidence bands (>85% answer-only framing /
+mid honest-answer / <5% skip), negative-only → deflect instruction, semantic
+RPC failure → keyword fallback with rank→confidence normalization (the D1
+KB-suppression regression), contrast_mode opponent injection, super capability
+(multi-query rewrite hits retrieval twice, stream path with 1200-token knob,
+`chat_super` + `query_rewrite` usage rows, never plain `chat`), and a
+town-hall turn with no topics (facilitation skips; the mirror is awaited with
+the townHallId). chatCore 26.9% → 34.2% statements / 38.3% lines. Overall
+33.95/26.05/36.05/34.90; floors → **33/25/35/34**.
