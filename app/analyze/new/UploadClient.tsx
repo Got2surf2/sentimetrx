@@ -7,6 +7,7 @@ import { postJsonWithRetry } from '@/lib/postJsonWithRetry'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { autoDetectSchema } from '@/lib/datasetUtils'
+import { parseCSV, parseTSV, isSurveyMonkeyCSV, parseSurveyMonkeyCSV } from '@/lib/csv'
 import { ROWS_PER_BATCH } from '@/lib/constants'
 import LottieLoader from '@/components/ui/LottieLoader'
 import GoogleReviewsWizard from '@/components/analyze/GoogleReviewsWizard'
@@ -38,137 +39,8 @@ interface ParsedFile {
   sourceFormat?: 'csv' | 'tsv' | 'json' | 'surveymonkey'
 }
 
-function splitCSVFields(line: string): string[] {
-  const vals: string[] = []
-  let cur = '', inQ = false
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]
-    if (ch === '"') { inQ = !inQ }
-    else if (ch === ',' && !inQ) { vals.push(cur); cur = '' }
-    else cur += ch
-  }
-  vals.push(cur)
-  return vals.map(function(v) { return v.trim().replace(/^"|"$/g, '') })
-}
-
-function parseCSV(text: string): Record<string, unknown>[] {
-  const lines = text.trim().split('\n').filter(function(l) { return l.trim() })
-  if (lines.length < 2) return []
-  const headers = splitCSVFields(lines[0])
-  return lines.slice(1).map(function(line) {
-    const vals = splitCSVFields(line)
-    const row: Record<string, unknown> = {}
-    headers.forEach(function(h, i) { row[h] = vals[i] ?? '' })
-    return row
-  })
-}
-
-// ── SurveyMonkey detection & parsing ──────────────────────────────────────
-
-const SM_META_COLS = ['respondent id', 'collector id', 'start date', 'end date', 'ip address', 'email address', 'first name', 'last name', 'custom data']
-const SM_SUB_NOISE = ['', 'response', 'open-ended response', 'other (please specify)', 'comment']
-
-function isSurveyMonkeyCSV(text: string): boolean {
-  const lines = text.trim().split('\n')
-  if (lines.length < 3) return false
-  const row1 = splitCSVFields(lines[0])
-  const row2 = splitCSVFields(lines[1])
-  if (row1.length !== row2.length) return false
-
-  // Check 1: first column looks like SM metadata
-  const firstLower = (row1[0] || '').toLowerCase().trim()
-  const hasSmMeta = SM_META_COLS.some(function(m) { return firstLower.includes(m) })
-
-  // Check 2: row1 has duplicate headers (matrix questions)
-  const seen = new Set<string>()
-  let dupeCount = 0
-  row1.forEach(function(h) {
-    const lh = h.toLowerCase().trim()
-    if (lh && seen.has(lh)) dupeCount++
-    seen.add(lh)
-  })
-
-  // Check 3: row2 mostly has short/noise sub-labels, not full data
-  let noiseCount = 0
-  row2.forEach(function(v) {
-    if (SM_SUB_NOISE.includes(v.toLowerCase().trim())) noiseCount++
-  })
-  const row2IsSubHeader = noiseCount > row2.length * 0.3
-
-  // Check 4: row3 looks like data (has numbers, dates, actual content)
-  const row3 = lines.length > 2 ? splitCSVFields(lines[2]) : []
-  const dataLike = row3.filter(function(v) {
-    const t = v.trim()
-    return t && (t.match(/^\d/) || t.length > 2)
-  }).length
-
-  return (hasSmMeta && row2IsSubHeader) || (dupeCount >= 2 && row2IsSubHeader) || (hasSmMeta && dupeCount >= 2)
-}
-
-function parseSurveyMonkeyCSV(text: string): { rows: Record<string, unknown>[]; mergedHeaders: string[] } {
-  const lines = text.trim().split('\n').filter(function(l) { return l.trim() })
-  if (lines.length < 3) return { rows: [], mergedHeaders: [] }
-
-  const row1 = splitCSVFields(lines[0])
-  const row2 = splitCSVFields(lines[1])
-
-  // Merge the two header rows into one clean set of column names
-  const headers: string[] = []
-  let lastParent = ''
-  const colCounts: Record<string, number> = {}
-
-  for (let c = 0; c < row1.length; c++) {
-    let parent = (row1[c] || '').trim()
-    const sub = (row2[c] || '').trim()
-    const subLower = sub.toLowerCase()
-
-    // Track the parent for matrix continuation (blank row1 = same question)
-    if (parent) lastParent = parent
-    else parent = lastParent
-
-    let merged = ''
-    if (!sub || SM_SUB_NOISE.includes(subLower) || sub === parent) {
-      // No meaningful sub-label — just use parent
-      merged = parent
-    } else {
-      // Combine parent + sub for matrix items
-      merged = parent + ' - ' + sub
-    }
-
-    // Deduplicate: if we've seen this header, append a number
-    if (!merged) merged = 'Column ' + (c + 1)
-    if (colCounts[merged]) {
-      colCounts[merged]++
-      merged = merged + ' (' + colCounts[merged] + ')'
-    } else {
-      colCounts[merged] = 1
-    }
-
-    headers.push(merged)
-  }
-
-  // Parse data rows (skip first 2 header rows)
-  const rows = lines.slice(2).map(function(line) {
-    const vals = splitCSVFields(line)
-    const row: Record<string, unknown> = {}
-    headers.forEach(function(h, i) { row[h] = vals[i] ?? '' })
-    return row
-  })
-
-  return { rows: rows, mergedHeaders: headers }
-}
-
-function parseTSV(text: string): Record<string, unknown>[] {
-  const lines = text.trim().split('\n').filter(function(l) { return l.trim() })
-  if (lines.length < 2) return []
-  const headers = lines[0].split('\t').map(function(h) { return h.trim() })
-  return lines.slice(1).map(function(line) {
-    const vals = line.split('\t')
-    const row: Record<string, unknown> = {}
-    headers.forEach(function(h, i) { row[h] = vals[i] ?? '' })
-    return row
-  })
-}
+// CSV / TSV / SurveyMonkey parsing lives in lib/csv.ts (extracted 2026-09-01
+// to fix the interior-quote-dropping bug with an RFC4180 parser + tests).
 
 function bytesOf(rows: Record<string, unknown>[]): number {
   return new Blob([JSON.stringify(rows)]).size

@@ -2218,6 +2218,19 @@ returned untouched so the existing rollback/error handling is unchanged. Both
 `UploadClient` (initial) and `SettingsClient` (append) use it — they had the same
 loop, and a shared helper beat a third copy. See `docs/ARCHITECTURE.md`.
 
+### CSV parsing correctness (2026-09-01)
+
+Upload parsing (CSV / TSV / SurveyMonkey detection + two-header merge) lives in
+**`lib/csv.ts`**, extracted from `UploadClient`. The old in-component parser
+toggled its quote state on every `"` and never emitted one — any field with
+interior quote marks was silently mangled (2,796 of 125,897 prod ANES rows) —
+and it split on newlines before parsing fields, so a quoted field containing a
+line break broke its row apart. `parseCSVRecords` walks the whole text once
+(RFC4180): `""` inside a quoted field is a literal quote, commas/newlines inside
+quotes are data, BOM and CRLF handled, fields trimmed as before. Tests:
+`tests/unit/csv.test.ts`; verified end-to-end in the browser against the TEST
+project (stored rows byte-identical).
+
 ### Upload page responsiveness (2026-08-26)
 
 Typing on the new-dataset page went sporadic during a large upload. Not a race —
