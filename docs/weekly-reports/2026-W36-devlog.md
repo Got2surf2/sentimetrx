@@ -54,3 +54,19 @@ propagation, the standard 1200-char input cap, and turn persistence numbering
 32.78 ln (was 31.41/24.64/34.69/31.95 before today's two suites); floors raised
 30/23/33/30 → **31/24/34/31**, staying ~1pp under actual so environment
 variance can't redden CI while regressions still trip it.
+
+## 2026-09-01 — Aux route org-scoping gates (7 untested routes)
+
+**Why**: week plan item #3, and the W36 audit's route-auth finding ("132
+routes without auth references… no systematic audit of unauthenticated routes
+was done"). Route-handler org filters are not covered by RLS tests (CLAUDE.md
+invariant), and these seven handlers — including `filter-options`, shipped
+only last week with sql/194 — had zero route tests.
+
+**What**: `tests/integration/dataset-bot-aux-routes-gate.test.ts` — 26 tests
+in the established gate pattern (401 / cross-org 404-or-403 / admin bypass +
+one cheap post-gate status proving the gate passed) over datasets
+search·filter-options·taxonomy-rows and bots crawl-job·batches·workbook·probes.
+The batches listing additionally asserts the service-role `question_batches`
+read stays paired with the agent's org. All gates already held — no defects
+found, now locked in. Lines floor 31 → 32 (actual 33.23).

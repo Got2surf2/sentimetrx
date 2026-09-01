@@ -34,12 +34,13 @@ export default defineConfig({
       // complaint — a floor that far below actual isn't a gate, it's decoration.
       // Measured: statements 30.7 · branches 24.07 · functions 33.79 · lines 31.26.
       // Ratcheted 2026-09-01 with the lib/csv.ts + chatCore turn suites.
-      // Measured: statements 32.16 · branches 25.41 · functions 35.17 · lines 32.78.
+      // Measured: statements 32.59 · branches 25.74 · functions 35.32 · lines 33.23
+      // (after the aux route-gate suite, same day).
       thresholds: {
         statements: 31,
         branches: 24,
         functions: 34,
-        lines: 31,
+        lines: 32,
       },
     },
   },
