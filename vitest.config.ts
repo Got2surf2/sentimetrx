@@ -38,7 +38,6 @@ export default defineConfig({
         'app/api/*-deck/**',
         'lib/pptx/advancedResearchDeck.ts',
         'lib/pptx/blueMountainsNepaDeck.ts',
-        'lib/pptx/diligenceDeck.ts',
         'lib/pptx/eaMembershipDeck.ts',
         'lib/pptx/eaNpsPitchDeck.ts',
         'lib/pptx/mcoListeningDeck.ts',

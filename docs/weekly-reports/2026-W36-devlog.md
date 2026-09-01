@@ -90,3 +90,9 @@ dataset/agent/recording/collection export builders. Denominator 44,205 →
 floors ratcheted **31/24/34/32 → 32/25/35/33**. Noticed in passing:
 `lib/pptx/diligenceDeck.ts` is imported by nothing (pre-existing dead code,
 left in place).
+
+**Follow-up (same day, owner: "delete it")**: `lib/pptx/diligenceDeck.ts`
+removed. It was runtime-dead but not source-dead — `operationalReviewDeck.ts`
+imported its `DiligenceOpts` type, so the 6-line interface moved there (the
+operational deck already carried the copied slide logic; its header notes the
+origin). Coverage exclude entry dropped; fresh-cache `tsc` + full suite green.

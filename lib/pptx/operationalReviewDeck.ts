@@ -1,6 +1,7 @@
 // lib/pptx/operationalReviewDeck.ts
 // Builds the "Operational Review" DeckSpec — ONE merged report that combines the
-// independent-acquirer diligence framing (lib/pptx/diligenceDeck.ts) with the
+// independent-acquirer diligence framing (originally lib/pptx/diligenceDeck.ts,
+// deleted 2026-09-01 as unused — DiligenceOpts now lives here) with the
 // operator-grade "recover your 1–3★ guests" improvement detail
 // (lib/pptx/improvementPlanDeck.ts), plus a NEW Dimensions (aspect-sentiment)
 // section sourced from lib/taxonomyRollup.ts. Slide-construction logic is COPIED
@@ -13,7 +14,12 @@ import type { DiligenceData } from '@/lib/diligenceData'
 import type { TaxonomyRollup } from '@/lib/taxonomyRollup'
 import type { DeckSpec, SlideSpec } from './slideRenderer'
 import { DN, trunc } from './shared'
-import type { DiligenceOpts } from './diligenceDeck'
+export interface DiligenceOpts {
+  competitors?: { name: string; rating: number; locs?: number; reviews?: number }[]
+  brandLifetime?: { rating: number; locs?: number; reviews?: number }
+  franchiseStates?: string[]
+  preparedFor?: string
+}
 
 const pct1 = (n: number) => `${(n * 100).toFixed(1)}%`
 const pct0 = (n: number) => `${Math.round(n * 100)}%`
