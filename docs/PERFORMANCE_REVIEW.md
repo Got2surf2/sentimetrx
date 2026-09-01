@@ -594,16 +594,27 @@ serial, on every /pulseiq list load); `/api/townhall/live` 20K-turn read on a
 `dataset_rows_flat` scan per collection member on a public route** (the only
 uncapped flat scan outside outletReport); `admin/health` count-scan pile-up.
 
-### Fix plan (ranked)
+### Fix plan (ranked) — items 1+2 SHIPPED 2026-09-01
 
-1. **Precompute the outlet snapshot** — persist the scan's aggregates
-   (outlets, themeChain, dimChain, predictor inputs, captured examples) to
-   `dataset_state` at sync/classify/theme-model-change time (write-path
-   precedent: `outletActionPlan.ts` / sql/183); pages read O(1). Makes every
-   Advanced click ~fast regardless of dataset size — the huge-scale answer.
-2. **`loading.tsx` for the three Advanced routes** — perceived-latency fix,
-   ship regardless.
-3. Interim if (1) waits: select only needed JSONB keys (~halves the 20 MB),
+**Shipped (same-day session):** ① `dataset_state.outlet_scan_cache` (sql/195,
+TEST-applied, PROD MIGRATE ON PUSH) — `loadScan` in `lib/outletReport.ts`
+persists the scan (aggregates + ~30 B/row digest via `lib/outletScanCache.ts`;
+1.8 MB vs the 20.5 MB it replaces on Cheddar's) keyed by a sql/194-style
+fingerprint (row_count : last_synced_at : theme model : hierarchy designations :
+taxonomy updatedAts); compute-on-miss, all 9 scan entry points covered.
+② `loading.tsx` on all three Advanced routes. Verified on TEST in-browser:
+warm views ≈ cheap-page latency (~1.3 s dev vs ~0.44 s baseline, was ~3 s+ scan
+per click), hierarchy drill 6.7 s cold → 0.75 s warm, invalidation observed
+live on a `last_synced_at` bump, cold/warm outputs byte-identical
+(tests/unit/outletScanCache.test.ts, 9 tests). Items 3–4 below remain open.
+
+1. ✅ **Precompute the outlet snapshot** — shipped as above; the actual design
+   persists the full scan (not per-view products), so hierarchy drills and the
+   deck routes hit the same cache, and it refreshes compute-on-miss rather than
+   at write time. Makes every Advanced click fast regardless of dataset size —
+   the huge-scale answer.
+2. ✅ **`loading.tsx` for the three Advanced routes** — shipped.
+3. ~~Interim if (1) waits~~ superseded by (1): select only needed JSONB keys (~halves the 20 MB),
    fetch pages concurrently (kills the serial-RTT tax), `React.cache` the scan
    per request. ~3.5 s → ~1–1.5 s but still O(N).
 4. Cap `/api/share/analytics`; batch `computeBasicStats` on the PulseIQ list;

@@ -5431,7 +5431,8 @@ CREATE TABLE IF NOT EXISTS "public"."dataset_state" (
     "analytics" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
     "session_state" "jsonb",
     "outlet_action_plans" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
-    "filter_options" "jsonb"
+    "filter_options" "jsonb",
+    "outlet_scan_cache" "jsonb"
 );
 
 
@@ -5447,6 +5448,9 @@ COMMENT ON COLUMN "public"."dataset_state"."outlet_action_plans" IS 'Cache of pe
 
 
 COMMENT ON COLUMN "public"."dataset_state"."filter_options" IS 'Cache of the filter-options route''s computed per-field options: {fingerprint, computedAt, fields}. Fingerprint = row count + schema fields signature + last_synced_at; the route recomputes when it no longer matches (sql/194).';
+
+
+COMMENT ON COLUMN "public"."dataset_state"."outlet_scan_cache" IS 'Persisted outlet-report scan (lib/outletScanCache PersistedScan v1): per-outlet aggregates + per-row digest, keyed by {fingerprint}. Written compute-on-miss by lib/outletReport.loadScan; safe to NULL at any time (next view recomputes).';
 
 
 

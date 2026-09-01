@@ -9,6 +9,7 @@ import {
   type HierarchyLevel,
 } from '@/lib/hierarchy'
 import type { SchemaFieldConfig } from '@/lib/analyzeTypes'
+import { scanFingerprint, serializeScan, hydrateScan, deriveReviewMatrix, type PersistedScan } from '@/lib/outletScanCache'
 
 // Per-outlet "vs peers" summary report.
 //
@@ -220,8 +221,8 @@ export type OutletLeaderboard = {
   dimensions: LeaderItem[]
 }
 
-type Example = { full: string; ev: string }
-type Acc = { pos: number; neg: number; total: number; exPos: Example | null; exNeg: Example | null }
+export type Example = { full: string; ev: string }
+export type Acc = { pos: number; neg: number; total: number; exPos: Example | null; exNeg: Example | null }
 const newAcc = (): Acc => ({ pos: 0, neg: 0, total: 0, exPos: null, exNeg: null })
 const net = (a: Acc) => (a.total ? (a.pos - a.neg) / a.total : 0)
 
@@ -246,7 +247,7 @@ type RowData = {
 type FlatRow = { id: number | string; data: RowData }
 
 // One theme in the dataset's stored theme model (dataset_state.theme_model).
-type ThemeModelEntry = { id?: string; name?: string; label?: string; keywords?: string[] }
+export type ThemeModelEntry = { id?: string; name?: string; label?: string; keywords?: string[] }
 
 // The taxonomy classifier is purely keyword-based, so the cleanliness keyword
 // "dirty" false-fires on menu items ("dirty soda", "dirty cherry cola") and the
@@ -452,9 +453,9 @@ function buildNarrative(opts: {
 // Per-theme ABSOLUTE stats for one outlet (drives the snapshot theme table):
 // mentions + avg★ + %≤3★, keyed by rating — distinct from themeSubs, which is
 // net-positive lexicon sentiment for the peer-relative deltas.
-type ThemeAbs = { mentions: number; ratingSum: number; ratingN: number; low: number }
+export type ThemeAbs = { mentions: number; ratingSum: number; ratingN: number; low: number }
 
-type Outlet = {
+export type Outlet = {
   placeId: string; name: string; city: string; state: string; address: string
   reviews: number; ratingSum: number; ratingN: number
   dimClassified: number; themeMatched: number
@@ -465,7 +466,20 @@ type Outlet = {
   themeAbs: Map<string, ThemeAbs>
 }
 
-type Scan = {
+// Compact per-row digest — everything the post-scan passes need from a flat
+// row, WITHOUT the raw review JSON (~1 KB/row → ~30 B/row). This is what makes
+// the scan persistable in dataset_state.outlet_scan_cache (sql/195): the raw
+// texts are only needed at scan time (theme matching + example capture), so the
+// digest + the aggregates ARE the scan.
+export type ScanRow = {
+  p: string | null   // place_id (null = row without an outlet; still counts in the network monthly trend)
+  r: number          // rating (0 = unrated/invalid — matches the `if (rt)` truthiness checks)
+  d: string          // review_date, first 10 chars ('' when absent); month = d.slice(0, 7)
+  t: number[] | null // matched theme indices (into themeLabels); null = no text / no theme model / no outlet
+  h: string[] | null // hierarchy path (pathOf at scan time); null when <2 levels or no outlet
+}
+
+export type Scan = {
   brand: string
   brandTokens: Set<string>
   outlets: Outlet[]
@@ -474,7 +488,7 @@ type Scan = {
   dimChain: Map<string, Acc>
   themeAvailable: boolean
   dimAvailable: boolean
-  flat: FlatRow[]
+  rows: ScanRow[]
   labelFor: (o: Outlet) => string
   themeLabels: string[]       // ordered theme labels (matchers) for the predictor
   reviewMatrix: PredReview[]  // per rated text-review: theme-membership vector
@@ -482,20 +496,50 @@ type Scan = {
   highExamples: PredExample[] // one 4–5★ (praise) quote per (outlet, theme)
 }
 
+// Disambiguate display labels for same-name/same-city outlets.
+export function makeLabelFor(outlets: Outlet[]): (o: Outlet) => string {
+  const nameCity = new Map<string, number>()
+  for (const o of outlets) {
+    const k = `${o.name}|${o.city}`
+    nameCity.set(k, (nameCity.get(k) || 0) + 1)
+  }
+  return (o: Outlet) => {
+    const base = o.city ? `${o.name} — ${o.city}, ${o.state}` : o.name
+    const dupe = (nameCity.get(`${o.name}|${o.city}`) || 0) > 1
+    return dupe && o.address ? `${base} (${o.address.split(',')[0]})` : base
+  }
+}
+
 // One pass over a dataset's flat rows + taxonomy assertions, building the
 // per-outlet and chain-level net-positive accumulators that BOTH the per-outlet
 // report and the cross-outlet leaderboard read from (one scan, two views).
-async function scanDataset(datasetId: string): Promise<Scan> {
+// Pre-read scan inputs — loadScan already holds these for its cache
+// fingerprint, so passing them in avoids re-reading datasets/dataset_state.
+export type ScanInputs = { brand: string; themeModel: ThemeModelEntry[]; schemaFields?: SchemaFieldConfig[] }
+
+async function scanDataset(datasetId: string, pre?: ScanInputs): Promise<Scan> {
   const sb = createServiceRoleClient()
-  const { data: ds, error: dsErr } = await sb.from('datasets').select('name').eq('id', datasetId).maybeSingle()
-  if (dsErr) void logError('outletReport.scanDataset', dsErr)
-  const brand: string = ds?.name || 'Brand'
+  let brand: string
+  let themeModel: ThemeModelEntry[]
+  let schemaFields: SchemaFieldConfig[] | undefined
+  if (pre) {
+    ;({ brand, themeModel, schemaFields } = pre)
+  } else {
+    const { data: ds, error: dsErr } = await sb.from('datasets').select('name').eq('id', datasetId).maybeSingle()
+    if (dsErr) void logError('outletReport.scanDataset', dsErr)
+    brand = ds?.name || 'Brand'
+    const { data: stateRow, error: stateErr } = await sb.from('dataset_state').select('theme_model, schema_config').eq('dataset_id', datasetId).maybeSingle()
+    if (stateErr) void logError('outletReport.scanDataset', stateErr)
+    // Theme labels live in `name` ("Food Quality & Taste"); older payloads used
+    // `label`. Reading the wrong field collapses every theme to "Theme".
+    themeModel = (stateRow?.theme_model?.themes as ThemeModelEntry[]) || []
+    schemaFields = (stateRow?.schema_config as { fields?: SchemaFieldConfig[] } | null)?.fields
+  }
   const brandTokens = new Set<string>(brand.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2))
-  const { data: stateRow, error: stateErr } = await sb.from('dataset_state').select('theme_model').eq('dataset_id', datasetId).maybeSingle()
-  if (stateErr) void logError('outletReport.scanDataset', stateErr)
-  // Theme labels live in `name` ("Food Quality & Taste"); older payloads used
-  // `label`. Reading the wrong field collapses every theme to "Theme".
-  const themeModel: ThemeModelEntry[] = (stateRow?.theme_model?.themes as ThemeModelEntry[]) || []
+  // Hierarchy paths are digested per row at scan time (pathOf needs the raw
+  // row); <2 levels means no tree, so no digest either.
+  const hierLevels = hierarchyLevels(schemaFields)
+  const digestHier = hierLevels.length >= 2
   const themeMatchers = themeModel
     .map((t) => ({ label: t.name || t.label || 'Theme', re: themeMatcher(t.keywords || []) }))
     .filter((t): t is { label: string; re: RegExp } => !!t.re)
@@ -539,19 +583,25 @@ async function scanDataset(datasetId: string): Promise<Scan> {
   const dimChain = new Map<string, Acc>()
   const themeChain = new Map<string, Acc>()
   const themeLabels = themeMatchers.map((tm) => tm.label)
-  const reviewMatrix: PredReview[] = []
   const lowExamples: PredExample[] = []
   const lowSeen = new Set<string>()
   const highExamples: PredExample[] = []
   const highSeen = new Set<string>()
+  const rows: ScanRow[] = []
 
-  // Pass over flat rows: rating + review counts, AND theme matching/sentiment.
+  // Pass over flat rows: rating + review counts, theme matching/sentiment, AND
+  // the per-row digest that stands in for the raw rows downstream. Every row
+  // gets a digest entry — rated rows without a place_id still count in the
+  // network side of the monthly trend.
   for (const r of flat) {
     const d = r.data
+    const rt = Number(d?.rating)
+    const row: ScanRow = { p: d?.place_id || null, r: rt || 0, d: String(d?.review_date || '').slice(0, 10), t: null, h: null }
+    rows.push(row)
     const o = getOutlet(d)
     if (!o) continue
+    if (digestHier) row.h = pathOf(d as Record<string, unknown>, hierLevels)
     o.reviews++
-    const rt = Number(d?.rating)
     if (rt) { o.ratingSum += rt; o.ratingN++ }
     const star = Math.round(rt)
     if (star >= 1 && star <= 5) o.ratingCounts[star - 1]++
@@ -569,12 +619,13 @@ async function scanDataset(datasetId: string): Promise<Scan> {
         const polarity = pos > neg ? 'pos' : neg > pos ? 'neg' : 'neutral'
         const isLow = !!rt && rt <= 3
         const isHigh = !!rt && rt >= 4
-        let matchedAny = false
-        // Per-review theme-membership vector for the predictor (bare keyword
+        // Per-review theme membership for the predictor (bare keyword
         // presence, same matchers as the leaderboard). The 1–3★ vs 4–5★ split
         // supplies the sentiment — the predictor measures over-representation of
-        // each theme among low-rated reviews, not bare presence alone.
-        const themeFlags = new Array(themeMatchers.length).fill(false)
+        // each theme among low-rated reviews, not bare presence alone. Recorded
+        // on the digest row; deriveReviewMatrix expands it back to flags.
+        const matchedIdx: number[] = []
+        row.t = matchedIdx
         for (let ti = 0; ti < themeMatchers.length; ti++) {
           const tm = themeMatchers[ti]
           // exec (not test) so we know WHERE the theme keyword matched — the
@@ -583,8 +634,7 @@ async function scanDataset(datasetId: string): Promise<Scan> {
           // filed under a theme is actually about that theme.
           const km = tm.re.exec(text)
           if (!km) continue
-          matchedAny = true
-          themeFlags[ti] = true
+          matchedIdx.push(ti)
           // Absolute per-theme figures for the snapshot table (rating-keyed).
           const ta = o.themeAbs.get(tm.label) || (o.themeAbs.set(tm.label, { mentions: 0, ratingSum: 0, ratingN: 0, low: 0 }), o.themeAbs.get(tm.label)!)
           ta.mentions++
@@ -616,8 +666,7 @@ async function scanDataset(datasetId: string): Promise<Scan> {
           if (polarity === 'pos') { cu.pos++; ou.pos++; if (!ou.exPos) ou.exPos = { full: text, ev: text } }
           else if (polarity === 'neg') { cu.neg++; ou.neg++; if (!ou.exNeg) ou.exNeg = { full: text, ev: text } }
         }
-        if (matchedAny) o.themeMatched++
-        if (rt) reviewMatrix.push({ placeId: o.placeId, rating: rt, themes: themeFlags, month: String(d?.review_date || '').slice(0, 7) || undefined })
+        if (matchedIdx.length) o.themeMatched++
       }
     }
   }
@@ -641,26 +690,16 @@ async function scanDataset(datasetId: string): Promise<Scan> {
     }
   }
 
-  // Disambiguate display labels for same-name/same-city outlets.
-  const nameCity = new Map<string, number>()
-  for (const o of outlets.values()) {
-    const k = `${o.name}|${o.city}`
-    nameCity.set(k, (nameCity.get(k) || 0) + 1)
-  }
-  const labelFor = (o: Outlet) => {
-    const base = o.city ? `${o.name} — ${o.city}, ${o.state}` : o.name
-    const dupe = (nameCity.get(`${o.name}|${o.city}`) || 0) > 1
-    return dupe && o.address ? `${base} (${o.address.split(',')[0]})` : base
-  }
-
+  const outletList = [...outlets.values()]
   return {
     brand, brandTokens,
-    outlets: [...outlets.values()], outletsById: outlets,
+    outlets: outletList, outletsById: outlets,
     themeChain, dimChain,
     themeAvailable: themeMatchers.length > 0,
     dimAvailable: tax.length > 0,
-    flat, labelFor,
-    themeLabels, reviewMatrix, lowExamples, highExamples,
+    rows, labelFor: makeLabelFor(outletList),
+    themeLabels, reviewMatrix: deriveReviewMatrix(rows, themeLabels.length),
+    lowExamples, highExamples,
   }
 }
 
@@ -724,14 +763,13 @@ const unitRating = (u: SnapshotUnit): number => (u.ratingN ? u.ratingSum / u.rat
 // reviews (falling back to its most-recent 30% when a year is too thin), with an
 // up/down/flat arrow vs the unit's all-time average. One extra pass over the
 // unit's flat rows — powers the snapshot's "last N: 4.79 ▲" chip.
-function recentTrend(flat: FlatRow[], placeIds: Set<string>, allTimeAvg: number): RecentTrend | null {
+function recentTrend(rows: ScanRow[], placeIds: Set<string>, allTimeAvg: number): RecentTrend | null {
   const dated: { d: string; r: number }[] = []
-  for (const row of flat) {
-    if (!row.data?.place_id || !placeIds.has(row.data.place_id)) continue
-    const r = Number(row.data?.rating); if (!r) continue
-    const d = String(row.data?.review_date || '').slice(0, 10)
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue
-    dated.push({ d, r })
+  for (const row of rows) {
+    if (!row.p || !placeIds.has(row.p)) continue
+    if (!row.r) continue
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(row.d)) continue
+    dated.push({ d: row.d, r: row.r })
   }
   if (dated.length < 30) return null
   dated.sort((a, b) => (a.d < b.d ? 1 : -1)) // newest first
@@ -751,7 +789,7 @@ function recentTrend(flat: FlatRow[], placeIds: Set<string>, allTimeAvg: number)
 // level: "this one against the range of its own kind".
 function computeSnapshot(
   target: SnapshotUnit, peers: SnapshotUnit[], outletRating: number,
-  flat: FlatRow[], highExamples: PredExample[],
+  rows: ScanRow[], highExamples: PredExample[],
   // `rankable: false` when the target is not a member of the peer set — the
   // Network total is not one of its own stores, and ranking an aggregate among
   // its parts always lands near the weighted middle, so the position would be an
@@ -815,13 +853,13 @@ function computeSnapshot(
     dateRange: target.minDate && target.maxDate ? `${fmtMonth(target.minDate)} – ${fmtMonth(target.maxDate)}` : '',
     distribution, fiveStarShare, detractorShare,
     ownerResponseRate: ownerRate, ownerResponseBand: ownerResponseBand(ownerRate),
-    recent: recentTrend(flat, target.placeIds, outletRating), fleet, themeTable, praiseChips, praiseVerbatims,
+    recent: recentTrend(rows, target.placeIds, outletRating), fleet, themeTable, praiseChips, praiseVerbatims,
   }
 }
 
 // Per-outlet "vs peers" report — derived from a single scan.
 function buildReport(scan: Scan, selectedPlaceId?: string): OutletReport {
-  const { brand, brandTokens, themeChain, dimChain, flat, labelFor } = scan
+  const { brand, brandTokens, themeChain, dimChain, rows, labelFor } = scan
   const all = scan.outlets
   const options: OutletOption[] = all
     .map((o) => ({ placeId: o.placeId, label: labelFor(o), sublabel: `${o.ratingN ? (o.ratingSum / o.ratingN).toFixed(1) : '—'}★`, reviews: o.reviews }))
@@ -857,15 +895,14 @@ function buildReport(scan: Scan, selectedPlaceId?: string): OutletReport {
     // Monthly avg-rating trend: this outlet vs the whole network. One pass over
     // flat rows (review_date → YYYY-MM), keep the last 24 months that have data.
     const monthly = new Map<string, { oSum: number; oN: number; nSum: number; nN: number }>()
-    for (const r of flat) {
-      const rt = Number(r.data?.rating)
-      if (!rt) continue
-      const month = String(r.data?.review_date || '').slice(0, 7)
+    for (const r of rows) {
+      if (!r.r) continue
+      const month = r.d.slice(0, 7)
       if (!/^\d{4}-\d{2}$/.test(month)) continue
       const m = monthly.get(month) || { oSum: 0, oN: 0, nSum: 0, nN: 0 }
       monthly.set(month, m)
-      m.nSum += rt; m.nN++
-      if (r.data?.place_id === target.placeId) { m.oSum += rt; m.oN++ }
+      m.nSum += r.r; m.nN++
+      if (r.p === target.placeId) { m.oSum += r.r; m.oN++ }
     }
     const trend: TrendPoint[] = [...monthly.entries()]
       .sort((a, b) => a[0] < b[0] ? -1 : 1)
@@ -884,7 +921,7 @@ function buildReport(scan: Scan, selectedPlaceId?: string): OutletReport {
       percentile, rank, outletCount: rated.length,
       themes, dimensions, trend,
       narrative: buildNarrative({ name: locName, rank, outletCount: rated.length, percentile, ratingDelta: outletRating - chainRatingAll, chainRating: chainRatingAll, themes, dimensions }),
-      snapshot: computeSnapshot(unitOf(target), rated.map(unitOf), outletRating, flat, scan.highExamples, { noun: FLEET_PEER_NOUN, rankable: true }),
+      snapshot: computeSnapshot(unitOf(target), rated.map(unitOf), outletRating, rows, scan.highExamples, { noun: FLEET_PEER_NOUN, rankable: true }),
       lowQuotes: scan.lowExamples.filter((e) => e.placeId === target.placeId && e.quote).map((e) => ({ theme: e.theme, quote: e.quote })),
     }
   }
@@ -945,13 +982,65 @@ function buildLeaderboard(scan: Scan): OutletLeaderboard {
   return { outletCount, defaultK, maxK, themes, dimensions }
 }
 
+
+// ─── Cached scan loader — the fix for O(N)-per-click (PERF_REVIEW §8) ────────
+//
+// Compute-on-miss: probe dataset_state.outlet_scan_cache (sql/195) against a
+// fingerprint of everything the scan reads; hydrate on a hit, scan + persist on
+// a miss. Every Advanced Analytics view, hierarchy drill, outlet switch and
+// deck download funnels through here, so one post-change view pays the scan
+// and the rest are a single bounded read. Cache read/write failures (including
+// the column not existing yet) degrade to the plain scan — never to an error.
+export async function loadScan(datasetId: string): Promise<Scan> {
+  const sb = createServiceRoleClient()
+  const [dsRes, stRes] = await Promise.all([
+    sb.from('datasets').select('name, row_count, last_synced_at').eq('id', datasetId).maybeSingle(),
+    sb.from('dataset_state').select('theme_model, schema_config, tax:analytics->taxonomy').eq('dataset_id', datasetId).maybeSingle(),
+  ])
+  if (dsRes.error) void logError('outletReport.loadScan', dsRes.error)
+  if (stRes.error) void logError('outletReport.loadScan', stRes.error)
+  const brand: string = (dsRes.data as { name?: string } | null)?.name || 'Brand'
+  const st = stRes.data as {
+    theme_model?: { themes?: ThemeModelEntry[] } | null
+    schema_config?: { fields?: SchemaFieldConfig[] } | null
+    tax?: { fields?: Record<string, { updatedAt?: string }> } | null
+  } | null
+  const themeModel: ThemeModelEntry[] = st?.theme_model?.themes || []
+  const schemaFields = st?.schema_config?.fields
+  const fingerprint = scanFingerprint({
+    rowCount: (dsRes.data as { row_count?: number } | null)?.row_count ?? -1,
+    lastSyncedAt: (dsRes.data as { last_synced_at?: string | null } | null)?.last_synced_at ?? null,
+    themeModel,
+    hierLevels: hierarchyLevels(schemaFields).map((l) => ({ field: l.field, level: l.level })),
+    taxUpdatedAts: Object.entries(st?.tax?.fields || {}).map(([k, f]) => `${k}:${f?.updatedAt || ''}`).sort(),
+  })
+
+  try {
+    const { data: cacheRow, error } = await sb.from('dataset_state').select('outlet_scan_cache').eq('dataset_id', datasetId).maybeSingle()
+    if (!error) {
+      const cached = (cacheRow as { outlet_scan_cache?: PersistedScan | null } | null)?.outlet_scan_cache
+      if (cached && cached.v === 1 && cached.fingerprint === fingerprint) {
+        const h = hydrateScan(cached)
+        return { ...h, labelFor: makeLabelFor(h.outlets) }
+      }
+    }
+  } catch (e) { void logError('outletReport.loadScan.cacheRead', e) }
+
+  const scan = await scanDataset(datasetId, { brand, themeModel, schemaFields })
+  try {
+    const { error } = await sb.from('dataset_state').update({ outlet_scan_cache: serializeScan(scan, fingerprint) }).eq('dataset_id', datasetId)
+    if (error) void logError('outletReport.loadScan.cacheWrite', error)
+  } catch (e) { void logError('outletReport.loadScan.cacheWrite', e) }
+  return scan
+}
+
 export async function computeOutletReport(datasetId: string, selectedPlaceId?: string): Promise<OutletReport> {
-  return buildReport(await scanDataset(datasetId), selectedPlaceId)
+  return buildReport(await loadScan(datasetId), selectedPlaceId)
 }
 
 // Chain-wide leaderboard (its own view — NOT a tab in the per-outlet report).
 export async function computeOutletLeaderboard(datasetId: string): Promise<OutletLeaderboard> {
-  return buildLeaderboard(await scanDataset(datasetId))
+  return buildLeaderboard(await loadScan(datasetId))
 }
 
 // Theme-driven "recover your 1–3★ guests" predictor (per-outlet actions + brand
@@ -970,7 +1059,7 @@ function buildPredictorFromScan(scan: Scan): OutletPredictor {
 }
 
 export async function computeOutletPredictor(datasetId: string): Promise<OutletPredictor> {
-  return buildPredictorFromScan(await scanDataset(datasetId))
+  return buildPredictorFromScan(await loadScan(datasetId))
 }
 
 // Per-outlet report + its predictor levers from ONE scan (the report page needs
@@ -978,7 +1067,7 @@ export async function computeOutletPredictor(datasetId: string): Promise<OutletP
 export async function computeOutletReportWithPredictor(
   datasetId: string, selectedPlaceId?: string,
 ): Promise<{ report: OutletReport; predictor: OutletPredictor }> {
-  const scan = await scanDataset(datasetId)
+  const scan = await loadScan(datasetId)
   return { report: buildReport(scan, selectedPlaceId), predictor: buildPredictorFromScan(scan) }
 }
 
@@ -1023,15 +1112,13 @@ export type HierarchyReport = {
 // A store's region is a property of the store, so disagreement means dirty data
 // (a typo in one row's District). We take the outlet's most common path and
 // REPORT the count of stray outlets rather than silently picking one.
-function outletPaths(scan: Scan, levels: HierarchyLevel[]): { paths: Map<string, string[]>; stray: number } {
+function outletPaths(scan: Scan): { paths: Map<string, string[]>; stray: number } {
   const tallies = new Map<string, Map<string, { path: string[]; n: number }>>()
-  for (const r of scan.flat) {
-    const placeId = r.data?.place_id
-    if (!placeId) continue
-    const path = pathOf(r.data as Record<string, unknown>, levels)
-    const key = path.join('')
-    const t = tallies.get(placeId) || (tallies.set(placeId, new Map()), tallies.get(placeId)!)
-    const e = t.get(key) || (t.set(key, { path, n: 0 }), t.get(key)!)
+  for (const r of scan.rows) {
+    if (!r.p || !r.h) continue
+    const key = r.h.join('\u001e')
+    const t = tallies.get(r.p) || (tallies.set(r.p, new Map()), tallies.get(r.p)!)
+    const e = t.get(key) || (t.set(key, { path: r.h, n: 0 }), t.get(key)!)
     e.n++
   }
   const paths = new Map<string, string[]>()
@@ -1053,8 +1140,8 @@ export async function computeHierarchyReport(
   const levels = hierarchyLevels(fields)
   if (levels.length < 2) return null
 
-  const scan = await scanDataset(datasetId)
-  const { paths, stray } = outletPaths(scan, levels)
+  const scan = await loadScan(datasetId)
+  const { paths, stray } = outletPaths(scan)
 
   // One synthetic record per outlet → node.rowCount is the OUTLET count.
   const outletRows = scan.outlets.map((o) => {
@@ -1117,7 +1204,7 @@ export async function computeHierarchyReport(
     networkOutlets: scan.outlets.length,
     children,
     outlets,
-    snapshot: computeSnapshot(target, peers, rating, scan.flat, scan.highExamples,
+    snapshot: computeSnapshot(target, peers, rating, scan.rows, scan.highExamples,
       { noun: pluralLevel(levelLabel).toLowerCase(), rankable: depth > 0 }),
     strayOutlets: stray,
   }

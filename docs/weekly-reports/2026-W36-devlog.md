@@ -134,3 +134,31 @@ DIRTY_NOISE clean:neg filter — fixture sized (24 assertions, 12/outlet) so
 the filter, not the floors, is what keeps Clean off the board. 0% → 73%
 statements. Overall 35.03/26.82/37.63/35.95; floors → **34/26/36/35**.
 Remaining gap: the predictor + hierarchy entry points (960–1107).
+
+## 2026-09-01 — Advanced Analytics: persisted scan cache + loading states (PERF §8 fixes 1+2)
+
+**Why**: The owner demoed the Cheddar's dataset and every Advanced Analytics
+option switch froze for ~3.4s. Diagnosis (PERFORMANCE_REVIEW.md §8, measured on
+prod read-only): all three Advanced pages are `force-dynamic` and every view
+re-ran `scanDataset` — paging the ENTIRE dataset's JSONB (20.5MB / 20 serial
+round-trips on 19.7K rows) with zero caching and no loading state. IO/network
+bound, not CPU (the theme regex pass is ~60ms); O(N) per click with no sampling
+doctrine protecting it — a 500K-row brand would take 80s+ per click.
+
+**What**: ① `Scan` now carries a ~30B/row digest (`ScanRow`) instead of raw
+rows — `recentTrend`, the monthly trend, `outletPaths`, and the predictor's
+review matrix all consume the digest (`deriveReviewMatrix` shared by both
+paths so they cannot drift). ② `lib/outletScanCache.ts` serializes the scan
+(v1, 1.8MB for Cheddar's vs 20.5MB raw) into `dataset_state.outlet_scan_cache`
+(sql/195, TEST-applied, PROD MIGRATE ON PUSH), keyed by a sql/194-style
+fingerprint: row_count : last_synced_at : theme model : hierarchy designations
+: taxonomy rollup updatedAts. ③ `loadScan` = compute-on-miss orchestrator; all
+9 scan entry points (3 pages incl. hierarchy drills, action-plan route, 3 deck
+GETs) funnel through it; cache read/write failures degrade to a plain scan.
+④ `loading.tsx` (LottieLoader) on all three routes. Verified in-browser on
+TEST (same Cheddar's dataset): warm views ~1.3s dev (≈ cheap-page baseline
+0.44s), BareBurger hierarchy drill 6.7s cold → 0.75s warm, invalidation
+observed live on a last_synced_at bump, loading state caught mid-rebuild.
+9 new tests (tests/unit/outletScanCache.test.ts): cold/warm byte-parity across
+every entry point, zero row reads warm, 5 fingerprint invalidation arms,
+unknown-version → miss. All 1,907 tests pass.
