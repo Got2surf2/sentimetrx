@@ -1444,6 +1444,9 @@ next one:
 `outputFileTracingIncludes` with `@sparticuz/chromium/bin/**` — the binary is
 loaded at runtime via a computed path the static tracer can't see, and the
 function dies on Vercel with "input directory .../bin does not exist".
+(2026-09-02: `outlet-leaderboard-pdf` and `hierarchy-report-pdf` joined the
+list — the last two print-to-PDF surfaces are now composed documents, so no
+user-facing view relies on the browser's print dialog anymore.)
 
 Shared cache: `getOrGenerateActionPlan` moved into `lib/outletActionPlan.ts` so
 the page's fetch route and the PDF route read/write one cache. Without that, a

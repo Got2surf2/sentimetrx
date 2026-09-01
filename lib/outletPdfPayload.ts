@@ -306,3 +306,108 @@ export function parseOutletPdfPayload(body: unknown, outlet: string): OutletPdfP
     unitLabel: typeof body.unitLabel === 'string' ? body.unitLabel.slice(0, 40) : undefined,
   }
 }
+
+// ─── Leaderboard PDF payload (2026-09-02 — replaces "print to PDF") ──────────
+// Same client-asserted-figures rationale as above: the page computed and
+// rendered `lb`; the export posts it back and the route only typesets. The
+// document returns to the requester alone.
+
+export interface LeaderRowP { label: string; net: number; n: number; rating: number | null }
+export interface LeaderItemP {
+  label: string; category: string
+  chainNet: number; chainN: number; qualifying: number
+  ranked: LeaderRowP[]
+}
+export interface LeaderboardPdfPayload {
+  brand: string
+  outletCount: number
+  k: number                    // outlets per side, as the page showed
+  themes: LeaderItemP[]
+  dimensions: LeaderItemP[]
+}
+
+function leaderRow(v: unknown): LeaderRowP | null {
+  if (!isObj(v)) return null
+  const label = str(v.label, 160)
+  if (!label) return null
+  return { label, net: num(v.net), n: num(v.n), rating: typeof v.rating === 'number' && Number.isFinite(v.rating) ? v.rating : null }
+}
+
+function leaderItem(v: unknown): LeaderItemP | null {
+  if (!isObj(v)) return null
+  const label = str(v.label, 120)
+  if (!label) return null
+  return {
+    label, category: str(v.category, 60),
+    chainNet: num(v.chainNet), chainN: num(v.chainN), qualifying: num(v.qualifying),
+    ranked: arr(v.ranked, leaderRow, 40),
+  }
+}
+
+export function parseLeaderboardPdfPayload(body: unknown): LeaderboardPdfPayload | null {
+  if (!isObj(body)) return null
+  if (typeof body.brand !== 'string') return null
+  const themes = arr(body.themes, leaderItem, 60)
+  const dimensions = arr(body.dimensions, leaderItem, 80)
+  if (themes.length === 0 && dimensions.length === 0) return null
+  return {
+    brand: str(body.brand, 120, 'Brand'),
+    outletCount: num(body.outletCount),
+    k: Math.min(Math.max(Math.round(num(body.k, 3)), 1), 10),
+    themes, dimensions,
+  }
+}
+
+// ─── Hierarchy-rung PDF payload (Network / Region / District roll-up) ────────
+
+export interface HierarchyChildP { key: string; outlets: number; reviews: number; rating: number | null }
+export interface HierarchyOutletP { label: string; sublabel: string; reviews: number }
+export interface HierarchyPdfPayload {
+  brand: string
+  name: string                 // node display name ("Network" at the root)
+  levelLabel: string
+  childLevelLabel: string | null
+  crumbs: string[]             // path labels, root → this node
+  reviews: number
+  rating: number
+  outletCount: number
+  networkOutlets: number
+  strayOutlets: number
+  snapshot: OutletSnapshot
+  children: HierarchyChildP[]
+  outlets: HierarchyOutletP[]
+}
+
+function hierChild(v: unknown): HierarchyChildP | null {
+  if (!isObj(v)) return null
+  const key = str(v.key, 120)
+  if (!key) return null
+  return { key, outlets: num(v.outlets), reviews: num(v.reviews), rating: typeof v.rating === 'number' && Number.isFinite(v.rating) ? v.rating : null }
+}
+
+function hierOutlet(v: unknown): HierarchyOutletP | null {
+  if (!isObj(v)) return null
+  const label = str(v.label, 160)
+  if (!label) return null
+  return { label, sublabel: str(v.sublabel, 40), reviews: num(v.reviews) }
+}
+
+export function parseHierarchyPdfPayload(body: unknown): HierarchyPdfPayload | null {
+  if (!isObj(body)) return null
+  if (typeof body.brand !== 'string' || typeof body.name !== 'string') return null
+  return {
+    brand: str(body.brand, 120, 'Brand'),
+    name: str(body.name, 160, 'Network'),
+    levelLabel: str(body.levelLabel, 60, 'Network'),
+    childLevelLabel: strOrNull(body.childLevelLabel, 60),
+    crumbs: arr(body.crumbs, (x) => (typeof x === 'string' ? x.slice(0, 120) : null), 8),
+    reviews: num(body.reviews),
+    rating: num(body.rating),
+    outletCount: num(body.outletCount),
+    networkOutlets: num(body.networkOutlets),
+    strayOutlets: num(body.strayOutlets),
+    snapshot: snapshot(body.snapshot),
+    children: arr(body.children, hierChild, 300),
+    outlets: arr(body.outlets, hierOutlet, 1000),
+  }
+}

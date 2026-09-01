@@ -25,7 +25,10 @@ import 'server-only'
 import type { OutletSnapshot, ThemeDelta, ComparisonBlock, TrendPoint, ThemeTableRow } from '@/lib/outletReport'
 import type { ActionPlan } from '@/lib/outletActionPlan'
 import type { ThemeStanding, OutletSummary, PredictorModel, WhatIfView } from '@/lib/outletPredictor'
-import type { OutletPdfPayload } from '@/lib/outletPdfPayload'
+import type {
+  OutletPdfPayload,
+  LeaderboardPdfPayload, LeaderItemP, LeaderRowP, HierarchyPdfPayload,
+} from '@/lib/outletPdfPayload'
 import { projectRecovery } from '@/lib/outletPredictor'
 import { verbatimSupports } from '@/lib/verbatimGuard'
 import { starBarColor } from '@/lib/ratingGradient'
@@ -371,30 +374,9 @@ function peerMethodNote(): string {
   return `<p class="note blk">Each operational theme is <b>peer-ranked</b> across all outlets by its problem rate — the share of a location’s reviews that are 1–3★ and cite that theme. Weaknesses = bottom quartile (among the worst); strengths = top quartile. Lagging outcomes like brand loyalty are excluded — they’re symptoms of these operational issues, not levers. Quotes are this location’s own reviews. Associational — a prioritization signal, not a guaranteed star change.</p>`
 }
 
-export function buildOutletReportHtml(p: OutletPdfPayload): string {
-  const s = p.selected
-  const unit = p.unitLabel || 'location'
-  const snap = s.snapshot
-
-  const fleet = snap.fleet
-    ? `#${snap.fleet.rank} of ${snap.fleet.total} ${snap.fleet.peerNoun}`
-    : 'Under 200 reviews'
-  const recent = snap.recent
-    ? `${snap.recent.avg.toFixed(2)}★ recent (${snap.recent.direction})`
-    : ''
-
-  // Every verbatim under "what guests consistently praise" must read as praise —
-  // the rating selects the review, it does not vouch for the sentence lifted out
-  // of it. The page filters here too (see lib/verbatimGuard).
-  const praise = snap.praiseVerbatims.filter((v) => verbatimSupports(v.quote, 'positive'))
-
-  const subtitle = [
-    s.address,
-    `${n0(s.reviews)} Google reviews${snap.dateRange ? ` (${snap.dateRange})` : ''}`,
-    `full ${n0(p.networkSize)}-store network`,
-  ].filter(Boolean).join(' · ')
-
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
+// Shared stylesheet for every composed outlet document (deep-dive,
+// leaderboard, hierarchy rung) — one visual language across the family.
+const DOC_CSS = `
   @page { size: letter; }
   * { box-sizing: border-box; }
   body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -514,7 +496,32 @@ export function buildOutletReportHtml(p: OutletPdfPayload): string {
   .q.bad { border-left:2px solid #fda4af; }
   .q.ok { border-left:2px solid #6ee7b7; }
   .learn { margin-top:5px; border-radius:4px; background:#ecfdf5; color:#065f46; padding:4px 8px; font-size:9px; }
-  </style></head><body>
+`
+
+export function buildOutletReportHtml(p: OutletPdfPayload): string {
+  const s = p.selected
+  const unit = p.unitLabel || 'location'
+  const snap = s.snapshot
+
+  const fleet = snap.fleet
+    ? `#${snap.fleet.rank} of ${snap.fleet.total} ${snap.fleet.peerNoun}`
+    : 'Under 200 reviews'
+  const recent = snap.recent
+    ? `${snap.recent.avg.toFixed(2)}★ recent (${snap.recent.direction})`
+    : ''
+
+  // Every verbatim under "what guests consistently praise" must read as praise —
+  // the rating selects the review, it does not vouch for the sentence lifted out
+  // of it. The page filters here too (see lib/verbatimGuard).
+  const praise = snap.praiseVerbatims.filter((v) => verbatimSupports(v.quote, 'positive'))
+
+  const subtitle = [
+    s.address,
+    `${n0(s.reviews)} Google reviews${snap.dateRange ? ` (${snap.dateRange})` : ''}`,
+    `full ${n0(p.networkSize)}-store network`,
+  ].filter(Boolean).join(' · ')
+
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${DOC_CSS}</style></head><body>
 
   <div class="hdr">
     <div>
@@ -580,5 +587,158 @@ export function buildOutletReportHtml(p: OutletPdfPayload): string {
 
   ${(p.levers.length || p.strengths.length) ? peerMethodNote() : ''}
 
+  </body></html>`
+}
+
+// ─── Outlet Leaderboard — composed document (2026-09-02) ─────────────────────
+// Replaces the leaderboard page's "print to PDF". Mirrors LeaderboardClient:
+// per item, top-K vs bottom-K by net-positive rate with the bold figure being
+// the GAP vs the chain average (green above / red below), grey = the outlet's
+// own net · mentions · avg★. Same K the page showed.
+
+function lbLine(r: LeaderRowP, chainNet: number): string {
+  const gap = Math.round((r.net - chainNet) * 100)
+  const own = `${Math.round(r.net * 100) >= 0 ? '+' : ''}${Math.round(r.net * 100)}% net · ${n0(r.n)}${r.rating != null ? ` · ${r.rating.toFixed(1)}★` : ''}`
+  return `<div class="lb-line">
+    <span class="lb-name">${esc(r.label)}</span>
+    <span class="lb-fig"><b style="color:${gap >= 0 ? AHEAD : BEHIND}">${gap >= 0 ? '+' : '−'}${Math.abs(gap)} pts</b> <span class="lb-own">${esc(own)}</span></span>
+  </div>`
+}
+
+function lbItemCard(item: LeaderItemP, k: number): string {
+  const eK = Math.min(k, item.qualifying, item.ranked.length)
+  const single = item.qualifying <= 2 * k
+  const leaders = item.ranked.slice(0, eK)
+  const laggards = item.ranked.slice(Math.max(item.ranked.length - eK, 0))
+  const middleHidden = item.qualifying - (single ? item.ranked.length : 2 * eK)
+  const chain = `chain ${Math.round(item.chainNet * 100) >= 0 ? '+' : ''}${Math.round(item.chainNet * 100)}% net · ${n0(item.chainN)} mentions · ${n0(item.qualifying)} outlets`
+  const body = single
+    ? `<div class="lb-col-h">All ${n0(item.qualifying)} outlets · best → worst</div>${item.ranked.map((r) => lbLine(r, item.chainNet)).join('')}`
+    : `<div class="lb-grid">
+        <div><div class="lb-col-h" style="color:${AHEAD}">● Top ${eK}</div>${leaders.map((r) => lbLine(r, item.chainNet)).join('')}</div>
+        <div><div class="lb-col-h" style="color:${BEHIND}">● Bottom ${eK}</div>${laggards.map((r) => lbLine(r, item.chainNet)).join('')}</div>
+      </div>${middleHidden > 0 ? `<div class="lb-mid">${n0(middleHidden)} more outlet${middleHidden === 1 ? '' : 's'} in between</div>` : ''}`
+  return `<div class="card keeptog">
+    <div class="card-h"><b>${item.category ? `<span class="tag" style="background:#f1f5f9;color:${MUTED};margin-right:5px">${esc(item.category)}</span>` : ''}${esc(item.label)}</b><span class="meta">${esc(chain)}</span></div>
+    ${body}
+  </div>`
+}
+
+const LB_CSS = `
+  .lb-line { display:flex; justify-content:space-between; align-items:baseline; gap:8px; padding:2.5px 0; border-bottom:1px solid #f1f5f9; }
+  .lb-line:last-child { border-bottom:none; }
+  .lb-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .lb-fig { flex:none; font-variant-numeric:tabular-nums; }
+  .lb-own { color:${FAINT}; font-size:8.5px; }
+  .lb-col-h { font-size:7.5px; text-transform:uppercase; letter-spacing:.07em; color:${FAINT}; font-weight:700; margin:6px 0 2px; }
+  .lb-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .lb-mid { text-align:center; color:${FAINT}; font-size:8px; margin-top:3px; }
+`
+
+export function buildLeaderboardHtml(p: LeaderboardPdfPayload): string {
+  const section = (title: string, items: LeaderItemP[]) => items.length
+    ? `<section class="blk flow"><h2>${esc(title)}</h2>${items.map((it) => lbItemCard(it, p.k)).join('')}</section>`
+    : ''
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${DOC_CSS}${LB_CSS}</style></head><body>
+  <div class="hdr">
+    <div>
+      <div class="meta">${esc(p.brand)}</div>
+      <h1>Outlet leaderboard</h1>
+      <p class="sub">Top &amp; bottom locations per theme and dimension · ${n0(p.outletCount)} outlets · showing ${n0(p.k)} per side</p>
+    </div>
+  </div>
+  ${section('Themes', p.themes)}
+  ${section('Dimensions', p.dimensions)}
+  <p class="note">Outlets are ranked by net-positive rate (pos − neg) ÷ total among reviews mentioning the item.
+  The <b>bold figure is the gap vs the chain average</b> in points (green above, red below); the grey figure is the
+  outlet's own net-positive rate, mention count, and average ★. Only outlets with ≥6 such mentions are ranked, and
+  only items carrying real chain-wide opinion appear.</p>
+  </body></html>`
+}
+
+// ─── Hierarchy rung — composed document (2026-09-02) ─────────────────────────
+// The rolled-up Network / Region / District view as a real PDF (it kept the
+// print dialog when the per-outlet report got its composed document). Leads
+// with the same absolute snapshot, then the child-rung table or the location
+// list at the deepest rung.
+
+export function buildHierarchyRungHtml(p: HierarchyPdfPayload): string {
+  const snap = p.snapshot
+  const fleet = snap.fleet ? `#${snap.fleet.rank} of ${snap.fleet.total} ${snap.fleet.peerNoun}` : `Full ${n0(p.networkOutlets)}-store network`
+  const subtitle = [
+    p.crumbs.length > 1 ? p.crumbs.join(' › ') : '',
+    `${n0(p.outletCount)} location${p.outletCount === 1 ? '' : 's'}`,
+    `${n0(p.reviews)} Google reviews${snap.dateRange ? ` (${snap.dateRange})` : ''}`,
+  ].filter(Boolean).join(' · ')
+  const praise = snap.praiseVerbatims.filter((v) => verbatimSupports(v.quote, 'positive'))
+
+  const childRows = p.children.map((c) => `<tr>
+    <td class="t-name">${esc(c.key)}</td>
+    <td class="num">${n0(c.outlets)}</td>
+    <td class="num">${n0(c.reviews)}</td>
+    <td class="num strong">${c.rating != null ? c.rating.toFixed(2) : '—'}</td>
+  </tr>`).join('')
+
+  const outletRows = p.outlets.map((o) => `<tr>
+    <td class="t-name">${esc(o.label)}</td>
+    <td class="num">${n0(o.reviews)}</td>
+    <td class="num strong">${esc(o.sublabel)}</td>
+  </tr>`).join('')
+
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${DOC_CSS}</style></head><body>
+  <div class="hdr">
+    <div>
+      <div class="meta">${esc(p.brand)} · ${esc(p.levelLabel)}</div>
+      <h1>${esc(p.name)}</h1>
+      ${subtitle ? `<p class="sub">${esc(subtitle)}</p>` : ''}
+    </div>
+    <div class="meta">${esc(snap.asOf)}</div>
+  </div>
+
+  <section class="blk" style="margin-top:0">
+    <h2>${esc(p.levelLabel)} performance snapshot</h2>
+    <div class="kpis">
+      ${kpi('Rating', p.rating ? p.rating.toFixed(2) : '—', snap.recent ? `${snap.recent.avg.toFixed(2)}★ recent (${snap.recent.direction})` : '')}
+      ${kpi('Reviews', n0(p.reviews), `${n0(p.outletCount)} locations`)}
+      ${kpi('5-Star Share', pct0(snap.fiveStarShare), `Detractors ${pct0(snap.detractorShare)}`)}
+      ${kpi('Owner Responses', pct0(snap.ownerResponseRate), snap.ownerResponseBand)}
+      ${kpi(snap.fleet ? 'Standing' : 'Coverage', snap.fleet ? snap.fleet.band : n0(p.outletCount), fleet)}
+    </div>
+  </section>
+
+  <section class="blk">
+    <h2>Rating distribution
+      <span class="dist-leg">▶ lowest · │ avg · ◀ highest — across peer ${esc(p.levelLabel.toLowerCase())}s</span>
+    </h2>
+    ${distributionRows(snap)}
+  </section>
+
+  ${themeTable(snap)}
+
+  ${(snap.praiseChips.length || praise.length) ? `<section class="blk">
+    <h2>What guests consistently praise</h2>
+    <div class="keep">
+      ${snap.praiseChips.length ? `<div>${snap.praiseChips.map((c) => `<span class="pill" style="color:${TEAL};background:#f0fdfa;margin-right:4px">${esc(c)}</span>`).join('')}</div>` : ''}
+      ${praise.map((v) => `<div style="margin-top:4px;font-size:9.5px"><b style="color:${TEAL}">${esc(String(v.rating))}★</b> <em style="color:${MUTED}">“${esc(v.quote)}”</em></div>`).join('')}
+    </div>
+  </section>` : ''}
+
+  ${p.children.length ? `<section class="blk flow">
+    <h2>${esc(p.childLevelLabel || 'Children')}s under ${esc(p.name)}</h2>
+    <table>
+      <thead><tr><th>${esc(p.childLevelLabel || 'Node')}</th><th class="num">Locations</th><th class="num">Reviews</th><th class="num">Avg ★</th></tr></thead>
+      <tbody>${childRows}</tbody>
+    </table>
+  </section>` : ''}
+
+  ${p.outlets.length ? `<section class="blk flow">
+    <h2>Locations</h2>
+    <table>
+      <thead><tr><th>Location</th><th class="num">Reviews</th><th class="num">Avg ★</th></tr></thead>
+      <tbody>${outletRows}</tbody>
+    </table>
+  </section>` : ''}
+
+  ${p.strayOutlets > 0 ? `<p class="note">⚠ ${n0(p.strayOutlets)} location${p.strayOutlets === 1 ? '' : 's'} had rows disagreeing on their hierarchy path — each is counted under its most common value.</p>` : ''}
   </body></html>`
 }

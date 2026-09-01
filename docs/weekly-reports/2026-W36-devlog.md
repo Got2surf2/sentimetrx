@@ -336,3 +336,20 @@ rows, 49s, keyword tier) flipped every "who served you" card from "No
 sentiment signal" to real polarised shares (Server 79%, Manager 51% positive —
 rank-consistent with by-rating). Existing datasets keep stored verdicts until
 their next classify. All 1,969 tests pass.
+
+## 2026-09-02 — print-to-PDF retired: leaderboard + hierarchy rung get composed PDFs
+
+**Why**: Owner: any PDF option using print-to-PDF must become a high-quality
+generated document — "the print version looks tacky."
+
+**What**: Inventoried print surfaces — exactly two remained (Outlet
+Leaderboard, hierarchy rung view). Extracted the deep-dive's stylesheet to a
+shared DOC_CSS; added buildLeaderboardHtml (top-K/bottom-K per item, gap-vs-
+chain bold figures, at the K the page shows) and buildHierarchyRungHtml
+(snapshot KPIs, distribution with peer markers, theme verdicts, praise,
+children/locations tables) to lib/outletReportPdf.ts. Two POST routes with
+payload validators (outletPdfPayload), outletReportingOn gates, and the
+mandatory chromium outputFileTracingIncludes entries. PrintButton deleted.
+Pixel-QC'd both documents from real TEST data (branded chrome, keep-together
+cards; 60-DPI header cramming ruled out at 150 DPI); both page buttons
+verified E2E (POST 200 → download). 1,969 tests pass.

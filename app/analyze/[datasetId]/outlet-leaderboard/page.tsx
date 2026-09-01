@@ -11,7 +11,6 @@ import { getUserContext } from '@/lib/userContext'
 import { computeOutletLeaderboard } from '@/lib/outletReport'
 import { outletReportingOn } from '@/lib/resolveOrg'
 import type { SchemaConfig } from '@/lib/analyzeTypes'
-import PrintButton from '../outlet-report/PrintButton'
 import AnalyticsNav from '../AnalyticsNav'
 import LeaderboardClient from './LeaderboardClient'
 
@@ -44,7 +43,7 @@ export default async function OutletLeaderboardPage(props: {
   return (
     <div className="min-h-screen bg-gray-100 py-8 print:bg-white print:py-0">
       <div className="mx-auto max-w-4xl px-4">
-        <AnalyticsNav datasetId={datasetId} active="leaderboard" action={<PrintButton />} />
+        <AnalyticsNav datasetId={datasetId} active="leaderboard" />
 
         <div className="rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200 print:shadow-none print:ring-0">
           <div className="border-b border-gray-200 pb-4">
@@ -53,7 +52,7 @@ export default async function OutletLeaderboardPage(props: {
             <div className="text-sm text-gray-500">Top &amp; bottom locations per theme and dimension · {lb.outletCount} outlets</div>
           </div>
           <div className="mt-6">
-            <LeaderboardClient lb={lb} />
+            <LeaderboardClient lb={lb} datasetId={datasetId} brand={ds.name || 'Brand'} />
           </div>
         </div>
       </div>

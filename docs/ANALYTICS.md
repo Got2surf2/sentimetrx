@@ -19,6 +19,23 @@ Dataset cards on `/analyze` carry a **favorite star** (per-user, via the platfor
 ### Navigation IA (two-row bar — Target B, 2026-06-25)
 
 
+**Print-to-PDF fully retired on the Advanced pages (2026-09-02).** The owner:
+"for any view with a PDF download that uses print-to-PDF, generate a high
+quality PDF — the print version looks tacky." The two remaining print surfaces
+— the **Outlet Leaderboard** and the **hierarchy rung view** (Network / Region
+/ District roll-up) — now produce real composed documents:
+`buildLeaderboardHtml` / `buildHierarchyRungHtml` in `lib/outletReportPdf.ts`
+(sharing the deep-dive's `DOC_CSS` visual language + `brandedPdfChrome`),
+served by `POST /api/datasets/[id]/outlet-leaderboard-pdf` and
+`…/hierarchy-report-pdf` — both POST-the-page's-data (payload contracts +
+validators in `lib/outletPdfPayload.ts`), both gated by `outletReportingOn`,
+both listed in next.config `outputFileTracingIncludes` (mandatory for
+headless-Chrome routes). The leaderboard button lives in the K-slider toolbar
+and exports at the K the page currently shows. `PrintButton.tsx` is deleted —
+no surface prints anymore. Pixel-QC'd from real TEST data (Cheddar's
+leaderboard 7 themes/25 dims; BareBurger Network rung) and both buttons
+verified E2E (POST → 200 → download).
+
 **Dimension drills unified into the shared Comments view (2026-09-02).** The
 owner-reported inconsistency: a theme click landed in Comments with its
 keywords highlighted; a dimension click either opened the Dimensions

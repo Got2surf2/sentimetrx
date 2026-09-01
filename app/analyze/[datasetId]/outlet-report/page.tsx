@@ -18,11 +18,9 @@ import OutletSnapshotView from './OutletSnapshotView'
 import OutletDimensionsView from './OutletDimensionsView'
 import OutletActionPlanSection from './OutletActionPlanSection'
 import type { PdfPayloadProps } from './DownloadPdfButton'
-// Rolled-up hierarchy rungs (Network / Region / District) still print: the PDF
-// route composes ONE outlet's document and needs a place_id, which a rung has
-// no equivalent of. Per-outlet gets the real PDF; rungs keep Print for now.
-import PrintButton from './PrintButton'
 import DownloadPdfButton from './DownloadPdfButton'
+import DownloadRungPdfButton from './DownloadRungPdfButton'
+import type { HierarchyPdfPayload } from '@/lib/outletPdfPayload'
 import { OutletPlanProvider } from './OutletPlanContext'
 import AnalyticsNav from '../AnalyticsNav'
 import { HierarchyBreadcrumb, HierarchyChildren, HierarchyOutlets } from './HierarchyNav'
@@ -65,11 +63,22 @@ export default async function OutletReportPage(props: {
   if (hasHierarchy && !outlet) {
     const h = await computeHierarchyReport(datasetId, schemaFields, nodePath)
     if (!h) notFound()
+    // The composed-PDF payload — everything the page renders below, serialized
+    // for DownloadRungPdfButton to post back (POST-the-page's-data contract).
+    const rungPdfPayload: HierarchyPdfPayload = {
+      brand: h.brand, name: h.name, levelLabel: h.levelLabel, childLevelLabel: h.childLevelLabel,
+      crumbs: h.crumbs.map((c) => c.label),
+      reviews: h.reviews, rating: h.rating, outletCount: h.outletCount,
+      networkOutlets: h.networkOutlets, strayOutlets: h.strayOutlets,
+      snapshot: h.snapshot,
+      children: h.children.map((c) => ({ key: c.key, outlets: c.outlets, reviews: c.reviews, rating: c.rating })),
+      outlets: h.outlets.map((o) => ({ label: o.label, sublabel: o.sublabel, reviews: o.reviews })),
+    }
     return (
       <div className="min-h-screen bg-gray-100 py-8 print:bg-white print:py-0">
         <div className="mx-auto max-w-4xl px-4 print:max-w-none print:px-0">
           <div className="print:hidden">
-            <AnalyticsNav datasetId={datasetId} active="outlet" action={<PrintButton />} />
+            <AnalyticsNav datasetId={datasetId} active="outlet" action={<DownloadRungPdfButton datasetId={datasetId} payload={rungPdfPayload} />} />
             <div className="mb-4 mt-2">
               <HierarchyBreadcrumb datasetId={datasetId} crumbs={h.crumbs} />
             </div>
