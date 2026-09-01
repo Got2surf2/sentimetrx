@@ -33,11 +33,13 @@ export default defineConfig({
       // under the real numbers, so it would have passed a 30% regression without
       // complaint — a floor that far below actual isn't a gate, it's decoration.
       // Measured: statements 30.7 · branches 24.07 · functions 33.79 · lines 31.26.
+      // Ratcheted 2026-09-01 with the lib/csv.ts + chatCore turn suites.
+      // Measured: statements 32.16 · branches 25.41 · functions 35.17 · lines 32.78.
       thresholds: {
-        statements: 30,
-        branches: 23,
-        functions: 33,
-        lines: 30,
+        statements: 31,
+        branches: 24,
+        functions: 34,
+        lines: 31,
       },
     },
   },

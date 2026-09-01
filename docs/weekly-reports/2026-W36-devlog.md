@@ -34,3 +34,23 @@ owner-timed operation). The campaigns respondent uploader
 (`CampaignDetailClient.tsx`) handles `""` correctly but still line-splits first;
 the content-guard admin harness uses a naive `split(',')` — both noted, left
 untouched.
+
+## 2026-09-01 — chatCore turn tests (4% → 27%) + coverage floor ratchet
+
+**Why**: week plan item #2 from the W36 coverage work. `lib/chatCore.ts` is the
+designated only chat engine (docs/CONVERGENCE.md) and sat at 4% statement
+coverage — 979 uncovered statements, the single largest untested `lib/` file.
+The audit rubric scores Tests on the ENFORCED floor tracking actual coverage,
+so every suite that lands also ratchets `vitest.config.ts`.
+
+**What**: `tests/unit/chatCoreTurn.test.ts` — 13 turn-level tests with
+`callAI`/embeddings/usage mocked and a permissive Proxy-based fake service
+client (documented in TESTING.md as the harness to extend). Covers the
+silence-probe fast path exhaustively, the org AI-off gate, byo-anthropic key
+propagation, the standard 1200-char input cap, and turn persistence numbering
+(plain T0/T1 and askName+greeting T0–T4). chatCore statements 4% → 26.9%.
+
+**Ratchet**: overall coverage measured 32.16 st / 25.41 br / 35.17 fn /
+32.78 ln (was 31.41/24.64/34.69/31.95 before today's two suites); floors raised
+30/23/33/30 → **31/24/34/31**, staying ~1pp under actual so environment
+variance can't redden CI while regressions still trip it.
