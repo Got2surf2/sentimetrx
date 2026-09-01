@@ -75,6 +75,8 @@ interface AnalyticsPayload {
   filtered: { n: number }
   benchmark: { n: number }
   inView?: { n: number }
+  sampled?: boolean            // true → aggregates computed over the 50K deterministic sample
+  totalSourceRows?: number
   commentCount?: number | null
   themeFieldLabels?: string[]
   filterSummary?: Record<string, string>
@@ -809,6 +811,11 @@ function SharedAnalyticsDashboard({ token, expiresAt, lastRefreshed, refreshing,
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: (filterFields.length > 0 || data.dateRange) ? 10 : 0 }}>
             <h1 className="text-lg font-bold text-gray-800">{data.label}</h1>
             <div style={{ textAlign: 'right' }}>
+              {data.sampled && (
+                <div className="text-xs text-gray-400" style={{ marginBottom: 2 }}>
+                  ~ figures from a representative 50,000-row sample of {(data.totalSourceRows || 0).toLocaleString()} rows
+                </div>
+              )}
               {data.dateRange && (
                 <div className="text-xs text-gray-500" style={{ fontWeight: 600, marginBottom: 2 }}>
                   Data: {data.dateRange.min} — {data.dateRange.max}

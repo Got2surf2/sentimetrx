@@ -237,3 +237,24 @@ theme-detection trigger fires at the threshold in auto mode and never in
 manual (the 414-topic balloon guard). chatCore 34% → 50.6% statements /
 54.8% lines on the day (4% at start). Overall 38.32/29.18/40.55/39.55;
 floors → **37/28/39/38**.
+
+## 2026-09-02 — PERF §8 long-tail: share-analytics cap, PulseIQ list N+1, live-poll cache
+
+**Why**: Large-client readiness sweep — three known software loose ends from
+PERFORMANCE_REVIEW §8 (everything else scale-critical was already fixed).
+
+**What**: ① `/api/share/analytics` — the last fully-uncapped `dataset_rows_flat`
+scan on a public route now follows the pptx-export doctrine: ≤50K exact,
+>50K deterministic block sample (`pageSampledRows` + proportional
+`allocateSampleShares` for collections, sequential fallback); response carries
+`sampled`/`totalSourceRows` and the shared page labels sampled figures.
+Verified live against TEST Cheddar's via a seeded share link (figures
+reconcile: mean 4.139 = the app's 4.14★; link deleted after). ② PulseIQ list —
+`listTownHallsAsLegacy` ran `computeBasicStats` per hall serially (up to 50K
+turn rows each); the list needs two numbers, so it now does a small link-row
+read (distinct participants) + an indexed head COUNT (turns), concurrently
+across halls. Verified: 262/513 on the NOWOCATS hall match SQL ground truth.
+③ `/api/townhall/live` — polled every 10s by EVERY viewer, each poll re-read
+up to 20K turns; added an 8s module-level payload cache (same pattern as the
+route's own trending cache) so N viewers cost one compute per cycle. Measured:
+4.9s cold → 0.13s cached, payload identical. All 1,949 tests pass.

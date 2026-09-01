@@ -5,6 +5,7 @@
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { ratingAliases } from '@/lib/scaleUtils'
+import { pageSampledRows, allocateSampleShares } from '@/lib/bulkRowSample'
 import { applyFilters, deserializeFilters, type SerializedFilters } from '@/lib/filterUtils'
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
@@ -157,23 +158,65 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Bounded load (2026-09-02, PERF_REVIEW §8): this was the last fully-uncapped
+  // dataset_rows_flat scan on a public route. Same doctrine as the pptx export:
+  // ≤50K total → load EVERY row (exact, no sampling); >50K → the deterministic
+  // 50K block sample (pageSampledRows, proportional shares for collections),
+  // with the sequential first-N load as the fallback if the RPC is missing.
+  const ROW_CAP = 50_000
+  let rowsSampled = false
+  let flatCount = 0
+  const memberCounts = new Map<string, number>()
   for (const dsId of flatDatasetIds) {
+    const { count } = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', dsId)
+    memberCounts.set(dsId, count || 0)
+    flatCount += count || 0
+  }
+
+  async function loadSequential(dsId: string, label: string | undefined, cap: number) {
     let page = 0
-    const label = collectionLabels[dsId] || undefined
-    while (true) {
+    while (allRows.length < cap) {
       const { data: rows } = await service
         .from('dataset_rows_flat')
         .select('data')
         .eq('dataset_id', dsId)
+        .order('row_index', { ascending: true })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
       if (!rows || rows.length === 0) break
       for (const r of rows) {
         const row = r.data as Record<string, unknown>
         if (label) row._collection_label = label
         allRows.push(row)
+        if (allRows.length >= cap) break
       }
       if (rows.length < PAGE_SIZE) break
       page++
+    }
+  }
+
+  if (flatCount > ROW_CAP) {
+    rowsSampled = true
+    const shares = flatDatasetIds.length > 1
+      ? allocateSampleShares(memberCounts, ROW_CAP)
+      : new Map([[flatDatasetIds[0], ROW_CAP]])
+    for (const dsId of flatDatasetIds) {
+      const capShare = shares.get(dsId) || 0
+      if (capShare <= 0) continue
+      const label = collectionLabels[dsId] || undefined
+      try {
+        await pageSampledRows(service, dsId, capShare, (r) => {
+          const row = r.data as Record<string, unknown>
+          if (label) row._collection_label = label
+          allRows.push(row)
+        })
+      } catch {
+        await loadSequential(dsId, label, allRows.length + capShare)
+      }
+    }
+  } else {
+    for (const dsId of flatDatasetIds) {
+      await loadSequential(dsId, collectionLabels[dsId] || undefined, ROW_CAP)
+      if (allRows.length >= ROW_CAP) break
     }
   }
 
@@ -371,6 +414,10 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     label: meta.label || 'Filtered View',
     datasetName: dataset.name,
+    // True when the source exceeded the 50K cap and the aggregates below were
+    // computed over the deterministic sample — the client labels figures "~".
+    sampled: rowsSampled,
+    totalSourceRows: flatCount,
     filtered: { n: totalFiltered },
     benchmark: { n: totalBenchmark },
     total: { n: totalAll },

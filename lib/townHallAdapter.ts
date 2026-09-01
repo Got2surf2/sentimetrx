@@ -710,21 +710,41 @@ export async function listTownHallsAsLegacy(
   }
   if (!halls || halls.length === 0) return []
 
-  // Pull participants + turns counts per town hall in a small fan-out.
-  // Number of town halls is small (1 today, low double digits realistic)
-  // — no need for a heroic single-query CTE.
-  const results: TownHallListItem[] = []
+  // Pull participants + turns counts per town hall, concurrently. The list
+  // needs exactly TWO numbers per hall, so it must not pay computeBasicStats's
+  // full turn fetch (up to 50K rows per hall, serially — the /pulseiq list N+1
+  // flagged in PERFORMANCE_REVIEW §8): distinct participants come from the
+  // link rows (small), total user turns from an indexed head COUNT.
   // The list select omits bot_id (unused by the projection/stats below), so
   // the rows aren't structurally full PulseiqSessionRow — cast through unknown.
-  for (const h of halls as unknown as PulseiqSessionRow[]) {
+  const results = await Promise.all((halls as unknown as PulseiqSessionRow[]).map(async (h): Promise<TownHallListItem> => {
     const projected = projectTownHallAsSession(h)
-    const basics = await computeBasicStats(db, h.id, h.org_id)
-    results.push({
+    const [linkRows, turnCount] = await Promise.all([
+      fetchAllRows<LinkRow>((from, to) => db
+        .from('pulseiq_session_conversations')
+        .select('conversation_id, conversations!inner(id, session_id, participant_id, org_id)')
+        .eq('town_hall_id', h.id)
+        .eq('org_id', h.org_id)
+        .order('conversation_id', { ascending: true })
+        .range(from, to), 5000),
+      db.from('conversation_turns')
+        .select('id', { count: 'exact', head: true })
+        .eq('town_hall_id', h.id)
+        .eq('role', 'user')
+        .eq('org_id', h.org_id)
+        .then(({ count }) => count || 0),
+    ])
+    const participantKeys = new Set<string>()
+    for (const r of linkRows) {
+      const c = Array.isArray(r.conversations) ? r.conversations[0] : r.conversations
+      if (c) participantKeys.add((c.participant_id as string | null) || (c.session_id as string))
+    }
+    return {
       ...projected,
-      participants: basics.participants,
-      turns:        basics.turns,
+      participants: participantKeys.size,
+      turns:        turnCount,
       org_name:     null, // list route fills this for admin
-    })
-  }
+    }
+  }))
   return results
 }

@@ -45,6 +45,15 @@ const NON_ANSWER_MARKER = /^\[(Skipped|filtered|Language switch)/i
 const TRENDING_TTL_MS = 60_000
 const trendingCache = new Map<string, { at: number; terms: { word: string; recentCount: number; baselineCount: number; ratio: number }[] }>()
 
+// The whole computed payload is also cached briefly (PERF_REVIEW §8): this
+// endpoint is polled every 10s by EVERY viewer of the live screen, and each
+// poll re-read up to 20K turns + re-ran the keyword/sentiment passes. The
+// payload depends only on the session, so an 8s TTL (just under the poll
+// period) collapses N viewers to at most one compute per cycle per instance,
+// and the screen still refreshes every poll.
+const PAYLOAD_TTL_MS = 8_000
+const livePayloadCache = new Map<string, { at: number; payload: unknown }>()
+
 async function aiEmergingInterests(
   recentItems: { text: string; source: string }[],
   topicLabels: string[],
@@ -89,6 +98,13 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ sessionI
   const db = createServiceRoleClient()
   const hall = await resolveTownHall(db, params.sessionId)
   if (!hall) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const cachedPayload = livePayloadCache.get(hall.id)
+  if (cachedPayload && Date.now() - cachedPayload.at < PAYLOAD_TTL_MS) {
+    return NextResponse.json(cachedPayload.payload, {
+      headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' },
+    })
+  }
 
   const session = projectHallAsSession(hall)
   const config = session.config as { bot_name?: string; bot_emoji?: string }
@@ -266,7 +282,7 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ sessionI
     trendingCache.set(hall.id, { at: Date.now(), terms: trending })
   }
 
-  return NextResponse.json({
+  const payload = {
     session: {
       id: hall.id,
       name: hall.name,
@@ -287,7 +303,9 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ sessionI
     themes: visibleThemes,
     timeline,
     trending,
-  }, {
+  }
+  livePayloadCache.set(hall.id, { at: Date.now(), payload })
+  return NextResponse.json(payload, {
     headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' },
   })
 }
