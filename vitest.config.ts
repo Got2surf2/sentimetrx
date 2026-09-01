@@ -57,11 +57,11 @@ export default defineConfig({
       // Ratcheted 2026-09-01 across the coverage-week suites (lib/csv, chatCore
       // turns + RAG/super/townhall, aux route gates, outletReport, the real-
       // pptxgenjs slideRenderer render) and the internal-deck exclusion.
-      // Measured after the aggregate-ops + analyticsCompute suites: statements
-      // 37.85 · branches 28.52 · functions 40.01 · lines 39.07.
+      // Measured after the PulseIQ facilitation suite: statements 38.32 ·
+      // branches 29.18 · functions 40.55 · lines 39.55.
       thresholds: {
-        statements: 36,
-        branches: 27,
+        statements: 37,
+        branches: 28,
         functions: 39,
         lines: 38,
       },

@@ -35,6 +35,10 @@ vi.mock('@/lib/phase3DualWrite', () => ({
 }))
 vi.mock('@/lib/phase3Read', () => ({ isPhase3ReadSafe: () => false }))
 
+const detectThemesMock = vi.fn(async (..._a: unknown[]) => {})
+vi.mock('@/lib/cohortThemeAggregator', () => ({ detectThemesForTownHall: (...a: unknown[]) => detectThemesMock(...a) }))
+vi.mock('@/lib/rateLimit', () => ({ checkRateLimit: vi.fn(async () => ({ limited: false })) }))
+
 import { handleChatTurn, type ChatAgent, type ChatCoreContext } from '@/lib/chatCore'
 
 // ── Permissive fake service client ──────────────────────────────────────
@@ -402,6 +406,142 @@ describe('handleChatTurn — super capability', () => {
     expect(events).toContain('chat_super')
     expect(events).toContain('query_rewrite')
     expect(events).not.toContain('chat')
+  })
+})
+
+// ── Town-hall (PulseIQ) facilitation policy ─────────────────────────────
+// The counting rules (clarifier caps, topic caps, disengagement, checkout)
+// are enforced in code and BIND the model via injected system blocks — these
+// tests seed conversation_turns and assert the decision that reached the
+// prompt plus the stored assistant turn's source.
+const TOPICS = [
+  { id: 'top1', label: 'Parking', description: 'parking downtown', question: 'How is parking?', follow_up_angles: ['cost', 'availability'], keywords: ['parking'], source: 'seed', response_target: 10, response_count: 0 },
+  { id: 'top2', label: 'Safety', description: 'street safety', question: 'Do you feel safe?', follow_up_angles: [], keywords: ['safety'], source: 'seed', response_target: 10, response_count: 0 },
+]
+const aTurn = (n: number, topic: string, source = 'normal') => ({ role: 'assistant', topic_id: topic, source, content: 'q', turn_number: n })
+const uTurn = (n: number, content: string) => ({ role: 'user', topic_id: null, source: 'normal', content, turn_number: n })
+
+function townFixture(over: { turns?: unknown[]; topics?: unknown[]; session?: Record<string, unknown> } = {}) {
+  return {
+    tables: {
+      pulseiq_sessions: [over.session ?? { cohort_config: {}, response_counter: 0 }],
+      pulseiq_topics: (over.topics ?? TOPICS) as unknown[],
+      conversations: [{ id: 'conv1' }],
+      conversation_turns: over.turns ?? [],
+    },
+    inserts: [] as Recorded[],
+    rpcCalls: [] as RpcCall[],
+  }
+}
+function townCtx(service: ReturnType<typeof makeService>, townHallId = 'th1') {
+  const c = makeCtx(makeAgent(), service)
+  c.townHallContext = { townHallId, participantId: 'p1', slug: 'main-street-plan' }
+  return c
+}
+const townTurn = (userMsg: string) => ({
+  messages: [{ role: 'assistant' as const, content: 'How is parking?' }, { role: 'user' as const, content: userMsg }],
+  session_id: 'th1:p1',
+})
+
+describe('handleChatTurn — PulseIQ facilitation policy', () => {
+  it('asks a clarifier (binding, stored as source=clarifier) on a curt on-topic answer', async () => {
+    const state = townFixture({ turns: [aTurn(0, 'top1')] })
+    const service = makeService(state)
+    await handleChatTurn(townCtx(service), townTurn('Too expensive.'))
+    const sys = mainSystem()
+    expect(sys).toContain('--- PULSEIQ CLARIFIER ---')
+    expect(sys).toContain('"Parking"')
+    const rows = (state.inserts.find((i) => i.table === 'bot_conversation_turns')!.rows) as Array<Record<string, unknown>>
+    expect(rows[rows.length - 1]).toMatchObject({ role: 'assistant', source: 'clarifier' }) // the reply turn (a greeting row precedes it)
+    // The reply turn bumps the picked topic's stored counter (sql/154 O(1) tallies)
+    const inc = state.rpcCalls.find((c) => c.name === 'increment_pulseiq_response_counter')
+    expect(inc?.params.p_topic_id).toBe('top1')
+  })
+
+  it('stays on the topic after a substantive answer instead of rotating (2026-07-03 owner finding)', async () => {
+    const state = townFixture({ turns: [aTurn(0, 'top1')] })
+    const service = makeService(state)
+    await handleChatTurn(townCtx(service),
+      townTurn('The parking garage on Main is affordable and usually has open spots available late at night.'))
+    const sys = mainSystem()
+    expect(sys).toContain('--- PULSEIQ TOPIC FOCUS ---')
+    expect(sys).toContain('Stay with it')
+    expect(sys).toContain('cost | availability') // the topic's follow-up angles travel
+    expect(sys).not.toContain('CLARIFIER')
+  })
+
+  it('rotates to the least-covered undiscussed topic on a move-on signal, with the no-dismissal tone rule', async () => {
+    const state = townFixture({ turns: [aTurn(0, 'top1'), uTurn(1, 'It is fine honestly, nothing more to add about that.')] })
+    const service = makeService(state)
+    await handleChatTurn(townCtx(service), townTurn('next topic'))
+    const sys = mainSystem()
+    expect(sys).toContain('Transition the conversation to the topic "Safety"')
+    expect(sys).toContain('signaled they are done')
+    expect(sys).toContain('NEVER use dismissive transition framing')
+  })
+
+  it('drops into chill standby on global checkout (3 curt answers) instead of pushing another topic', async () => {
+    const state = townFixture({
+      turns: [
+        aTurn(0, 'top1'), uTurn(1, 'Fine.'),
+        aTurn(2, 'top1', 'clarifier'), uTurn(3, 'Ok.'),
+        aTurn(4, 'top2'), uTurn(5, 'Sure.'),
+      ],
+    })
+    const service = makeService(state)
+    await handleChatTurn(townCtx(service), townTurn('No.'))
+    const sys = mainSystem()
+    expect(sys).toContain('--- PULSEIQ STANDBY ---')
+    expect(sys).toContain('Do NOT ask another question')
+    const rows = (state.inserts.find((i) => i.table === 'bot_conversation_turns')!.rows) as Array<Record<string, unknown>>
+    expect(rows[rows.length - 1]).toMatchObject({ role: 'assistant', source: 'standby' })
+  })
+
+  it('closes out gracefully when every topic is covered for this participant', async () => {
+    const state = townFixture({
+      turns: [
+        aTurn(0, 'top1'), uTurn(1, 'Lots of detailed thoughts about parking that I have shared already here.'),
+        aTurn(2, 'top2'), uTurn(3, 'And plenty of detailed thoughts about safety in this answer too, honestly.'),
+      ],
+    })
+    const service = makeService(state)
+    await handleChatTurn(townCtx(service), townTurn('next topic'))
+    const sys = mainSystem()
+    expect(sys).toContain('--- PULSEIQ STANDBY ---')
+    expect(sys).toContain('Do NOT invent a new topic')
+  })
+
+  it('threads the OPENING response onto the topic it already speaks to (AI classification)', async () => {
+    callAIMock.mockImplementation(async (arg: unknown) => {
+      const a = arg as { maxTokens?: number }
+      if (a.maxTokens === 60) return { text: '{"topic_number": 1}', usage: { inputTokens: 5, outputTokens: 5 } }
+      return { text: 'Thanks for sharing that. What stood out most?', usage: { inputTokens: 10, outputTokens: 10 } }
+    })
+    const service = makeService(townFixture())
+    await handleChatTurn(townCtx(service), {
+      messages: [{ role: 'user', content: 'The parking situation downtown is rough.' }],
+      session_id: 'th1:p1',
+    })
+    const sys = mainSystem()
+    expect(sys).toContain('opening message already speaks to the topic "Parking"')
+    expect(logUsageMock.mock.calls.some((c) => (c[0] as { event_type?: string }).event_type === 'topic_match')).toBe(true)
+  })
+
+  it('fires theme detection when the response counter crosses the threshold — and never in manual mode', async () => {
+    const service = makeService(townFixture({
+      turns: [aTurn(0, 'top1')],
+      session: { cohort_config: {}, response_counter: 19 }, // (19+1) % 20 === 0
+    }))
+    await handleChatTurn(townCtx(service, 'th-auto'), townTurn('Too expensive.'))
+    expect(detectThemesMock).toHaveBeenCalledWith('th-auto')
+
+    detectThemesMock.mockClear()
+    const manual = makeService(townFixture({
+      turns: [aTurn(0, 'top1')],
+      session: { cohort_config: { theme_detection_mode: 'manual' }, response_counter: 19 },
+    }))
+    await handleChatTurn(townCtx(manual, 'th-manual'), townTurn('Too expensive.'))
+    expect(detectThemesMock).not.toHaveBeenCalled()
   })
 })
 

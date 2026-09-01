@@ -214,3 +214,26 @@ zeroing, and the sql/161 comma-safe non-empty count for open-ended fields
 (SQL count wins over the 20-row sample; sampled fallback when it throws).
 0% → 91% statements. Floors: functions 38 → 39, lines 37 → 38
 (measured 37.85/28.52/40.01/39.07).
+
+## 2026-09-01 — PulseIQ facilitation policy tests (chatCore 34% → 51%)
+
+**Why**: the facilitation policy is the largest remaining untested chatCore
+block, and it encodes the convergence work's hardest-won behavior: counting
+rules enforced in code that BIND the model (clarifier caps, dynamic topic
+caps, disengagement detection, checkout) — regressions here change how every
+PulseIQ participant is treated.
+
+**What**: 7 scenarios on the turn harness, seeding `conversation_turns` and
+asserting the decision that reached the system prompt plus the stored
+assistant turn's source: curt answer → binding clarifier (source=clarifier,
+sql/154 counter bumped for the picked topic); substantive answer → stay on
+topic with the follow-up angles (the 2026-07-03 "bipolar conversation" owner
+finding); move-on signal → rotation to the least-covered topic with the
+no-dismissal tone rule verbatim; three curt answers → chill standby
+(source=standby, no further questions); all topics covered → graceful
+close-out; opening response → AI topic classification threads onto the
+matched topic (topic_match usage logged); and the response-count
+theme-detection trigger fires at the threshold in auto mode and never in
+manual (the 414-topic balloon guard). chatCore 34% → 50.6% statements /
+54.8% lines on the day (4% at start). Overall 38.32/29.18/40.55/39.55;
+floors → **37/28/39/38**.
