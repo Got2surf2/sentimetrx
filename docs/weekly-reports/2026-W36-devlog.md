@@ -297,3 +297,23 @@ labels, pause→resume, stale-checkpoint resume, error arms). Browser-verified
 E2E on TEST: 30K-row CSV → ~25s total incl. compute, live "Processing rows —
 8,000 of 30,000 / you can safely close this tab", row 1 quotes intact,
 row_count/schema/cleanup all reconciled, test dataset deleted after.
+
+## 2026-09-02 — TextMine consistency: dimension drills → shared Comments, evidence highlighted
+
+**Why**: Owner: "in themes if I pick a word I go to a view where the terms I
+picked are highlighted — same thing does not happen from dimensions — the
+comments view should actually be shared so there is only one."
+
+**What**: ① sql/196 (TEST-applied, PROD MIGRATE ON PUSH): get_rows_by_filters
+returns per-row `dim_evidence` (matched assertions' evidence windows; _tx
+stays stripped; DROP+CREATE + the mandatory sql/190 REVOKE block).
+② FilteredCommentsPanel highlights evidence as anchor-free phrases (windows
+cut mid-word; 5 tests). ③ TaxonomyModule gets onDrillDimension/onDrillAxis —
+embedded in TextMine, sub cards/chips and the axis "Read all comments" land in
+the SHARED Comments view like every other lens; alerts + the standalone
+taxonomy page keep the internal drill. ④ Found+fixed: the Comments
+dimension-facet loader hit /taxonomy without fields= and got zero axes — the
+facet picker and the active-dimension chips had silently never rendered.
+Browser-verified on TEST Cheddar's: counts reconcile (743 card = 743
+comments; axis = 4,184), evidence highlighted incl. mid-word windows, chips
+removable, themes/entities paths unchanged. 1,962 tests pass.

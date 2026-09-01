@@ -1815,7 +1815,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   useEffect(function() {
     if (subTab !== 'comments' || !dimensionsEnabled || dimFacetsLoaded) return
     setDimFacetsLoaded(true)
-    fetch('/api/datasets/' + datasetId + '/taxonomy')
+    // Same repeated-fields query TaxonomyModule sends — without it the route
+    // resolves a default field this dataset's rollup isn't keyed by and
+    // returns ZERO axes, so the dimension facet picker (and the active-filter
+    // chips) silently never rendered (found 2026-09-02).
+    var facetFieldQs = effectiveFields.length ? '?' + effectiveFields.map(function(f) { return 'fields=' + encodeURIComponent(f) }).join('&') : ''
+    fetch('/api/datasets/' + datasetId + '/taxonomy' + facetFieldQs)
       .then(function(r) { return r.ok ? r.json() : null })
       .then(function(d) {
         if (!d) return
@@ -1828,7 +1833,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         }))
       })
       .catch(function() { /* facets stay empty — picker just won't show */ })
-  }, [subTab, dimensionsEnabled, dimFacetsLoaded, datasetId])
+  }, [subTab, dimensionsEnabled, dimFacetsLoaded, datasetId, effectiveFields])
 
   // Fetch combined-filter results (debounced) whenever the active facets change.
   useEffect(function() {
@@ -2402,6 +2407,21 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   function handleDrillDimension(axis: string, sub: string) {
     setPreviousView(view)
     setFilterDims(function(prev) { return prev.some(function(d) { return d.axis === axis && d.sub === sub }) ? prev : prev.concat([{ axis: axis, sub: sub }]) })
+    setView('comments')
+  }
+
+  // Axis-level drill ("read everything on Service"): every sub of the axis as
+  // OR'd dimension facets — the same population the Overview's axis drill
+  // showed, now in the shared Comments view.
+  function handleDrillAxis(axis: string, subs: string[]) {
+    setPreviousView(view)
+    setFilterDims(function(prev) {
+      var next = prev.slice()
+      subs.forEach(function(sub) {
+        if (!next.some(function(d) { return d.axis === axis && d.sub === sub })) next.push({ axis: axis, sub: sub })
+      })
+      return next
+    })
     setView('comments')
   }
 
@@ -3514,7 +3534,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                 (self-contained modules — fetch the embedded taxonomy themselves) */}
             {subTab === 'dimensions' && activeView === 'overview' && (
               <div style={{ flex: 1, minHeight: 0 }}>
-                <TaxonomyModule datasetId={datasetId} fields={effectiveFields} fieldLabel={effectiveFields.length ? effectiveFields.map(fieldLabel).join(' + ') : null} />
+                <TaxonomyModule datasetId={datasetId} fields={effectiveFields} fieldLabel={effectiveFields.length ? effectiveFields.map(fieldLabel).join(' + ') : null}
+                  onDrillDimension={handleDrillDimension}
+                  onDrillAxis={handleDrillAxis} />
               </div>
             )}
             {subTab === 'dimensions' && activeView === 'clouds' && (

@@ -176,7 +176,12 @@ townhall response counter, `dataset_state` analytics merge, session counts),
 `updated_at` triggers, and RLS helper predicates. All are in the snapshot.
 sql/158 (2026-07-06) widened the five taxonomy read RPCs' axis allow-lists
 to accept the `emotion` axis and re-created `get_rows_by_filters` with a
-`p_sub_emotion` facet param (no table changes). sql/160–162 (2026-07-10/11)
+`p_sub_emotion` facet param (no table changes). sql/196 (2026-09-02)
+re-created `get_rows_by_filters` again with a `dim_evidence text[]` output
+column — the matched dimension assertions' evidence windows per row, so the
+shared Comments view can highlight what the tag hooked (`_tx` itself stays
+stripped from `data`; DROP+CREATE since the return type changed, with the
+sql/190 REVOKE block). sql/160–162 (2026-07-10/11)
 added the sampling stack for datasets above the 50K cap: the `idx_drf_sample`
 expression index + `sample_dataset_rows` (O(sample) keyset-paged bulk rows;
 **sql/186** re-created it with a `p_drop_keys text[] DEFAULT '{}'` tail param and

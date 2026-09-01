@@ -36,7 +36,7 @@ async function resolveCommentDatasetIds(service: SupabaseClient, datasetId: stri
 }
 
 export interface CommentFilterResult {
-  rows:  Array<{ id: number; dataset_id: string; row_index: number; data: Record<string, unknown> }>
+  rows:  Array<{ id: number; dataset_id: string; row_index: number; data: Record<string, unknown>; dimEvidence?: string[] }>
   total: number
 }
 
@@ -102,10 +102,15 @@ export async function getRowsByFilters(opts: {
   if (error) throw new Error(error.message)
 
   const matched = (rpcRows || []) as Array<{
-    id: number; dataset_id: string; row_index: number; data: Record<string, unknown>; total_count: number
+    id: number; dataset_id: string; row_index: number; data: Record<string, unknown>
+    dim_evidence?: string[] | null; total_count: number
   }>
   return {
-    rows:  matched.map(r => ({ id: r.id, dataset_id: r.dataset_id, row_index: r.row_index, data: r.data })),
+    // dim_evidence (sql/196): the matched dimension assertions' evidence
+    // windows for THIS row — what the Comments view highlights. Absent on a
+    // pre-196 database (deploy-order safety) -> no dimension highlights, same
+    // as before.
+    rows:  matched.map(r => ({ id: r.id, dataset_id: r.dataset_id, row_index: r.row_index, data: r.data, dimEvidence: r.dim_evidence || undefined })),
     total: matched.length > 0 ? Number(matched[0].total_count) : 0,
   }
 }

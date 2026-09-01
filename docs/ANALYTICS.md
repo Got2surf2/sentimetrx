@@ -19,6 +19,27 @@ Dataset cards on `/analyze` carry a **favorite star** (per-user, via the platfor
 ### Navigation IA (two-row bar — Target B, 2026-06-25)
 
 
+**Dimension drills unified into the shared Comments view (2026-09-02).** The
+owner-reported inconsistency: a theme click landed in Comments with its
+keywords highlighted; a dimension click either opened the Dimensions
+Overview's own internal list (a different UI) or landed in Comments with
+NOTHING highlighted. Now: ① embedded in TextMine, TaxonomyModule's sub-
+dimension cards/chips route to the shared Comments view via `onDrillDimension`
+(and the axis-level "Read all comments" adds every sub of the axis as OR'd
+facets via `onDrillAxis`) — the same destination the Dimension Clouds/Compare
+and theme-card chips already used; severity-alert drills stay internal (they
+are severity-scoped, which the Comments filter can't express), as does the
+standalone `/analyze/[id]/taxonomy` page (no callbacks). ② `get_rows_by_filters`
+returns `dim_evidence` per row (sql/196): the matched assertions' evidence
+windows, which `FilteredCommentsPanel` highlights — phrases match WITHOUT word
+boundaries because the classifier evidence is a fixed-width window that can cut
+mid-word (pinned in tests/unit/filteredCommentsHighlight.test.ts). ③ Fixed on
+the way: the Comments dimension-facet loader called `/taxonomy` without the
+analyzed `fields=` params, got zero axes back, and the facet picker + active
+dimension chips silently never rendered. Verified in-browser on TEST Cheddar's:
+sub click → Comments, "300 of 743" matches the card's count, evidence
+highlighted per row; axis click → 5 removable facet chips, "300 of 4,184".
+
 **File upload is now a server-side ingest (2026-09-02)** — the browser PUTs the raw file to Storage and `POST /api/datasets/[id]/ingest` parses/loads it in the background with polled progress. Full contract in `docs/DATA_SOURCES.md` (UploadClient section).
 
 **Repeat-open row cache (2026-09-02, PERF §8 follow-up).** The bulk rows

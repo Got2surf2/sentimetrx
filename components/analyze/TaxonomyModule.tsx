@@ -101,7 +101,17 @@ function highlight(text: string, phrases: string[]): Array<string | ReactElement
   return out
 }
 
-export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { datasetId: string; fields?: string[]; fieldLabel?: string | null }) {
+export default function TaxonomyModule({ datasetId, fields, fieldLabel, onDrillDimension, onDrillAxis }: {
+  datasetId: string; fields?: string[]; fieldLabel?: string | null
+  // Embedded in TextMine these route sub/axis clicks to the SHARED Comments
+  // view (one comments experience everywhere, terms highlighted — owner
+  // 2026-09-02) instead of the internal drill list. Severity-alert drills stay
+  // internal in both contexts: they're severity-scoped, which the shared
+  // Comments filter can't express. Standalone (/analyze/[id]/taxonomy, no
+  // callbacks) keeps the internal drill for everything.
+  onDrillDimension?: (axis: string, sub: string) => void
+  onDrillAxis?: (axis: string, subs: string[]) => void
+}) {
   // The analyzed open-ended field SET (one or more, from TextMine's ANALYZE
   // selection). Combined into one classification; the view reacts to the set.
   const selFields = fields || []
@@ -432,7 +442,7 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
                 const qs = `axis=${encodeURIComponent(s.axis)}&sub=${encodeURIComponent(s.sub)}`
                 return (
                   <button key={s.sub}
-                    onClick={() => { if (sActive) { setFilterSub(''); setDrill(null) } else { setFilterSub(s.sub); setDrill({ qs, crumbs: ['Dimensions', focus?.label || filterAxis, s.sub] }) } }}
+                    onClick={() => { if (onDrillDimension) { onDrillDimension(s.axis, s.sub); return } if (sActive) { setFilterSub(''); setDrill(null) } else { setFilterSub(s.sub); setDrill({ qs, crumbs: ['Dimensions', focus?.label || filterAxis, s.sub] }) } }}
                     title={`${dimSubLabel(s.sub)} — ${s.count.toLocaleString()} review${s.count === 1 ? '' : 's'}`}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, lineHeight: 1.3, padding: '4px 10px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap', border: '1px solid ' + (sActive ? c : '#e2e8f0'), background: sActive ? c + '14' : '#fff', color: NAVY }}>
                     {sActive && <span style={{ width: 6, height: 6, borderRadius: 3, background: c, flexShrink: 0 }} />}
@@ -622,7 +632,7 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
                   <span style={{ fontSize: 12, color: SLATE }}>· {Math.round(focus.rate)}% of reviews</span>
                   <StarBadge avg={focus.avgRating} size={11} />
                   <button
-                    onClick={() => setDrill({ qs: `axis=${encodeURIComponent(focus.axis)}`, crumbs: ['Dimensions', focus.label] })}
+                    onClick={() => { if (onDrillAxis) { onDrillAxis(focus.axis, data.subs.filter(x => x.axis === focus.axis).map(x => x.sub)); return } setDrill({ qs: `axis=${encodeURIComponent(focus.axis)}`, crumbs: ['Dimensions', focus.label] }) }}
                     title="Read every comment tagged anywhere on this dimension"
                     style={{ marginLeft: 'auto', background: 'transparent', border: 'none', fontSize: 12, fontWeight: 700, color: TEAL, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                     Read all comments ›
@@ -650,7 +660,7 @@ export default function TaxonomyModule({ datasetId, fields, fieldLabel }: { data
                   const pctOfDim = axisCount ? Math.round(100 * s.count / axisCount) : 0
                   return (
                     <div key={s.axis + ':' + s.sub}
-                      onClick={() => { if (active) { setDrill(null); setFilterSub('') } else { setFilterAxis(s.axis); setFilterSub(s.sub); setDrill({ qs, crumbs: ['Dimensions', axisLabelOf(s.axis), s.sub] }) } }}
+                      onClick={() => { if (onDrillDimension) { onDrillDimension(s.axis, s.sub); return } if (active) { setDrill(null); setFilterSub('') } else { setFilterAxis(s.axis); setFilterSub(s.sub); setDrill({ qs, crumbs: ['Dimensions', axisLabelOf(s.axis), s.sub] }) } }}
                       title={`${dimSubLabel(s.sub)} — ${pctOfDim}% of ${axisLabelOf(s.axis)} mentions · ${s.count.toLocaleString()} review${s.count === 1 ? '' : 's'} · click to read them`}
                       style={{ background: '#fff', border: '1px solid ' + (active ? c : '#e2e8f0'), boxShadow: active ? `0 0 0 1px ${c}` : 'none', borderRadius: 12, padding: '13px 15px', cursor: 'pointer', display: 'flex', flexDirection: 'column', minHeight: 104 }}
                       onMouseEnter={e => { if (!active) e.currentTarget.style.borderColor = '#cbd5e1' }}

@@ -30,12 +30,20 @@ function fieldColorFor(val: unknown, f: SchemaFieldConfig): string | null {
 }
 function escapeRE(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
 
-function highlightTerms(text: string, terms: string[]) {
+export function highlightTerms(text: string, terms: string[], phrases: string[] = []) {
   const base = terms.map(t => t.trim()).filter(t => t.length >= 2)
   const cleaned = expandEntityTerms(base).sort((a, b) => b.length - a.length)
-  if (!cleaned.length || !text) return text
+  // Phrases (dimension evidence, sql/196) match WITHOUT word boundaries: the
+  // classifier's evidence is a fixed-width window that can start or end
+  // mid-word, so anchoring would silently drop the highlight. Long phrases
+  // first so an evidence span wins over a keyword inside it.
+  const phraseAlts = phrases.map(ph => ph.trim()).filter(ph => ph.length >= 4)
+    .sort((a, b) => b.length - a.length).map(escapeRE)
+  if ((!cleaned.length && !phraseAlts.length) || !text) return text
+  const alts = phraseAlts
+    .concat(cleaned.length ? ['\\b(?:' + cleaned.map(escapeRE).join('|') + ')\\b'] : [])
   let re: RegExp
-  try { re = new RegExp('\\b(' + cleaned.map(escapeRE).join('|') + ')\\b', 'gi') } catch { return text }
+  try { re = new RegExp('(' + alts.join('|') + ')', 'gi') } catch { return text }
   const out: React.ReactNode[] = []
   let last = 0; let m: RegExpExecArray | null
   while ((m = re.exec(text)) !== null) {
@@ -48,11 +56,12 @@ function highlightTerms(text: string, terms: string[]) {
   return out
 }
 
-interface FilterRow { id: number; dataset_id: string; row_index: number; data: Record<string, unknown> }
+interface FilterRow { id: number; dataset_id: string; row_index: number; data: Record<string, unknown>; dimEvidence?: string[] }
 
 function FilterCard({ row, hlTerms, openFields, schema }: {
   row: FilterRow; hlTerms: string[]; openFields: SchemaFieldConfig[]; schema: SchemaFieldConfig[]
 }) {
+  var dimEvidence = row.dimEvidence || []
   var texts = openFields
     .map(function(f) { return { field: f.field, label: f.label || f.field, value: String(row.data[f.field] ?? '').trim() } })
     .filter(function(t) { return t.value.length > 0 })
@@ -93,7 +102,7 @@ function FilterCard({ row, hlTerms, openFields, schema }: {
             return (
               <div key={t.field} style={{ marginBottom: i < texts.length - 1 ? 6 : 0 }}>
                 {openFields.length > 1 && (<div style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>{t.label}</div>)}
-                <div>{highlightTerms(t.value, hlTerms)}</div>
+                <div>{highlightTerms(t.value, hlTerms, dimEvidence)}</div>
               </div>
             )
           })}

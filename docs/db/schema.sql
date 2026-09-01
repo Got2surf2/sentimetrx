@@ -1028,9 +1028,25 @@ COMMENT ON FUNCTION "public"."get_rows_by_entity"("p_dataset_ids" "uuid"[], "p_q
 
 
 
-CREATE OR REPLACE FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "p_text_fields" "jsonb", "p_theme_query" "text" DEFAULT NULL::"text", "p_entity_query" "text" DEFAULT NULL::"text", "p_sub_touchpoint" "text"[] DEFAULT NULL::"text"[], "p_sub_attribute" "text"[] DEFAULT NULL::"text"[], "p_sub_product" "text"[] DEFAULT NULL::"text"[], "p_sub_beverage" "text"[] DEFAULT NULL::"text"[], "p_sub_ambiance" "text"[] DEFAULT NULL::"text"[], "p_sub_context" "text"[] DEFAULT NULL::"text"[], "p_sub_outcome" "text"[] DEFAULT NULL::"text"[], "p_sub_emotion" "text"[] DEFAULT NULL::"text"[], "p_has_dim" boolean DEFAULT false, "p_limit" integer DEFAULT 200, "p_offset" integer DEFAULT 0) RETURNS TABLE("id" bigint, "dataset_id" "uuid", "row_index" integer, "data" "jsonb", "total_count" bigint)
-    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
-    SET "search_path" TO 'public', 'pg_temp'
+CREATE OR REPLACE FUNCTION "public"."get_rows_by_filters"(
+  p_dataset_ids     uuid[],
+  p_text_fields     jsonb,
+  p_theme_query     text     DEFAULT NULL,
+  p_entity_query    text     DEFAULT NULL,
+  p_sub_touchpoint  text[]   DEFAULT NULL,
+  p_sub_attribute   text[]   DEFAULT NULL,
+  p_sub_product     text[]   DEFAULT NULL,
+  p_sub_beverage    text[]   DEFAULT NULL,
+  p_sub_ambiance    text[]   DEFAULT NULL,
+  p_sub_context     text[]   DEFAULT NULL,
+  p_sub_outcome     text[]   DEFAULT NULL,
+  p_sub_emotion     text[]   DEFAULT NULL,
+  p_has_dim         boolean  DEFAULT false,
+  p_limit           integer  DEFAULT 200,
+  p_offset          integer  DEFAULT 0
+) RETURNS TABLE(id bigint, dataset_id uuid, row_index integer, data jsonb, dim_evidence text[], total_count bigint)
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path TO 'public', 'pg_temp'
     AS $$
 DECLARE
   v_fields jsonb := '{}'::jsonb;  -- dataset_id -> primary field key
@@ -1096,7 +1112,23 @@ BEGIN
         )
       )
   )
-  SELECT m.id, m.dataset_id, m.row_index, m.data - '_tx', count(*) OVER() AS total_count
+  SELECT m.id, m.dataset_id, m.row_index, m.data - '_tx',
+    CASE WHEN p_has_dim AND v_fields ? m.dataset_id::text THEN (
+      SELECT array_agg(DISTINCT btrim(a ->> 'evidence'))
+      FROM jsonb_array_elements(COALESCE(m.data -> '_tx' -> 'f' -> (v_fields ->> m.dataset_id::text) -> 'as', '[]'::jsonb)) AS a
+      WHERE btrim(COALESCE(a ->> 'evidence', '')) <> ''
+        AND (
+          ((a ->> 'axis') = 'touchpoint' AND p_sub_touchpoint IS NOT NULL AND (a ->> 'sub') = ANY(p_sub_touchpoint)) OR
+          ((a ->> 'axis') = 'attribute'  AND p_sub_attribute  IS NOT NULL AND (a ->> 'sub') = ANY(p_sub_attribute))  OR
+          ((a ->> 'axis') = 'product'    AND p_sub_product    IS NOT NULL AND (a ->> 'sub') = ANY(p_sub_product))    OR
+          ((a ->> 'axis') = 'beverage'   AND p_sub_beverage   IS NOT NULL AND (a ->> 'sub') = ANY(p_sub_beverage))   OR
+          ((a ->> 'axis') = 'ambiance'   AND p_sub_ambiance   IS NOT NULL AND (a ->> 'sub') = ANY(p_sub_ambiance))   OR
+          ((a ->> 'axis') = 'context'    AND p_sub_context    IS NOT NULL AND (a ->> 'sub') = ANY(p_sub_context))    OR
+          ((a ->> 'axis') = 'outcome'    AND p_sub_outcome    IS NOT NULL AND (a ->> 'sub') = ANY(p_sub_outcome))    OR
+          ((a ->> 'axis') = 'emotion'    AND p_sub_emotion    IS NOT NULL AND (a ->> 'sub') = ANY(p_sub_emotion))
+        )
+    ) END AS dim_evidence,
+    count(*) OVER() AS total_count
   FROM matched m
   ORDER BY m.row_index
   LIMIT p_limit
