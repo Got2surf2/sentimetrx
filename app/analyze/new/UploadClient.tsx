@@ -3,12 +3,9 @@
 // app/analyze/new/UploadClient.tsx
 // Source selector → Upload (CSV) or Google Reviews wizard
 
-import { postJsonWithRetry } from '@/lib/postJsonWithRetry'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { autoDetectSchema } from '@/lib/datasetUtils'
 import { parseCSV, parseTSV, isSurveyMonkeyCSV, parseSurveyMonkeyCSV } from '@/lib/csv'
-import { ROWS_PER_BATCH } from '@/lib/constants'
 import LottieLoader from '@/components/ui/LottieLoader'
 import GoogleReviewsWizard from '@/components/analyze/GoogleReviewsWizard'
 import BrandTagInput from '@/components/analyze/BrandTagInput'
@@ -17,17 +14,6 @@ import SubstackWizard from '@/components/analyze/SubstackWizard'
 import RegulationsWizard from '@/components/analyze/RegulationsWizard'
 
 const HERMES     = '#E8632A'
-// Rows per POST. MUST NOT EXCEED lib/constants ROWS_PER_BATCH (200) — the server
-// writes row_index = batch_index * ROWS_PER_BATCH + offset, and the rollback
-// DELETE spans exactly that stride, so a larger client chunk would collide
-// indices across batches and make rollback delete the wrong rows.
-//
-// Was 50, i.e. a quarter of the stride the server already supports. Every batch
-// pays ~6 fixed Supabase round trips regardless of size, so a 125,897-row upload
-// was making 2,518 of them instead of 630 (2026-08-26, measured at ~8.7s/batch in
-// production).
-export const CHUNK_SIZE = ROWS_PER_BATCH  // rows per POST — the server's stride
-export const MAX_BYTES = 3 * 1024 * 1024  // 3 MB safety ceiling per POST
 
 type SourceMode = 'select' | 'upload' | 'google_reviews' | 'reddit' | 'substack' | 'regulations'
 type Step = 1 | 2 | 3
@@ -36,15 +22,13 @@ interface ParsedFile {
   rows:          Record<string, unknown>[]
   columns:       string[]
   filename:      string
+  rawText:       string  // the original file — uploaded verbatim to Storage; the server re-parses with the same lib/csv functions
   sourceFormat?: 'csv' | 'tsv' | 'json' | 'surveymonkey'
 }
 
 // CSV / TSV / SurveyMonkey parsing lives in lib/csv.ts (extracted 2026-09-01
 // to fix the interior-quote-dropping bug with an RFC4180 parser + tests).
 
-function bytesOf(rows: Record<string, unknown>[]): number {
-  return new Blob([JSON.stringify(rows)]).size
-}
 
 // "about 2 min", "about 40s". Deliberately coarse: a per-second countdown on an
 // estimate that moves is worse than a rounded one, and rounding communicates
@@ -58,20 +42,18 @@ export function formatEta(ms: number): string {
   return 'about ' + mins + ' minutes'
 }
 
-function splitChunks(rows: Record<string, unknown>[]): Record<string, unknown>[][] {
-  const chunks: Record<string, unknown>[][] = []
-  let i = 0
-  while (i < rows.length) {
-    let size  = CHUNK_SIZE
-    let chunk = rows.slice(i, i + size)
-    while (bytesOf(chunk) > MAX_BYTES && size > 1) {
-      size  = Math.floor(size / 2)
-      chunk = rows.slice(i, i + size)
-    }
-    chunks.push(chunk)
-    i += chunk.length
-  }
-  return chunks
+// PUT the raw file to the signed Storage URL with real upload progress
+// (fetch has no upload-progress events; XHR does).
+function putFileWithProgress(url: string, body: string, onFrac: (frac: number) => void): Promise<void> {
+  return new Promise(function(resolve, reject) {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', url)
+    xhr.upload.onprogress = function(e) { if (e.lengthComputable && e.total > 0) onFrac(e.loaded / e.total) }
+    xhr.onload = function() { if (xhr.status >= 200 && xhr.status < 300) resolve(); else reject(new Error('File upload failed (' + xhr.status + ')')) }
+    xhr.onerror = function() { reject(new Error('File upload failed — network error')) }
+    xhr.setRequestHeader('Content-Type', 'text/plain;charset=UTF-8')
+    xhr.send(body)
+  })
 }
 
 export default function UploadClient() {
@@ -90,11 +72,9 @@ export default function UploadClient() {
   const [prog, setProg] = useState<{ pct: number; msg: string; etaMs: number | null }>({ pct: 0, msg: '', etaMs: null })
   const [error,       setError]       = useState('')
   const [fieldInclude, setFieldInclude] = useState<Record<string, boolean>>({})
-  // The upload is a long async loop. If the user navigates away mid-flight we let
-  // the remaining batches FINISH — aborting would strand a half-loaded dataset
-  // with no rollback — but nothing may touch the UI afterwards, including the
-  // router.push at the end, which would otherwise yank them back to a page they
-  // deliberately left.
+  // Once the ingest kicks off, the server owns it — navigating away is safe.
+  // But nothing may touch the UI after unmount, including the router.push at
+  // the end, which would otherwise yank the user back to a page they left.
   const mountedRef = useRef(true)
   // MUST set true in the effect body, not just rely on the initial value:
   // React's dev StrictMode mounts → unmounts → remounts, so the cleanup below
@@ -139,7 +119,7 @@ export default function UploadClient() {
         cols.forEach(function(c) { inc[c] = true })
         setFieldInclude(inc)
         setFieldAlias({})
-        setParsed({ rows, columns: cols, filename: file.name, sourceFormat: fmt })
+        setParsed({ rows, columns: cols, filename: file.name, rawText: text, sourceFormat: fmt })
         setName(file.name.replace(/\.[^/.]+$/, ''))
         setStep(2)
       } catch {
@@ -175,24 +155,24 @@ export default function UploadClient() {
     setProg({ pct: 0, msg: 'Preparing data…', etaMs: null })
     startedAtRef.current = 0
     try {
-      // Filter rows to only include selected fields
       const includedCols = parsed.columns.filter(function(c) { return fieldInclude[c] !== false })
       if (includedCols.length === 0) { setError('Select at least one field.'); setCreating(false); return }
-      const filteredRows = parsed.rows.map(function(row) {
-        const filtered: Record<string, unknown> = {}
-        includedCols.forEach(function(c) { filtered[c] = row[c] })
-        return filtered
+
+      // 1. Ship the RAW file straight to Storage — one streamed transfer at
+      //    link speed (2026-09-02: replaces hundreds of serial row POSTs; the
+      //    server parses/loads it, see /api/datasets/[id]/ingest).
+      const urlRes = await fetch('/api/datasets/upload-url', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: parsed.filename }),
       })
-
-      const schema = autoDetectSchema(filteredRows)
-
-      // Apply user-provided aliases
-      schema.fields.forEach(function(f) {
-        const alias = fieldAlias[f.field]
-        if (alias && alias.trim()) f.label = alias.trim()
+      const urlData = await urlRes.json().catch(function() { return {} })
+      if (!urlRes.ok || !urlData.signedUrl) { if (mountedRef.current) setError(urlData.error || 'Could not start the upload'); return }
+      await putFileWithProgress(urlData.signedUrl, parsed.rawText, function(frac) {
+        progress(Math.round(frac * 35), 'Uploading file…')
       })
+      progress(35, 'Uploading file…', true, null)
 
-      // 1. Create dataset record
+      // 2. Create the dataset record (unchanged contract).
       const dsRes  = await fetch('/api/datasets', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), description: description || null, source: 'upload', visibility, brand_tag: brandTag.trim() || null, taxonomy_enabled: applyDimensions }),
@@ -200,62 +180,49 @@ export default function UploadClient() {
       const dsData = await dsRes.json()
       if (!dsRes.ok) { if (mountedRef.current) setError(dsData.error || 'Failed to create dataset'); return }
 
-      // 2. Upload rows in safe-sized chunks — track batches for rollback
-      const chunks = splitChunks(filteredRows)
-      const uploadedBatches: number[] = []
-      startedAtRef.current = Date.now()
-      for (let i = 0; i < chunks.length; i++) {
-        // Retries a transient upstream blip. Without it a single dropped
-        // socket on one batch out of hundreds took the rollback branch below —
-        // deleting every uploaded batch AND the dataset itself. Seen twice in
-        // production on 2026-08-26. See lib/postJsonWithRetry.
-        const res = await postJsonWithRetry('/api/datasets/' + dsData.id + '/rows',
-          { rows: chunks[i], source_ref: parsed.filename })
-        if (!res.ok) {
-          const e = await res.json().catch(function() { return {} })
-          // Rollback: delete uploaded batches and the dataset itself
-          if (uploadedBatches.length > 0) {
-            try { await fetch('/api/datasets/' + dsData.id + '/rows', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ batch_indexes: uploadedBatches }) }) } catch {}
-          }
-          try { await fetch('/api/datasets/' + dsData.id, { method: 'DELETE' }) } catch {}
-          if (mountedRef.current) setError('Upload failed on batch ' + (i + 1) + ': ' + (e.error || 'server error') + '. Upload rolled back.')
-          return
-        }
-        const resData = await res.json().catch(function() { return {} })
-        if (resData.batch_index != null) uploadedBatches.push(resData.batch_index)
-        // Measured throughput, not a guess: mean seconds-per-batch so far applied
-        // to the batches left. Withheld until 3 are done — the first one or two
-        // include connection setup and would produce a wild number.
-        const done = i + 1
-        const elapsed = Date.now() - startedAtRef.current
-        const eta = done >= 3 ? Math.round((elapsed / done) * (chunks.length - done)) : null
-        progress(
-          Math.round((done / (chunks.length + 2)) * 100),
-          'Uploading rows — batch ' + done.toLocaleString() + ' of ' + chunks.length.toLocaleString(),
-          i === chunks.length - 1,
-          eta,
-        )
-      }
-
-      // 3. Save schema to state
-      progress(null, 'Saving schema…', true, null)
-      await fetch('/api/datasets/' + dsData.id + '/state', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      // 3. Kick the server-side ingest — parse, schema detection, row load and
+      //    the analytics compute all happen on the backend from here on. The
+      //    202 comes back immediately; processing survives this tab closing.
+      const ingRes = await fetch('/api/datasets/' + dsData.id + '/ingest', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          schema_config: schema,
-          theme_model:   { themes: [], aiGenerated: false, version: 1 },
-          saved_charts:  [],
-          saved_stats:   [],
-          filter_state:  {},
+          path: urlData.path, filename: parsed.filename,
+          format: parsed.sourceFormat || 'csv',
+          includedCols, fieldAliases: fieldAlias,
+          expectedRows: parsed.rows.length,
         }),
       })
-      progress(Math.round(((chunks.length + 1) / (chunks.length + 2)) * 100), 'Saving schema…', true, null)
+      if (!ingRes.ok) {
+        const e = await ingRes.json().catch(function() { return {} })
+        try { await fetch('/api/datasets/' + dsData.id, { method: 'DELETE' }) } catch {}
+        if (mountedRef.current) setError(e.error || 'Failed to start processing')
+        return
+      }
 
-      // 4. Trigger analytics compute (non-blocking on failure — user can re-trigger from settings)
-      progress(null, 'Computing analytics…', true, null)
-      const computeRes = await fetch('/api/datasets/' + dsData.id + '/compute', { method: 'POST' })
-      if (!computeRes.ok) {
-        console.warn('[upload] analytics compute failed — will show stale until re-triggered')
+      // 4. Poll for progress. `paused` means the worker hit its time budget on
+      //    a huge file — nudge it to continue. On error the dataset is removed
+      //    (parity with the legacy rollback) and the message shown.
+      startedAtRef.current = Date.now()
+      for (;;) {
+        await new Promise(function(r) { setTimeout(r, 1500) })
+        const sRes = await fetch('/api/datasets/' + dsData.id + '/ingest')
+        if (!sRes.ok) continue // transient poll failure — keep polling
+        const st = await sRes.json()
+        if (st.status === 'done') break
+        if (st.status === 'error') {
+          try { await fetch('/api/datasets/' + dsData.id, { method: 'DELETE' }) } catch {}
+          if (mountedRef.current) setError('Processing failed: ' + (st.error || 'server error'))
+          return
+        }
+        if (st.status === 'paused') {
+          void fetch('/api/datasets/' + dsData.id + '/ingest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+        }
+        const total = st.rowsTotal || parsed.rows.length || 1
+        const done = st.rowsDone || 0
+        const frac = Math.min(done / total, 1)
+        const elapsed = Date.now() - startedAtRef.current
+        const eta = frac > 0.05 ? Math.round((elapsed / frac) * (1 - frac)) : null
+        progress(35 + Math.round(frac * 63), 'Processing rows — ' + done.toLocaleString() + ' of ' + total.toLocaleString(), false, eta)
       }
       progress(100, 'Finishing up…', true, null)
 
@@ -270,14 +237,6 @@ export default function UploadClient() {
   }
 
   const includedColsList = parsed ? parsed.columns.filter(function(c) { return fieldInclude[c] !== false }) : []
-  // Was: a full copy of every row, then a real splitChunks() pass — JSON.stringify
-  // per chunk — recomputed on EVERY render, purely to show this one number. During
-  // an upload that ran thousands of times (see handleCreate's throttled progress)
-  // and saturated the main thread: measured 78ms per render at 100K rows × ~4,000
-  // renders. Typing on the page went sporadic because keystrokes queued behind it.
-  // The count is derivable arithmetically; oversized rows can still split a chunk
-  // further at upload time, so treat it as the estimate its name always claimed.
-  const estimatedChunks = parsed ? Math.ceil(parsed.rows.length / CHUNK_SIZE) : 0
 
   return (
     <div className="flex flex-col gap-6">
@@ -501,7 +460,7 @@ export default function UploadClient() {
               ['Rows',       parsed.rows.length.toLocaleString()],
               ['Columns',    includedColsList.length + ' of ' + parsed.columns.length],
               ['Format',     parsed.sourceFormat === 'surveymonkey' ? 'SurveyMonkey (auto-detected)' : parsed.sourceFormat === 'tsv' ? 'TSV' : parsed.sourceFormat === 'json' ? 'JSON' : 'CSV'],
-              ['Batches',    '≈' + estimatedChunks + ' × up to ' + CHUNK_SIZE + ' rows'],
+              ['File size',  (parsed.rawText.length / 1e6).toFixed(1) + ' MB'],
               ['Visibility', visibility],
             ] as [string, string][]).map(function([label, val]) {
               return (
@@ -543,7 +502,7 @@ export default function UploadClient() {
                       {prog.msg || 'Uploading…'}
                     </h2>
                     <p className="mt-1 text-xs text-gray-500">
-                      Keep this tab open until it finishes.
+                      {prog.msg.startsWith('Uploading') ? 'Keep this tab open while the file uploads.' : 'Processing happens on the server — you can safely close this tab.'}
                     </p>
                   </div>
 

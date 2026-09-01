@@ -19,6 +19,8 @@ Dataset cards on `/analyze` carry a **favorite star** (per-user, via the platfor
 ### Navigation IA (two-row bar — Target B, 2026-06-25)
 
 
+**File upload is now a server-side ingest (2026-09-02)** — the browser PUTs the raw file to Storage and `POST /api/datasets/[id]/ingest` parses/loads it in the background with polled progress. Full contract in `docs/DATA_SOURCES.md` (UploadClient section).
+
 **Repeat-open row cache (2026-09-02, PERF §8 follow-up).** The bulk rows
 payload (≤50K sample, tens of MB) is cached client-side in IndexedDB
 (`lib/rowsCache.ts`) keyed by `row_count : last_synced_at : hash(schemaFields)`

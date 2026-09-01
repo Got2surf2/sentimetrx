@@ -572,6 +572,26 @@ Endpoint: `https://api.regulations.gov/v4`. Auth: header `X-Api-Key: {REGULATION
 All four sources are configured via wizards under `/app/analyze/new/`:
 
 - `app/analyze/new/UploadClient.tsx` — top-level source-type selector (Upload CSV, Survey, Town Hall, Reddit, Substack, Google Reviews, Regulations).
+
+  **File upload is a server-side ingest (2026-09-02).** The browser parses the
+  file only for the wizard preview (columns / row count / field selection);
+  on Create it PUTs the RAW file straight to the private `dataset-uploads`
+  Storage bucket via a signed URL (`POST /api/datasets/upload-url` — path is
+  minted server-side under the caller's org prefix), creates the dataset, and
+  kicks `POST /api/datasets/[id]/ingest`, which answers 202 and does the rest
+  in the background (`lib/datasetIngest.ts`): re-parse with the same `lib/csv`
+  functions, filter to the selected columns, `autoDetectSchema` + aliases,
+  500-row inserts with progress checkpoints in
+  `dataset_state.analytics.ingest`, then the analytics compute and file
+  cleanup. The upload page polls `GET …/ingest`; once processing starts the
+  tab is no longer load-bearing ("you can safely close this tab"). A worker
+  that hits its ~250s budget marks `paused` and the poller re-POSTs to
+  continue; resume trusts `max(row_index)` over the checkpoint so rows are
+  never double-written. Errors mark `ingest.status='error'` (dataset deleted
+  by the page, file kept for diagnosis). This replaced the legacy
+  client-driven flow — browser-side parse + ~630 serial 200-row POSTs for a
+  126K-row file with batch-index rollback — measured end-to-end on TEST:
+  30K rows in ~25s including compute, quotes/schema/row_count all verified.
 - `components/analyze/RedditWizard.tsx`
 - `components/analyze/GoogleReviewsWizard.tsx`
 - `components/analyze/SubstackWizard.tsx`

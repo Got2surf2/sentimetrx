@@ -274,3 +274,26 @@ REJECTED — 12.7s vs 11.8s serial; the cost is DB CPU (jsonb+gzip ~9MB/page on
 it isn't re-attempted. ③ Prod Supabase compute bumped Micro → Small (owner-run
 Management API call after classifier block; verified ci_small ACTIVE_HEALTHY,
 425ms probe) — 2GB RAM / 174MB/s baseline IO for the 598K-row working set.
+
+## 2026-09-02 — server-side upload pipeline (owner: "upload to staging, do everything on the back end")
+
+**Why**: Large-file uploads ran entirely in the browser: client-side parse,
+then ~630 serial 200-row POSTs (126K rows) with the tab load-bearing
+throughout and a rollback path that a single flaky request could trigger.
+
+**What**: Direct-to-Storage upload + background ingest. ① `POST
+/api/datasets/upload-url` mints a signed URL under the caller's org prefix
+(private `dataset-uploads` bucket, created lazily — note: Supabase's missing-
+bucket error is "The related resource does not exist", caught broadly).
+② The browser PUTs the raw file (XHR for upload progress), creates the
+dataset, and kicks ③ `POST /api/datasets/[id]/ingest` → 202 + `waitUntil`
+worker (`lib/datasetIngest.ts`): same lib/csv parse as the client preview,
+column filter, autoDetectSchema + aliases, 500-row inserts, progress
+checkpoints in `analytics.ingest`, compute, file cleanup. Poller drives
+pause/continue for >250s files; resume trusts max(row_index) so no double
+writes. UploadClient loses splitChunks/batching (uploadChunking.test.ts
+retired with it). 7 new worker tests (RFC4180 parity, filtering, alias
+labels, pause→resume, stale-checkpoint resume, error arms). Browser-verified
+E2E on TEST: 30K-row CSV → ~25s total incl. compute, live "Processing rows —
+8,000 of 30,000 / you can safely close this tab", row 1 quotes intact,
+row_count/schema/cleanup all reconciled, test dataset deleted after.
