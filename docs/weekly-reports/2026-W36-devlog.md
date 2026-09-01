@@ -178,3 +178,21 @@ in docProps, and the §6 tripwire on every slide — no 9+-digit OOXML attribute
 values (`idx="4294967295"` excluded: a legitimate unsigned-int placeholder
 index, found while calibrating the check). Also pins `fmtWallClock` bands.
 Overall 36.84 st / 27.65 br / 39.16 fn / 38.02 ln; floors → **36/27/38/37**.
+
+## 2026-09-01 — aggregate route op semantics (6% → covered)
+
+**Why**: POST /datasets/[id]/aggregate serves every chart on the Charts/Stats
+tabs; its gate was tested but none of its op behavior was — including two
+deploy-order safety nets (the sql/169 p_row_ids and sql/164 p_field_key
+PGRST202 retries) that only fire against an un-migrated DB, i.e. exactly when
+nothing else would catch a regression.
+
+**What**: `tests/integration/aggregate-route-ops.test.ts` — 18 tests: grid /
+series / stats reshaping per op ((blank) buckets, null avg preserved), the
+sampled path gating on row_count > AGG_SAMPLE_CAP with throw → exact-RPC
+fallback, rowIds sanitization + both PGRST202 retries, numeric_stats' honest
+n:0 on an empty sampled scan vs 404 on a truly empty dataset, taxonomy axis
+validation + axisIsRow reshaping, and the collection fan-out (per-member RPCs,
+counts summed, `_collection_label` stamped from member labels). Overall
+37.28 st / 28.12 br / 39.38 fn / 38.51 ln; floors 36/27/38/37 already within
+~1.3pp — no ratchet this commit.
