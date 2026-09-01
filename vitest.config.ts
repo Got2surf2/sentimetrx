@@ -57,13 +57,13 @@ export default defineConfig({
       // Ratcheted 2026-09-01 across the coverage-week suites (lib/csv, chatCore
       // turns + RAG/super/townhall, aux route gates, outletReport, the real-
       // pptxgenjs slideRenderer render) and the internal-deck exclusion.
-      // Measured after the slideRenderer suite: statements 36.84 · branches
-      // 27.65 · functions 39.16 · lines 38.02.
+      // Measured after the aggregate-ops + analyticsCompute suites: statements
+      // 37.85 · branches 28.52 · functions 40.01 · lines 39.07.
       thresholds: {
         statements: 36,
         branches: 27,
-        functions: 38,
-        lines: 37,
+        functions: 39,
+        lines: 38,
       },
     },
   },

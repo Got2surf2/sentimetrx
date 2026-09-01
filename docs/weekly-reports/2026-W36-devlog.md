@@ -196,3 +196,21 @@ validation + axisIsRow reshaping, and the collection fan-out (per-member RPCs,
 counts summed, `_collection_label` stamped from member labels). Overall
 37.28 st / 28.12 br / 39.38 fn / 38.51 ln; floors 36/27/38/37 already within
 ~1.3pp — no ratchet this commit.
+
+## 2026-09-01 — analyticsCompute tests (0% → 91%)
+
+**Why**: `lib/analyticsCompute.ts` computes every per-field summary behind
+dataset sync/compute/trim and collection recompute — 248 statements at 0%.
+
+**What**: `tests/unit/analyticsCompute.test.ts` — 12 tests. Pure path:
+categorical counts/topN/uniqueRatio with blank-skipping, exact numeric stats
+with the discrete (≤20 distinct) per-value profile vs continuous histogram,
+min==max single-bucket collapse, empty-field zeroing, open-ended word/char
+stats, date normalization to YYYY-MM-DD, id sampling — plus a streaming-
+equivalence invariant (chunked `pushRows` ≡ one in-memory pass, the contract
+collection recompute depends on). SQL path (fake service + rpc):
+categorical/discrete-numeric/date summaries from the RPCs, empty-numeric
+zeroing, and the sql/161 comma-safe non-empty count for open-ended fields
+(SQL count wins over the 20-row sample; sampled fallback when it throws).
+0% → 91% statements. Floors: functions 38 → 39, lines 37 → 38
+(measured 37.85/28.52/40.01/39.07).
