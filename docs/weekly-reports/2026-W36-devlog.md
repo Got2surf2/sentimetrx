@@ -317,3 +317,22 @@ facet picker and the active-dimension chips had silently never rendered.
 Browser-verified on TEST Cheddar's: counts reconcile (743 card = 743
 comments; axis = 4,184), evidence highlighted incl. mid-word windows, chips
 removable, themes/entities paths unchanged. 1,962 tests pass.
+
+## 2026-09-02 — clause-scoped sentiment: "the manager was nice" now reads as nice
+
+**Why**: Owner: when the word is "manager" and the comment is "the manager was
+nice", the manager mention must carry the "nice". It didn't: who-type phrases
+are dictionary-neutral, the only context logic was a negation flip, so the
+"nice" landed on an unrelated attribute sub and who-type cards showed "No
+sentiment signal · by rating".
+
+**What**: `taxonomyKeywordMatcher` — a `neu`-polarity hit now adopts its
+CLAUSE's lexicon sentiment (lexiconScore, negation-aware); clause bounds =
+sentence delimiters + contrast conjunctions so "food was great but the manager
+was rude" yields manager=neg, and sentiment-free mentions stay neu (by-rating
+fallback preserved). 7 tests pin the exact owner case + the leak/negation/
+isolation traps. Verified end-to-end: full TEST Cheddar's re-classify (12,340
+rows, 49s, keyword tier) flipped every "who served you" card from "No
+sentiment signal" to real polarised shares (Server 79%, Manager 51% positive —
+rank-consistent with by-rating). Existing datasets keep stored verdicts until
+their next classify. All 1,969 tests pass.

@@ -44,6 +44,25 @@ The matcher (`lib/taxonomyKeywordMatcher.ts`, `classifyByKeyword(text, dict)`) i
 `roaches`, `fly` ≠ `flies`). An AI tier (`lib/taxonomyExtractor.ts`, `classifyReview`)
 exists for nuance/severity but is **not** wired into the persisting path yet.
 
+**Clause-scoped sentiment for NEUTRAL mentions (2026-09-02, owner ask: "when
+you have the word 'manager' the context is 'nice' when the comment is 'the
+manager was nice'").** A phrase whose dictionary polarity is `neu` (the "who"
+entities and other sentiment-free mentions) now adopts the sentiment of the
+CLAUSE around its match, scored by the shared lexicon (`lexiconScore` —
+negation-aware, so "not nice" reads negative). Clause boundaries are sentence
+delimiters AND contrast conjunctions (but/however/although/though/whereas/yet),
+so in "the food was great but the manager was rude" the 'great' cannot leak
+onto the manager. Ties and sentiment-free clauses stay `neu`, which preserves
+the "· by rating" fallback below. Polarized phrases are untouched (own polarity
++ negation flip). Quoted-speech misattribution ("the manager said the food was
+terrible") is accepted keyword-tier noise like the header's other non-goals.
+Pinned in `tests/unit/taxonomyKeywordMatcher.test.ts`; verified on TEST
+Cheddar's after a full re-classify — every "who served you" sub gained a real
+polarised share (Server 79% / Manager 51% positive), rank-consistent with the
+old by-rating numbers. **Stored `_tx` on existing datasets keeps the old
+neutral verdicts until their next classify** (drift nudge covers only new
+rows; a full re-classify regenerates everything).
+
 ## 2a. Emotion-language flags — the `emotion` axis (BUILT 2026-07-06)
 
 `lib/emotionFlags.ts` (`detectEmotionAssertions`) runs in the same keyword-tier

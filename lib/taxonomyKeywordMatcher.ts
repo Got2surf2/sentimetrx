@@ -27,6 +27,7 @@ import {
   type KeywordEntry,
 } from './taxonomyKeywords'
 import { LEARNED_KEYWORD_DICTIONARY } from './taxonomyKeywordsLearned'
+import { lexiconScore } from './themeUtils'
 import type {
   Assertion,
   Polarity,
@@ -89,6 +90,47 @@ function precededByNegation(text: string, startIdx: number): boolean {
   return false
 }
 
+// ── Clause-scoped sentiment for NEUTRAL mentions (2026-09-02) ────────────────
+//
+// A "who"-type phrase ('manager', 'server', …) carries polarity 'neu' in the
+// dictionary — the word itself has no sentiment. But "the manager was nice"
+// plainly ascribes 'nice' to the manager, and until now that context was lost:
+// the mention stayed neu (so who-type cards showed "No sentiment signal" and
+// fell back to ratings) while 'nice' landed on an unrelated attribute sub.
+// Owner ask (2026-09-02): when the word is 'manager' and the comment says
+// "the manager was nice", the manager mention must read the 'nice'.
+//
+// Heuristic: score the CLAUSE around the match with the shared sentiment
+// lexicon (lexiconScore — negation-aware, so "not nice" counts negative).
+// Clause boundaries are sentence delimiters AND contrast conjunctions, so in
+// "the food was great but the manager was rude" the manager's clause is only
+// "the manager was rude" — 'great' cannot leak across the 'but'. Ties and
+// sentiment-free clauses stay neu (the by-rating fallback remains for those).
+// Quoted-speech misattribution ("the manager said the food was terrible") is
+// accepted keyword-tier noise, like the header's other non-goals.
+const CLAUSE_DELIM_RX = /[.!?;\n]|\b(?:but|however|although|though|whereas|yet)\b/gi
+
+function clauseBounds(text: string, matchIdx: number, matchEnd: number): { start: number; end: number } {
+  let start = 0
+  let end = text.length
+  CLAUSE_DELIM_RX.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = CLAUSE_DELIM_RX.exec(text)) !== null) {
+    if (m.index + m[0].length <= matchIdx) start = m.index + m[0].length
+    else if (m.index >= matchEnd) { end = m.index; break }
+    if (m.index === CLAUSE_DELIM_RX.lastIndex) CLAUSE_DELIM_RX.lastIndex++
+  }
+  return { start, end }
+}
+
+function clauseSentiment(text: string, matchIdx: number, matchEnd: number): Polarity {
+  const { start, end } = clauseBounds(text, matchIdx, matchEnd)
+  const { pos, neg } = lexiconScore(text.slice(start, end))
+  if (pos > neg) return 'pos'
+  if (neg > pos) return 'neg'
+  return 'neu'
+}
+
 interface ScratchHit {
   axis: string
   sub: string
@@ -112,6 +154,10 @@ function scanEntry(entry: KeywordEntry, text: string): ScratchHit[] {
       let polarity: Polarity = p.polarity
       if ((polarity === 'pos' || polarity === 'neg') && precededByNegation(text, matchIdx)) {
         polarity = flipPolarity(polarity)
+      } else if (polarity === 'neu') {
+        // Neutral mention (who-type / sentiment-free phrase): adopt the
+        // surrounding clause's lexicon sentiment — see clauseSentiment above.
+        polarity = clauseSentiment(text, matchIdx, matchIdx + matchedText.length)
       }
 
       // Evidence: matched phrase + a small surrounding window for context.
