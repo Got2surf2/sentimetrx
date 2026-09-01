@@ -55,14 +55,15 @@ export default defineConfig({
       // complaint — a floor that far below actual isn't a gate, it's decoration.
       // Measured: statements 30.7 · branches 24.07 · functions 33.79 · lines 31.26.
       // Ratcheted 2026-09-01 across the coverage-week suites (lib/csv, chatCore
-      // turns + RAG/super/townhall, aux route gates, outletReport) and the
-      // internal-deck exclusion. Measured after the outletReport suite:
-      // statements 35.03 · branches 26.82 · functions 37.63 · lines 35.95.
+      // turns + RAG/super/townhall, aux route gates, outletReport, the real-
+      // pptxgenjs slideRenderer render) and the internal-deck exclusion.
+      // Measured after the slideRenderer suite: statements 36.84 · branches
+      // 27.65 · functions 39.16 · lines 38.02.
       thresholds: {
-        statements: 34,
-        branches: 26,
-        functions: 36,
-        lines: 35,
+        statements: 36,
+        branches: 27,
+        functions: 38,
+        lines: 37,
       },
     },
   },

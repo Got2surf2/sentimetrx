@@ -162,3 +162,19 @@ observed live on a last_synced_at bump, loading state caught mid-rebuild.
 9 new tests (tests/unit/outletScanCache.test.ts): cold/warm byte-parity across
 every entry point, zero row reads warm, 5 fingerprint invalidation arms,
 unknown-version → miss. All 1,907 tests pass.
+
+## 2026-09-01 — slideRenderer rendered for real (every slide type) → floors 36/27/38/37
+
+**Why**: `lib/pptx/slideRenderer.ts` (18% covered, 652 uncovered statements)
+renders every customer-facing PPTX export. The ENGINEERING §6 incident showed
+mocks and LibreOffice can both pass a deck that real PowerPoint declares
+corrupt — so the useful test renders for real and validates the artifact.
+
+**What**: `tests/unit/pptxSlideRenderer.test.ts` — renderDeck through the REAL
+pptxgenjs over a deck with all 18 slide types plus an unknown-type fallback,
+then the .pptx opened with jszip: slide count (title + N), every spec title and
+representative content present in the slide XML, Datanautix (never Sentimetrx)
+in docProps, and the §6 tripwire on every slide — no 9+-digit OOXML attribute
+values (`idx="4294967295"` excluded: a legitimate unsigned-int placeholder
+index, found while calibrating the check). Also pins `fmtWallClock` bands.
+Overall 36.84 st / 27.65 br / 39.16 fn / 38.02 ln; floors → **36/27/38/37**.
