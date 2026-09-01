@@ -165,7 +165,13 @@ Assess test coverage, test quality, and testing practices.
 3. **Scope the denominator to what the project declares as coverable.** Use the
    coverage tool's own `include` globs. Counting every `.ts` in the repo drags in
    one-off scripts, config and pages that are not unit-testable in isolation, so
-   the score measures repo shape rather than testing discipline.
+   the score measures repo shape rather than testing discipline. Since
+   2026-09-01 the declared surface also EXCLUDES the internal deck generators
+   (top-level `app/api/*-deck/**` + their deck-only `lib/pptx` builders) — an
+   owner decision recorded in docs/TESTING.md "Coverage surface": no standalone
+   deck is a customer deliverable. Honor the config's `exclude` list when
+   hand-computing ratios; customer-facing exports (dataset/agent/recording
+   PPTX, the dataset-scoped deck routes) remain in scope.
 
 ```bash
 # Which files the project itself declares as the coverage surface.

@@ -70,3 +70,23 @@ search·filter-options·taxonomy-rows and bots crawl-job·batches·workbook·pro
 The batches listing additionally asserts the service-role `question_batches`
 read stays paired with the agent's org. All gates already held — no defects
 found, now locked in. Lines floor 31 → 32 (actual 33.23).
+
+## 2026-09-01 — Internal deck generators out of the coverage surface
+
+**Why**: owner decision — no standalone deck ever reaches a client; they are
+internal consumption only, and their generation code "should not be subject to
+the audit rules." (A repo split was considered and rejected: the deck routes
+read live app data through the app's DB clients, so they can't run outside
+the repo; the coverage `include` is the audit-facing boundary we control.)
+
+**What**: `vitest.config.ts` coverage `exclude` now drops every top-level
+`app/api/*-deck/**` route (22 of them) and the 11 `lib/pptx` builders only
+those routes import. The rule is structural (documented in TESTING.md
+"Coverage surface" + the audit rubric's Category 5) so future decks inherit
+it without name-by-name judgment. Customer-facing PPTX stays in scope:
+shared/slideRenderer/styles, the dataset-scoped deck routes, and the
+dataset/agent/recording/collection export builders. Denominator 44,205 →
+39,538 statements; measured 33.76 st / 25.82 br / 35.85 fn / 34.69 ln;
+floors ratcheted **31/24/34/32 → 32/25/35/33**. Noticed in passing:
+`lib/pptx/diligenceDeck.ts` is imported by nothing (pre-existing dead code,
+left in place).

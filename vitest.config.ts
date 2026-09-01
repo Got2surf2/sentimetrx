@@ -25,7 +25,29 @@ export default defineConfig({
       // ratio — the proxy that produced two weeks of meaningless Tests scores.
       reporter: ['text', 'html', 'json-summary'],
       include: ['lib/**/*.ts', 'app/api/**/*.ts'],
-      exclude: ['**/*.test.*', 'tests/**'],
+      // Internal deck generators are OUT of the coverage surface (owner call,
+      // 2026-09-01: every standalone deck is internal-consumption only and not
+      // subject to the audit's testing bar). The rule is structural: every
+      // TOP-LEVEL app/api/*-deck route + the lib/pptx builders only those
+      // routes import. Product-facing PPTX stays IN: shared/slideRenderer/
+      // styles infrastructure, dataset-scoped deck routes (outlet-plan,
+      // operational-review, improvement-plan), and the dataset/agent/recording/
+      // collection export builders. See docs/TESTING.md "Coverage surface".
+      exclude: [
+        '**/*.test.*', 'tests/**',
+        'app/api/*-deck/**',
+        'lib/pptx/advancedResearchDeck.ts',
+        'lib/pptx/blueMountainsNepaDeck.ts',
+        'lib/pptx/diligenceDeck.ts',
+        'lib/pptx/eaMembershipDeck.ts',
+        'lib/pptx/eaNpsPitchDeck.ts',
+        'lib/pptx/mcoListeningDeck.ts',
+        'lib/pptx/mcoLogo.ts',
+        'lib/pptx/nepaCaraReimaginedDeck.ts',
+        'lib/pptx/projectInsightDeck.ts',
+        'lib/pptx/reviewIntelligenceDeck.ts',
+        'lib/pptx/salesPitchDeck.ts',
+      ],
       // Ratcheting floor — set just below the current baseline so unrelated
       // churn doesn't redden CI, but no regression is allowed. Bump these up
       // as each batch of tests lands (governance Tests-score progression plan).
@@ -34,13 +56,13 @@ export default defineConfig({
       // complaint — a floor that far below actual isn't a gate, it's decoration.
       // Measured: statements 30.7 · branches 24.07 · functions 33.79 · lines 31.26.
       // Ratcheted 2026-09-01 with the lib/csv.ts + chatCore turn suites.
-      // Measured: statements 32.59 · branches 25.74 · functions 35.32 · lines 33.23
-      // (after the aux route-gate suite, same day).
+      // Measured after the internal-deck exclusion (same day): statements 33.76
+      // · branches 25.82 · functions 35.85 · lines 34.69.
       thresholds: {
-        statements: 31,
-        branches: 24,
-        functions: 34,
-        lines: 32,
+        statements: 32,
+        branches: 25,
+        functions: 35,
+        lines: 33,
       },
     },
   },
