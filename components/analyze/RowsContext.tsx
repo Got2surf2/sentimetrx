@@ -6,6 +6,7 @@
 
 import { createContext, useContext, useState, useCallback } from 'react'
 import { injectSignalTier } from '@/lib/signalTier'
+import { readRowsCache, writeRowsCache } from '@/lib/rowsCache'
 import type { SchemaFieldConfig as SchemaField } from '@/lib/analyzeTypes'
 
 var SAMPLE_CAP = 50000
@@ -46,10 +47,14 @@ interface ProviderProps {
   // Dataset row_count when the caller knows it — enables "N of M rows · %"
   // progress instead of raw MB while the bulk payload streams in.
   expectedRows?: number
+  // Freshness key for the IndexedDB repeat-open cache (lib/rowsCache). When
+  // set, a matching cached payload hydrates locally instead of refetching the
+  // multi-MB bulk load; omitted → cache disabled (always fetch).
+  freshness?: string
   children: React.ReactNode
 }
 
-export function RowsProvider({ datasetId, schemaFields, datasetSource, expectedRows, children }: ProviderProps) {
+export function RowsProvider({ datasetId, schemaFields, datasetSource, expectedRows, freshness, children }: ProviderProps) {
   var [rows, setRows] = useState<Record<string, unknown>[]>([])
   var [rowsLoaded, setRowsLoaded] = useState(false)
   var [rowsLoading, setRowsLoading] = useState(false)
@@ -65,6 +70,23 @@ export function RowsProvider({ datasetId, schemaFields, datasetSource, expectedR
     if (rowsLoaded || rowsLoading) return
     setRowsLoading(true)
     setRowsError(null)
+    // Repeat-open fast path: a fresh IndexedDB copy of the processed payload
+    // (aliases + signal tier already applied) hydrates without the network.
+    var cachePromise = freshness ? readRowsCache(datasetId, freshness) : Promise.resolve(null)
+    cachePromise.then(function(cached) {
+      if (cached) {
+        setRows(cached.rows)
+        setTotalRows(cached.totalRows)
+        setSampled(cached.sampled)
+        setSampledCount(cached.rows.length)
+        setRowsLoaded(true)
+        setRowsLoading(false)
+        return
+      }
+      fetchRowsFromServer()
+    }).catch(function() { fetchRowsFromServer() })
+
+    function fetchRowsFromServer() {
     // withRowIds=true attaches `_rowId` (the flat row id) to each row so Charts can
     // pass the filtered row-id set to server-side dimension aggregates (view-level).
     fetch('/api/datasets/' + datasetId + '/rows?all=true&withRowIds=true&sampleMax=' + SAMPLE_CAP)
@@ -136,12 +158,19 @@ export function RowsProvider({ datasetId, schemaFields, datasetSource, expectedR
         setSampled(!!data.sampled)
         setSampledCount(loadedRows.length)
         setRowsLoaded(true)
+        // Persist for the next open — deferred so the write's structured
+        // clone doesn't compete with the first paint; best-effort inside.
+        if (freshness) {
+          var toCache = { rows: loadedRows, totalRows: data.totalRows ?? loadedRows.length, sampled: !!data.sampled }
+          setTimeout(function() { void writeRowsCache(datasetId, freshness as string, toCache) }, 1500)
+        }
       })
       .catch(function(e: unknown) {
         setRowsError(e instanceof Error ? e.message : 'Failed to load rows')
       })
       .finally(function() { setRowsLoading(false) })
-  }, [datasetId, rowsLoaded, rowsLoading, schemaFields, datasetSource])
+    }
+  }, [datasetId, rowsLoaded, rowsLoading, schemaFields, datasetSource, freshness])
 
   return (
     <RowsContext.Provider value={{ rows: rows, rowsLoaded: rowsLoaded, rowsLoading: rowsLoading, rowsError: rowsError, totalRows: totalRows, sampled: sampled, sampledCount: sampledCount, rowsProgressBytes: rowsProgressBytes, rowsProgressRows: rowsProgressRows, rowsExpected: rowsExpected, fetchRows: fetchRows }}>

@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { FilterProvider, useFilters } from '@/components/analyze/FilterContext'
 import { analyzableFieldsKey } from '@/lib/datasetUtils'
 import { RowsProvider, useRows } from '@/components/analyze/RowsContext'
+import { rowsFreshness } from '@/lib/rowsCache'
 import { filterCount, applyFilters } from '@/lib/filterUtils'
 import type { Filters, SerializedFilters } from '@/lib/filterUtils'
 import FiltersModal from '@/components/analyze/FiltersModal'
@@ -335,7 +336,7 @@ export default function DatasetShell(props: Props) {
   const analyzableKey = analyzableFieldsKey(props.schemaFields)
   return (
     <FilterProvider>
-      <RowsProvider key={analyzableKey} datasetId={props.datasetId} schemaFields={props.schemaFields} datasetSource={props.dataset.source} expectedRows={props.dataset.row_count}>
+      <RowsProvider key={analyzableKey} datasetId={props.datasetId} schemaFields={props.schemaFields} datasetSource={props.dataset.source} expectedRows={props.dataset.row_count} freshness={rowsFreshness(props.dataset.row_count, props.dataset.last_synced_at, props.schemaFields)}>
         <ShellInner {...props} />
       </RowsProvider>
     </FilterProvider>

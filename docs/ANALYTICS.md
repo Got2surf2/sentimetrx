@@ -18,6 +18,19 @@ Dataset cards on `/analyze` carry a **favorite star** (per-user, via the platfor
 
 ### Navigation IA (two-row bar — Target B, 2026-06-25)
 
+
+**Repeat-open row cache (2026-09-02, PERF §8 follow-up).** The bulk rows
+payload (≤50K sample, tens of MB) is cached client-side in IndexedDB
+(`lib/rowsCache.ts`) keyed by `row_count : last_synced_at : hash(schemaFields)`
+— reopening a dataset hydrates locally with ZERO bulk fetch (verified: 19.7K
+rows, repeat open ~3s total page load, no `/rows?all=true` request). Schema is
+part of the key because value aliases are baked into the cached rows. Kept to
+the 4 most-recent datasets; every IDB failure degrades to a normal fetch.
+First-open speed note: parallelizing the sample RPC pages was MEASURED AND
+REJECTED (12.7s vs 11.8s serial on a 128K dataset — page cost is DB CPU
+building/gzipping ~9MB jsonb per page on 2 shared cores, not round-trips; the
+wire is already gzip ~11:1). Don't re-attempt without a bigger compute tier.
+
 TextMine is **four peer sections** in a persistent **two-row bar** — the shared `TextMineNav` (`components/analyze/TextMineNav.tsx`): **row 1 = sections** `[Themes] [Dimensions] [Entities] [Advanced Analytics]`, **row 2 = the active section's views** `Overview · Clouds · Compare · Comments` (uniform across the three lens sections; Advanced shows `Brand Health · Leaderboard · Outlet Deep-Dive`). Replaces the old flat sub-tab strip + the right-aligned "View by Theme/Entity" toggle (the toggle **folded into the Entities section** — picking a section sets the lens). The pure state-map + gates live in `lib/textmineNav.ts` (unit-tested in `tests/unit/textmineNav.test.ts`).
 - **Chrome real-estate (2026-06-25).** To keep more of the viewport on data, three rows were collapsed: (1) the shared `DatasetMetricStrip` (records · signals · theme-fit · rating) and `ViewsBar` (saved views / period) now render in **one row** in `DatasetShell` — both accept an `embedded` prop that drops their own bar wrapper; this benefits *every* analyze tab. (2) The multi-text-field picker ("Review / Owner Response", shown only when a dataset has >1 open-ended column) **moved off its standalone bar onto the views-nav row** via `TextMineNav`'s `viewsExtra` right-slot. (3) The two nav rows were tightened (row 1 36px, row 2 32px). (4) The **Themes Compare** (`CompareTab`) header — previously a big "Group Comparison" h2 + ★ legend + paragraph + a bordered control *card* — was collapsed to the same single compact top-bar the Dimensions/Entities compares use (legend folded into the "?" hint), so all three Compare views are the same height.
 

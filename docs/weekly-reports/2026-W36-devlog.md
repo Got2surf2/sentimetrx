@@ -258,3 +258,19 @@ across halls. Verified: 262/513 on the NOWOCATS hall match SQL ground truth.
 up to 20K turns; added an 8s module-level payload cache (same pattern as the
 route's own trending cache) so N viewers cost one compute per cycle. Measured:
 4.9s cold → 0.13s cached, payload identical. All 1,949 tests pass.
+
+## 2026-09-02 — repeat-open rows cache + parallel-fetch rejection; prod DB → Small
+
+**Why**: Owner: large-dataset loads feel slow. Measured: 50K sample of a 128K
+survey = 10 serial RPC pages (11.8s DB) + 86MB JSON to the browser.
+
+**What**: ① IndexedDB repeat-open cache (`lib/rowsCache.ts` + RowsContext/
+DatasetShell wiring): the processed bulk payload persists client-side keyed by
+row_count:last_synced_at:schema-hash; reopening a dataset = zero bulk fetch
+(verified in-browser: no /rows request, full TextMine render ~3s). 4 tests on
+the invalidation contract. ② Parallel block-group fetch: built, MEASURED,
+REJECTED — 12.7s vs 11.8s serial; the cost is DB CPU (jsonb+gzip ~9MB/page on
+2 shared cores), wire already gzip 11:1. Reverted; recorded in ANALYTICS.md so
+it isn't re-attempted. ③ Prod Supabase compute bumped Micro → Small (owner-run
+Management API call after classifier block; verified ci_small ACTIVE_HEALTHY,
+425ms probe) — 2GB RAM / 174MB/s baseline IO for the 598K-row working set.
