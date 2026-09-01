@@ -549,3 +549,71 @@ PERF TEST"): **Brief C Part 3** (taxonomy-family sampled twins) and **Brief E**
 touch the always-on `npm test`, which is mocked), but at ~2.6 GB it bloats the
 Micro-tier TEST DB and can slow the env-gated suites. **Delete + `VACUUM
 ANALYZE` once Brief C Part 3 and Brief E land** (re-seed is cheap if needed).
+
+---
+
+## 8. Addendum 2026-09-01 — Advanced Analytics pages (the uncovered O(N) surface)
+
+Owner-reported: demoing the Cheddar's dataset, switching between the Advanced
+Analytics options was "extremely laggy". Root cause measured on prod
+(read-only), plus a repo-wide sweep for the same shape. The §0 map classified
+all 41 **API** routes; these are **server page components** and were not in it.
+
+### Measured (Cheddar's, 19,708 rows, prod 2026-09-01)
+
+- Every Advanced view click — Brand Health / Leaderboard / Outlet Deep-Dive,
+  every outlet switch, every hierarchy drill — costs **~3.1–3.6 s of server
+  time, identical on repeat** (no caching at any layer) with **no
+  `loading.tsx`**, so the old page sits frozen through it.
+- The cost is `lib/outletReport.ts scanDataset()` → `pageAll()`: the ENTIRE
+  dataset (`id, data` JSONB = **20.5 MB**, of which 5.9 MB is `_tx`) fetched in
+  **20 serial 1000-row PostgREST pages**, then aggregated in Node.
+- **Bound: DB I/O + network, not CPU.** The full 7-theme regex pass over all
+  19,708 reviews is **~60 ms**; from a fast-RTT client the scan still takes
+  ~3 s → dominated by Postgres JSONB detoast + PostgREST serialization +
+  serial round-trips (~7 MB/s effective). Vercel CPU is negligible.
+- O(N) per click: Darden Fine Brands (42K rows) ≈ 2×; a 500K-row brand ≈ 25×
+  (→ 80 s+, unusable) — this surface has no sampling doctrine protecting it.
+
+### Sweep: all entry points on the same scan (none cached)
+
+`scanDataset` has **9 callers**: the 3 Advanced pages (`improvement-plan`,
+`outlet-leaderboard`, `outlet-report` incl. the hierarchy branch — every
+drill-down click is its own full scan), `outlet-action-plan` route (POST-hint
+fast path avoids it on cache hits), and 3 **GET deck routes** that re-scan per
+download click — `operational-review-deck` is worst: `computeOutletPredictor`
+(scan 1) + `computeDiligenceData` (scan 2) + a taxonomy rollup in one GET.
+Repo-wide: **zero** `unstable_cache`/`use cache`; one `React.cache` (study
+slug); no precomputed outlet snapshot exists in `dataset_state`
+(`outlet_action_plans` caches only the LLM narration, not the scan).
+
+Other hot spots surfaced by the sweep (all bounded but worth queueing):
+`listTownHallsAsLegacy` N+1 (`computeBasicStats` = up to 55K rows per hall,
+serial, on every /pulseiq list load); `/api/townhall/live` 20K-turn read on a
+10 s poll per viewer; **`/api/share/analytics` = fully-uncapped
+`dataset_rows_flat` scan per collection member on a public route** (the only
+uncapped flat scan outside outletReport); `admin/health` count-scan pile-up.
+
+### Fix plan (ranked)
+
+1. **Precompute the outlet snapshot** — persist the scan's aggregates
+   (outlets, themeChain, dimChain, predictor inputs, captured examples) to
+   `dataset_state` at sync/classify/theme-model-change time (write-path
+   precedent: `outletActionPlan.ts` / sql/183); pages read O(1). Makes every
+   Advanced click ~fast regardless of dataset size — the huge-scale answer.
+2. **`loading.tsx` for the three Advanced routes** — perceived-latency fix,
+   ship regardless.
+3. Interim if (1) waits: select only needed JSONB keys (~halves the 20 MB),
+   fetch pages concurrently (kills the serial-RTT tax), `React.cache` the scan
+   per request. ~3.5 s → ~1–1.5 s but still O(N).
+4. Cap `/api/share/analytics`; batch `computeBasicStats` on the PulseIQ list;
+   revisit the live-poll read size.
+
+### Where the platform is against §0/§1 today
+
+Prod holds **598,130 rows across 65 datasets** (top: ANES 126K, Carrabba's
+56K) — at the §1 wall for Micro (~200K hot rows/GB cache). The compute-tier
+ladder decision (§1) is now current, not future.
+
+*Method: read-only prod REST measurements (scratchpad harness, 2026-09-01) +
+in-browser fetch timing on www.sentimetrx.ai + code sweep. No prod writes.*

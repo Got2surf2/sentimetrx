@@ -12,6 +12,7 @@ answers).
 | Audit | Last run | Scope | Findings live in | Re-run when |
 |---|---|---|---|---|
 | **Performance architecture review** | 2026-07-13 | Multi-M total rows, 1M+ single datasets, concurrency, QR-TV bursts; all 41 dataset routes classified O(1)/O(50K)/O(N); measured on a 1.03M TEST dataset | `docs/PERFORMANCE_REVIEW.md` (bottleneck map §0, briefs §7) | Its own re-run policy (footer): sampling-RPC changes, compute resize, first real 500K dataset |
+| **Advanced Analytics perf diagnosis** (Cheddar's lag) | 2026-09-01 | scanDataset O(N)-per-click family (9 entry points), caching posture repo-wide, prod scale vs Micro wall; measured on prod read-only | `docs/PERFORMANCE_REVIEW.md` §8 | A fix from §8 ships, or a new scanDataset caller appears |
 | **Route-scaling classification** (subset of above) | 2026-07-13 | Every `app/api/datasets/*` + collection path: how DB cost scales with dataset size | `docs/PERFORMANCE_REVIEW.md` §2 | A new dataset-reading route ships (classify it at review time, don't re-sweep) |
 | **Filters-compliance sweep** | DONE 2026-07-13 (Brief F) | Every consumer of `SerializedFilters`/`applyFilters` + surfaces that silently ignore filters | `docs/PERFORMANCE_REVIEW.md` §7 Brief F results table | A new filter consumer ships, or filter semantics change |
 | **Capacity model** (provider envelope + k6) | 2026-07-04 | Vercel/Supabase/Anthropic/OpenAI/Resend/Deepgram limits read live; 4 k6 load scenarios | `docs/CAPACITY.md` | Plan/tier change, compute resize, k6 numbers move >2×, dataset crosses 50K real rows |
