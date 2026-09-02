@@ -638,6 +638,19 @@ async function streamAnthropicResponse(
   messages.push({ role: 'user', content: question })
 
   function callAnthropic(opts?: { noMoreTools?: boolean }) {
+    // Incremental prompt caching across tool rounds: every round re-sends the
+    // whole growing conversation (a 400-verbatim read ≈ 15K tokens, resent on
+    // each subsequent round). Marking the LAST block of the latest message as
+    // a cache breakpoint makes the next round read the shared prefix from
+    // cache (~10× cheaper input). Only one message-level breakpoint is kept
+    // (plus the system block) — Anthropic allows 4 max per request.
+    for (const m of messages) {
+      if (Array.isArray(m.content)) for (const b of m.content) delete (b as Record<string, unknown>).cache_control
+    }
+    const lastMsg = messages[messages.length - 1]
+    if (lastMsg && Array.isArray(lastMsg.content) && lastMsg.content.length > 0) {
+      (lastMsg.content[lastMsg.content.length - 1] as Record<string, unknown>).cache_control = { type: 'ephemeral' }
+    }
     return fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {

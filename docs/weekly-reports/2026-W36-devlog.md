@@ -611,3 +611,16 @@ verbatims tally the pull's mix on schema `demographic` categorical fields vs
 the dataset's exact field_counts (filter-scoped); shifts ≥15pts on values
 ≥5% surface as representativenessDrift, and the prompt mandates telling the
 user. 2 new tests (sparse-column fill, 100%-Male-vs-50/50 flag); 2,020 pass.
+
+## 2026-09-02 — incremental prompt caching across Ana's tool rounds
+
+**Why**: Owner asked whether context is a concern with the bigger reads.
+Window-wise no (worst case ~100-120K of 200K, hard-capped), but every tool
+round re-sends the whole growing conversation — a 400-verbatim read (~15K
+tokens) was re-billed on each subsequent round.
+
+**What**: callAnthropic marks the LAST block of the latest message as a
+cache breakpoint each round (older markers stripped; one message breakpoint
++ the cached system block, within the 4-max). Next round reads the shared
+prefix from cache at ~10× cheaper input. Smoke-verified live: multi-round
+read question streams to completion. 2,020 pass.

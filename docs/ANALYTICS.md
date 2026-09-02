@@ -1929,7 +1929,10 @@ longer come from eyeballing the ~200-row context sample (statistically meaningle
 a 50K dataset, and irreconcilable with the tabs). `POST /api/ask-ana` now runs an
 **agentic tool loop**: when the model calls a query tool, the server executes it,
 feeds the result back, and lets the model continue — all inside one SSE response
-(up to 6 rounds; `maxDuration` 120s). Theme/report tools keep their original
+(up to 8 rounds; `maxDuration` 120s; incremental prompt caching — each round
+marks the latest tool results as a cache breakpoint so the next round reads
+the shared prefix from cache, ~10× cheaper input on heavy multi-read
+questions). Theme/report tools keep their original
 client-confirmation-card behavior and end the turn. Two query tools
 (`lib/anaQueryTools.ts`):
 - **`query_data`** — dispatches into `lib/aggregateOps.runAggregateOp`, the op
