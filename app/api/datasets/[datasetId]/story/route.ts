@@ -14,7 +14,7 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { serverError } from '@/lib/apiError'
-import { randomUUID } from 'crypto'
+import { randomUUID, randomBytes } from 'crypto'
 import {
   buildStoryPayload, deterministicNarrative, narrativePrompt, parseNarrative,
   renderDataStory, STORY_ROW_CAP,
@@ -95,6 +95,21 @@ export async function POST(_req: Request, props: Params) {
       contentType: 'text/html', upsert: false,
     })
     if (uploadErr) return serverError(uploadErr, 'datasets.story.upload', { orgId })
+
+    // Short link (sql/198): mint a crypto-random slug; the data_stories row
+    // carries the editable lifecycle (expires_at / revoked_at) and the
+    // /story/[slug] viewer serves it. Falls back to the signed-URL token link
+    // when the insert fails — deploy-order safety for a database that hasn't
+    // run sql/198 yet (same pattern as the PGRST202 retries in aggregate).
+    const slug = Array.from(randomBytes(12), (b) => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[b % 62]).join('')
+    const { error: rowErr } = await service.from('data_stories').insert({
+      org_id: dataset.org_id, dataset_id: dataset.id, slug,
+      title: dataset.name || 'Data Story', storage_path: path, created_by: userId,
+      expires_at: new Date(Date.now() + EXPIRY_SECONDS * 1000).toISOString(),
+    })
+    if (!rowErr) {
+      return NextResponse.json({ url: `/story/${slug}`, storagePath: path, expiresInDays: 7 })
+    }
 
     const { data: signed, error: signErr } = await service.storage.from(BUCKET).createSignedUrl(path, EXPIRY_SECONDS)
     if (signErr || !signed) return serverError(signErr, 'datasets.story.sign', { orgId })

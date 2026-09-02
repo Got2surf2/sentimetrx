@@ -1924,7 +1924,14 @@ OUR domain — Supabase Storage deliberately serves text/html as text/plain on
 also affects the pre-existing `export/html/share` links — see the route
 comment). The signed-URL token stays the sole capability (signature + expiry
 verified by Supabase; the viewer route adds no bypass); deleting the storage
-object kills every copy of the link instantly. The header opens the story in
+object kills every copy of the link instantly. Links are SHORT (sql/198): generation mints a crypto-random slug into
+`data_stories` and returns `sentimetrx.ai/story/<slug>`; the public
+`/story/[slug]` viewer checks `revoked_at`/`expires_at` on every request and
+streams the HTML from the bucket — so expiry is EDITABLE after a link is sent
+and one link can be revoked from a future Share-tab surface without touching
+storage. When the insert fails (a DB that has not run sql/198), the route
+falls back to the long signed-token `/api/story` link — deploy-order safe.
+The header opens the story in
 a new tab (painted with a building screen while the ~30–90s build runs) and
 copies the link. The h1 de-stutters a doubled trailing word in the dataset
 name and adapts its suffix (“what the reviews say” when a trailing

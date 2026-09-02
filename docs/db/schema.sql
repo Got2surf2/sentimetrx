@@ -10833,3 +10833,20 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 
 
 
+
+-- ── sql/198 data_stories (manual note — applied to TEST; prod apply pending
+--    owner-run Management API; this snapshot regenerates at that `npm run
+--    migrate`) ──────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS data_stories (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id       uuid NOT NULL,
+  dataset_id   uuid NOT NULL,
+  slug         text NOT NULL UNIQUE CHECK (char_length(slug) BETWEEN 8 AND 32),
+  title        text NOT NULL DEFAULT '',
+  storage_path text NOT NULL,
+  created_by   uuid,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  expires_at   timestamptz NOT NULL,
+  revoked_at   timestamptz
+);
+-- RLS enabled; org-scoped SELECT policy data_stories_org_read; index idx_data_stories_org.

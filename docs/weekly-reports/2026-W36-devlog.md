@@ -709,3 +709,21 @@ share has been silently broken on prod since the allowlist was set (May 12).
 Both now send exactly `text/html` (the /api/story viewer re-adds the charset
 on serve). Verified against the REAL prod bucket: suffixed → 415, plain →
 accepted, test object deleted.
+
+## 2026-09-02 — Data Story short links (sql/198)
+
+**Why**: owner ("how do we enable short urls… do it now") — the v1 link was a
+340-char signed-token URL: unsendable-looking, and its expiry is baked into
+the signature so a sent link could never be extended or revoked individually.
+
+**What**: `sql/198_data_stories.sql` — slug (crypto base62 ×12, the
+capability; `question_batches.share_token` trust model), storage_path,
+editable `expires_at`, `revoked_at`; RLS org-scoped SELECT, no write policy.
+Public viewer `GET /story/[slug]` checks both lifecycle columns per request
+and streams from the bucket (410 revoked/expired with distinct copy, 404
+unknown/malformed/object-deleted). Generation mints the slug and returns
+`/story/<slug>`; on insert failure it falls back to the signed-token link —
+deploy-order safe for a prod that hasn't run 198. 6 route tests. Applied to
+TEST via :6543 (RLS + policy verified); **prod apply = owner-run Management
+API script (sql/198), snapshot regenerates at that `npm run migrate`.**
+Verified live on TEST: `/story/NSd8V7meXoKX` renders the EA story.
