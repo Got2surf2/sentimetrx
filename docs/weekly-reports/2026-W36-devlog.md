@@ -353,3 +353,25 @@ mandatory chromium outputFileTracingIncludes entries. PrintButton deleted.
 Pixel-QC'd both documents from real TEST data (branded chrome, keep-together
 cards; 60-DPI header cramming ruled out at 150 DPI); both page buttons
 verified E2E (POST 200 → download). 1,969 tests pass.
+
+## 2026-09-01 — Ask Ana queries the data instead of skimming a sample
+
+**Why**: Owner: Ana "only works on a very small subset of the dataset — probably
+not even statistically significant; convert the requests into queries without
+tossing data to an LLM every single time." Every Ana number was an impression
+from a ≤500-row dump that couldn't reconcile with the tabs.
+
+**What**: Extracted the charts aggregate route's op dispatcher verbatim into
+lib/aggregateOps (route is now a thin auth wrapper) and gave Ana two
+server-executed tools in a new agentic tool loop inside the ask-ana SSE stream
+(≤6 rounds): query_data → runAggregateOp (same RPCs/gating/fan-out as the tabs,
+scoped to the filtered view's row ids sent by the panel) and find_quotes →
+rank-ordered full-text search with an exact whole-dataset count and verbatim
+quotes. Prompt reframed: the row dump is an orientation sample; every numeric
+claim must come from query_data, every quote verbatim from find_quotes. Schema
+context now carries data field keys (label-only context made queries silently
+match nothing). Panel streams "Counting values…" status lines per round.
+Browser-verified on Rubio's (TEST, 9,905 rows): unfiltered star breakdown
+matched the dispatcher exactly (…= 9,905); with Anaheim excluded, scoped counts
+summed to the header's 9,774 and the complement to the 131 excluded rows.
+16 new unit tests; 1,985 total pass.

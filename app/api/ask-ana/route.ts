@@ -19,9 +19,12 @@ import { loadAnaSample, resolveCollectionMembers } from '@/lib/anaReportContext'
 import { serverError } from '@/lib/apiError'
 import type { SchemaConfig, SchemaFieldConfig } from '@/lib/analyzeTypes'
 import { themeSetForField, type ThemeModel as UtilThemeModel } from '@/lib/themeUtils'
+import { ANA_QUERY_TOOLS, ANA_QUERY_TOOL_NAMES, executeAnaQueryTool, anaToolStatusLabel, type AnaQueryContext } from '@/lib/anaQueryTools'
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 60
+// Query-tool rounds are sequential upstream calls — a multi-round answer on a
+// slow aggregate can outlive the old 60s budget.
+export const maxDuration = 120
 
 const CONTEXT_CAP    = 500    // absolute max rows sent to Claude
 const DEFAULT_SAMPLE = 200    // default if user doesn't configure
@@ -186,6 +189,13 @@ export async function POST(req: Request) {
   }
   const sampleSize = Math.max(50, Math.min(body.sampleSize || DEFAULT_SAMPLE, CONTEXT_CAP))
   const samplingStrategy: 'proportional' | 'equal' | 'floor' = body.samplingStrategy || 'proportional'
+  // Flat row ids of the client's filtered view — same set ChartsModule sends to
+  // the aggregate route, so Ana's query_data numbers match the charts exactly.
+  // Sanitized to finite numbers, same 200K cap as the aggregate route.
+  let filterRowIds: number[] | null = Array.isArray(body.rowIds)
+    ? (body.rowIds.filter(function(x: unknown): x is number { return typeof x === 'number' && Number.isFinite(x) }).slice(0, 200000))
+    : null
+  if (filterRowIds && filterRowIds.length === 0) filterRowIds = null
 
   if (!datasetId || !question) {
     return NextResponse.json({ error: 'datasetId and question are required' }, { status: 400 })
@@ -355,10 +365,13 @@ Ask the user 1-2 brief questions about what they're looking to learn, then make 
       }).join('\n')
     : '\n\nNo themes have been created yet for this dataset.'
 
+  // Field KEYS ride along with the labels — query_data / the aggregate SQL
+  // address rows by the data key (e.g. "rating"), not the display label
+  // ("Star Rating"); without the key Ana's queries silently match nothing.
   const schemaContext = schemaFields.length > 0
-    ? '\n\nDataset fields: ' + schemaFields
+    ? '\n\nDataset fields (use the key in [brackets] for query_data): ' + schemaFields
         .filter(function(f) { return f.status !== 'ignored' })
-        .map(function(f) { return f.label + ' (' + f.type + (f.section ? ', ' + f.section : '') + ')' })
+        .map(function(f) { return (f.label || f.field) + ' [' + f.field + '] (' + f.type + (f.section ? ', ' + f.section : '') + ')' })
         .join('; ')
     : ''
 
@@ -381,13 +394,20 @@ Ask the user 1-2 brief questions about what they're looking to learn, then make 
       }).join('\n')
     : ''
 
-  const systemPrompt = `You are Ana, a senior data analyst assistant. You have been given a dataset of ${filteredRows.length} ${sourceLabel} from "${dataset.name}".
+  const systemPrompt = `You are Ana, a senior data analyst assistant working with the dataset "${dataset.name}" (${totalDatasetRows.toLocaleString()} ${sourceLabel} total). Your context below includes a small orientation sample of ${filteredRows.length} rows so you know what the data looks like — but your numbers must NOT come from eyeballing that sample.
 
-CRITICAL RULE: You must ONLY use the data provided below to answer questions. NEVER use outside knowledge, general knowledge, or information not present in this dataset. Every claim, statistic, and insight must be directly traceable to the rows provided. If the data does not contain enough information to answer a question, say "I don't see enough data in this dataset to answer that" — do NOT fill in gaps with general knowledge or assumptions.
+CRITICAL RULE: You must ONLY use this dataset — via your query tools and the rows provided below — to answer questions. NEVER use outside knowledge, general knowledge, or information not present in this dataset. If the data does not contain enough information to answer a question, say "I don't see enough data in this dataset to answer that" — do NOT fill in gaps with general knowledge or assumptions.
+
+QUERY TOOLS — YOUR NUMBERS COME FROM THESE, NOT THE SAMPLE:
+- Every count, percentage, average, breakdown, or trend you state MUST come from a query_data call (it runs the same exact aggregations the app's charts use, scoped to the user's active filters). Never estimate a number from the orientation sample; never present a sample-derived figure as a dataset figure.
+- Every quote you present MUST be verbatim from a find_quotes result or from the orientation sample below — and each quote must actually support the claim it illustrates. Use find_quotes to gather evidence for any pattern you report.
+- find_quotes totals cover the entire dataset and ignore active filters; for filtered counts use query_data.
+- When a tool result says sampled:true, the figures are computed over the app's deterministic 50K analysis sample — say "in the analyzed sample" when reporting them.
+- It's normal to make several tool calls before answering. Prefer one query per claim over guessing.
 
 You serve two roles:
-1. **Answer questions** — Analyze the data to answer questions. Be specific, cite actual quotes when relevant. If the data doesn't contain enough to answer, say so clearly.
-2. **Modify the analysis framework** — When the user asks you to create, update, merge, or delete themes, use your tools. When you spot an opportunity to improve the framework (e.g., you notice many distinct entities that could be grouped, or themes that overlap), suggest it — but always wait for approval before acting.
+1. **Answer questions** — Query the data to answer questions. Be specific; back claims with exact figures from query_data and real quotes from find_quotes. If the data doesn't contain enough to answer, say so clearly.
+2. **Modify the analysis framework** — When the user asks you to create, update, merge, or delete themes, use your theme tools. When you spot an opportunity to improve the framework (e.g., you notice many distinct entities that could be grouped, or themes that overlap), suggest it — but always wait for approval before acting.
 
 When using tools, ALWAYS explain what you're about to do in your text response before calling the tool. For example: "I'll create a theme for menu items based on the 23 distinct food references I found in the data."
 
@@ -408,19 +428,37 @@ PRODUCT HOW-TO QUESTIONS: You analyze DATA, not the product. If the user asks ho
 
 Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${themeContext}${schemaContext}${entityContext}${filterNote}${signalNote}${sampleNote}${collectionContext}${redditContext}
 
-Here is the dataset:
+Here is the orientation sample:
 ${dataContext}`
 
-  return streamAnthropicResponse(systemPrompt, question, conversationHistory, ANA_TOOLS, dataset.org_id)
+  const queryCtx: AnaQueryContext = {
+    datasetId,
+    rowCount: dataset.row_count || 0,
+    source: dataset.source,
+    rowIds: filterRowIds,
+    fieldKey: themeFieldKey || null,
+  }
+  return streamAnthropicResponse(systemPrompt, question, conversationHistory, [...ANA_TOOLS, ...ANA_QUERY_TOOLS], dataset.org_id, { service, ctx: queryCtx })
 }
 
-// ── Stream Anthropic response ─────────────────────────────────────────────
+// ── Stream Anthropic response (agentic tool loop) ─────────────────────────
+// One user question can now take several model rounds: when the model calls a
+// query tool (query_data / find_quotes) we execute it server-side, feed the
+// result back, and let the model continue — all inside one SSE response to the
+// client. Theme/report tools keep their original behavior: they surface to the
+// client as `action` events (confirmation cards) and end the turn.
+const MAX_TOOL_ROUNDS = 6
+
+interface CollectedToolUse { id: string; name: string; input: Record<string, unknown> }
+type AssistantBlock = { type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+
 async function streamAnthropicResponse(
   systemPrompt: string,
   question: string,
   conversationHistory: Message[] | undefined,
   tools: AnthropicTool[],
   orgId: string,
+  queryExec?: { service: ReturnType<typeof createServiceRoleClient>, ctx: AnaQueryContext },
 ): Promise<Response> {
   // Per-org AI gate: 'off' refuses; 'byo' + anthropic uses customer key;
   // 'byo' + openai falls back to platform env (we eat the cost, same rule
@@ -444,52 +482,65 @@ async function streamAnthropicResponse(
   }
   messages.push({ role: 'user', content: question })
 
-  const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: TIER_DEFAULT_MODEL.standard,
-      max_tokens: 4000,
-      stream: true,
-      tools,
-      system: [
-        {
-          type: 'text',
-          text: systemPrompt,
-          cache_control: { type: 'ephemeral' },
-        },
-      ],
-      messages,
-    }),
-  })
+  function callAnthropic() {
+    return fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey as string,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: TIER_DEFAULT_MODEL.standard,
+        max_tokens: 4000,
+        stream: true,
+        tools,
+        system: [
+          {
+            type: 'text',
+            text: systemPrompt,
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
+        messages,
+      }),
+    })
+  }
 
-  if (!anthropicRes.ok) {
-    let errMsg = 'AI API error: ' + anthropicRes.status
-    try { const d = await anthropicRes.json(); errMsg = d?.error?.message || errMsg } catch {}
+  // First round is fetched before the Response is constructed so upstream
+  // config/auth failures still return a clean JSON error (pre-loop behavior).
+  const firstRes = await callAnthropic()
+  if (!firstRes.ok) {
+    let errMsg = 'AI API error: ' + firstRes.status
+    try { const d = await firstRes.json(); errMsg = d?.error?.message || errMsg } catch {}
     return serverError(errMsg, 'askAna.upstream', { orgId })
   }
 
-  // Transform Anthropic SSE stream into a clean text stream for the client
   const encoder = new TextEncoder()
   const decoder = new TextDecoder()
 
+  // Token accounting summed across ALL rounds — logged once on stream end so
+  // multi-round answers are attributed like every other AI call.
+  let inTok = 0, outTok = 0, cacheRead = 0, cacheCreate = 0
+
   const readable = new ReadableStream({
     async start(controller) {
-      const reader = anthropicRes.body!.getReader()
-      let buffer = ''
-      let currentToolId = ''
-      let currentToolName = ''
-      let toolInputJson = ''
-      // Token accounting for the direct (non-callAI) Anthropic stream — captured
-      // from the SSE usage fields and logged to usage_logs on stream end so this
-      // spend is attributed to the dataset's org like every other AI call.
-      let inTok = 0, outTok = 0, cacheRead = 0, cacheCreate = 0
+      function emit(payload: Record<string, unknown>) {
+        controller.enqueue(encoder.encode('data: ' + JSON.stringify(payload) + '\n\n'))
+      }
 
-      try {
+      // Pump one model round: stream text to the client, collect ordered
+      // content blocks (text + tool_use) for a possible continuation, forward
+      // client-action tools as `action` events. Returns the blocks.
+      async function pumpRound(res: Response): Promise<AssistantBlock[]> {
+        const reader = res.body!.getReader()
+        let buffer = ''
+        const blocks: AssistantBlock[] = []
+        let currentToolId = ''
+        let currentToolName = ''
+        let toolInputJson = ''
+        let roundOut = 0   // this round's cumulative output tokens (message_delta replaces it)
+
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
@@ -507,16 +558,21 @@ async function streamAnthropicResponse(
               const event = JSON.parse(payload)
               if (event.type === 'message_start' && event.message?.usage) {
                 const u = event.message.usage
-                inTok = u.input_tokens || 0
-                cacheRead = u.cache_read_input_tokens || 0
-                cacheCreate = u.cache_creation_input_tokens || 0
-                outTok = u.output_tokens || 0
+                inTok += u.input_tokens || 0
+                cacheRead += u.cache_read_input_tokens || 0
+                cacheCreate += u.cache_creation_input_tokens || 0
+                roundOut = u.output_tokens || 0
               }
               else if (event.type === 'message_delta' && event.usage?.output_tokens != null) {
-                outTok = event.usage.output_tokens
+                // Cumulative for THIS round — replace, don't add; the round's
+                // final figure is folded into the multi-round total below.
+                roundOut = event.usage.output_tokens
               }
               if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-                controller.enqueue(encoder.encode('data: ' + JSON.stringify({ text: event.delta.text }) + '\n\n'))
+                const last = blocks[blocks.length - 1]
+                if (last && last.type === 'text') last.text += event.delta.text
+                else blocks.push({ type: 'text', text: event.delta.text })
+                emit({ text: event.delta.text })
               }
               else if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
                 currentToolId = event.content_block.id || ''
@@ -528,25 +584,71 @@ async function streamAnthropicResponse(
               }
               else if (event.type === 'content_block_stop' && currentToolName) {
                 try {
-                  const toolInput = JSON.parse(toolInputJson)
-                  controller.enqueue(encoder.encode('data: ' + JSON.stringify({
-                    action: {
-                      tool: currentToolName,
-                      toolId: currentToolId,
-                      input: toolInput,
-                    }
-                  }) + '\n\n'))
+                  const toolInput = JSON.parse(toolInputJson || '{}')
+                  blocks.push({ type: 'tool_use', id: currentToolId, name: currentToolName, input: toolInput })
+                  // Query tools are executed after the round; everything else
+                  // (theme mutations, generate_report, recommend_sampling)
+                  // surfaces to the client as a confirmation card.
+                  if (!ANA_QUERY_TOOL_NAMES.has(currentToolName)) {
+                    emit({ action: { tool: currentToolName, toolId: currentToolId, input: toolInput } })
+                  }
                 } catch {}
                 currentToolName = ''
                 currentToolId = ''
                 toolInputJson = ''
               }
-              else if (event.type === 'message_stop') {
-                controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-              }
             } catch {}
           }
         }
+        outTok += roundOut
+        return blocks
+      }
+
+      try {
+        let res: Response | null = firstRes
+        for (let round = 0; round < MAX_TOOL_ROUNDS && res; round++) {
+          const blocks = await pumpRound(res)
+          res = null
+
+          const toolUses: CollectedToolUse[] = blocks
+            .filter(function(b): b is Extract<AssistantBlock, { type: 'tool_use' }> { return b.type === 'tool_use' })
+            .map(function(b) { return { id: b.id, name: b.name, input: b.input } })
+          const queryCalls = toolUses.filter(function(t) { return ANA_QUERY_TOOL_NAMES.has(t.name) })
+          const actionCalls = toolUses.filter(function(t) { return !ANA_QUERY_TOOL_NAMES.has(t.name) })
+
+          // Continue only when EVERY tool call this round is a server-side
+          // query — a client-action card ends the model's turn (the client
+          // takes over), and we can't send partial tool_results.
+          if (!queryExec || queryCalls.length === 0 || actionCalls.length > 0 || round === MAX_TOOL_ROUNDS - 1) break
+
+          const toolResults: MessageContent[] = []
+          for (const call of queryCalls) {
+            emit({ status: anaToolStatusLabel(call.name, call.input) })
+            let result: Record<string, unknown>
+            try {
+              result = await executeAnaQueryTool(queryExec.service, queryExec.ctx, call.name, call.input)
+            } catch (e) {
+              result = { error: 'Query failed: ' + (e instanceof Error ? e.message : 'unknown error') }
+            }
+            toolResults.push({ type: 'tool_result', tool_use_id: call.id, content: JSON.stringify(result) })
+          }
+
+          // Anthropic rejects empty text blocks in assistant content.
+          const assistantContent = blocks.filter(function(b) { return b.type !== 'text' || b.text.trim().length > 0 }) as unknown as MessageContent[]
+          messages.push({ role: 'assistant', content: assistantContent })
+          messages.push({ role: 'user', content: toolResults })
+
+          const nextRes = await callAnthropic()
+          if (!nextRes.ok) {
+            let errMsg = 'AI API error: ' + nextRes.status
+            try { const d = await nextRes.json(); errMsg = d?.error?.message || errMsg } catch {}
+            emit({ error: errMsg })
+            break
+          }
+          res = nextRes
+        }
+        emit({ text: '' })
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
       } catch (err) {
         controller.enqueue(encoder.encode('data: ' + JSON.stringify({ error: 'Stream interrupted' }) + '\n\n'))
       } finally {
@@ -568,4 +670,3 @@ async function streamAnthropicResponse(
     },
   })
 }
-

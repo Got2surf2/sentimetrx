@@ -1,0 +1,235 @@
+// lib/anaQueryTools.ts
+// Ana's server-executed query tools (2026-09-01). Instead of eyeballing the
+// ~200-row context sample, Ana answers numeric questions by querying the SAME
+// shared dispatcher the Charts/Stats tabs use (lib/aggregateOps) — so her
+// numbers reconcile with the app's numbers by construction — and pulls small
+// verbatim samples on demand for evidence quotes (full-text search, same RPC
+// as the Comments search).
+//
+// These tools are executed inside the ask-ana streaming loop (server-side
+// round-trip), unlike the theme-mutation tools which surface to the client as
+// confirmation cards. Callers do auth; this module only computes.
+
+import type { createServiceRoleClient } from '@/lib/supabase/server'
+import { runAggregateOp, TAX_AXES } from '@/lib/aggregateOps'
+import { resolveScopeMembers } from '@/lib/collectionScope'
+
+type Service = ReturnType<typeof createServiceRoleClient>
+
+export interface AnaQueryContext {
+  datasetId: string
+  rowCount: number
+  source: string
+  /** Flat row ids of the user's filtered view (client-computed, same set the
+   *  charts send) — query_data aggregates are scoped to these when present. */
+  rowIds: number[] | null
+  /** Active question's field key (TextMine pill) — rides into tax_* ops so
+   *  dimension numbers match the view the user is looking at. */
+  fieldKey: string | null
+}
+
+// ── Tool definitions (Anthropic schema) ────────────────────────────────────
+export const ANA_QUERY_TOOLS = [
+  {
+    name: 'query_data',
+    description: 'Run an exact aggregation over the ENTIRE dataset (not the sample in your context). Use this for EVERY numeric claim: counts, breakdowns, averages, trends. Results are automatically scoped to the user\'s active filters. Ops: field_counts (value counts for one field), crosstab (field × field counts), group_stats (numeric stats per group), numeric_stats (stats for one numeric field), date_series (counts/averages over time; use bucket "month" for ranges over ~90 days), tax_counts (dimension sub-category counts for an axis), tax_crosstab (dimension axis × field), tax_axis_crosstab (all dimension axes × field), tax_group_stats (numeric stats per dimension sub), tax_date_series (dimension subs over time). Field names must be the dataset field keys from your context. If the result says sampled:true, the numbers are over the app\'s deterministic 50K analysis sample — say "in the analyzed sample" when reporting them.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        op:          { type: 'string', enum: ['field_counts', 'crosstab', 'group_stats', 'numeric_stats', 'date_series', 'tax_counts', 'tax_crosstab', 'tax_axis_crosstab', 'tax_group_stats', 'tax_date_series'], description: 'Which aggregation to run' },
+        field:       { type: 'string', description: 'For field_counts / numeric_stats / tax_crosstab / tax_axis_crosstab: the field key' },
+        rowField:    { type: 'string', description: 'For crosstab: row field key' },
+        colField:    { type: 'string', description: 'For crosstab: column field key' },
+        groupField:  { type: 'string', description: 'For group_stats: categorical field key to group by' },
+        valueField:  { type: 'string', description: 'For group_stats / tax_group_stats: numeric field key' },
+        dateField:   { type: 'string', description: 'For date_series / tax_date_series: date field key' },
+        metricField: { type: 'string', description: 'For date_series / tax_date_series: optional numeric field to average per bucket' },
+        bucket:      { type: 'string', enum: ['day', 'week', 'month'], description: 'For date_series / tax_date_series: time bucket (default day)' },
+        axis:        { type: 'string', enum: TAX_AXES, description: 'For tax_* ops: the dimension axis' },
+        limit:       { type: 'number', description: 'Max distinct values returned (default 50, max 100)' },
+      },
+      required: ['op'],
+    },
+  },
+  {
+    name: 'find_quotes',
+    description: 'Full-text search the ENTIRE dataset for verbatim quotes. Use it (a) to pull real quotes as evidence for a claim — never quote from memory — and (b) to get an exact count of rows mentioning a term. Query uses websearch syntax: space = AND, OR between terms, "quoted phrases" for exact phrases. IMPORTANT: the total is over the whole dataset and IGNORES the user\'s active filters — for filtered counts use query_data. Quote only text returned by this tool or present verbatim in your context sample.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Search query (websearch syntax, e.g. \'wait OR slow "long line"\')' },
+        limit: { type: 'number', description: 'Max quotes to return (default 8, max 20)' },
+      },
+      required: ['query'],
+    },
+  },
+]
+
+export const ANA_QUERY_TOOL_NAMES = new Set(ANA_QUERY_TOOLS.map(function(t) { return t.name }))
+
+// Human-readable one-liner streamed to the panel while a tool runs.
+export function anaToolStatusLabel(name: string, input: Record<string, unknown>): string {
+  if (name === 'find_quotes') return 'Searching for "' + String(input.query || '').slice(0, 60) + '"…'
+  var op = String(input.op || '')
+  var labels: Record<string, string> = {
+    field_counts: 'Counting values', crosstab: 'Running a crosstab', group_stats: 'Computing group stats',
+    numeric_stats: 'Computing stats', date_series: 'Building a time series', tax_counts: 'Counting dimension mentions',
+    tax_crosstab: 'Crossing dimensions', tax_axis_crosstab: 'Crossing dimension axes',
+    tax_group_stats: 'Computing dimension stats', tax_date_series: 'Building a dimension time series',
+  }
+  return (labels[op] || 'Querying the data') + '…'
+}
+
+// Strip internal fields and join a row's text values into one quote line.
+function quoteFromRow(data: Record<string, unknown>, maxChars: number): string {
+  var parts: string[] = []
+  for (var k in data) {
+    if (k.startsWith('_')) continue
+    var v = data[k]
+    if (typeof v === 'string' && v.length > 2 && /[a-zA-Z]/.test(v)) parts.push(v)
+  }
+  var joined = parts.join(' | ')
+  return joined.length > maxChars ? joined.slice(0, maxChars) + '…' : joined
+}
+
+// Cap a tool result's serialized size so a wide grid can't blow the context.
+// Grids/series/counts are trimmed rather than failed — Ana can always narrow.
+const RESULT_CHAR_CAP = 8000
+
+function compactResult(body: Record<string, unknown>): Record<string, unknown> {
+  if (JSON.stringify(body).length <= RESULT_CHAR_CAP) return body
+  var out: Record<string, unknown> = { ...body }
+  var counts = out.counts as Record<string, number> | undefined
+  if (counts) {
+    var entries = Object.entries(counts).sort(function(a, b) { return b[1] - a[1] })
+    out.counts = Object.fromEntries(entries.slice(0, 50))
+    out.truncated = entries.length - 50 + ' more values omitted — use a larger limit only if needed'
+  }
+  var series = out.series as unknown[] | undefined
+  if (series && series.length > 200) {
+    out.series = series.slice(-200)
+    out.truncated = 'showing the most recent 200 buckets — re-run with bucket "month" for the full range'
+  }
+  var grid = out.grid as Record<string, Record<string, number>> | undefined
+  if (grid) {
+    var rowKeys = Object.keys(grid).sort(function(a, b) {
+      var sa = Object.values(grid![a]).reduce(function(s, v) { return s + v }, 0)
+      var sb = Object.values(grid![b]).reduce(function(s, v) { return s + v }, 0)
+      return sb - sa
+    })
+    if (rowKeys.length > 30) {
+      var kept: Record<string, Record<string, number>> = {}
+      rowKeys.slice(0, 30).forEach(function(k) { kept[k] = grid![k] })
+      out.grid = kept
+      out.rows = rowKeys.slice(0, 30)
+      out.truncated = rowKeys.length - 30 + ' more rows omitted (kept the 30 largest)'
+    }
+  }
+  return out
+}
+
+// ── Executor ───────────────────────────────────────────────────────────────
+export async function executeAnaQueryTool(
+  service: Service,
+  ctx: AnaQueryContext,
+  name: string,
+  input: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  if (name === 'query_data') {
+    var limit = Math.min(Math.max(1, Number(input.limit) || 50), 100)
+    var result = await runAggregateOp(
+      service,
+      ctx.datasetId,
+      { rowCount: ctx.rowCount, source: ctx.source },
+      {
+        op: typeof input.op === 'string' ? input.op : undefined,
+        field: typeof input.field === 'string' ? input.field : undefined,
+        rowField: typeof input.rowField === 'string' ? input.rowField : undefined,
+        colField: typeof input.colField === 'string' ? input.colField : undefined,
+        groupField: typeof input.groupField === 'string' ? input.groupField : undefined,
+        valueField: typeof input.valueField === 'string' ? input.valueField : undefined,
+        dateField: typeof input.dateField === 'string' ? input.dateField : undefined,
+        metricField: typeof input.metricField === 'string' ? input.metricField : undefined,
+        bucket: typeof input.bucket === 'string' ? input.bucket : undefined,
+        axis: typeof input.axis === 'string' ? input.axis : undefined,
+        limit: limit,
+        rowIds: ctx.rowIds || undefined,
+        fieldKey: ctx.fieldKey || undefined,
+      },
+    )
+    if (result.status !== 200) {
+      return { error: String(result.body.error || 'query failed'), hint: 'Check the op name and that field keys match the dataset fields listed in your context.' }
+    }
+    var body = compactResult(result.body)
+    if (ctx.rowIds) body.scope = 'scoped to the user\'s active filters (' + ctx.rowIds.length.toLocaleString() + ' rows)'
+    return body
+  }
+
+  if (name === 'find_quotes') {
+    var q = String(input.query || '').trim()
+    if (!q) return { error: 'query required' }
+    var quoteLimit = Math.min(Math.max(1, Number(input.limit) || 8), 20)
+
+    // Collection → search each member; single dataset → itself.
+    var targets = ctx.source === 'collection'
+      ? await resolveScopeMembers(service, ctx.datasetId)
+      : [{ datasetId: ctx.datasetId, label: null as string | null }]
+    if (targets.length === 0) targets = [{ datasetId: ctx.datasetId, label: null }]
+
+    // Pull a candidate pool (rank-ordered RPC, textSearch fallback) so quotes
+    // can prefer the user's filtered view when filters are active.
+    type Candidate = { id: number; data: Record<string, unknown>; label: string | null }
+    var perTarget = Math.max(quoteLimit, Math.ceil((quoteLimit * 5) / targets.length))
+    var candidates: Candidate[] = []
+    var total = 0
+    for (var t of targets) {
+      var rpcResult = await service.rpc('search_dataset_rows', {
+        p_dataset_id: t.datasetId, p_query: q, p_limit: perTarget, p_offset: 0,
+      })
+      var rowsRaw: { id: number; data: Record<string, unknown> | null }[] = []
+      if (!rpcResult.error && rpcResult.data && rpcResult.data.length > 0) {
+        rowsRaw = rpcResult.data as typeof rowsRaw
+      } else {
+        var fb = await service
+          .from('dataset_rows_flat')
+          .select('id, data')
+          .eq('dataset_id', t.datasetId)
+          .textSearch('tsv', q, { type: 'websearch', config: 'english' })
+          .order('row_index', { ascending: true })
+          .range(0, perTarget - 1)
+        if (fb.error) return { error: 'Search failed: ' + fb.error.message, hint: 'Simplify the query — plain terms, OR between alternatives.' }
+        rowsRaw = (fb.data || []) as typeof rowsRaw
+      }
+      for (var r of rowsRaw) candidates.push({ id: r.id, data: r.data || {}, label: t.label })
+
+      var { count } = await service
+        .from('dataset_rows_flat')
+        .select('id', { count: 'exact', head: true })
+        .eq('dataset_id', t.datasetId)
+        .textSearch('tsv', q, { type: 'websearch', config: 'english' })
+      total += count || 0
+    }
+
+    // Prefer quotes from the filtered view when the user has filters active.
+    var idSet = ctx.rowIds ? new Set(ctx.rowIds) : null
+    if (idSet) {
+      var inView: Candidate[] = []
+      var outView: Candidate[] = []
+      for (var c of candidates) (idSet.has(c.id) ? inView : outView).push(c)
+      candidates = inView.concat(outView)
+    }
+
+    return {
+      total: total,
+      totalScope: 'rows matching across the ENTIRE dataset — active filters are NOT applied to this count',
+      quotes: candidates.slice(0, quoteLimit).map(function(c) {
+        var entry: Record<string, unknown> = { text: quoteFromRow(c.data, 350) }
+        if (c.label) entry.source = c.label
+        if (idSet) entry.inFilteredView = idSet.has(c.id)
+        return entry
+      }),
+    }
+  }
+
+  return { error: 'Unknown tool: ' + name }
+}

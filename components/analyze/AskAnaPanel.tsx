@@ -6,8 +6,9 @@
 // Supports both Q&A (text) and analysis framework mutations (tool_use → confirmation cards).
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { serializeFilters } from '@/lib/filterUtils'
+import { serializeFilters, applyFilters } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
+import { useRows } from '@/components/analyze/RowsContext'
 import { themeSetForField, type ThemeModel } from '@/lib/themeUtils'
 
 // Tool-use payload from Ana — one bag of optional fields across all tools
@@ -55,6 +56,8 @@ interface Message {
   content: string
   streaming?: boolean
   actions?: AnaAction[]
+  /** transient "Counting values…" line while Ana runs a server-side query */
+  statusText?: string
 }
 
 interface SamplingConfig {
@@ -109,6 +112,9 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
   var [messages, setMessages] = useState<Message[]>([])
   var [input, setInput] = useState('')
   var [loading, setLoading] = useState(false)
+  // Shared rows cache — used to send Ana the filtered view's flat row ids so
+  // her query_data numbers match the charts (same id set ChartsModule sends).
+  var rowsCtx = useRows()
   var scrollRef = useRef<HTMLDivElement>(null)
   var inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -370,6 +376,17 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
       ? serializeFilters(filters)
       : undefined
 
+    // Filtered view's flat row ids (when filters are active and the rows cache
+    // is loaded) — scopes Ana's server-side aggregates to what the user sees.
+    var rowIds: number[] | undefined
+    if (serializedFilters && filters && rowsCtx.rowsLoaded && rowsCtx.rows.length > 0) {
+      var ids = applyFilters(rowsCtx.rows, filters)
+        .map(function(r) { return (r as { _rowId?: unknown })._rowId })
+        .filter(function(v): v is number { return typeof v === 'number' })
+        .slice(0, 200000)
+      if (ids.length > 0) rowIds = ids
+    }
+
     var isDeciding = phase === 'deciding'
 
     try {
@@ -381,6 +398,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
           question: text.trim(),
           conversationHistory: history,
           filters: serializedFilters,
+          rowIds: rowIds,
           metadataOnly: isDeciding,
           sampleSize: samplingConfig.sampleSize,
           samplingStrategy: samplingConfig.strategy,
@@ -429,7 +447,15 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
               var actionsSnapshot = [...collectedActions]
               setMessages(function(prev) {
                 return prev.map(function(m) {
-                  return m.id === assistantId ? { ...m, content: snapshot, actions: actionsSnapshot } : m
+                  return m.id === assistantId ? { ...m, content: snapshot, actions: actionsSnapshot, statusText: undefined } : m
+                })
+              })
+            }
+            if (event.status) {
+              var statusSnap = String(event.status)
+              setMessages(function(prev) {
+                return prev.map(function(m) {
+                  return m.id === assistantId ? { ...m, statusText: statusSnap } : m
                 })
               })
             }
@@ -459,7 +485,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
       var finalActions = [...collectedActions]
       setMessages(function(prev) {
         return prev.map(function(m) {
-          return m.id === assistantId ? { ...m, content: final_, streaming: false, actions: finalActions } : m
+          return m.id === assistantId ? { ...m, content: final_, streaming: false, actions: finalActions, statusText: undefined } : m
         })
       })
     } catch (err) {
@@ -778,6 +804,11 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
                   {isUser ? m.content : <FormattedResponse text={m.content} streaming={m.streaming} />}
                 </div>
               </div>
+              {!isUser && m.streaming && m.statusText && (
+                <div style={{ marginLeft: 36, marginTop: 4, fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>
+                  {m.statusText}
+                </div>
+              )}
               {/* Action confirmation cards */}
               {!isUser && m.actions && m.actions.length > 0 && (
                 <div style={{ marginLeft: 36, marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6, maxWidth: '85%' }}>

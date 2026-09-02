@@ -1924,6 +1924,42 @@ Parity + scale verified by `scripts/_verify_ana_filters.mts` (untracked KEEP): 6
 shapes JS↔SQL exact-equal over the Outback 50K sample; 1.03M-row ask with a filter in
 ~4s (was: timeout); unit coverage in `tests/unit/anaFilteredSample.test.ts`.
 
+**Ask Ana query engine — Ana queries, doesn't skim (2026-09-01).** Ana's numbers no
+longer come from eyeballing the ~200-row context sample (statistically meaningless on
+a 50K dataset, and irreconcilable with the tabs). `POST /api/ask-ana` now runs an
+**agentic tool loop**: when the model calls a query tool, the server executes it,
+feeds the result back, and lets the model continue — all inside one SSE response
+(up to 6 rounds; `maxDuration` 120s). Theme/report tools keep their original
+client-confirmation-card behavior and end the turn. Two query tools
+(`lib/anaQueryTools.ts`):
+- **`query_data`** — dispatches into `lib/aggregateOps.runAggregateOp`, the op
+  dispatcher **extracted verbatim from the charts aggregate route** (which is now a
+  thin auth wrapper around it). Same RPCs, same ≤50K exact / >50K sampled-twin
+  gating, same collection fan-out — so Ana's counts/crosstabs/stats/time-series
+  **reconcile with the Charts/Stats tabs by construction**. The panel sends the
+  filtered view's flat row ids (same set ChartsModule sends), so results scope to
+  the user's active filters; the active question's `themeFieldKey` rides into the
+  tax_* ops. Results are compacted (top-50 counts / 30 grid rows / 200 buckets) with
+  explicit truncation notes.
+- **`find_quotes`** — full-text search (`search_dataset_rows` RPC, textSearch
+  fallback, collection fan-out via `resolveScopeMembers`) returning verbatim quotes
+  (≤20, internal `_` fields stripped) + an **exact whole-dataset match count**
+  (explicitly labeled as ignoring active filters — filtered counts go through
+  `query_data`). When filters are active, quotes prefer the filtered view
+  (`inFilteredView` flag).
+The system prompt reframes the row sample as an *orientation sample* and mandates:
+every numeric claim from `query_data`, every quote verbatim from `find_quotes`/the
+sample, "in the analyzed sample" phrasing whenever a result says `sampled:true`.
+The schema context now carries the **data field key** in brackets next to each label
+(query SQL addresses `rating`, not "Star Rating" — without the key, queries silently
+match nothing). The panel shows a transient status line ("Counting values…") per
+tool round via a new `status` SSE event; usage is summed across rounds and logged
+once. Browser-verified on Rubio's (9,905 rows, TEST): star-rating breakdown exactly
+matched the dispatcher reference (463/223/296/1197/7726 = 9,905); with a location
+filter excluded, scoped counts summed to exactly the header's 9,774 and the
+per-rating complement to the 131 excluded rows. Unit coverage:
+`tests/unit/aggregateOps.test.ts`, `tests/unit/anaQueryTools.test.ts`.
+
 - **API**: `POST /api/datasets/[datasetId]/export/pptx`
 - **Rendering (2026-06-25 — the cream flip)**: the route no longer builds slides with its own
   bespoke navy/gold helpers. Its compute phase (auth + cross-org gate, row fetch under the
