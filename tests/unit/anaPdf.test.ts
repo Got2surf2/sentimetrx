@@ -50,7 +50,7 @@ describe('composeAnaFindingsHtml', () => {
     expect(html).toContain('Analyst Findings')
     expect(html).toContain('Prepared by <b>Ana</b>')
     expect(html).toContain('What is upsetting people?')
-    expect(html).toContain('Provenance &mdash; how this was computed')
+    expect(html).toContain('Provenance &mdash; how this was derived')
     expect(html).toContain('field_counts')
     expect(html).toContain('break-inside: avoid')
     expect(html).not.toContain('break-before')

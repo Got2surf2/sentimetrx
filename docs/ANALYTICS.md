@@ -2090,7 +2090,7 @@ with their header; cells top-aligned so a one-line count sits on the first
 line of its wrapping neighbor, owner-hit 9/02),
 blockquotes → teal pull-quotes, inline ```chart blocks → print bar rows / SVG
 trend lines, plus a masthead ("Analyst Findings · Prepared by Ana") and a
-per-question "Provenance — how this was computed" appendix carrying the logic trail with
+per-question "Provenance — how this was derived" appendix carrying the logic trail with
 its recreate-in-tab pointers. Chrome = `brandedPdfChrome` (datanautix footer,
 confidentiality, page numbers); layout per the composed-PDF doctrine
 (break-inside: avoid, never forced per-section breaks). Route registered in
@@ -2177,7 +2177,7 @@ owner-directed).** Three UX layers on the tool loop:
   the bubble gets a `demote` event once tool rounds follow — the client moves
   it into the italic status slot, where every subsequent thought/tool label
   REPLACES the last. The bubble only ever holds the final answer.
-- **"🧠 Provenance — how this was computed (N steps)"** (renamed from "Show my logic", owner 9/02 — the label is "Provenance" in the PDF and every user-facing view): every answer carries its work trail — one
+- **"🧠 Provenance — how this was derived (N steps)"** (renamed from "Show my logic", owner 9/02 — the label is "Provenance" in the PDF and every user-facing view): every answer carries its work trail — one
   human-readable line per step (`logic` SSE events): each query with its op,
   target, and what came back ("Searched the full dataset for 'service slow' —
   68 matching reviews", "Ran date_series on review_date → 77 time buckets,

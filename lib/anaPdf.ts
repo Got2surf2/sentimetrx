@@ -5,7 +5,7 @@
 // already has (export routes POST the page's data, never recompute); this
 // module renders Ana's markdown-ish answers — headings, bullets, pipe TABLES,
 // blockquote verbatims, inline ```chart blocks — into styled HTML, and appends
-// each answer's "Provenance — how this was computed" trail so every figure in the
+// each answer's "Provenance — how this was derived" trail so every figure in the
 // hand-off carries its recreation recipe (platform-recreatable principle).
 // Layout follows the composed-PDF doctrine: break-inside: avoid on sections
 // and cards, never a forced break-before per section.
@@ -153,7 +153,7 @@ export function composeAnaFindingsHtml(opts: AnaPdfOpts): string {
   const date = opts.generatedAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
   const sections = opts.exchanges.map(function(ex, i) {
     const logic = (ex.logic || []).length > 0
-      ? '<div class="logic avoid-break"><div class="logic-title">Provenance &mdash; how this was computed</div><ol>' +
+      ? '<div class="logic avoid-break"><div class="logic-title">Provenance &mdash; how this was derived</div><ol>' +
         ex.logic!.map(function(step) { return '<li>' + esc(step) + '</li>' }).join('') +
         '</ol><div class="logic-note">Every figure above comes from these queries against the full dataset — the same engine the platform&rsquo;s Charts, Statistics, and Search tabs use, and each step can be recreated there.</div></div>'
       : ''
