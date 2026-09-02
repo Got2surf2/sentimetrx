@@ -1978,6 +1978,12 @@ personal memory.
   contract and an instruction to make personalization audible ("parking ticked
   up too, but I know you don't lead with that"), plus `REMEMBER_GUIDANCE`
   teaching Ana when to offer a save.
+- **The panel opens straight into chat (2026-09-02):** the old sampling
+  chooser no longer gates the first screen — since the query engine, the
+  sample is orientation context, not the analysis, so defaults apply silently
+  (200 rows) and the header's Sampling button opens the old setup for tuning
+  ("Let Ana help me decide" included). Owner-reported: leading with "choose
+  how many rows" buried the interview and carried outdated messaging.
 - **The interview:** first-ever panel open (zero memories + no
   `ana_interviewed` user_features flag) starts a ≤4-question elicitation
   (what they look at first / audience / what to ignore / phrasing); each answer

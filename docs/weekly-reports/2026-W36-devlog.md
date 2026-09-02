@@ -416,3 +416,14 @@ field"). Browser-verified on TEST: auto-briefing (VP-view, location-led, no
 visible trigger) and a state-breakdown chip that snapped the canvas to
 State × Star Rating with the answer's exact numbers. 3 new mapping tests;
 1,999 pass. Test data cleaned; owner gets a fresh first-run.
+
+## 2026-09-02 — Ask Ana opens straight into chat; sampling chooser demoted
+
+**Why**: Owner hit the sampling chooser as the first screen and questioned it —
+correctly. It's pre-query-engine messaging ("Ana will analyze a representative
+sample") and it buried the interview.
+
+**What**: Panel initial phase is now 'chat' (interview when pending); sampling
+defaults silently (200-row orientation sample) and stays tunable via the
+header Sampling button, which still opens the full setup incl. "Let Ana help
+me decide". Browser-verified: fresh open lands directly on the interview.

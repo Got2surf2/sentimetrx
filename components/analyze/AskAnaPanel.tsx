@@ -138,12 +138,16 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
 
   // Sampling state
   var needsSampling = datasetRowCount > SAMPLING_THRESHOLD || datasetSource === 'collection'
+  // Since the query engine (2026-09-01) Ana's numbers come from exact queries
+  // over the whole dataset — the sample is orientation context only. So the
+  // panel no longer LEADS with the sampling chooser: defaults apply silently
+  // and the header's Sampling button opens the old setup for tuning.
   var [samplingConfig, setSamplingConfig] = useState<SamplingConfig>(
     needsSampling
-      ? { sampleSize: 500, strategy: 'proportional', configured: false }
+      ? { sampleSize: 200, strategy: 'proportional', configured: true }
       : { sampleSize: datasetRowCount, strategy: 'proportional', configured: true }
   )
-  var [phase, setPhase] = useState<'setup' | 'deciding' | 'chat' | 'interview'>(needsSampling ? 'setup' : 'chat')
+  var [phase, setPhase] = useState<'setup' | 'deciding' | 'chat' | 'interview'>('chat')
   var [collectionMembers, setCollectionMembers] = useState<CollectionMember[] | null>(null)
   var [customSizeInput, setCustomSizeInput] = useState('')
 
