@@ -20,8 +20,9 @@ const db = {
 }
 let nextId = 1
 
-function matches(row: Record<string, unknown>, filters: [string, unknown][], neqs: [string, unknown][]) {
+function matches(row: Record<string, unknown>, filters: [string, unknown][], neqs: [string, unknown][], ilikes: [string, string][] = []) {
   return filters.every(([k, v]) => row[k] === v) && neqs.every(([k, v]) => row[k] !== v)
+    && ilikes.every(([k, v]) => String(row[k] ?? '').toLowerCase() === v)
 }
 
 function service() {
@@ -29,16 +30,21 @@ function service() {
     from(table: string) {
       const filters: [string, unknown][] = []
       const neqs: [string, unknown][] = []
+      const ilikes: [string, string][] = []
       const b: Record<string, unknown> = {}
       const rowsOf = () => (table === 'analyst_memories' ? db.memories : table === 'datasets' ? db.datasets : db.features) as unknown as Record<string, unknown>[]
       b.select = () => b
       b.eq = (k: string, v: unknown) => { filters.push([k, v]); return b }
       b.neq = (k: string, v: unknown) => { neqs.push([k, v]); return b }
+      b.ilike = (k: string, v: string) => {
+        ilikes.push([k, v.replace(/\\([\\%_])/g, '$1').toLowerCase()])
+        return b
+      }
       b.order = () => b
-      b.maybeSingle = async () => ({ data: rowsOf().find(r => matches(r, filters, neqs)) || null, error: null })
-      b.single = async () => ({ data: rowsOf().find(r => matches(r, filters, neqs)) || null, error: null })
+      b.maybeSingle = async () => ({ data: rowsOf().find(r => matches(r, filters, neqs, ilikes)) || null, error: null })
+      b.single = async () => ({ data: rowsOf().find(r => matches(r, filters, neqs, ilikes)) || null, error: null })
       b.then = (res: (v: unknown) => unknown) =>
-        Promise.resolve({ data: rowsOf().filter(r => matches(r, filters, neqs)), error: null }).then(res)
+        Promise.resolve({ data: rowsOf().filter(r => matches(r, filters, neqs, ilikes)), error: null }).then(res)
       b.insert = (payload: Record<string, unknown>) => {
         const row = { id: 'm-' + nextId++, created_at: 'now', updated_at: 'now', ...payload } as Row
         db.memories.push(row)
@@ -173,6 +179,15 @@ describe('/api/analyst-memory', () => {
     db.features = [{ user_id: 'user-1', feature: 'ana_interviewed', enabled: true }]
     const j = await (await GET()).json()
     expect(j.interviewed).toBe(true)
+  })
+
+  it('POST is idempotent on the statement: a re-proposal returns the existing row, no duplicate', async () => {
+    const r1 = await POST(req({ statement: 'Lead with risks and anomalies', source: 'interview' }))
+    expect(r1.status).toBe(200)
+    const r2 = await POST(req({ statement: 'lead with RISKS and anomalies', source: 'correction' }))
+    const j2 = await r2.json()
+    expect(j2.deduped).toBe(true)
+    expect(db.memories).toHaveLength(1)
   })
 
   it("PATCH/DELETE cannot touch another user's or org's memory (404, row untouched)", async () => {

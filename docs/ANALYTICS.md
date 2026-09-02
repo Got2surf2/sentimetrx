@@ -1997,6 +1997,19 @@ personal memory.
   (200 rows) and the header's Sampling button opens the old setup for tuning
   ("Let Ana help me decide" included). Owner-reported: leading with "choose
   how many rows" buried the interview and carried outdated messaging.
+- **Interview → data-question handoff (2026-09-02, owner-hit):** asking a DATA
+  question mid-interview used to loop forever — interview mode has no data
+  access and nothing exited it (Ana flailed and re-proposed saved memories).
+  The interview prompt now answers a data question with exactly
+  `[[interview-done]]`; the panel catches the marker, ends the interview, and
+  re-sends the same question through normal mode with full data access.
+  Related hardening from the same session: memory POST is **idempotent on the
+  statement text** (case-insensitive, `ilike` with escaped wildcards — a
+  re-proposal or double-tap returns the existing row instead of duplicating),
+  and Ask Ana's content guard drops the respondent-facing profanity/insult
+  tiers (an analyst's "bite me in the butt" earned a "let's keep things
+  respectful" scolding) while keeping slurs/threats/sexual + the always-on
+  self-harm net.
 - **The interview:** first-ever panel open (zero memories + no
   `ana_interviewed` user_features flag) starts a ≤4-question elicitation
   (what they look at first / audience / what to ignore / phrasing); each answer

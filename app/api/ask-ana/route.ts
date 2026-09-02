@@ -220,8 +220,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'datasetId and question are required' }, { status: 400 })
   }
 
-  // Content safety check on user question
-  const safety = checkMessage('ana_' + user.id, question)
+  // Content safety check on user question. Ask Ana is an INTERNAL analyst
+  // surface (authed paying user talking to their own data) — keep the severe
+  // tiers (slurs/threats/sexual + the always-on self-harm net) but drop the
+  // respondent-facing profanity/insult policing: "going to bite me in the
+  // butt" got a "let's keep things respectful" scolding (owner-hit 9/02).
+  const safety = checkMessage('ana_' + user.id, question, {
+    safetyConfig: { enabled: true, profanity: false, insults: false, spam: false, slurs: true, threats: true, sexual: true },
+  })
   if (!safety.safe) {
     return NextResponse.json({ error: safety.warning || 'Please rephrase your question.' }, { status: 400 })
   }
@@ -296,7 +302,7 @@ export async function POST(req: Request) {
     // second answer produced a card repeating the first answer's memory).
     const savedSoFar = await loadAnalystMemories(service, { userId, orgId })
     const savedNote = savedSoFar.length > 0
-      ? '\n\nALREADY SAVED to their memory (never re-propose these; distill only NEW preferences from their LATEST answer):\n' +
+      ? '\n\nALREADY SAVED to their memory (NEVER re-propose these — not even reworded or consolidated versions; distill only NEW preferences from their LATEST answer):\n' +
         savedSoFar.map(function(m) { return '- ' + m.statement }).join('\n')
       : ''
     const interviewPrompt = `You are Ana, a senior data analyst assistant, meeting this analyst for the FIRST time. They just opened the dataset "${dataset.name}"${fieldList ? ' (fields: ' + fieldList + ')' : ''}.
@@ -311,7 +317,9 @@ After EACH answer, your reply must contain BOTH: (a) in the TEXT, a one-line ack
 
 After the final answer: thank them briefly, tell them everything you saved is theirs to edit or delete under "What Ana remembers", and that you're ready to dig into the data. Do not ask further questions after that.
 
-Keep every reply short and warm — this is a two-minute conversation, not a survey. If they clearly want to skip ("just let me ask my question"), respect it immediately: answer nothing about the data (you have none loaded), just tell them they can start asking and that you'll learn as you go.${savedNote}`
+Keep every reply short and warm — this is a two-minute conversation, not a survey.
+
+IMPORTANT — if instead of answering they ask a question ABOUT THE DATA (counts, themes, ratings, drivers, locations, trends, "show me...", "what are people saying..."), the interview is OVER. Reply with EXACTLY [[interview-done]] and nothing else — no other text, no tool calls. The app will end the interview and answer their question with full data access.${savedNote}`
     return streamAnthropicResponse(interviewPrompt, question, conversationHistory, [REMEMBER_TOOL], dataset.org_id)
   }
 

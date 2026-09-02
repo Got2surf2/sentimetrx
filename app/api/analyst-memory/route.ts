@@ -73,6 +73,18 @@ export async function POST(req: Request) {
     if (!ds) return NextResponse.json({ error: 'Dataset not found' }, { status: 404 })
   }
 
+  // Idempotent on the statement text: Ana re-proposing (or a double-tap)
+  // must never create duplicate rows — return the existing memory instead.
+  const { data: dupe } = await service
+    .from('analyst_memories')
+    .select('id, dataset_id, source, status, statement, created_at, updated_at')
+    .eq('org_id', orgId)
+    .eq('user_id', userId)
+    .neq('status', 'archived')
+    .ilike('statement', statement.replace(/[\\%_]/g, function(m) { return '\\' + m }))
+    .maybeSingle()
+  if (dupe) return NextResponse.json({ memory: dupe, deduped: true })
+
   const { data, error } = await service
     .from('analyst_memories')
     .insert({ org_id: orgId, user_id: userId, dataset_id: datasetId, source, status, statement })

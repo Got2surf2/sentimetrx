@@ -475,7 +475,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
     })
   }, [messages])
 
-  async function sendMessage(text: string, opts?: { briefing?: boolean; hidden?: boolean }) {
+  async function sendMessage(text: string, opts?: { briefing?: boolean; hidden?: boolean; forceNormal?: boolean }) {
     if (!text.trim() || loading) return
 
     var userMsg: Message = { id: Date.now() + '-user', role: 'user', content: text.trim(), hidden: opts?.hidden }
@@ -506,7 +506,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
     }
 
     var isDeciding = phase === 'deciding'
-    var isInterview = phase === 'interview'
+    var isInterview = phase === 'interview' && !opts?.forceNormal
 
     try {
       var res = await fetch('/api/ask-ana', {
@@ -608,6 +608,19 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
             }
           } catch {}
         }
+      }
+
+      // Interview → data-question handoff: the interview prompt answers a data
+      // question with EXACTLY [[interview-done]]. End the interview and re-send
+      // the same question through normal mode (full data access) — removing
+      // both the marker reply and the original user bubble so the resend
+      // renders once.
+      if (isInterview && accumulated.indexOf('[[interview-done]]') !== -1) {
+        setMessages(function(prev) { return prev.filter(function(m) { return m.id !== assistantId && m.id !== userMsg.id }) })
+        setLoading(false)
+        void finishInterview()
+        setTimeout(function() { void sendMessage(text.trim(), { forceNormal: true }) }, 80)
+        return
       }
 
       var final_ = accumulated

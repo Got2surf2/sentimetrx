@@ -442,3 +442,21 @@ mandates an honest reading base. Browser-verified: "what are people saying
 about the salsa bar" → "Reading comments about 'salsa bar'…" → themed
 good/bad synthesis with attributed verbatims. Interview skip-clause also
 verified live (graceful, proposed a fitting memory). 3 new tests; 2,002 pass.
+
+## 2026-09-02 — interview handoff + memory idempotency + guard fix (owner-hit)
+
+**Why**: Owner's live session hit three things at once: a data question
+mid-interview looped forever (interview mode has no data access, no exit),
+duplicate memories piled up (partly my own test-cleanup racing their live
+session and emptying the ALREADY SAVED list — owned + repaired), and the
+respondent content guard scolded "bite me in the butt" with "let's keep
+things respectful."
+
+**What**: Interview prompt answers data questions with exactly
+[[interview-done]]; the panel catches it, ends the interview, and re-sends
+the question through normal mode. Memory POST is idempotent on statement
+text (case-insensitive, escaped-wildcard ilike). Ask Ana's guard drops
+profanity/insult/spam tiers (keeps slurs/threats/sexual + self-harm net) —
+false positive reproduced and re-tested green. Owner's data repaired:
+duplicates removed, the wiped first preference restored, interview marked
+done. 2,003 tests pass.
