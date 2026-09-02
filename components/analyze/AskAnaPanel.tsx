@@ -11,6 +11,7 @@ import { serializeFilters, applyFilters } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
 import { useRows } from '@/components/analyze/RowsContext'
 import { themeSetForField, type ThemeModel } from '@/lib/themeUtils'
+import { splitAnaSegments, type AnaChartSpec } from '@/lib/anaChartSpec'
 
 // Tool-use payload from Ana — one bag of optional fields across all tools
 // (create_theme / update_theme / merge_themes / delete_theme / generate_report / recommend_sampling).
@@ -1347,6 +1348,25 @@ function FormattedResponse({ text, streaming }: { text: string; streaming?: bool
     return <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Thinking...</span>
   }
 
+  // Inline charts: ```chart fenced specs render as real charts between the
+  // text segments (owner 9/02 — "draw charts instead of tables").
+  var segments = splitAnaSegments(text)
+  return (
+    <>
+      {segments.map(function(seg, si) {
+        if (seg.kind === 'chart') return <InlineAnaChart key={'c' + si} spec={seg.spec} />
+        if (seg.kind === 'pending') {
+          return <div key={'p' + si} style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: 12, marginTop: 4 }}>{'\uD83D\uDCCA'} drawing chart&hellip;</div>
+        }
+        return <FormattedLines key={'t' + si} text={seg.text} />
+      })}
+      {streaming && <span style={{ animation: 'blink 1s infinite' }}>{'\u258C'}</span>}
+      <style>{`@keyframes blink { 0%,50% { opacity: 1 } 51%,100% { opacity: 0 } }`}</style>
+    </>
+  )
+}
+
+function FormattedLines({ text }: { text: string }) {
   var parts = text.split('\n')
   var elements: React.ReactNode[] = []
 
@@ -1381,7 +1401,73 @@ function FormattedResponse({ text, streaming }: { text: string; streaming?: bool
     }
   }
 
-  return <>{elements}{streaming && <span style={{ animation: 'blink 1s infinite' }}>{'\u258C'}</span>}<style>{`@keyframes blink { 0%,50% { opacity: 1 } 51%,100% { opacity: 0 } }`}</style></>
+  return <>{elements}</>
+}
+
+// ── Inline chart renderer — the product's chart idiom in miniature ─────────
+// Single series only (the product orange carries it; no legend needed — the
+// title names it). Values come verbatim from Ana's query results; anything
+// richer belongs on the Charts tab via "Open in Charts".
+function InlineAnaChart({ spec }: { spec: AnaChartSpec }) {
+  var max = Math.max.apply(null, spec.data.map(function(d) { return Math.abs(d[1]) }).concat([1]))
+  var fmt = function(v: number) { return Math.abs(v) >= 1000 ? v.toLocaleString() : String(Math.round(v * 100) / 100) }
+
+  return (
+    <div style={{ background: 'white', border: '1px solid #eee', borderRadius: 10, padding: '10px 12px', margin: '8px 0', maxWidth: 460 }}>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: '#111827', marginBottom: 8 }}>
+        {spec.title}
+        {spec.unit && <span style={{ fontWeight: 400, color: '#9ca3af' }}> &middot; {spec.unit}</span>}
+      </div>
+      {spec.type === 'bar' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {spec.data.map(function(d, i) {
+            var pct = Math.max(2, Math.round(Math.abs(d[1]) / max * 100))
+            return (
+              <div key={i} title={d[0] + ': ' + fmt(d[1])} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 52px', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: 11.5, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d[0]}</span>
+                <div style={{ height: 10, background: '#F3F4F6', borderRadius: '0 4px 4px 0', overflow: 'hidden' }}>
+                  <div style={{ width: pct + '%', height: '100%', background: HERMES, borderRadius: '0 4px 4px 0' }} />
+                </div>
+                <span style={{ fontSize: 11.5, color: '#374151', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(d[1])}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {spec.type === 'line' && (function() {
+        var W = 420, H = 96, PAD = 6
+        var vals = spec.data.map(function(d) { return d[1] })
+        var lo = Math.min.apply(null, vals)
+        var hi = Math.max.apply(null, vals)
+        var span = hi - lo || 1
+        var pts = spec.data.map(function(d, i) {
+          var x = PAD + (i / Math.max(1, spec.data.length - 1)) * (W - PAD * 2)
+          var y = PAD + (1 - (d[1] - lo) / span) * (H - PAD * 2)
+          return [x, y] as [number, number]
+        })
+        var poly = pts.map(function(pt) { return pt[0] + ',' + pt[1] }).join(' ')
+        var area = 'M' + pts[0][0] + ',' + (H - PAD) + ' L' + poly.split(' ').map(function(pr) { return pr.replace(',', ' ') }).join(' L') + ' L' + pts[pts.length - 1][0] + ',' + (H - PAD) + ' Z'
+        var last = pts[pts.length - 1]
+        return (
+          <div>
+            <svg viewBox={'0 0 ' + W + ' ' + H} style={{ width: '100%', height: 'auto', display: 'block' }} role="img" aria-label={spec.title}>
+              <path d={area} fill={HERMES} opacity={0.08} />
+              <polyline points={poly} fill="none" stroke={HERMES} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+              <circle cx={last[0]} cy={last[1]} r={3.5} fill={HERMES} />
+              {spec.data.map(function(d, i) {
+                return <circle key={i} cx={pts[i][0]} cy={pts[i][1]} r={6} fill="transparent"><title>{d[0] + ': ' + fmt(d[1])}</title></circle>
+              })}
+            </svg>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: '#9ca3af', marginTop: 2 }}>
+              <span>{spec.data[0][0]}</span>
+              <span>{'low ' + fmt(lo) + ' \u00B7 high ' + fmt(hi)}</span>
+              <span>{spec.data[spec.data.length - 1][0]}</span>
+            </div>
+          </div>
+        )
+      })()}
+    </div>
+  )
 }
 
 // Copy button for assistant messages

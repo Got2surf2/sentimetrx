@@ -21,6 +21,7 @@ import type { SchemaConfig, SchemaFieldConfig } from '@/lib/analyzeTypes'
 import { themeSetForField, type ThemeModel as UtilThemeModel } from '@/lib/themeUtils'
 import { ANA_QUERY_TOOLS, ANA_QUERY_TOOL_NAMES, executeAnaQueryTool, anaToolStatusLabel, chartConfigForQuery, type AnaQueryContext } from '@/lib/anaQueryTools'
 import { loadAnalystMemories, memoryPromptBlock, REMEMBER_GUIDANCE } from '@/lib/analystMemory'
+import { jsonStringifySafe } from '@/lib/jsonSafe'
 
 export const dynamic     = 'force-dynamic'
 // Query-tool rounds are sequential upstream calls — a multi-round answer on a
@@ -470,6 +471,11 @@ QUERY TOOLS — YOUR NUMBERS COME FROM THESE, NOT THE SAMPLE:
 - BATCH your queries: request ALL the tools you need in ONE turn (multiple tool calls together) — never one query per turn. You have a hard budget of tool turns; when it runs out you must answer with what you have.
 - DO NOT narrate process. At most ONE short lead-in line (e.g. "Let me pull the numbers.") before your FIRST batch — after that, no step-by-step commentary, no tool names, no "let me also...". When the data is in, write the ANSWER.
 - If exactly one of your queries produces the VIEW that answers the question (the chart the user would want open), set chart:true on that query — the app offers it as an "Open in Charts" button. Never flag intermediate or supporting queries.
+- INLINE CHARTS — when a COMPARISON or TREND is the point, draw it instead of writing a markdown table. Emit a fenced block exactly like:
+\`\`\`chart
+{"type":"bar","title":"1-star reviews by location","unit":"reviews","data":[["San Diego",58],["Chula Vista",44]]}
+\`\`\`
+Types: "bar" (comparisons/rankings, max 12 rows — aggregate the tail into "Other (n)") and "line" (time series, max 60 points, labels are the buckets). Values must be VERBATIM numbers from your tool results. Use at most 2 charts per answer, keep surrounding prose for the interpretation, and still use a table when rows carry mixed columns a chart can't show. The chart:true "Open in Charts" flag is separate — it opens the full Charts tab.
 - RECREATABLE BY A HUMAN: every finding must be reproducible inside the platform itself — your tools ARE the platform's own charts, statistics, and search, so stay within them. Simple arithmetic on tool results (a share, a difference) is fine, but never apply modeling or scoring logic of your own that a user couldn't redo from the app's tabs; if a question needs data or signals the platform doesn't have, say so plainly instead of improvising a proxy.
 
 You serve two roles:
@@ -588,7 +594,9 @@ async function streamAnthropicResponse(
         'x-api-key': apiKey as string,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({
+      // jsonStringifySafe: one half-emoji in a sampled review must not 500
+      // the whole request ("no low surrogate in string", owner-hit 9/02).
+      body: jsonStringifySafe({
         model: TIER_DEFAULT_MODEL.standard,
         max_tokens: 4000,
         stream: true,
@@ -619,6 +627,7 @@ async function streamAnthropicResponse(
   if (!firstRes.ok) {
     let errMsg = 'AI API error: ' + firstRes.status
     try { const d = await firstRes.json(); errMsg = d?.error?.message || errMsg } catch {}
+    console.error('[askAna.upstream] status=' + firstRes.status + ' :: ' + String(errMsg).slice(0, 400))
     return serverError(errMsg, 'askAna.upstream', { orgId })
   }
 

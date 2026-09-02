@@ -2031,6 +2031,25 @@ mention → rows edited/deleted in the Memory view. Unit coverage:
 identity-stamping + cross-org refusal). Migration sql/197 is applied to TEST;
 prod apply rides the next push batch (with 195/196).
 
+**Inline charts in Ana's answers (2026-09-02, owner-directed: "draw charts
+instead of tables where appropriate").** Ana emits a fenced ```chart block
+holding a constrained JSON spec — `{"type":"bar"|"line","title","unit?",
+"data":[[label,value],…]}` — and the panel renders it as a real chart between
+the text segments (`lib/anaChartSpec.ts` parses; malformed blocks degrade to
+visible text, an unterminated fence mid-stream shows a "drawing chart…"
+placeholder). Single-series only by design: the product orange carries the
+series (no legend — the title names it), bar = the product's label/track/value
+row idiom (≤12 rows, tail aggregated to "Other"), line = 2px SVG trend with
+endpoint dot, low/high labels, and native per-point tooltips (≤60 points).
+Values must be VERBATIM tool-result numbers; ≤2 charts per answer; tables stay
+for mixed-column detail; the chart:true full-canvas handoff is separate.
+**Same-commit fix — lone-surrogate 500s:** truncating emoji-rich review text
+mid-surrogate-pair made the upstream API reject the whole request ("no low
+surrogate in string", owner-hit on Tabla). `lib/jsonSafe.jsonStringifySafe`
+scrubs unpaired surrogates from every string value at stringify time — wired
+into BOTH the ask-ana upstream call and the shared `lib/ai.ts` client (sweep
+the class).
+
 **One thought at a time + "Show my logic" + full-width reading (2026-09-02,
 owner-directed).** Three UX layers on the tool loop:
 - **One transient thought at a time:** round 0's lead-in that streamed into

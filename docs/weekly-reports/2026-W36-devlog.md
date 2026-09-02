@@ -518,3 +518,20 @@ signals get named, never proxied). ⤢ expand toggles the panel to
 min(940px, 92vw). Browser-verified on Tabla: 14-step trail incl. zero-match
 searches and her pivot; answer honestly flags "no day-of-week field exists
 in this dataset". 2,003 pass.
+
+## 2026-09-02 — inline charts in Ana's answers + lone-surrogate 500 fix
+
+**Why**: Owner: "make the responses richer — draw charts instead of tables
+where appropriate." And Tabla surfaced a latent crash: emoji-rich reviews
+truncated mid-surrogate-pair made the upstream API reject the entire request
+("no low surrogate in string") — a whole answer 500ing over half an emoji.
+
+**What**: Ana emits fenced ```chart blocks (constrained JSON: bar ≤12 rows /
+line ≤60 points, verbatim tool numbers, ≤2 per answer); lib/anaChartSpec
+parses (malformed → visible text; unterminated → "drawing chart…"), the
+panel renders the product idiom (orange bars on tracks, tabular values; 2px
+SVG trend line with tooltips). lib/jsonSafe.jsonStringifySafe scrubs
+unpaired surrogates at stringify time — wired into ask-ana AND the shared
+lib/ai client (sweep the class). Browser-verified on Tabla: 10-location
+ranking rendered as a real inline bar chart, table kept for mixed columns.
+6+ new tests; 2,009 pass.

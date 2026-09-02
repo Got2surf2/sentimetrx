@@ -1,4 +1,5 @@
 import 'server-only'
+import { jsonStringifySafe } from '@/lib/jsonSafe'
 
 // lib/ai.ts
 // Provider-agnostic AI abstraction layer.
@@ -406,7 +407,7 @@ export async function callAI(opts: AIRequestOptions): Promise<AIResponse> {
   const response = await fetch(url, {
     method: 'POST',
     headers,
-    body: JSON.stringify(body),
+    body: jsonStringifySafe(body),
     signal: AbortSignal.timeout(timeoutMs),
   })
 
@@ -494,7 +495,7 @@ export async function callAIStream(opts: AIStreamOptions): Promise<AIStreamResul
   const response = await fetch(base.url, {
     method: 'POST',
     headers: base.headers,
-    body: JSON.stringify(body),
+    body: jsonStringifySafe(body),
     signal: AbortSignal.timeout(timeoutMs),
   })
 
