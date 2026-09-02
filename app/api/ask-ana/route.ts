@@ -608,7 +608,7 @@ async function streamAnthropicResponse(
       // Pump one model round: stream text to the client, collect ordered
       // content blocks (text + tool_use) for a possible continuation, forward
       // client-action tools as `action` events. Returns the blocks.
-      async function pumpRound(res: Response): Promise<AssistantBlock[]> {
+      async function pumpRound(res: Response, streamText: boolean): Promise<AssistantBlock[]> {
         const reader = res.body!.getReader()
         let buffer = ''
         const blocks: AssistantBlock[] = []
@@ -648,7 +648,7 @@ async function streamAnthropicResponse(
                 const last = blocks[blocks.length - 1]
                 if (last && last.type === 'text') last.text += event.delta.text
                 else blocks.push({ type: 'text', text: event.delta.text })
-                emit({ text: event.delta.text })
+                if (streamText) emit({ text: event.delta.text })
               }
               else if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
                 currentToolId = event.content_block.id || ''
@@ -682,12 +682,23 @@ async function streamAnthropicResponse(
 
       try {
         let res: Response | null = firstRes
+        let streamedAnyText = false
         for (let round = 0; round < MAX_TOOL_ROUNDS && res; round++) {
-          // Visual paragraph break between a round's text and the next round's
-          // continuation (otherwise "…at once.Now let me…" runs together).
-          if (round > 0) emit({ text: '\n\n' })
-          const blocks = await pumpRound(res)
+          // Round 0 streams its text live (the lead-in, or the whole answer
+          // when no tools are needed). Continuation rounds BUFFER their text:
+          // if the round turns out to be interim (more tool calls), the text
+          // is narration ("the search terms are too restrictive…") and shows
+          // only as the transient status line; if it's the final synthesis,
+          // it's flushed into the bubble. Structural fix — prompt bans alone
+          // did not stop the play-by-play (owner transcript, 9/02).
+          const liveText = round === 0
+          const blocks = await pumpRound(res, liveText)
           res = null
+          if (liveText) streamedAnyText = streamedAnyText || blocks.some(function(b) { return b.type === 'text' && b.text.trim().length > 0 })
+          const roundText = blocks
+            .filter(function(b): b is Extract<AssistantBlock, { type: 'text' }> { return b.type === 'text' })
+            .map(function(b) { return b.text })
+            .join('').trim()
 
           const toolUses: CollectedToolUse[] = blocks
             .filter(function(b): b is Extract<AssistantBlock, { type: 'tool_use' }> { return b.type === 'tool_use' })
@@ -698,7 +709,18 @@ async function streamAnthropicResponse(
           // Continue only when EVERY tool call this round is a server-side
           // query — a client-action card ends the model's turn (the client
           // takes over), and we can't send partial tool_results.
-          if (!queryExec || queryCalls.length === 0 || actionCalls.length > 0 || round === MAX_TOOL_ROUNDS - 1) break
+          const willContinue = !!queryExec && queryCalls.length > 0 && actionCalls.length === 0 && round < MAX_TOOL_ROUNDS - 1
+          if (!willContinue) {
+            // Final round: flush any buffered text into the bubble.
+            if (!liveText && roundText) {
+              if (streamedAnyText) emit({ text: '\n\n' })
+              emit({ text: roundText })
+              streamedAnyText = true
+            }
+            break
+          }
+          // Interim round: narration becomes a transient status line.
+          if (!liveText && roundText) emit({ status: roundText.slice(0, 160) })
 
           // Second-to-last round: answer these calls, then force a synthesis
           // turn — the owner hit an answer that was ALL process narration and

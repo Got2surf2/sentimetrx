@@ -2040,8 +2040,15 @@ final answer now]" and the final request pins `tool_choice: none`, so a
 synthesis turn is guaranteed; the prompt mandates BATCHING (all queries in
 one turn) and bans process narration/tool names (one short lead-in max);
 rounds are separated by a paragraph break in the stream (text used to run
-together); cap raised 6 → 8. Re-verified on the same question: complete
-risk-led answer, audible memory framing, next-step questions, no narration.
+together); cap raised 6 → 8. **Narration is also suppressed STRUCTURALLY
+(second pass, same day):** prompt bans alone didn't stop the play-by-play, so
+continuation rounds' text is buffered server-side — an interim round's text
+("the search terms are too restrictive…") renders only as the transient
+status line, while the final round's text is flushed into the bubble. Round 0
+still streams live (the lead-in, or the whole answer when no tools are
+needed). Re-verified: the answer bubble opens directly with the finding
+("⚠️ Two locations are underperforming — and one is your flagship"), zero
+process text, thinking visible only transiently while she works.
 
 **The briefing + the canvas handoff (2026-09-02).** The remaining two Phase-2
 surfaces from the five-state design:

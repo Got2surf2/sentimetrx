@@ -488,3 +488,15 @@ later with a full risk-first briefing.
 408/429/5xx/529 (a momentary 529 surfaced as "Internal server error"). A
 failed briefing now disappears silently instead of leaving an unprompted
 error bubble (session flag stays set — one attempt per visit). 2,003 pass.
+
+## 2026-09-02 — interim narration suppressed structurally
+
+**Why**: Prompt bans didn't stop the play-by-play ("The multi-word queries
+are too restrictive… let me try single-term searches") littering final
+transcripts — owner pasted a great answer wrapped in process noise.
+
+**What**: Continuation rounds' text is buffered server-side: interim rounds
+(more tool calls follow) render their text only as the transient status
+line; the final round's text is flushed into the bubble. Round 0 streams
+live. Browser-verified on Tabla: the bubble opens directly with the finding,
+thinking shows only transiently. 2,003 pass.
