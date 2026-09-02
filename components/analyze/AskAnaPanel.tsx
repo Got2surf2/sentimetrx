@@ -1103,13 +1103,16 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
                       border: '1px solid #e5e7eb', borderRadius: 999, padding: '3px 10px',
                       cursor: 'pointer', fontFamily: 'inherit',
                     }}>
-                    {'\uD83E\uDDE0'} {m.showLogic ? 'Hide my logic' : 'Show my logic (' + m.logic.length + ' steps)'}
+                    {'\uD83E\uDDE0'} {m.showLogic ? 'Hide provenance' : 'Provenance \u2014 how this was computed (' + m.logic.length + ' steps)'}
                   </button>
                   {m.showLogic && (
                     <div style={{
                       marginTop: 6, border: '1px solid #eee', borderRadius: 10, padding: '10px 12px',
                       fontSize: 11.5, lineHeight: 1.55, color: '#4b5563', background: '#fafafa',
                     }}>
+                      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: '#0d9488', marginBottom: 6 }}>
+                        Provenance {'\u2014'} how this was computed
+                      </div>
                       {m.logic.map(function(step, si) {
                         return (
                           <div key={si} style={{ display: 'flex', gap: 8, marginBottom: 4 }}>

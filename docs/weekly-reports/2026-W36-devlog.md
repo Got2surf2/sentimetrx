@@ -684,3 +684,6 @@ gating) + reportCatalog tests updated; full suite 2,033 green; and the real
 flow driven in the browser on TEST: Reports ▾ → Data Story → generated in-app
 (AI narrative correctly reads the CF27 42% game-modes divergence) → opened at
 /api/story with the token link on the clipboard.
+
+## 2026-09-02 — Logic trail renamed "Provenance — how this was computed"
+**Why:** Owner naming decision: the path-of-analysis is called PROVENANCE in the PDF and every user-facing view. PDF appendix title, panel toggle ("Provenance — how this was computed (N steps)" / "Hide provenance"), and a new uppercase header inside the expanded trail all renamed; spec + test updated.

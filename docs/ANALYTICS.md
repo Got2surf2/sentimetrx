@@ -2090,7 +2090,7 @@ with their header; cells top-aligned so a one-line count sits on the first
 line of its wrapping neighbor, owner-hit 9/02),
 blockquotes → teal pull-quotes, inline ```chart blocks → print bar rows / SVG
 trend lines, plus a masthead ("Analyst Findings · Prepared by Ana") and a
-per-question "How this was computed" appendix carrying the logic trail with
+per-question "Provenance — how this was computed" appendix carrying the logic trail with
 its recreate-in-tab pointers. Chrome = `brandedPdfChrome` (datanautix footer,
 confidentiality, page numbers); layout per the composed-PDF doctrine
 (break-inside: avoid, never forced per-section breaks). Route registered in
@@ -2147,7 +2147,7 @@ the 200-row sample for synthesis. Three changes:
 - **The sample is now truly last-resort:** orientation default cut 200 → 60
   rows (Sampling button still raises it), and quoting/synthesizing from the
   sample is banned outright — every quote must come from a logged tool pull,
-  making all evidence traceable in the "Show my logic" trail.
+  making all evidence traceable in the provenance trail.
 Browser-verified: with Owner Response selected, "what tone do we take in
 these responses" produced an owner-response-only analysis (the two boilerplate
 scripts with usage counts, verbatim quotes) instead of customer-review tone.
@@ -2171,13 +2171,13 @@ scrubs unpaired surrogates from every string value at stringify time — wired
 into BOTH the ask-ana upstream call and the shared `lib/ai.ts` client (sweep
 the class).
 
-**One thought at a time + "Show my logic" + full-width reading (2026-09-02,
+**One thought at a time + provenance trail + full-width reading (2026-09-02,
 owner-directed).** Three UX layers on the tool loop:
 - **One transient thought at a time:** round 0's lead-in that streamed into
   the bubble gets a `demote` event once tool rounds follow — the client moves
   it into the italic status slot, where every subsequent thought/tool label
   REPLACES the last. The bubble only ever holds the final answer.
-- **"🧠 Show my logic (N steps)":** every answer carries its work trail — one
+- **"🧠 Provenance — how this was computed (N steps)"** (renamed from "Show my logic", owner 9/02 — the label is "Provenance" in the PDF and every user-facing view): every answer carries its work trail — one
   human-readable line per step (`logic` SSE events): each query with its op,
   target, and what came back ("Searched the full dataset for 'service slow' —
   68 matching reviews", "Ran date_series on review_date → 77 time buckets,
