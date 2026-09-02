@@ -12,6 +12,7 @@ import type { Filters } from '@/lib/filterUtils'
 import { useRows } from '@/components/analyze/RowsContext'
 import { themeSetForField, type ThemeModel } from '@/lib/themeUtils'
 import { splitAnaSegments, type AnaChartSpec } from '@/lib/anaChartSpec'
+import { downloadFile } from '@/lib/browserDownload'
 
 // Tool-use payload from Ana — one bag of optional fields across all tools
 // (create_theme / update_theme / merge_themes / delete_theme / generate_report / recommend_sampling).
@@ -211,6 +212,47 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
     window.dispatchEvent(new CustomEvent('ana-open-chart', { detail: canvas }))
     router.push('/analyze/' + datasetId + '/charts')
   }, [datasetId, router])
+
+  // ── PDF take-away: export one exchange or the whole thread ──
+  var [exportingPdf, setExportingPdf] = useState(false)
+  var exportPdf = useCallback(async function(exchanges: { question: string; answer: string; logic?: string[] }[]) {
+    if (exportingPdf || exchanges.length === 0) return
+    setExportingPdf(true)
+    try {
+      await downloadFile('/api/ana/export-pdf', {
+        method: 'POST',
+        body: { datasetId: datasetId, exchanges: exchanges },
+        fallbackName: (datasetName || 'findings').replace(/[^a-z0-9]/gi, '_') + '_ana_findings.pdf',
+      })
+    } catch {
+      setMessages(function(prev) {
+        return prev.concat([{ id: Date.now() + '-pdferr', role: 'assistant', content: 'PDF export failed — please try again.' }])
+      })
+    }
+    setExportingPdf(false)
+  }, [exportingPdf, datasetId, datasetName])
+
+  function exchangeFor(msgId: string): { question: string; answer: string; logic?: string[] }[] {
+    var idx = messages.findIndex(function(m) { return m.id === msgId })
+    if (idx === -1) return []
+    var answerMsg = messages[idx]
+    var question = ''
+    for (var qi = idx - 1; qi >= 0; qi--) {
+      if (messages[qi].role === 'user') { question = messages[qi].content; break }
+    }
+    return [{ question: question, answer: answerMsg.content, logic: answerMsg.logic }]
+  }
+
+  function threadExchanges(): { question: string; answer: string; logic?: string[] }[] {
+    var out: { question: string; answer: string; logic?: string[] }[] = []
+    var lastQuestion = ''
+    messages.forEach(function(m) {
+      if (m.role === 'user') { lastQuestion = m.content; return }
+      if (m.streaming || !m.content || m.content.length < 100) return
+      out.push({ question: lastQuestion, answer: m.content, logic: m.logic })
+    })
+    return out
+  }
 
   var finishInterview = useCallback(async function() {
     try { await fetch('/api/analyst-memory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ markInterviewed: true }) }) } catch {}
@@ -1083,6 +1125,28 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
                         fontFamily: 'inherit', opacity: loading ? 0.5 : 1,
                       }}
                     >Download as slides</button>
+                  )}
+                  {m.content.length > 200 && (
+                    <button
+                      onClick={function() { void exportPdf(exchangeFor(m.id)) }}
+                      disabled={exportingPdf}
+                      style={{
+                        fontSize: 10, color: '#6b7280', background: 'none', border: '1px solid #e5e7eb',
+                        borderRadius: 12, padding: '3px 10px', cursor: exportingPdf ? 'wait' : 'pointer',
+                        fontFamily: 'inherit', opacity: exportingPdf ? 0.5 : 1,
+                      }}
+                    >{exportingPdf ? 'Building PDF\u2026' : 'PDF'}</button>
+                  )}
+                  {m.content.length > 200 && threadExchanges().length > 1 && (
+                    <button
+                      onClick={function() { void exportPdf(threadExchanges()) }}
+                      disabled={exportingPdf}
+                      style={{
+                        fontSize: 10, color: '#6b7280', background: 'none', border: '1px solid #e5e7eb',
+                        borderRadius: 12, padding: '3px 10px', cursor: exportingPdf ? 'wait' : 'pointer',
+                        fontFamily: 'inherit', opacity: exportingPdf ? 0.5 : 1,
+                      }}
+                    >PDF &middot; whole thread</button>
                   )}
                 </div>
               )}

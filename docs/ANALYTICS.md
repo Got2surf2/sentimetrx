@@ -2031,6 +2031,25 @@ mention → rows edited/deleted in the Memory view. Unit coverage:
 identity-stamping + cross-org refusal). Migration sql/197 is applied to TEST;
 prod apply rides the next push batch (with 195/196).
 
+**PDF take-away from Ana's answers (2026-09-02, owner-directed).** Any finished
+answer (or the whole thread) exports as a branded findings PDF — the "send
+away". `POST /api/ana/export-pdf` (auth mirrors ask-ana; the client POSTS the
+answer content it already has — export routes never recompute; client-asserted
+figures are fine because the document returns to the requester alone).
+`lib/anaPdf.composeAnaFindingsHtml` renders Ana's markdown-ish answers to
+print-grade HTML: pipe tables → real styled tables (numeric right-alignment),
+blockquotes → teal pull-quotes, inline ```chart blocks → print bar rows / SVG
+trend lines, plus a masthead ("Analyst Findings · Prepared by Ana") and a
+per-question "How this was computed" appendix carrying the logic trail with
+its recreate-in-tab pointers. Chrome = `brandedPdfChrome` (datanautix footer,
+confidentiality, page numbers); layout per the composed-PDF doctrine
+(break-inside: avoid, never forced per-section breaks). Route registered in
+next.config `outputFileTracingIncludes` (chromium bin — mandatory per PDF
+route). Panel: "PDF" (that exchange) and "PDF · whole thread" buttons beside
+Copy/slides, via `lib/browserDownload`. Pixel-QC'd through the real pipeline
+(scripts/_qc_ana_pdf.mts, untracked KEEP): 2-page doc, tables/charts/quotes/
+logic all clean; route smoke-tested 200 application/pdf.
+
 **Ana works the CURRENT VIEW (2026-09-02, owner-hit).** Ana answered from the
 default verbatim column while the analyst had another selected, and leaned on
 the 200-row sample for synthesis. Three changes:

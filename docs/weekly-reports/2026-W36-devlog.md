@@ -551,3 +551,18 @@ synthesizing from the sample banned — every quote now traceable to a logged
 tool step. Browser-verified on Rubio's with Owner Response selected: the
 tone question came back as an owner-response-only analysis (two boilerplate
 scripts + usage counts, verbatim). 2,010 pass.
+
+## 2026-09-02 — branded PDF take-away from Ana's answers
+
+**Why**: Owner: "when Ana generates a response (or a thread), generate a PDF
+with the findings as a take-away or send-away — pretty sophisticated."
+
+**What**: POST /api/ana/export-pdf (client posts the content it has — no
+recompute) + lib/anaPdf composer: masthead "Analyst Findings · Prepared by
+Ana", question banners, markdown→print HTML incl. real tables and chart
+blocks re-rendered for print, teal pull-quotes, per-question "How this was
+computed" appendix (logic trail + recreate-in-tab pointers), brandedPdfChrome
+datanautix footer. Chromium tracing entry added (mandatory per PDF route).
+Panel buttons: "PDF" per exchange + "PDF · whole thread". Pixel-QC'd via the
+real pipeline (2 clean pages); route smoke 200 application/pdf. 4 new tests;
+2,014 pass.
