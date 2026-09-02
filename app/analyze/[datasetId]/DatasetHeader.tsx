@@ -125,6 +125,21 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
       // lost the user activation and gets popup-blocked — verified 2026-09-02),
       // then pointed at the story once the build finishes.
       var storyTab = window.open('about:blank', '_blank')
+      if (storyTab) {
+        // Never leave the tab blank while the build runs (~30–90s in dev):
+        // a bare about:blank reads as "it broke" (owner, 2026-09-02).
+        try {
+          storyTab.document.write(
+            '<title>Building your Data Story…</title>' +
+            '<body style="margin:0;display:grid;place-items:center;height:100vh;font-family:system-ui;background:#FCFCFB;color:#1A2421">' +
+            '<div style="text-align:center"><div style="font-weight:800;font-style:italic;font-size:15px">' +
+            '<span style="color:#0E7476">data</span><span style="color:#E85A1A">nautix</span></div>' +
+            '<p style="font-size:17px;margin:14px 0 6px">Building your Data Story…</p>' +
+            '<p style="font-size:13.5px;color:#5C6B64">Recounting themes and writing the narrative — usually under a minute.<br>' +
+            'This page will load the story automatically when it is ready.</p></div></body>')
+          storyTab.document.close()
+        } catch { /* cross-origin guard — cosmetic only */ }
+      }
       setReportBusy(true)
       try {
         var storyReq = type.launch(dataset.id, format)

@@ -687,3 +687,9 @@ flow driven in the browser on TEST: Reports ▾ → Data Story → generated in-
 
 ## 2026-09-02 — Logic trail renamed "Provenance — how this was derived"
 **Why:** Owner naming decision: the path-of-analysis is called PROVENANCE in the PDF and every user-facing view ("derived", not "computed" — owner word choice). PDF appendix title, panel toggle ("Provenance — how this was derived (N steps)" / "Hide provenance"), and a new uppercase header inside the expanded trail all renamed; spec + test updated.
+
+**Follow-up (owner hit it live)**: the story tab sat on bare `about:blank` for
+the 30–90s dev-mode build and read as broken. The tab now paints a branded
+"Building your Data Story…" screen at click time via document.write, then
+navigates when the link lands. Backend confirmed healthy in the same session
+(direct POST → 200 + fresh link in ~30s).
