@@ -54,7 +54,11 @@ export async function POST(req: Request, props: Params) {
   const path = `reports/${params.datasetId}/${randomUUID()}.html`
 
   const { error: uploadErr } = await service.storage.from(BUCKET).upload(path, htmlBuffer, {
-    contentType: 'text/html; charset=utf-8',
+    // EXACTLY 'text/html' — the prod bucket's allowed_mime_types matches the
+    // string verbatim; the charset-suffixed form has been REJECTED on prod
+    // since the allowlist was set (found 2026-09-02 via the Data Story's
+    // identical failure — this share upload had the same latent bug).
+    contentType: 'text/html',
     upsert:      false,
   })
   if (uploadErr) {

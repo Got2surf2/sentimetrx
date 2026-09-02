@@ -699,3 +699,13 @@ navigates when the link lands. Backend confirmed healthy in the same session
 920→1040px. Also the h1 read "…Reviews Reviews": storyTitle() now collapses a
 stuttered trailing word and adapts the suffix ("what the reviews say" when a
 trailing "Reviews" is stripped; "what the text says" otherwise) — unit-tested.
+
+**Prod hotfix (owner hit it)**: the first prod Data Story 500'd at upload —
+the prod `report-exports` bucket has `allowed_mime_types: [text/html,
+application/octet-stream]` and Supabase matches the string VERBATIM, so
+`text/html; charset=utf-8` is rejected (415). Both the story route AND the
+pre-existing export/html/share route sent the suffixed form — meaning HTML
+share has been silently broken on prod since the allowlist was set (May 12).
+Both now send exactly `text/html` (the /api/story viewer re-adds the charset
+on serve). Verified against the REAL prod bucket: suffixed → 415, plain →
+accepted, test object deleted.

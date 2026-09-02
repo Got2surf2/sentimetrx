@@ -88,7 +88,11 @@ export async function POST(_req: Request, props: Params) {
 
     const path = `reports/${params.datasetId}/story-${randomUUID()}.html`
     const { error: uploadErr } = await service.storage.from(BUCKET).upload(path, Buffer.from(html, 'utf-8'), {
-      contentType: 'text/html; charset=utf-8', upsert: false,
+      // EXACTLY 'text/html' — the prod bucket's allowed_mime_types matches the
+      // string verbatim, and 'text/html; charset=utf-8' is rejected ("mime type
+      // not supported", prod 2026-09-02). The /api/story viewer re-adds the
+      // charset on the response header, so readers lose nothing.
+      contentType: 'text/html', upsert: false,
     })
     if (uploadErr) return serverError(uploadErr, 'datasets.story.upload', { orgId })
 
