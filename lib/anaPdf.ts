@@ -45,8 +45,8 @@ function inline(s: string): string {
 
 const NUMERIC_CELL = /^[\s$~≈<>±-]*[\d,.]+[%★*\s]*$/
 
-// A run of |…| lines → a styled table (numeric columns right-aligned;
-// separator rows |---|---| dropped).
+// A run of |…| lines → a styled table (numeric COLUMNS centered, header
+// included, so counts line up under their heading; separator rows dropped).
 function tableHtml(lines: string[]): string {
   const rows = lines
     .map(function(l) { return l.trim().replace(/^\||\|$/g, '').split('|').map(function(c) { return c.trim() }) })
@@ -54,11 +54,16 @@ function tableHtml(lines: string[]): string {
   if (rows.length === 0) return ''
   const header = rows[0]
   const body = rows.slice(1)
-  const th = header.map(function(c) { return '<th>' + inline(c) + '</th>' }).join('')
+  const numericCol = header.map(function(_, i) {
+    const vals = body.map(function(cells) { return (cells[i] || '').replace(/\*\*/g, '') }).filter(function(c) { return c !== '' })
+    return vals.length > 0 && vals.every(function(c) { return NUMERIC_CELL.test(c) })
+  })
+  const th = header.map(function(c, i) {
+    return '<th' + (numericCol[i] ? ' class="num"' : '') + '>' + inline(c) + '</th>'
+  }).join('')
   const trs = body.map(function(cells) {
-    return '<tr>' + cells.map(function(c) {
-      const numeric = NUMERIC_CELL.test(c.replace(/\*\*/g, ''))
-      return '<td' + (numeric ? ' class="num"' : '') + '>' + inline(c) + '</td>'
+    return '<tr>' + cells.map(function(c, i) {
+      return '<td' + (numericCol[i] ? ' class="num"' : '') + '>' + inline(c) + '</td>'
     }).join('') + '</tr>'
   }).join('')
   return '<table class="data"><thead><tr>' + th + '</tr></thead><tbody>' + trs + '</tbody></table>'
@@ -182,9 +187,10 @@ export function composeAnaFindingsHtml(opts: AnaPdfOpts): string {
                font-style: italic; background: #f8fafc; border-radius: 0 6px 6px 0; break-inside: avoid; }
   table.data { border-collapse: collapse; width: 100%; margin: 6pt 0 10pt; font-size: 9.5pt; break-inside: avoid; }
   table.data th { text-align: left; font-size: 8pt; letter-spacing: .06em; text-transform: uppercase;
-                  color: ${SOFT}; border-bottom: 1.5px solid ${INK}; padding: 3pt 8pt 3pt 0; }
-  table.data td { border-bottom: 1px solid ${RULE}; padding: 3.5pt 8pt 3.5pt 0; }
-  table.data td.num { text-align: right; font-variant-numeric: tabular-nums; }
+                  color: ${SOFT}; border-bottom: 1.5px solid ${INK}; padding: 3pt 8pt 3pt 0; vertical-align: bottom; }
+  table.data td { border-bottom: 1px solid ${RULE}; padding: 3.5pt 8pt 3.5pt 0; vertical-align: top; }
+  table.data th.num { text-align: center; padding-right: 12pt; }
+  table.data td.num { text-align: center; padding-right: 12pt; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .chart { border: 1px solid ${RULE}; border-radius: 8px; padding: 8pt 10pt; margin: 8pt 0 10pt; break-inside: avoid; }
   .ctitle { font-size: 9.5pt; font-weight: 700; margin-bottom: 6pt; }
   .ctitle .unit { font-weight: 400; color: ${MUTED}; }

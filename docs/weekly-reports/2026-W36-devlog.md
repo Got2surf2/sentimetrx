@@ -650,3 +650,6 @@ revocation = delete the object (link dies instantly, 410/404). CSP locked to
 inline-only + Google fonts, noindex, no-store, DENY framing. Verified in the
 browser on TEST end-to-end. Harnesses `scripts/_ea_story_data.ts` +
 `_upload_story.mts` untracked KEEP.
+
+## 2026-09-02 — Ana tables: real rendering in the panel, aligned columns in the PDF
+**Why:** Owner feedback while testing prod. The Ask Ana chat panel showed markdown pipe tables as raw `| … |` text ("quite hideous"), and in the findings PDF the numeric columns floated mid-row against wrapping text. Panel now renders pipe-table runs as real tables (plus `*italics*`, `---` rules, and styled blockquote verbatims — all previously literal); numeric columns are detected per-column (decoration-tolerant, so "⭐ 4.57" counts) and centered *with their header*, cells top-aligned. Narrow-panel fit solved structurally: the bubble's inherited `word-break: break-word` was letter-stacking table cells — reset inside tables; prose columns absorb width via `overflow-wrap: anywhere`. PDF (`lib/anaPdf`) gets the same column model: `vertical-align: top`, centered numeric columns incl. headers. Browser-verified end-to-end on TEST (Rubio's, live Ana answer, narrow + expanded panel) and PDF QC re-rendered.

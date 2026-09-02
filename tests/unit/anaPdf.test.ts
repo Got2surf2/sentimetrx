@@ -1,5 +1,5 @@
 // Ana findings PDF composer: markdown-ish answers become print-grade HTML —
-// pipe tables to real <table>s with numeric right-alignment, blockquote
+// pipe tables to real <table>s with numeric columns centered (th+td), blockquote
 // verbatims, chart blocks to bar rows / SVG lines — with the logic appendix
 // (the recreation recipe) and layout following the composed-PDF doctrine
 // (break-inside: avoid, no forced per-section page breaks).
@@ -7,12 +7,19 @@ import { describe, it, expect } from 'vitest'
 import { anaMarkdownToHtml, composeAnaFindingsHtml } from '@/lib/anaPdf'
 
 describe('anaMarkdownToHtml', () => {
-  it('converts pipe tables to real tables with numeric cells right-aligned', () => {
+  it('converts pipe tables to real tables; numeric COLUMNS centered including their header', () => {
     const html = anaMarkdownToHtml('| Location | Avg |\n|---|---|\n| Clermont | 4.91 |\n| Oviedo | 4.78 |')
     expect(html).toContain('<table class="data">')
     expect(html).toContain('<th>Location</th>')
+    expect(html).toContain('<th class="num">Avg</th>')
     expect(html).toContain('<td class="num">4.91</td>')
     expect(html).not.toContain('---')
+  })
+
+  it('a text column with one numeric-looking cell stays left-aligned (column-level detection)', () => {
+    const html = anaMarkdownToHtml('| Item | Note |\n|---|---|\n| Steak | 949 |\n| Ribs | tough and cold |')
+    expect(html).toContain('<td>949</td>')
+    expect(html).not.toContain('<th class="num">Note</th>')
   })
 
   it('renders headings, bullets, blockquotes, and inline bold with escaping', () => {

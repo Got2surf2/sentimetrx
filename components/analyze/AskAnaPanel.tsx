@@ -1476,6 +1476,29 @@ function FormattedLines({ text }: { text: string }) {
 
   for (var i = 0; i < parts.length; i++) {
     var line = parts[i]
+
+    // A run of |…| lines → a real table (mirrors lib/anaPdf tableHtml —
+    // owner 9/02: raw pipe rows in the panel are "quite hideous").
+    if (/^\|.*\|$/.test(line.trim())) {
+      var tbl: string[] = []
+      while (i < parts.length && /^\|.*\|$/.test(parts[i].trim())) { tbl.push(parts[i]); i++ }
+      i--
+      elements.push(<AnaTable key={'tbl' + i} lines={tbl} />)
+      continue
+    }
+    if (/^(-{3,}|\*{3,})$/.test(line.trim())) {
+      elements.push(<div key={i} style={{ borderTop: '1px solid #e5e7eb', margin: '10px 0' }} />)
+      continue
+    }
+    if (/^>\s?/.test(line.trim())) {
+      elements.push(
+        <div key={i} style={{ borderLeft: '3px solid ' + HERMES, paddingLeft: 10, margin: '6px 0', color: '#4b5563', fontStyle: 'italic' }}>
+          {formatInline(line.trim().replace(/^>\s?/, ''))}
+        </div>
+      )
+      continue
+    }
+
     var formatted = formatInline(line)
 
     if (line.match(/^[\-\*]\s/)) {
@@ -1607,13 +1630,83 @@ function CopyButton({ text }: { text: string }) {
 
 // Handle inline formatting: **bold**, *italic*, "quotes"
 function formatInline(text: string): React.ReactNode {
-  var boldParts = text.split(/\*\*(.+?)\*\*/g)
-  if (boldParts.length === 1) return text
-
-  return boldParts.map(function(part, i) {
-    if (i % 2 === 1) return <strong key={i}>{part}</strong>
-    return <span key={i}>{part}</span>
+  if (text.indexOf('*') === -1) return text
+  var out: React.ReactNode[] = []
+  text.split(/\*\*(.+?)\*\*/g).forEach(function(part, i) {
+    if (i % 2 === 1) { out.push(<strong key={'b' + i}>{part}</strong>); return }
+    // Single-asterisk italics inside the non-bold stretches (Ana wraps
+    // verbatim quotes as *"…"* — previously rendered as literal asterisks).
+    part.split(/\*([^*\n]+)\*/g).forEach(function(p, j) {
+      if (j % 2 === 1) out.push(<em key={'i' + i + '-' + j}>{p}</em>)
+      else if (p) out.push(<span key={'s' + i + '-' + j}>{p}</span>)
+    })
   })
+  return out
+}
+
+// A pipe-table run rendered as a real table. Column alignment mirrors
+// lib/anaPdf: a column whose every non-empty body cell is numeric is
+// centered — header included — so counts line up under their heading.
+var NUMERIC_TABLE_CELL = /^[\s$~≈<>±-]*[\d,.]+[%★*\s]*$/
+// Decorations Ana likes to put beside numbers (stars, warning signs) —
+// stripped before the numeric test so "⭐ 4.57" still centers as a number.
+var CELL_DECOR = /[⭐★☆⚠️🔺🔻]/g
+
+function AnaTable({ lines }: { lines: string[] }) {
+  var rows = lines
+    .map(function(l) { return l.trim().replace(/^\||\|$/g, '').split('|').map(function(c) { return c.trim() }) })
+    .filter(function(cells) { return !cells.every(function(c) { return /^:?-{2,}:?$/.test(c) || c === '' }) })
+  if (rows.length === 0) return null
+  var header = rows[0]
+  var body = rows.slice(1)
+  var numericCol = header.map(function(_, ci) {
+    var vals = body.map(function(cells) { return (cells[ci] || '').replace(/\*\*/g, '').replace(CELL_DECOR, '').trim() }).filter(function(c) { return c !== '' })
+    return vals.length > 0 && vals.every(function(c) { return NUMERIC_TABLE_CELL.test(c) })
+  })
+  // Prose columns (long cells) may break anywhere so the table never
+  // overflows the narrow panel; short text columns keep words whole.
+  var proseCol = header.map(function(_, ci) {
+    if (numericCol[ci]) return false
+    return body.some(function(cells) { return (cells[ci] || '').length > 40 })
+  })
+  return (
+    <div style={{ overflowX: 'auto', margin: '8px 0' }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12, lineHeight: 1.45, whiteSpace: 'normal', wordBreak: 'normal' }}>
+        <thead>
+          <tr>
+            {header.map(function(c, ci) {
+              return (
+                <th key={ci} style={{
+                  textAlign: numericCol[ci] ? 'center' : 'left', fontSize: 9.5, fontWeight: 700,
+                  letterSpacing: '.05em', textTransform: 'uppercase', color: '#6b7280',
+                  borderBottom: '1.5px solid #111', padding: '4px 6px 4px 0', verticalAlign: 'bottom',
+                  whiteSpace: numericCol[ci] ? 'nowrap' : 'normal',
+                }}>{formatInline(c)}</th>
+              )
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map(function(cells, ri) {
+            return (
+              <tr key={ri}>
+                {header.map(function(_, ci) {
+                  return (
+                    <td key={ci} style={{
+                      borderBottom: '1px solid #e5e7eb', padding: '5px 6px 5px 0', verticalAlign: 'top',
+                      ...(numericCol[ci]
+                        ? { textAlign: 'center' as const, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' as const }
+                        : proseCol[ci] ? { overflowWrap: 'anywhere' as const } : {}),
+                    }}>{formatInline(cells[ci] || '')}</td>
+                  )
+                })}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
 

@@ -2058,7 +2058,10 @@ away". `POST /api/ana/export-pdf` (auth mirrors ask-ana; the client POSTS the
 answer content it already has — export routes never recompute; client-asserted
 figures are fine because the document returns to the requester alone).
 `lib/anaPdf.composeAnaFindingsHtml` renders Ana's markdown-ish answers to
-print-grade HTML: pipe tables → real styled tables (numeric right-alignment),
+print-grade HTML: pipe tables → real styled tables (numeric COLUMNS detected
+per-column — decoration-tolerant, so "⭐ 4.57" counts — and centered together
+with their header; cells top-aligned so a one-line count sits on the first
+line of its wrapping neighbor, owner-hit 9/02),
 blockquotes → teal pull-quotes, inline ```chart blocks → print bar rows / SVG
 trend lines, plus a masthead ("Analyst Findings · Prepared by Ana") and a
 per-question "How this was computed" appendix carrying the logic trail with
@@ -2070,6 +2073,21 @@ route). Panel: "PDF" (that exchange) and "PDF · whole thread" buttons beside
 Copy/slides, via `lib/browserDownload`. Pixel-QC'd through the real pipeline
 (scripts/_qc_ana_pdf.mts, untracked KEEP): 2-page doc, tables/charts/quotes/
 logic all clean; route smoke-tested 200 application/pdf.
+
+**The panel renders Ana's markdown for real (2026-09-02, owner-hit: raw pipe
+rows in the chat were "quite hideous").** `FormattedLines` in AskAnaPanel now
+renders pipe-table runs as real tables (`AnaTable` — same column model as the
+PDF: per-column numeric detection with stars/decorations stripped, numeric
+columns centered header-and-cells, tabular-nums, top-aligned cells), plus
+single-asterisk `*italics*`, `---` horizontal rules, and `>` blockquote
+verbatims (orange-rule pull-quote) — all previously shipped as literal
+characters. Narrow-panel fit is structural, not cosmetic: the message
+bubble's `word-break: break-word` cascaded into table cells and let the
+browser stack words letter-by-letter, so tables reset it; numeric headers
+are nowrap; prose columns (any cell > 40 chars) take `overflow-wrap:
+anywhere` so the table compresses to the panel instead of clipping. Verified
+in-browser on TEST against a live Ana answer in both the docked (~360px) and
+expanded (940px) panel.
 
 **Ana works the CURRENT VIEW (2026-09-02, owner-hit).** Ana answered from the
 default verbatim column while the analyst had another selected, and leaned on
