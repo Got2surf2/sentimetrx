@@ -470,6 +470,7 @@ QUERY TOOLS — YOUR NUMBERS COME FROM THESE, NOT THE SAMPLE:
 - BATCH your queries: request ALL the tools you need in ONE turn (multiple tool calls together) — never one query per turn. You have a hard budget of tool turns; when it runs out you must answer with what you have.
 - DO NOT narrate process. At most ONE short lead-in line (e.g. "Let me pull the numbers.") before your FIRST batch — after that, no step-by-step commentary, no tool names, no "let me also...". When the data is in, write the ANSWER.
 - If exactly one of your queries produces the VIEW that answers the question (the chart the user would want open), set chart:true on that query — the app offers it as an "Open in Charts" button. Never flag intermediate or supporting queries.
+- RECREATABLE BY A HUMAN: every finding must be reproducible inside the platform itself — your tools ARE the platform's own charts, statistics, and search, so stay within them. Simple arithmetic on tool results (a share, a difference) is fine, but never apply modeling or scoring logic of your own that a user couldn't redo from the app's tabs; if a question needs data or signals the platform doesn't have, say so plainly instead of improvising a proxy.
 
 You serve two roles:
 1. **Answer questions** — Query the data to answer questions. Be specific; back claims with exact figures from query_data and real quotes from find_quotes. If the data doesn't contain enough to answer, say so clearly.
@@ -516,6 +517,35 @@ ${dataContext}`
 // client. Theme/report tools keep their original behavior: they surface to the
 // client as `action` events (confirmation cards) and end the turn.
 const MAX_TOOL_ROUNDS = 8
+
+// One human-readable line per tool step for the "Show my logic" trail — what
+// was asked of the data and what came back, so the analyst can verify the
+// answer is grounded, not guessed.
+function logicLine(name: string, input: Record<string, unknown>, result: Record<string, unknown>): string {
+  const f = (k: string) => (typeof input[k] === 'string' ? String(input[k]) : '')
+  if (result.error) return 'Query failed (' + String(result.error).slice(0, 80) + ') — adjusted approach'
+  if (name === 'find_quotes') {
+    return 'Searched the full dataset for "' + f('query') + '" — ' + Number(result.total || 0).toLocaleString() + ' matching reviews; pulled ' + ((result.quotes as unknown[])?.length || 0) + ' verbatim quotes · recreate in the Search tab'
+  }
+  if (name === 'read_comments') {
+    return 'Read ' + Number(result.readCount || 0) + ' comments (' + String(result.scope || 'sample') + ')' + (f('query') ? ' · recreate in the Search tab' : '')
+  }
+  if (name === 'query_data') {
+    const op = f('op')
+    const target = f('field') || [f('rowField'), f('colField')].filter(Boolean).join(' × ') || [f('groupField'), f('valueField')].filter(Boolean).join(' by ') || f('axis') || f('dateField')
+    let got = ''
+    if (result.counts) got = Object.keys(result.counts as object).length + ' values'
+    else if (result.groups) got = Object.keys(result.groups as object).length + ' groups'
+    else if (result.series) got = (result.series as unknown[]).length + ' time buckets'
+    else if (result.grid) got = (result.rows as unknown[])?.length + ' × ' + (result.cols as unknown[])?.length + ' grid'
+    else if (result.n != null) got = 'stats over ' + Number(result.n).toLocaleString() + ' rows'
+    const sampled = result.sampled === true ? ', over the analyzed 50K sample' : ', exact'
+    const scoped = typeof result.scope === 'string' ? ' — ' + result.scope : ''
+    const surface = op === 'numeric_stats' ? ' · recreate in the Statistics tab' : ' · recreate in the Charts tab'
+    return 'Ran ' + op + ' on ' + target + ' → ' + (got || 'result') + sampled + scoped + surface
+  }
+  return name
+}
 
 interface CollectedToolUse { id: string; name: string; input: Record<string, unknown> }
 type AssistantBlock = { type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
@@ -695,6 +725,7 @@ async function streamAnthropicResponse(
           const blocks = await pumpRound(res, liveText)
           res = null
           if (liveText) streamedAnyText = streamedAnyText || blocks.some(function(b) { return b.type === 'text' && b.text.trim().length > 0 })
+          // (reset below if round 0's text gets demoted out of the bubble)
           const roundText = blocks
             .filter(function(b): b is Extract<AssistantBlock, { type: 'text' }> { return b.type === 'text' })
             .map(function(b) { return b.text })
@@ -719,8 +750,13 @@ async function streamAnthropicResponse(
             }
             break
           }
-          // Interim round: narration becomes a transient status line.
-          if (!liveText && roundText) emit({ status: roundText.slice(0, 160) })
+          // Interim round: narration becomes a transient status line — one
+          // thought at a time, each replacing the last (owner 9/02). Round 0's
+          // lead-in streamed into the bubble live; `demote` tells the client to
+          // move it into the status slot so the bubble only ever holds the
+          // final answer.
+          if (liveText && roundText) { emit({ demote: true }); streamedAnyText = false }
+          if (!liveText && roundText) { emit({ status: roundText.slice(0, 160) }); emit({ logic: roundText.slice(0, 200) }) }
 
           // Second-to-last round: answer these calls, then force a synthesis
           // turn — the owner hit an answer that was ALL process narration and
@@ -737,6 +773,7 @@ async function streamAnthropicResponse(
               result = { error: 'Query failed: ' + (e instanceof Error ? e.message : 'unknown error') }
             }
             toolResults.push({ type: 'tool_result', tool_use_id: call.id, content: JSON.stringify(result) })
+            emit({ logic: logicLine(call.name, call.input, result) })
             // Canvas handoff — ANA's call, not automatic: she sets chart:true
             // on the one query whose view IS the answer. "Last query wins"
             // produced non-sequitur charts (owner: a rating × city heatmap

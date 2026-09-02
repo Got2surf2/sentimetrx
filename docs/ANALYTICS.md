@@ -2031,6 +2031,27 @@ mention → rows edited/deleted in the Memory view. Unit coverage:
 identity-stamping + cross-org refusal). Migration sql/197 is applied to TEST;
 prod apply rides the next push batch (with 195/196).
 
+**One thought at a time + "Show my logic" + full-width reading (2026-09-02,
+owner-directed).** Three UX layers on the tool loop:
+- **One transient thought at a time:** round 0's lead-in that streamed into
+  the bubble gets a `demote` event once tool rounds follow — the client moves
+  it into the italic status slot, where every subsequent thought/tool label
+  REPLACES the last. The bubble only ever holds the final answer.
+- **"🧠 Show my logic (N steps)":** every answer carries its work trail — one
+  human-readable line per step (`logic` SSE events): each query with its op,
+  target, and what came back ("Searched the full dataset for 'service slow' —
+  68 matching reviews", "Ran date_series on review_date → 77 time buckets,
+  exact"), plus Ana's interim reasoning (including dead ends and pivots).
+  Collapsed behind a toggle under the answer; footer states the engine
+  guarantee. **Recreatability principle (owner, 9/02): every finding must be
+  reproducible by a human inside the platform** — each logic line names the
+  surface to redo it in (Charts / Statistics / Search tab), and the prompt
+  forbids Ana applying modeling/scoring logic the platform's own tabs can't
+  express (simple arithmetic on tool results is fine; missing signals are
+  named plainly, never proxied).
+- **Expand (⤢):** the panel header toggles 420px ↔ min(940px, 92vw) for
+  reading long answers.
+
 **Tool-loop discipline (2026-09-02, owner-hit).** "What are people most upset
 about?" once returned pure process narration ("Let me query… let me broaden…
 let me also…") and then stopped — the model spent one tool call per round,

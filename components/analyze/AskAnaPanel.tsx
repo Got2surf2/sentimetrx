@@ -76,6 +76,9 @@ interface Message {
   hidden?: boolean
   /** canvas handoff — the Charts config behind this answer ("Open in Charts" chip) */
   canvas?: { chartType: string; config: Record<string, string>; label: string }
+  /** the work behind the answer: queries run, results seen, interim reasoning */
+  logic?: string[]
+  showLogic?: boolean
 }
 
 interface SamplingConfig {
@@ -155,6 +158,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
 
   // ── "Ana remembers" state ──
   var [view, setView] = useState<'chat' | 'memory'>('chat')
+  var [expanded, setExpanded] = useState(false)
   var [memories, setMemories] = useState<MemoryRow[]>([])
   var [memLoaded, setMemLoaded] = useState(false)
   var [interviewPending, setInterviewPending] = useState(false)
@@ -580,6 +584,28 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
                 })
               })
             }
+            if (event.demote) {
+              // The lead-in that streamed into the bubble was a passing thought
+              // (tool rounds follow) — move it to the transient status slot so
+              // the bubble only ever holds the final answer.
+              var demoted = accumulated.trim().slice(0, 160)
+              accumulated = ''
+              setMessages(function(prev) {
+                return prev.map(function(m) {
+                  if (m.id !== assistantId) return m
+                  var lg = demoted ? (m.logic || []).concat([demoted]) : m.logic
+                  return { ...m, content: '', statusText: demoted || m.statusText, logic: lg }
+                })
+              })
+            }
+            if (event.logic) {
+              var logicLine = String(event.logic)
+              setMessages(function(prev) {
+                return prev.map(function(m) {
+                  return m.id === assistantId ? { ...m, logic: (m.logic || []).concat([logicLine]) } : m
+                })
+              })
+            }
             if (event.status) {
               var statusSnap = String(event.status)
               setMessages(function(prev) {
@@ -706,7 +732,8 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
 
   return (
     <div style={{
-      position: 'fixed', top: 0, right: 0, bottom: 0, width: 420, maxWidth: '100vw',
+      position: 'fixed', top: 0, right: 0, bottom: 0, width: expanded ? 'min(940px, 92vw)' : 420, maxWidth: '100vw',
+      transition: 'width .2s ease',
       background: 'white', boxShadow: '-8px 0 32px rgba(0,0,0,.15)',
       display: 'flex', flexDirection: 'column', zIndex: 1500,
       animation: 'askAnaSlideIn .2s ease-out',
@@ -736,6 +763,15 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
             }
           </div>
         </div>
+        <button onClick={function() { setExpanded(!expanded) }}
+          title={expanded ? 'Collapse' : 'Expand for reading'}
+          style={{
+            fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.85)', background: 'rgba(255,255,255,.15)',
+            border: '1px solid rgba(255,255,255,.25)', borderRadius: 6, padding: '3px 8px',
+            cursor: 'pointer', lineHeight: 1,
+          }}>
+          {expanded ? '\u2924' : '\u2922'}
+        </button>
         <button onClick={function() { if (view !== 'memory') void refreshMemories(); setView(view === 'memory' ? 'chat' : 'memory') }}
           style={{
             fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,.8)', background: view === 'memory' ? 'rgba(255,255,255,.3)' : 'rgba(255,255,255,.15)',
@@ -977,6 +1013,41 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
               {!isUser && m.streaming && m.statusText && (
                 <div style={{ marginLeft: 36, marginTop: 4, fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>
                   {m.statusText}
+                </div>
+              )}
+              {!isUser && !m.streaming && m.logic && m.logic.length > 0 && (
+                <div style={{ marginLeft: 36, marginTop: 6, alignSelf: 'flex-start', maxWidth: '85%' }}>
+                  <button
+                    onClick={function() {
+                      setMessages(function(prev) {
+                        return prev.map(function(x) { return x.id === m.id ? { ...x, showLogic: !x.showLogic } : x })
+                      })
+                    }}
+                    style={{
+                      fontSize: 11, fontWeight: 600, color: '#6b7280', background: 'none',
+                      border: '1px solid #e5e7eb', borderRadius: 999, padding: '3px 10px',
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}>
+                    {'\uD83E\uDDE0'} {m.showLogic ? 'Hide my logic' : 'Show my logic (' + m.logic.length + ' steps)'}
+                  </button>
+                  {m.showLogic && (
+                    <div style={{
+                      marginTop: 6, border: '1px solid #eee', borderRadius: 10, padding: '10px 12px',
+                      fontSize: 11.5, lineHeight: 1.55, color: '#4b5563', background: '#fafafa',
+                    }}>
+                      {m.logic.map(function(step, si) {
+                        return (
+                          <div key={si} style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                            <span style={{ color: '#9ca3af', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{si + 1}.</span>
+                            <span>{step}</span>
+                          </div>
+                        )
+                      })}
+                      <div style={{ marginTop: 6, fontSize: 10.5, color: '#9ca3af' }}>
+                        Every number above came from these queries against the full dataset — the same engine the Charts and Statistics tabs use.
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {!isUser && !m.streaming && m.canvas && (

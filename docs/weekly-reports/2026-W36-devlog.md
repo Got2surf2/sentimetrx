@@ -500,3 +500,21 @@ transcripts — owner pasted a great answer wrapped in process noise.
 line; the final round's text is flushed into the bubble. Round 0 streams
 live. Browser-verified on Tabla: the bubble opens directly with the finding,
 thinking shows only transiently. 2,003 pass.
+
+## 2026-09-02 — one-thought status, "Show my logic", expand, recreatability
+
+**Why**: Owner, three directives: thinking should show one thought at a time
+(old one disappears); answers need a "Show me your logic" option proving
+they're grounded, not guessed; findings must be recreatable by a human using
+the platform — no logic applied that the platform doesn't offer.
+
+**What**: `demote` event moves round-0 lead-in into the transient status
+slot (bubble = final answer only; statuses already replace one another).
+`logic` SSE events build a per-answer work trail — every query with target
+and result counts, interim reasoning incl. dead ends — behind a
+"🧠 Show my logic (N steps)" toggle; each line names the tab to redo it in
+(Charts/Statistics/Search) and the prompt bans non-platform logic (missing
+signals get named, never proxied). ⤢ expand toggles the panel to
+min(940px, 92vw). Browser-verified on Tabla: 14-step trail incl. zero-match
+searches and her pivot; answer honestly flags "no day-of-week field exists
+in this dataset". 2,003 pass.
