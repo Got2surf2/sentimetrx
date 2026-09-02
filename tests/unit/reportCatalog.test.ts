@@ -4,9 +4,16 @@ import { availableReports, hasAnyReport, type ReportContext } from '@/lib/report
 const ctx = (p: Partial<ReportContext>): ReportContext => ({ isCollection: false, aiEnabled: true, adHocEnabled: true, ...p })
 
 describe('availableReports — single dataset', () => {
-  it('offers the Full report + ad-hoc for a plain dataset', () => {
+  it('offers the Full report + Data Story + ad-hoc for a plain dataset', () => {
     const ids = availableReports(ctx({ source: 'upload' })).map(r => r.id)
-    expect(ids).toEqual(['deck', 'ad-hoc'])
+    expect(ids).toEqual(['deck', 'data-story', 'ad-hoc'])
+  })
+
+  it('the Data Story is a link-producing POST, html-only, full scope', () => {
+    const story = availableReports(ctx({ source: 'upload' })).find(r => r.id === 'data-story')!
+    expect(story.formats).toEqual(['html'])
+    expect(story.scopes).toEqual(['full'])
+    expect(story.launch('d1', 'html')).toEqual({ url: '/api/datasets/d1/story', method: 'POST' })
   })
 
   it('adds Operational Review for restaurant (google_reviews) data', () => {
@@ -72,7 +79,7 @@ describe('availableReports — collection', () => {
 describe('ad-hoc gating', () => {
   it('is hidden until its endpoint is enabled', () => {
     const ids = availableReports(ctx({ source: 'upload', adHocEnabled: false })).map(r => r.id)
-    expect(ids).toEqual(['deck'])
+    expect(ids).toEqual(['deck', 'data-story'])
   })
 })
 

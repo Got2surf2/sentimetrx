@@ -653,3 +653,34 @@ browser on TEST end-to-end. Harnesses `scripts/_ea_story_data.ts` +
 
 ## 2026-09-02 — Ana tables: real rendering in the panel, aligned columns in the PDF
 **Why:** Owner feedback while testing prod. The Ask Ana chat panel showed markdown pipe tables as raw `| … |` text ("quite hideous"), and in the findings PDF the numeric columns floated mid-row against wrapping text. Panel now renders pipe-table runs as real tables (plus `*italics*`, `---` rules, and styled blockquote verbatims — all previously literal); numeric columns are detected per-column (decoration-tolerant, so "⭐ 4.57" counts) and centered *with their header*, cells top-aligned. Narrow-panel fit solved structurally: the bubble's inherited `word-break: break-word` was letter-stacking table cells — reset inside tables; prose columns absorb width via `overflow-wrap: anywhere`. PDF (`lib/anaPdf`) gets the same column model: `vertical-align: top`, centered numeric columns incl. headers. Browser-verified end-to-end on TEST (Rubio's, live Ana answer, narrow + expanded panel) and PDF QC re-rendered.
+
+## 2026-09-02 — Data Story is a product feature (Reports ▾ → Data Story)
+
+**Why**: owner, verbatim: "i see no way from the local system to generate that
+story report" — the proof was session-mediated. Now it's one click in the app.
+
+**What**:
+- `lib/dataStory.ts` — pure payload builder + renderer. Every theme figure is
+  `recountThemes` over the substantive base; rating-field name heuristic adds
+  "what moves the score"; a 2–6-value categorical (≥60% coverage, ≥30
+  substantive rows/segment) adds per-segment profiles; quotes are
+  sentence-level, keyword-anchored, `verbatimSupports`-gated (neutral themes
+  get none). Datanautix-branded, dataviz-validated palette, escaped, noindex.
+- `POST /api/datasets/[datasetId]/story` — org-gated; requires a theme model;
+  ≤50K rows (evenSample past the cap, disclosed in the method note); AI writes
+  narrative PROSE only over the computed facts (usage `data_story`), with a
+  deterministic fallback so the story never blocks on the model; uploads to
+  `report-exports`, returns the `/api/story/...?token=` share link (7-day
+  expiry; revoke = delete the object).
+- Reports picker: new one-click `data-story` type (`lib/reportCatalog.ts`,
+  datasets with AI on) → header opens the story in a tab + copies the link.
+  Found & fixed in browser verification: `window.open` AFTER the POST's await
+  has lost the user activation and is popup-blocked — the tab now opens
+  synchronously at click time and is pointed at the story when the build lands.
+
+**Verification**: 14 unit tests (`tests/unit/dataStory.test.ts` — engine-
+figure equality, premise-gated quotes, segment thresholds, escaping, section
+gating) + reportCatalog tests updated; full suite 2,033 green; and the real
+flow driven in the browser on TEST: Reports ▾ → Data Story → generated in-app
+(AI narrative correctly reads the CF27 42% game-modes divergence) → opened at
+/api/story with the token link on the clipboard.

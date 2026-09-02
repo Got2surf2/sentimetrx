@@ -20,6 +20,7 @@ export type ReportScope = 'full' | 'in-view'
 
 export type ReportTypeId =
   | 'deck'                // the configurable "Full report" (ex-StoryTime)
+  | 'data-story'          // shareable narrative web page (expirable link)
   | 'operational-review'  // restaurant ops deck
   | 'community'           // collection: community synthesis
   | 'competitive'         // collection: competitive
@@ -73,6 +74,19 @@ function deckType(): ReportType {
     launch: (id, format) => format === 'html'
       ? { url: `${dsBase(id)}/export/html`, method: 'POST' }
       : { url: `${dsBase(id)}/export/pptx`, method: 'POST' },
+  }
+}
+
+function dataStoryType(): ReportType {
+  return {
+    id: 'data-story', label: 'Data Story',
+    description: 'A shareable narrative web page built from the mined themes — send the link, no login needed; it expires in 7 days and can be revoked.',
+    formats: ['html'],
+    configurable: false,
+    scopes: ['full'],
+    // POST returns JSON { url } (a share link), not a file — the header opens
+    // it in a new tab and copies the link.
+    launch: (id) => ({ url: `${dsBase(id)}/story`, method: 'POST' }),
   }
 }
 
@@ -131,6 +145,7 @@ export function availableReports(ctx: ReportContext): ReportType[] {
     if (!p || p === 'brand_360')   out.push(projectType('brand-360', 'Brand 360 report', 'One brand triangulated across every source in the collection.', 'brand_360'))
   } else {
     if (ctx.aiEnabled !== false) out.push(deckType())
+    if (ctx.aiEnabled !== false) out.push(dataStoryType())
     if (hasDimensions(ctx)) out.push(operationalReviewType())
   }
 

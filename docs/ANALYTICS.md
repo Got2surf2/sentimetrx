@@ -1902,6 +1902,32 @@ analytics export — dataset-row CSV download is not part of this module.
 
 ### PPTX (Consulting-Quality Deck)
 > **Naming (2026-06-29):** the user-facing button label is **"Reports"** (📊, plural, in the analyze-view header). The old cutesy "StoryTime" name was retired as opaque. Internal route/code names (`export/pptx`, `renderDeck`, etc.) are unchanged. A **unified "Reports" picker** is being rolled out — source of truth `lib/reportCatalog.ts` (`availableReports(ctx)`, pure + unit-tested), rendered by `components/analyze/ReportsMenu.tsx`. **Surfaces live (2026-06-29):** (1) the collection card ⋯ menu renders the catalog (community/competitive/brand-360) under a "Reports" header with **PDF + HTML** pills (were PDF-only), competitive keeps its focus picker; (2) the **analyze-view header "Report" button** is catalog-driven — and (refined 2026-06-29) when a **deck** is available it runs the deck DIRECTLY (the common case, zero extra clicks), with a **caret ▾** beside it that opens the full picker for the other types (Operational Review on restaurants, ad-hoc, …). A collection (no deck) makes the button itself the picker toggle, and the caret now shows there too (consistency). (Earlier the button always opened the picker → one extra click for the deck; the owner flagged it, this is the fix.) **Dropdown positioning (2026-06-30 fix):** the picker is rendered `position: fixed` anchored to the button's bounding rect — the header tab strip is `overflow: hidden`, which silently CLIPPED the old `position: absolute` dropdown (it opened but was invisible → "the caret does nothing"). The deck-direct modal was unaffected (it's a full-screen fixed modal), which is why only the caret/picker looked broken. `ReportsMenu` renders configurable types as a single row (format chosen in their own modal) and one-click types with format pills; the header's launcher dispatches GET→open / POST→blob-download. The **ad-hoc Ask-Ana report** endpoint is built — `POST /api/datasets/[datasetId]/ad-hoc-report {prompt, format, filters?}`: org-gated + content-safety-checked → `loadAnaSample` (the shared Ana data layer, `lib/anaReportContext.ts`, extracted from ask-ana) → one `callAI('advanced')` producing a grounded HTML fragment → `pdfDoc` → HTML or PDF. Collections route through the same datasets endpoint (`source='collection'` id). **Wired + live (2026-06-29):** `components/analyze/AdHocReportModal.tsx` (prompt textarea + PDF/HTML choice) opens from the "Ad-hoc report" picker row on both the collection card and the analyze-view header; `adHocEnabled` is on in both. The header ad-hoc **honors the in-view filters** — `DatasetShell` serializes the active filters → `DatasetHeader` `inViewFilters` → the modal → the endpoint's `loadAnaSample` (so: full dataset from a card, filtered from the analyze view). **Format honesty (keep-me-honest):** deck **PDF** is intentionally NOT offered — the deck's HTML form is a Reveal.js *presentation* (won't print cleanly) and PPTX→PDF needs LibreOffice (unavailable on Vercel); the deck is PPTX (slides) + HTML (presentation), the ad-hoc reports are HTML+PDF. Collection reports are now **PDF + PPTX + HTML** — the collection **PPTX** shipped 2026-06-29 (`projectType.formats` = `['pdf','pptx','html']`; renderer above), so both the card ⋯ menu and the analyze-view header offer a PPT pill on community/competitive/brand-360; the competitive PPT path reuses the focus picker (the chosen format is stashed in `projectFormat` until the focus is picked).
+**Data Story (2026-09-02) — shareable narrative web page.** A new one-click
+"Data Story" row in the Reports picker (`data-story` in `lib/reportCatalog.ts`,
+datasets with AI on) generates a self-contained narrative HTML page from the
+dataset's ENGINE numbers and returns a **share link — no login, expires in 7
+days, revocable**. Pipeline (`POST /api/datasets/[datasetId]/story` →
+`lib/dataStory.ts`): org-gated; requires a mined theme model; fetches up to
+50K rows (evenSample past the cap, labeled in the page's method note); every
+theme figure comes from `recountThemes` over the substantive base — the same
+numbers TextMine shows; a rating field (name heuristic) adds a
+"what moves the score" avg-rating-by-theme section and a 2–6-value categorical
+(≥60% coverage, ≥30 substantive rows per segment) adds a per-segment profile;
+quotes are sentence-level, keyword-anchored, and MUST pass `verbatimSupports`
+for the theme's sentiment (the verbatim-premise rule) — neutral themes get no
+quote. The AI writes narrative PROSE only (facts passed in, instructed to use
+no other numbers; usage logged as `data_story`); on any AI failure the
+deterministic narrative ships. Output is uploaded to the private
+`report-exports` bucket and served through **`GET /api/story/[...path]`** on
+OUR domain — Supabase Storage deliberately serves text/html as text/plain on
+*.supabase.co (anti-phishing), so a raw signed URL shows page source (⚠ this
+also affects the pre-existing `export/html/share` links — see the route
+comment). The signed-URL token stays the sole capability (signature + expiry
+verified by Supabase; the viewer route adds no bypass); deleting the storage
+object kills every copy of the link instantly. The header opens the story in
+a new tab and copies the link. Pages are Datanautix-branded (deck/report
+export rule), noindexed, CSP-locked to inline assets + Google fonts.
+
 **Ask Ana / ad-hoc data layer — filter-aware deterministic sampling (2026-07-13, sql/167).**
 `loadAnaSample` (`lib/anaReportContext.ts`, shared by `POST /api/ask-ana` and the ad-hoc
 report) no longer fetches a filter-blind random prefetch (`sample_row_pairs` =

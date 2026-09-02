@@ -119,6 +119,30 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
     setReportMenuOpen(false)
     if (type.id === 'deck') { setShowExport(true); return }   // configurable → its own modal
     if (type.id === 'ad-hoc') { setAdHocOpen(true); return }
+    if (type.id === 'data-story') {
+      // Returns a share LINK (JSON { url }), not a file. The tab must be
+      // opened SYNCHRONOUSLY in the click (a window.open after the await has
+      // lost the user activation and gets popup-blocked — verified 2026-09-02),
+      // then pointed at the story once the build finishes.
+      var storyTab = window.open('about:blank', '_blank')
+      setReportBusy(true)
+      try {
+        var storyReq = type.launch(dataset.id, format)
+        var storyRes = await fetch(storyReq.url, { method: 'POST' })
+        var storyData = await storyRes.json()
+        if (!storyRes.ok || !storyData.url) throw new Error(storyData.error || 'Could not build the story')
+        var storyUrl = new URL(storyData.url, window.location.origin).toString()
+        try { await navigator.clipboard.writeText(storyUrl) } catch { /* clipboard optional */ }
+        if (storyTab) storyTab.location.href = storyUrl
+        else window.open(storyUrl, '_blank', 'noopener')
+      } catch (storyErr) {
+        if (storyTab) storyTab.close()
+        window.alert(storyErr instanceof Error ? storyErr.message : 'Could not build the story')
+      } finally {
+        setReportBusy(false)
+      }
+      return
+    }
     var req = type.launch(dataset.id, format)
     // An HTML report is meant to be READ, so it still opens in a tab. Everything
     // else is a file: fetch it so the menu can show it working and report a real

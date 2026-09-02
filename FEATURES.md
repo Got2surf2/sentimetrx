@@ -295,6 +295,10 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 - Theme recounting without re-mining
 - Statistical significance testing (chi-square) for theme distributions
 
+### Data Story (2026-09-02)
+
+- **Shareable narrative web page** from the Reports picker: one click builds a self-contained, Datanautix-branded story page from the mined theme model — theme prevalence, avg-rating-by-theme (when a rating field exists), per-segment profiles, and premise-verified verbatims — hosted on the platform (`report-exports` bucket) behind a **no-login share link that expires in 7 days and is revocable** (delete the object). Served via `GET /api/story/[...path]` on our domain (Supabase's storage host refuses to render HTML). AI writes the narrative prose only; every figure is the engine's own recount.
+
 ### Statistics Module (Regression)
 - OLS linear regression (multi-outcome) and binary logistic regression (categorical/ordinal/theme predictors, VIF pruning, separation guard) — `docs/ANALYTICS.md`
 - **Driver Simulator export (2026-08-28)**: "Download simulation model (.json)" on both regression Model Fit cards emits the self-contained payload the standalone Monte-Carlo Driver Simulator consumes (simulator-payload-spec v1.0; `lib/simulatorExport.ts`) — identity + logit links, coefficient-uncertainty block, estimation-sample slider stats; unexportable models (separation, runaway coefficients) are refused with the reason shown
