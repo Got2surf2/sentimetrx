@@ -160,13 +160,19 @@ describe('read_comments — on-demand reading sample', () => {
     chain.then = (resolve: (v: unknown) => unknown) => {
       if (inIds) {
         const wanted = new Set(inIds)
-        return Promise.resolve({ data: (opts.byIdRows || []).filter(r => wanted.has(r.id)), error: null, count: null }).then(resolve)
+        const out = { data: (opts.byIdRows || []).filter(r => wanted.has(r.id)), error: null, count: null }
+        inIds = null
+        return Promise.resolve(out).then(resolve)
       }
       return Promise.resolve({ data: null, error: null, count: opts.count ?? 0 }).then(resolve)
     }
     return {
-      rpc: vi.fn(async (name: string) => {
-        if (name === 'search_dataset_rows') return { data: opts.rpcRows ?? [], error: null }
+      rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
+        if (name === 'search_dataset_rows') {
+          const off = Number(args?.p_offset) || 0
+          const lim = Number(args?.p_limit) || 50
+          return { data: (opts.rpcRows ?? []).slice(off, off + lim), error: null }
+        }
         if (name === 'sample_row_pairs') return { data: (opts.sampleRows || []).map(d => ({ data: d })), error: null }
         return { data: null, error: { message: 'unexpected rpc ' + name } }
       }),
@@ -229,6 +235,42 @@ describe('read_comments — on-demand reading sample', () => {
     const out = await executeAnaQueryTool(service, { ...baseCtx, fieldKey: null }, 'read_comments', { query: 'nuclear' })
     const comments = out.comments as string[]
     expect(comments[0].startsWith('He wants to stop nuclear wars')).toBe(true)   // not "29 | Male | White | OH"
+  })
+
+  it('fill-to-limit: keeps paging matches until the limit holds REAL verbatims', async () => {
+    // 60 matches; only every 3rd row carries the target field → a naive
+    // one-page pull would return ~7 verbatims for limit 20.
+    const rpcRows = Array.from({ length: 60 }, (_, i) => ({
+      id: i,
+      data: i % 3 === 0 ? { resp: 'verbatim number ' + i + ' with enough length to count' } : { Gender: 'Male' },
+    }))
+    const service = readService({ rpcRows, count: 60 })
+    const out = await executeAnaQueryTool(service, { ...baseCtx, fieldKey: 'resp' }, 'read_comments', { query: 'x', limit: 20 })
+    expect(out.readCount).toBe(20)
+    expect((out.comments as string[]).every(c => c.startsWith('verbatim number'))).toBe(true)
+    expect(out.rowsWithoutThisField).toBeGreaterThan(0)
+  })
+
+  it('representativeness drift: a skewed pull vs the dataset distribution is flagged', async () => {
+    // Pull: 40 verbatims, ALL Gender=Male. Dataset baseline (field_counts): 50/50.
+    mockedAgg.mockImplementation(async (_s, _d, _m, body) => {
+      if (body.op === 'field_counts' && body.field === 'Gender') {
+        return { status: 200, body: { counts: { Male: 500, Female: 500 }, sampled: false } }
+      }
+      return { status: 200, body: { counts: { A: 1 }, sampled: false } }
+    })
+    const rpcRows = Array.from({ length: 40 }, (_, i) => ({
+      id: i, data: { resp: 'a sufficiently long verbatim response number ' + i, Gender: 'Male' },
+    }))
+    const service = readService({ rpcRows, count: 40 })
+    const ctx: AnaQueryContext = { ...baseCtx, fieldKey: 'resp', demoFields: ['Gender'] }
+    const out = await executeAnaQueryTool(service, ctx, 'read_comments', { query: 'x', limit: 40 })
+    expect(out.readCount).toBe(40)
+    const drift = out.representativenessDrift as string[]
+    expect(drift.some(d => d.includes('Male') && d.includes('100%') && d.includes('50%'))).toBe(true)
+    expect(String(out.driftNote)).toContain('tell the user')
+    mockedAgg.mockReset()
+    mockedAgg.mockResolvedValue({ status: 200, body: { counts: { A: 1 }, sampled: false } })
   })
 
   it('untargeted with filters: reads an evenly-spread slice of the filtered view by id', async () => {

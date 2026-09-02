@@ -597,3 +597,17 @@ never padded from other fields. Field resolution is label-tolerant
 (label→key map) and defaults to the ACTIVE VIEW column. The no-field
 fallback prefers substantive text (longest fields first). 3 rewritten/new
 tests pin the exact transcript failure modes; 2,018 pass.
+
+## 2026-09-02 — fill-to-limit reads + representativeness drift alerts
+
+**Why**: Owner: "samples feel really small — a sample of 500 should actually
+have 500 verbatims; and track drift between the dataset demos and the pulled
+demos, alerting on significant mismatches."
+
+**What**: read_comments now fills to the limit with REAL verbatims on every
+path (paged search offsets, evenly-spaced passes over the filtered view,
+over-fetched representative samples; max 400, 60K-char budget). Reads ≥30
+verbatims tally the pull's mix on schema `demographic` categorical fields vs
+the dataset's exact field_counts (filter-scoped); shifts ≥15pts on values
+≥5% surface as representativenessDrift, and the prompt mandates telling the
+user. 2 new tests (sparse-column fill, 100%-Male-vs-50/50 flag); 2,020 pass.

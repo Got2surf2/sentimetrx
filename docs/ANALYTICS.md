@@ -2086,6 +2086,17 @@ the 200-row sample for synthesis. Three changes:
   `fieldUsed`, and a zero-coverage pull returns a hint to check coverage via
   `query_data` first. The no-field fallback now prefers SUBSTANTIVE text
   (longest fields first) so descriptor fields never crowd out the response.
+  **Fill-to-limit + representativeness (2026-09-02, owner):** a read now keeps
+  pulling — paged search matches, evenly-spaced passes over the filtered view,
+  over-fetched samples — until the requested limit holds REAL verbatims (max
+  raised to 400, 60K-char budget) or the source is exhausted. And because a
+  targeted pull can silently skew (one wave, one region, one age band), reads
+  of ≥30 verbatims tally the pull's mix on the schema's `demographic`
+  categorical fields against the dataset's own exact `field_counts`
+  distribution (filter-scoped when filters are active): any value ≥5% of the
+  dataset that shifts ≥15 points in the pull is reported as
+  `representativenessDrift`, and the prompt mandates alerting the user
+  ("note: this pull skews older — 34% are 65+ vs 21% overall").
 - **The sample is now truly last-resort:** orientation default cut 200 → 60
   rows (Sampling button still raises it), and quoting/synthesizing from the
   sample is banned outright — every quote must come from a logged tool pull,

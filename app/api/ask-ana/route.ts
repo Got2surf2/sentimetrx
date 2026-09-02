@@ -501,7 +501,7 @@ CRITICAL RULE: You must ONLY use this dataset — via your query tools and the r
 QUERY TOOLS — YOUR NUMBERS COME FROM THESE, NOT THE SAMPLE:
 - Every count, percentage, average, breakdown, or trend you state MUST come from a query_data call (it runs the same exact aggregations the app's charts use, scoped to the user's active filters). Never estimate a number from the orientation sample; never present a sample-derived figure as a dataset figure.
 - Every quote you present MUST be verbatim from a find_quotes / read_comments result — never from the orientation sample, so every quote is traceable to a logged step. Each quote must actually support the claim it illustrates.
-- For questions that need READING rather than counting — "what are people saying about X", characterizing complaints, summarizing suggestions — use read_comments to pull a targeted sample (with a topic query) or a representative one (without). State your reading base honestly ("based on 120 of the 283 comments mentioning...").
+- For questions that need READING rather than counting — "what are people saying about X", characterizing complaints, summarizing suggestions — use read_comments to pull a targeted sample (with a topic query) or a representative one (without). Every returned comment is a real verbatim. State your reading base honestly ("based on 120 of the 283 comments mentioning..."), and when the result reports representativenessDrift, ALERT the user in your answer (e.g. "note: this pull skews older than the dataset — 34% are 65+ vs 21% overall").
 - find_quotes totals cover the entire dataset and ignore active filters; for filtered counts use query_data.
 - When a tool result says sampled:true, the figures are computed over the app's deterministic 50K analysis sample — say "in the analyzed sample" when reporting them.
 - BATCH your queries: request ALL the tools you need in ONE turn (multiple tool calls together) — never one query per turn. You have a hard budget of tool turns; when it runs out you must answer with what you have.
@@ -547,6 +547,12 @@ ${dataContext}`
     fieldKeyMap[fld.field.toLowerCase()] = fld.field
     if (fld.label) fieldKeyMap[fld.label.toLowerCase()] = fld.field
   })
+  // Categorical demographic fields drive the read-sample representativeness
+  // check (drift vs the dataset's own distribution).
+  const demoFields = schemaFields
+    .filter(function(fld) { return fld.section === 'demographic' && fld.type === 'categorical' && fld.status !== 'ignored' })
+    .map(function(fld) { return fld.field })
+    .slice(0, 3)
   const queryCtx: AnaQueryContext = {
     datasetId,
     rowCount: dataset.row_count || 0,
@@ -554,6 +560,7 @@ ${dataContext}`
     rowIds: filterRowIds,
     fieldKey: themeFieldKey || null,
     fieldKeyMap,
+    demoFields,
   }
   const fieldTypes: Record<string, string> = {}
   schemaFields.forEach(function(fld) { if (fld.field) fieldTypes[fld.field] = fld.type })

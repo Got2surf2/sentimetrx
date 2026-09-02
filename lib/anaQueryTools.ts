@@ -30,6 +30,9 @@ export interface AnaQueryContext {
    *  ("Like About") still resolves to the data key (owner-hit: reads fell
    *  back to joining demographics when the field didn't resolve). */
   fieldKeyMap?: Record<string, string>
+  /** Categorical fields marked section='demographic' in the schema — used to
+   *  check a pulled sample's representativeness against the dataset. */
+  demoFields?: string[]
 }
 
 // ── Tool definitions (Anthropic schema) ────────────────────────────────────
@@ -58,13 +61,13 @@ export const ANA_QUERY_TOOLS = [
   },
   {
     name: 'read_comments',
-    description: 'Pull a SAMPLE of raw comments into your context to READ — for questions that need synthesis rather than counting: "what are people saying about X", characterizing complaints, finding suggestions, summarizing themes in their own words. Pass query (websearch syntax) to target a topic — you get the most relevant matching comments plus the exact total match count; omit query for a representative sample of the whole dataset. Always report your reading base honestly (e.g. "based on 120 of the 283 comments mentioning the salsa bar"). For exact numbers still use query_data; for a handful of display quotes use find_quotes.',
+    description: 'Pull a SAMPLE of raw comments into your context to READ — for questions that need synthesis rather than counting: "what are people saying about X", characterizing complaints, finding suggestions, summarizing themes in their own words. Pass query (websearch syntax) to target a topic — you get the most relevant matching comments plus the exact total match count; omit query for a representative sample of the whole dataset. Every returned comment is a real verbatim from the target field (the pull keeps going until the limit is filled or the source is exhausted). If the result reports representativeness drift, TELL the user (e.g. "note: this pull skews older than the dataset"). Always report your reading base honestly. For exact numbers still use query_data; for a handful of display quotes use find_quotes.',
     input_schema: {
       type: 'object' as const,
       properties: {
         query: { type: 'string', description: 'Optional topic search (websearch syntax). Omit for a representative sample.' },
         field: { type: 'string', description: 'Field key whose text to read (use the ACTIVE VIEW column by default). Omit to read all text fields.' },
-        limit: { type: 'number', description: 'How many comments to read (default 100, max 200)' },
+        limit: { type: 'number', description: 'How many VERBATIMS to read (default 100, max 400)' },
       },
       required: [],
     },
@@ -244,7 +247,7 @@ export async function executeAnaQueryTool(
   }
 
   if (name === 'read_comments') {
-    var readLimit = Math.min(Math.max(10, Number(input.limit) || 100), 200)
+    var readLimit = Math.min(Math.max(10, Number(input.limit) || 100), 400)
     var topic = String(input.query || '').trim()
     var readField = resolveReadField(input, ctx)
     var readTargets = ctx.source === 'collection'
@@ -252,32 +255,64 @@ export async function executeAnaQueryTool(
       : [{ datasetId: ctx.datasetId, label: null as string | null }]
     if (readTargets.length === 0) readTargets = [{ datasetId: ctx.datasetId, label: null }]
 
-    type ReadRow = { id: number | null; data: Record<string, unknown>; label: string | null }
-    var readRows: ReadRow[] = []
-    var matchTotal = 0
-    var perTargetRead = Math.max(10, Math.ceil(readLimit / readTargets.length))
+    // Fill-to-limit collection: every path keeps pulling until readLimit REAL
+    // verbatims are in hand or the source is exhausted (owner 9/02: "a sample
+    // of 500 should actually have 500 verbatims").
+    type Kept = { line: string; data: Record<string, unknown> }
+    var kept: Kept[] = []
+    var emptyField = 0
+    var seenIds = new Set<number>()
+    var READ_CHAR_CAP = 60000
+    var usedChars = 0
+    function keep(id: number | null, data: Record<string, unknown>, label: string | null): boolean {
+      if (kept.length >= readLimit || usedChars >= READ_CHAR_CAP) return false
+      if (id != null) { if (seenIds.has(id)) return true; seenIds.add(id) }
+      var line = quoteFromRow(data, 300, readField)
+      if (!line) { if (readField) emptyField++; return true }
+      if (label) line = '[' + label + '] ' + line
+      kept.push({ line: line, data: data })
+      usedChars += line.length
+      return true
+    }
 
+    var matchTotal = 0
     if (topic) {
-      // Targeted: rank-ordered full-text matches + the exact total match count.
+      // Targeted: page the rank-ordered matches per target until filled.
+      var readIdSet = ctx.rowIds ? new Set(ctx.rowIds) : null
+      var deferred: { id: number; data: Record<string, unknown>; label: string | null }[] = []
       for (var rt of readTargets) {
-        var rr = await service.rpc('search_dataset_rows', {
-          p_dataset_id: rt.datasetId, p_query: topic, p_limit: perTargetRead * 2, p_offset: 0,
-        })
-        var hits: { id: number; data: Record<string, unknown> | null }[] = []
-        if (!rr.error && rr.data && rr.data.length > 0) {
-          hits = rr.data as typeof hits
-        } else {
-          var rfb = await service
-            .from('dataset_rows_flat')
-            .select('id, data')
-            .eq('dataset_id', rt.datasetId)
-            .textSearch('tsv', topic, { type: 'websearch', config: 'english' })
-            .order('row_index', { ascending: true })
-            .range(0, perTargetRead * 2 - 1)
-          if (rfb.error) return { error: 'Search failed: ' + rfb.error.message, hint: 'Simplify the query — plain terms, OR between alternatives.' }
-          hits = (rfb.data || []) as typeof hits
+        var offset = 0
+        var pageSize = Math.min(200, Math.max(50, readLimit))
+        var scanned = 0
+        while (kept.length < readLimit && usedChars < READ_CHAR_CAP && scanned < 2000) {
+          var rr = await service.rpc('search_dataset_rows', {
+            p_dataset_id: rt.datasetId, p_query: topic, p_limit: pageSize, p_offset: offset,
+          })
+          var hits: { id: number; data: Record<string, unknown> | null }[] = []
+          if (!rr.error && rr.data && rr.data.length > 0) {
+            hits = rr.data as typeof hits
+          } else if (offset === 0) {
+            var rfb = await service
+              .from('dataset_rows_flat')
+              .select('id, data')
+              .eq('dataset_id', rt.datasetId)
+              .textSearch('tsv', topic, { type: 'websearch', config: 'english' })
+              .order('row_index', { ascending: true })
+              .range(0, pageSize - 1)
+            if (rfb.error) return { error: 'Search failed: ' + rfb.error.message, hint: 'Simplify the query — plain terms, OR between alternatives.' }
+            hits = (rfb.data || []) as typeof hits
+          }
+          if (hits.length === 0) break
+          for (var h of hits) {
+            // In-view rows first when filters are active; out-of-view matches
+            // fill remaining space afterwards.
+            if (readIdSet && !readIdSet.has(h.id)) { deferred.push({ id: h.id, data: h.data || {}, label: rt.label }); continue }
+            keep(h.id, h.data || {}, rt.label)
+          }
+          scanned += hits.length
+          if (hits.length < pageSize) break
+          offset += pageSize
         }
-        for (var h of hits) readRows.push({ id: h.id, data: h.data || {}, label: rt.label })
         var { count: rc } = await service
           .from('dataset_rows_flat')
           .select('id', { count: 'exact', head: true })
@@ -285,69 +320,96 @@ export async function executeAnaQueryTool(
           .textSearch('tsv', topic, { type: 'websearch', config: 'english' })
         matchTotal += rc || 0
       }
-      // Prefer the filtered view when the user has filters active.
-      var readIdSet = ctx.rowIds ? new Set(ctx.rowIds) : null
-      if (readIdSet) {
-        var rIn: ReadRow[] = []
-        var rOut: ReadRow[] = []
-        for (var rrow of readRows) ((rrow.id != null && readIdSet.has(rrow.id)) ? rIn : rOut).push(rrow)
-        readRows = rIn.concat(rOut)
-      }
+      for (var dv of deferred) { if (!keep(dv.id, dv.data, dv.label)) break }
     } else if (ctx.rowIds && ctx.rowIds.length > 0 && ctx.source !== 'collection') {
-      // Untargeted + filters active: read an evenly-spaced slice of the
-      // filtered view's own rows (deterministic spread across the view).
-      var step = Math.max(1, Math.floor(ctx.rowIds.length / readLimit))
-      var pickIds: number[] = []
-      for (var pi = 0; pi < ctx.rowIds.length && pickIds.length < readLimit; pi += step) pickIds.push(ctx.rowIds[pi])
-      var byId = await service
-        .from('dataset_rows_flat')
-        .select('id, data')
-        .eq('dataset_id', ctx.datasetId)
-        .in('id', pickIds)
-      if (byId.error) return { error: 'Read failed: ' + byId.error.message }
-      for (var b of (byId.data || []) as { id: number; data: Record<string, unknown> | null }[]) readRows.push({ id: b.id, data: b.data || {}, label: null })
+      // Untargeted + filters: walk the filtered view in evenly-spaced passes,
+      // batch-fetching until the limit is filled with real verbatims.
+      var ids = ctx.rowIds
+      var stride = Math.max(1, Math.floor(ids.length / readLimit))
+      for (var pass = 0; pass < stride && kept.length < readLimit && usedChars < READ_CHAR_CAP; pass++) {
+        var pickIds: number[] = []
+        for (var pi = pass; pi < ids.length && pickIds.length < readLimit; pi += stride) {
+          if (!seenIds.has(ids[pi])) pickIds.push(ids[pi])
+        }
+        if (pickIds.length === 0) break
+        var byId = await service
+          .from('dataset_rows_flat')
+          .select('id, data')
+          .eq('dataset_id', ctx.datasetId)
+          .in('id', pickIds.slice(0, 250))
+        if (byId.error) return { error: 'Read failed: ' + byId.error.message }
+        var got = (byId.data || []) as { id: number; data: Record<string, unknown> | null }[]
+        if (got.length === 0) break
+        for (var b of got) keep(b.id, b.data || {}, null)
+      }
     } else {
-      // Untargeted: deterministic representative sample (same RPC the
-      // orientation sample uses).
+      // Untargeted: deterministic representative sample — over-fetch when a
+      // field is targeted so sparse columns still fill the limit.
+      var budget = readField ? readLimit * 4 : readLimit
+      var perTargetRead = Math.max(10, Math.ceil(budget / readTargets.length))
       for (var st of readTargets) {
+        if (kept.length >= readLimit) break
         var sr = await service.rpc('sample_row_pairs', { p_dataset_id: st.datasetId, p_fields: [], p_limit: perTargetRead })
         if (!sr.error && sr.data) {
-          for (var srow of sr.data as { data: Record<string, unknown> }[]) readRows.push({ id: null, data: srow.data, label: st.label })
+          for (var srow of sr.data as { data: Record<string, unknown> }[]) keep(null, srow.data, st.label)
         }
       }
     }
 
-    // Format for reading; hard char budget so a wide pull can't blow context.
-    var READ_CHAR_CAP = 35000
-    var lines: string[] = []
-    var used = 0
-    var emptyField = 0
-    for (var rw of readRows) {
-      if (lines.length >= readLimit) break
-      var line = quoteFromRow(rw.data, 300, readField)
-      if (!line) { if (readField) emptyField++; continue }
-      if (rw.label) line = '[' + rw.label + '] ' + line
-      if (used + line.length > READ_CHAR_CAP) break
-      lines.push(line)
-      used += line.length
-    }
-
     var readResult: Record<string, unknown> = {
-      readCount: lines.length,
-      comments: lines,
+      readCount: kept.length,
+      comments: kept.map(function(kp) { return kp.line }),
     }
     if (readField) {
       readResult.fieldUsed = readField
       if (emptyField > 0) readResult.rowsWithoutThisField = emptyField
-      if (lines.length === 0) readResult.hint = 'No rows in this pull carry text in "' + readField + '" — its coverage may be sparse or year-specific. Check coverage with query_data field_counts first, or read without a topic query.'
+      if (kept.length === 0) readResult.hint = 'No rows in this pull carry text in "' + readField + '" — its coverage may be sparse or year-specific. Check coverage with query_data field_counts first, or read without a topic query.'
     }
     if (topic) {
       readResult.totalMatching = matchTotal
-      readResult.scope = 'read ' + lines.length + ' of the ' + matchTotal.toLocaleString() + ' comments matching "' + topic + '" across the ENTIRE dataset' + (ctx.rowIds ? ' (in-view comments listed first)' : '')
+      readResult.scope = 'read ' + kept.length + ' verbatims from the ' + matchTotal.toLocaleString() + ' comments matching "' + topic + '" across the ENTIRE dataset' + (ctx.rowIds ? ' (in-view comments first)' : '')
     } else if (ctx.rowIds && ctx.source !== 'collection') {
       readResult.scope = 'an evenly-spread sample of the user\'s filtered view (' + ctx.rowIds.length.toLocaleString() + ' rows)'
     } else {
       readResult.scope = 'a representative sample of the whole dataset'
+    }
+
+    // ── Representativeness: does this pull's demographic mix match the
+    // dataset? A targeted read can silently skew (one wave, one region, one
+    // age band) — measure it and say so (owner 9/02).
+    if (kept.length >= 30 && ctx.demoFields && ctx.demoFields.length > 0) {
+      var drift: string[] = []
+      for (var df of ctx.demoFields.slice(0, 3)) {
+        var tally: Record<string, number> = {}
+        var counted = 0
+        for (var kp2 of kept) {
+          var dv2 = kp2.data[df]
+          if (typeof dv2 !== 'string' && typeof dv2 !== 'number') continue
+          var key2 = String(dv2).trim()
+          if (!key2) continue
+          tally[key2] = (tally[key2] || 0) + 1
+          counted++
+        }
+        if (counted < 20) continue
+        var base = await runAggregateOp(service, ctx.datasetId, { rowCount: ctx.rowCount, source: ctx.source }, { op: 'field_counts', field: df, limit: 50, rowIds: ctx.rowIds || undefined })
+        var baseCounts = (base.status === 200 ? base.body.counts : null) as Record<string, number> | null
+        if (!baseCounts) continue
+        var baseTotal = 0
+        for (var bk in baseCounts) baseTotal += baseCounts[bk]
+        if (baseTotal === 0) continue
+        for (var val in baseCounts) {
+          var baseShare = baseCounts[val] / baseTotal
+          if (baseShare < 0.05) continue
+          var pullShare = (tally[val] || 0) / counted
+          if (Math.abs(pullShare - baseShare) >= 0.15) {
+            drift.push(df + ': "' + val + '" is ' + Math.round(pullShare * 100) + '% of this pull vs ' + Math.round(baseShare * 100) + '% of the dataset')
+          }
+        }
+      }
+      if (drift.length > 0) {
+        readResult.representativenessDrift = drift.slice(0, 4)
+        readResult.driftNote = 'This pull\'s demographic mix differs meaningfully from the dataset — tell the user before generalizing.'
+      }
     }
     return readResult
   }
