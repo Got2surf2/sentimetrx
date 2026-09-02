@@ -303,6 +303,18 @@ function segmentGrid(d: StoryData): string {
   }).join('')
 }
 
+/** Page title from the dataset name. Datasets are often named "<Brand> Reviews"
+ *  (upload filenames, review syncs), which read awkwardly with the suffix —
+ *  and the h1 must not stutter ("… Reviews Reviews"). Collapse an immediately
+ *  repeated trailing word and drop a trailing "Reviews"/"Review" before the
+ *  suffix; everything else passes through untouched. */
+export function storyTitle(datasetName: string): string {
+  const deStuttered = datasetName.trim().replace(/\s+(\S+)( \1)+$/i, ' $1')
+  const stripped = deStuttered.replace(/\s+reviews?$/i, '')
+  if (stripped && stripped !== deStuttered) return stripped + ': what the reviews say'
+  return deStuttered + ': what the text says'
+}
+
 export function renderDataStory(d: StoryData): string {
   const n = d.narrative
   const quotes = d.quotes.map(q =>
@@ -318,10 +330,10 @@ export function renderDataStory(d: StoryData): string {
 <style>
 :root{--paper:#FCFCFB;--card:#F3F6F5;--ink:#1A2421;--dim:#5C6B64;--hair:rgba(26,36,33,.12);--teal:#0E7476;--orange:#E85A1A}
 *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:17px;line-height:1.6;font-variant-numeric:tabular-nums}
-.wrap{max-width:920px;margin:0 auto;padding:0 26px}p{margin:0 0 15px}
+.wrap{max-width:1040px;margin:0 auto;padding:0 26px}p{margin:0 0 15px}
 .brand{font-weight:800;font-style:italic;font-size:15px}.brand .d{color:var(--teal)}.brand .n{color:var(--orange)}
 .mast{padding:52px 0 8px}h1{font-size:clamp(28px,4.2vw,46px);line-height:1.06;margin:14px 0 12px;font-weight:750;letter-spacing:-.02em}
-.stand{font-size:18px;color:var(--dim);max-width:660px;margin:0 0 10px}.stamp{font-size:13.5px;color:var(--dim)}
+.stand{font-size:18px;color:var(--dim);margin:0 0 10px}.stamp{font-size:13.5px;color:var(--dim)}
 section{padding:40px 0 8px;border-top:1px solid var(--hair);margin-top:34px}
 h2{font-size:clamp(21px,2.7vw,29px);font-weight:720;letter-spacing:-.015em;margin:0 0 6px}
 .sub{color:var(--dim);font-size:15.5px;margin:0 0 20px}
@@ -346,7 +358,7 @@ table{border-collapse:collapse;font-size:13.5px}td,th{padding:5px 14px 5px 0;tex
 </style></head><body><div class="wrap">
 <div class="mast">
 <div class="brand"><span class="d">data</span><span class="n">nautix</span></div>
-<h1>${esc(d.datasetName)}: what the text says</h1>
+<h1>${esc(storyTitle(d.datasetName))}</h1>
 <p class="stand">${esc(n.lede)}</p>
 <p class="stamp">Generated ${esc(d.generated)} · every figure computed by the analytics engine${sampledNote ? ' · sampled' : ''}</p>
 </div>

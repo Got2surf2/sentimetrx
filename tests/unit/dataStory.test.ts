@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildStoryPayload, deterministicNarrative, parseNarrative, renderDataStory,
-  pickRatingField, pickSegmentField, type StoryData,
+  pickRatingField, pickSegmentField, storyTitle, type StoryData,
 } from '@/lib/dataStory'
 import { recountThemes, type ThemeModel } from '@/lib/themeUtils'
 import type { SchemaFieldConfig, DatasetAnalytics } from '@/lib/analyzeTypes'
@@ -105,6 +105,15 @@ describe('narrative', () => {
     expect(ok.lede).toBe('A lede.')
     expect(ok.ratingIntro).toBe(fb.ratingIntro)
     expect(parseNarrative('not json at all', fb)).toEqual(fb)
+  })
+})
+
+describe('storyTitle', () => {
+  it('collapses a stuttered trailing word and adapts the suffix to review datasets', () => {
+    expect(storyTitle("Cheddar's Scratch Kitchen Reviews Reviews")).toBe("Cheddar's Scratch Kitchen: what the reviews say")
+    expect(storyTitle('Acme Diner Reviews')).toBe('Acme Diner: what the reviews say')
+    expect(storyTitle('Employee Survey')).toBe('Employee Survey: what the text says')
+    expect(storyTitle('ea_football_reviews')).toBe('ea_football_reviews: what the text says')
   })
 })
 

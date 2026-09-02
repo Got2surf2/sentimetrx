@@ -1925,7 +1925,11 @@ also affects the pre-existing `export/html/share` links — see the route
 comment). The signed-URL token stays the sole capability (signature + expiry
 verified by Supabase; the viewer route adds no bypass); deleting the storage
 object kills every copy of the link instantly. The header opens the story in
-a new tab and copies the link. Pages are Datanautix-branded (deck/report
+a new tab (painted with a building screen while the ~30–90s build runs) and
+copies the link. The h1 de-stutters a doubled trailing word in the dataset
+name and adapts its suffix (“what the reviews say” when a trailing
+“Reviews” was stripped, else “what the text says”); the layout is a
+full-width 1040px column (owner feedback 2026-09-02: no narrow lede cap). Pages are Datanautix-branded (deck/report
 export rule), noindexed, CSP-locked to inline assets + Google fonts.
 
 **Ask Ana / ad-hoc data layer — filter-aware deterministic sampling (2026-07-13, sql/167).**

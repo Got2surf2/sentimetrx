@@ -693,3 +693,9 @@ the 30–90s dev-mode build and read as broken. The tab now paints a branded
 "Building your Data Story…" screen at click time via document.write, then
 navigates when the link lands. Backend confirmed healthy in the same session
 (direct POST → 200 + fresh link in ~30s).
+
+**Polish (owner feedback on a real Cheddar's story)**: the lede was capped at
+660px while the headline spanned the page — cap removed, column widened
+920→1040px. Also the h1 read "…Reviews Reviews": storyTitle() now collapses a
+stuttered trailing word and adapts the suffix ("what the reviews say" when a
+trailing "Reviews" is stripped; "what the text says" otherwise) — unit-tested.
