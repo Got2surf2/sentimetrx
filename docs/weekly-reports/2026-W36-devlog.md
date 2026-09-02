@@ -535,3 +535,19 @@ unpaired surrogates at stringify time — wired into ask-ana AND the shared
 lib/ai client (sweep the class). Browser-verified on Tabla: 10-location
 ranking rendered as a real inline bar chart, table kept for mixed columns.
 6+ new tests; 2,009 pass.
+
+## 2026-09-02 — Ana works the current view; sample demoted to last resort
+
+**Why**: Owner (testing prod): Ana "still sampled 200 comments — that should
+be a path of last option" and "uses the default verbatim column even though I
+selected another — we need to be sure Ask Ana is working against the current
+view."
+
+**What**: ACTIVE VIEW block in the prompt names the selected text column
+(themeFieldKey) and mandates targeting it; read_comments/find_quotes gain a
+field param (column-scoped quotes with per-row fallback); orientation sample
+default 200→60 (route + panel; Sampling button still raises); quoting or
+synthesizing from the sample banned — every quote now traceable to a logged
+tool step. Browser-verified on Rubio's with Owner Response selected: the
+tone question came back as an owner-response-only analysis (two boilerplate
+scripts + usage counts, verbatim). 2,010 pass.

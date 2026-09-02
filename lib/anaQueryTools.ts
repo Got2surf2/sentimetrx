@@ -59,6 +59,7 @@ export const ANA_QUERY_TOOLS = [
       type: 'object' as const,
       properties: {
         query: { type: 'string', description: 'Optional topic search (websearch syntax). Omit for a representative sample.' },
+        field: { type: 'string', description: 'Field key whose text to read (use the ACTIVE VIEW column by default). Omit to read all text fields.' },
         limit: { type: 'number', description: 'How many comments to read (default 100, max 200)' },
       },
       required: [],
@@ -71,6 +72,7 @@ export const ANA_QUERY_TOOLS = [
       type: 'object' as const,
       properties: {
         query: { type: 'string', description: 'Search query (websearch syntax, e.g. \'wait OR slow "long line"\')' },
+        field: { type: 'string', description: 'Field key whose text to quote (use the ACTIVE VIEW column by default). Omit to quote all text fields.' },
         limit: { type: 'number', description: 'Max quotes to return (default 8, max 20)' },
       },
       required: ['query'],
@@ -95,7 +97,15 @@ export function anaToolStatusLabel(name: string, input: Record<string, unknown>)
 }
 
 // Strip internal fields and join a row's text values into one quote line.
-function quoteFromRow(data: Record<string, unknown>, maxChars: number): string {
+// With onlyField, quote just that column (the analyst's active view) and fall
+// back to all text fields when it's empty on a row.
+function quoteFromRow(data: Record<string, unknown>, maxChars: number, onlyField?: string): string {
+  if (onlyField) {
+    var fv = data[onlyField]
+    if (typeof fv === 'string' && fv.trim().length > 2) {
+      return fv.length > maxChars ? fv.slice(0, maxChars) + '…' : fv
+    }
+  }
   var parts: string[] = []
   for (var k in data) {
     if (k.startsWith('_')) continue
@@ -216,6 +226,7 @@ export async function executeAnaQueryTool(
   if (name === 'read_comments') {
     var readLimit = Math.min(Math.max(10, Number(input.limit) || 100), 200)
     var topic = String(input.query || '').trim()
+    var readField = typeof input.field === 'string' && input.field.trim() ? input.field.trim() : undefined
     var readTargets = ctx.source === 'collection'
       ? await resolveScopeMembers(service, ctx.datasetId)
       : [{ datasetId: ctx.datasetId, label: null as string | null }]
@@ -292,7 +303,7 @@ export async function executeAnaQueryTool(
     var used = 0
     for (var rw of readRows) {
       if (lines.length >= readLimit) break
-      var line = quoteFromRow(rw.data, 300)
+      var line = quoteFromRow(rw.data, 300, readField)
       if (!line) continue
       if (rw.label) line = '[' + rw.label + '] ' + line
       if (used + line.length > READ_CHAR_CAP) break
@@ -319,6 +330,7 @@ export async function executeAnaQueryTool(
     var q = String(input.query || '').trim()
     if (!q) return { error: 'query required' }
     var quoteLimit = Math.min(Math.max(1, Number(input.limit) || 8), 20)
+    var quoteField = typeof input.field === 'string' && input.field.trim() ? input.field.trim() : undefined
 
     // Collection → search each member; single dataset → itself.
     var targets = ctx.source === 'collection'
@@ -373,7 +385,7 @@ export async function executeAnaQueryTool(
       total: total,
       totalScope: 'rows matching across the ENTIRE dataset — active filters are NOT applied to this count',
       quotes: candidates.slice(0, quoteLimit).map(function(c) {
-        var entry: Record<string, unknown> = { text: quoteFromRow(c.data, 350) }
+        var entry: Record<string, unknown> = { text: quoteFromRow(c.data, 350, quoteField) }
         if (c.label) entry.source = c.label
         if (idSet) entry.inFilteredView = idSet.has(c.id)
         return entry

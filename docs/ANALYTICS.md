@@ -2031,6 +2031,23 @@ mention → rows edited/deleted in the Memory view. Unit coverage:
 identity-stamping + cross-org refusal). Migration sql/197 is applied to TEST;
 prod apply rides the next push batch (with 195/196).
 
+**Ana works the CURRENT VIEW (2026-09-02, owner-hit).** Ana answered from the
+default verbatim column while the analyst had another selected, and leaned on
+the 200-row sample for synthesis. Three changes:
+- **ACTIVE VIEW anchoring:** the system prompt names the analyst's selected
+  text column (from the TextMine pill's `themeFieldKey`) and instructs Ana to
+  target it — read it, quote it, frame text findings on it — unless the
+  question clearly points elsewhere.
+- **Field-scoped reads:** `read_comments` and `find_quotes` take a `field`
+  key; quotes come from that column alone (falling back per-row when empty).
+- **The sample is now truly last-resort:** orientation default cut 200 → 60
+  rows (Sampling button still raises it), and quoting/synthesizing from the
+  sample is banned outright — every quote must come from a logged tool pull,
+  making all evidence traceable in the "Show my logic" trail.
+Browser-verified: with Owner Response selected, "what tone do we take in
+these responses" produced an owner-response-only analysis (the two boilerplate
+scripts with usage counts, verbatim quotes) instead of customer-review tone.
+
 **Inline charts in Ana's answers (2026-09-02, owner-directed: "draw charts
 instead of tables where appropriate").** Ana emits a fenced ```chart block
 holding a constrained JSON spec — `{"type":"bar"|"line","title","unit?",

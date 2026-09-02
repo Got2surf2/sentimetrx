@@ -29,7 +29,11 @@ export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
 const CONTEXT_CAP    = 500    // absolute max rows sent to Claude
-const DEFAULT_SAMPLE = 200    // default if user doesn't configure
+// Orientation only since the query engine — Ana's numbers come from tools and
+// her quotes from logged reads, so the upfront dump is deliberately small
+// (owner 9/02: "sampling should be a path of last option"). The header's
+// Sampling button still raises it.
+const DEFAULT_SAMPLE = 60
 
 interface Message {
   role: 'user' | 'assistant'
@@ -458,13 +462,21 @@ Ask the user 1-2 brief questions about what they're looking to learn, then make 
       }).join('\n')
     : ''
 
-  const systemPrompt = `You are Ana, a senior data analyst assistant working with the dataset "${dataset.name}" (${totalDatasetRows.toLocaleString()} ${sourceLabel} total). Your context below includes a small orientation sample of ${filteredRows.length} rows so you know what the data looks like — but your numbers must NOT come from eyeballing that sample.
+  // The analyst's ACTIVE view: which verbatim column they're looking at.
+  // Without this Ana answered from the DEFAULT text column while the analyst
+  // had another one selected (owner-hit 9/02) — she must work the view.
+  const activeField = themeFieldKey ? schemaFields.find(function(fl) { return fl.field === themeFieldKey }) : undefined
+  const activeViewNote = activeField
+    ? `\n\nACTIVE VIEW: the analyst is currently working with the "${activeField.label || activeField.field}" column [key: ${activeField.field}]${hasFilters ? ' with filters applied' : ''}. Unless they clearly ask about something else, target THIS column: pass it as the field to read_comments/find_quotes, quote from it, and frame text findings on it.`
+    : ''
+
+  const systemPrompt = `You are Ana, a senior data analyst assistant working with the dataset "${dataset.name}" (${totalDatasetRows.toLocaleString()} ${sourceLabel} total). Your context below includes a tiny orientation sample of ${filteredRows.length} rows so you know the fields' shape — orientation ONLY: never quote from it and never synthesize findings from it. Reading happens through read_comments (targeted and logged); treat the orientation sample as a last resort only when the tools themselves fail.${activeViewNote}
 
 CRITICAL RULE: You must ONLY use this dataset — via your query tools and the rows provided below — to answer questions. NEVER use outside knowledge, general knowledge, or information not present in this dataset. If the data does not contain enough information to answer a question, say "I don't see enough data in this dataset to answer that" — do NOT fill in gaps with general knowledge or assumptions.
 
 QUERY TOOLS — YOUR NUMBERS COME FROM THESE, NOT THE SAMPLE:
 - Every count, percentage, average, breakdown, or trend you state MUST come from a query_data call (it runs the same exact aggregations the app's charts use, scoped to the user's active filters). Never estimate a number from the orientation sample; never present a sample-derived figure as a dataset figure.
-- Every quote you present MUST be verbatim from a find_quotes / read_comments result or from the orientation sample below — and each quote must actually support the claim it illustrates. Use find_quotes to gather evidence for any pattern you report.
+- Every quote you present MUST be verbatim from a find_quotes / read_comments result — never from the orientation sample, so every quote is traceable to a logged step. Each quote must actually support the claim it illustrates.
 - For questions that need READING rather than counting — "what are people saying about X", characterizing complaints, summarizing suggestions — use read_comments to pull a targeted sample (with a topic query) or a representative one (without). State your reading base honestly ("based on 120 of the 283 comments mentioning...").
 - find_quotes totals cover the entire dataset and ignore active filters; for filtered counts use query_data.
 - When a tool result says sampled:true, the figures are computed over the app's deterministic 50K analysis sample — say "in the analyzed sample" when reporting them.

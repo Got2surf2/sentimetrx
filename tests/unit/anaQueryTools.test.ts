@@ -192,6 +192,20 @@ describe('read_comments — on-demand reading sample', () => {
     expect(String(out.scope)).toContain('283')
   })
 
+  it('field scoping: quotes come from the requested column, falling back when empty', async () => {
+    const service = readService({
+      rpcRows: [
+        { id: 1, data: { review_text: 'customer words', owner_response: 'we apologize for the wait' } },
+        { id: 2, data: { review_text: 'only customer text here' } },
+      ],
+      count: 2,
+    })
+    const out = await executeAnaQueryTool(service, baseCtx, 'read_comments', { query: 'wait', field: 'owner_response' })
+    const comments = out.comments as string[]
+    expect(comments[0]).toBe('we apologize for the wait')      // scoped to the column
+    expect(comments[1]).toContain('only customer text here')   // fallback when column empty
+  })
+
   it('untargeted with filters: reads an evenly-spread slice of the filtered view by id', async () => {
     const byIdRows = Array.from({ length: 300 }, (_, i) => ({ id: i, data: { review_text: 'comment ' + i } }))
     const service = readService({ byIdRows })

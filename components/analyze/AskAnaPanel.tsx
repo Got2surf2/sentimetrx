@@ -148,7 +148,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
   // and the header's Sampling button opens the old setup for tuning.
   var [samplingConfig, setSamplingConfig] = useState<SamplingConfig>(
     needsSampling
-      ? { sampleSize: 200, strategy: 'proportional', configured: true }
+      ? { sampleSize: 60, strategy: 'proportional', configured: true }
       : { sampleSize: datasetRowCount, strategy: 'proportional', configured: true }
   )
   var [phase, setPhase] = useState<'setup' | 'deciding' | 'chat' | 'interview'>('chat')
