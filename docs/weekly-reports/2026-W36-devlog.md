@@ -427,3 +427,18 @@ sample") and it buried the interview.
 defaults silently (200-row orientation sample) and stays tunable via the
 header Sampling button, which still opens the full setup incl. "Let Ana help
 me decide". Browser-verified: fresh open lands directly on the interview.
+
+## 2026-09-02 — read_comments: the old-Ana reading capability, targeted
+
+**Why**: Owner: "we need to be smart enough to pull a small sample when the
+questions are outside the scope [of aggregates] — like the questions the old
+Ana used to answer." Query tools count; qualitative synthesis needs reading.
+
+**What**: Third server-executed tool read_comments — topic query → rank-ordered
+full-text matches + exact total (in-view first under filters); no query →
+evenly-spaced slice of the filtered view's row ids, else deterministic
+sample_row_pairs. ≤200 comments / 35K chars, explicit scope line, prompt
+mandates an honest reading base. Browser-verified: "what are people saying
+about the salsa bar" → "Reading comments about 'salsa bar'…" → themed
+good/bad synthesis with attributed verbatims. Interview skip-clause also
+verified live (graceful, proposed a fitting memory). 3 new tests; 2,002 pass.

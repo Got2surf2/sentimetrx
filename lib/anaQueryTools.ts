@@ -52,6 +52,18 @@ export const ANA_QUERY_TOOLS = [
     },
   },
   {
+    name: 'read_comments',
+    description: 'Pull a SAMPLE of raw comments into your context to READ — for questions that need synthesis rather than counting: "what are people saying about X", characterizing complaints, finding suggestions, summarizing themes in their own words. Pass query (websearch syntax) to target a topic — you get the most relevant matching comments plus the exact total match count; omit query for a representative sample of the whole dataset. Always report your reading base honestly (e.g. "based on 120 of the 283 comments mentioning the salsa bar"). For exact numbers still use query_data; for a handful of display quotes use find_quotes.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Optional topic search (websearch syntax). Omit for a representative sample.' },
+        limit: { type: 'number', description: 'How many comments to read (default 100, max 200)' },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'find_quotes',
     description: 'Full-text search the ENTIRE dataset for verbatim quotes. Use it (a) to pull real quotes as evidence for a claim — never quote from memory — and (b) to get an exact count of rows mentioning a term. Query uses websearch syntax: space = AND, OR between terms, "quoted phrases" for exact phrases. IMPORTANT: the total is over the whole dataset and IGNORES the user\'s active filters — for filtered counts use query_data. Quote only text returned by this tool or present verbatim in your context sample.',
     input_schema: {
@@ -70,6 +82,7 @@ export const ANA_QUERY_TOOL_NAMES = new Set(ANA_QUERY_TOOLS.map(function(t) { re
 // Human-readable one-liner streamed to the panel while a tool runs.
 export function anaToolStatusLabel(name: string, input: Record<string, unknown>): string {
   if (name === 'find_quotes') return 'Searching for "' + String(input.query || '').slice(0, 60) + '"…'
+  if (name === 'read_comments') return input.query ? 'Reading comments about "' + String(input.query).slice(0, 50) + '"…' : 'Reading a sample of comments…'
   var op = String(input.op || '')
   var labels: Record<string, string> = {
     field_counts: 'Counting values', crosstab: 'Running a crosstab', group_stats: 'Computing group stats',
@@ -197,6 +210,108 @@ export async function executeAnaQueryTool(
     var body = compactResult(result.body)
     if (ctx.rowIds) body.scope = 'scoped to the user\'s active filters (' + ctx.rowIds.length.toLocaleString() + ' rows)'
     return body
+  }
+
+  if (name === 'read_comments') {
+    var readLimit = Math.min(Math.max(10, Number(input.limit) || 100), 200)
+    var topic = String(input.query || '').trim()
+    var readTargets = ctx.source === 'collection'
+      ? await resolveScopeMembers(service, ctx.datasetId)
+      : [{ datasetId: ctx.datasetId, label: null as string | null }]
+    if (readTargets.length === 0) readTargets = [{ datasetId: ctx.datasetId, label: null }]
+
+    type ReadRow = { id: number | null; data: Record<string, unknown>; label: string | null }
+    var readRows: ReadRow[] = []
+    var matchTotal = 0
+    var perTargetRead = Math.max(10, Math.ceil(readLimit / readTargets.length))
+
+    if (topic) {
+      // Targeted: rank-ordered full-text matches + the exact total match count.
+      for (var rt of readTargets) {
+        var rr = await service.rpc('search_dataset_rows', {
+          p_dataset_id: rt.datasetId, p_query: topic, p_limit: perTargetRead * 2, p_offset: 0,
+        })
+        var hits: { id: number; data: Record<string, unknown> | null }[] = []
+        if (!rr.error && rr.data && rr.data.length > 0) {
+          hits = rr.data as typeof hits
+        } else {
+          var rfb = await service
+            .from('dataset_rows_flat')
+            .select('id, data')
+            .eq('dataset_id', rt.datasetId)
+            .textSearch('tsv', topic, { type: 'websearch', config: 'english' })
+            .order('row_index', { ascending: true })
+            .range(0, perTargetRead * 2 - 1)
+          if (rfb.error) return { error: 'Search failed: ' + rfb.error.message, hint: 'Simplify the query — plain terms, OR between alternatives.' }
+          hits = (rfb.data || []) as typeof hits
+        }
+        for (var h of hits) readRows.push({ id: h.id, data: h.data || {}, label: rt.label })
+        var { count: rc } = await service
+          .from('dataset_rows_flat')
+          .select('id', { count: 'exact', head: true })
+          .eq('dataset_id', rt.datasetId)
+          .textSearch('tsv', topic, { type: 'websearch', config: 'english' })
+        matchTotal += rc || 0
+      }
+      // Prefer the filtered view when the user has filters active.
+      var readIdSet = ctx.rowIds ? new Set(ctx.rowIds) : null
+      if (readIdSet) {
+        var rIn: ReadRow[] = []
+        var rOut: ReadRow[] = []
+        for (var rrow of readRows) ((rrow.id != null && readIdSet.has(rrow.id)) ? rIn : rOut).push(rrow)
+        readRows = rIn.concat(rOut)
+      }
+    } else if (ctx.rowIds && ctx.rowIds.length > 0 && ctx.source !== 'collection') {
+      // Untargeted + filters active: read an evenly-spaced slice of the
+      // filtered view's own rows (deterministic spread across the view).
+      var step = Math.max(1, Math.floor(ctx.rowIds.length / readLimit))
+      var pickIds: number[] = []
+      for (var pi = 0; pi < ctx.rowIds.length && pickIds.length < readLimit; pi += step) pickIds.push(ctx.rowIds[pi])
+      var byId = await service
+        .from('dataset_rows_flat')
+        .select('id, data')
+        .eq('dataset_id', ctx.datasetId)
+        .in('id', pickIds)
+      if (byId.error) return { error: 'Read failed: ' + byId.error.message }
+      for (var b of (byId.data || []) as { id: number; data: Record<string, unknown> | null }[]) readRows.push({ id: b.id, data: b.data || {}, label: null })
+    } else {
+      // Untargeted: deterministic representative sample (same RPC the
+      // orientation sample uses).
+      for (var st of readTargets) {
+        var sr = await service.rpc('sample_row_pairs', { p_dataset_id: st.datasetId, p_fields: [], p_limit: perTargetRead })
+        if (!sr.error && sr.data) {
+          for (var srow of sr.data as { data: Record<string, unknown> }[]) readRows.push({ id: null, data: srow.data, label: st.label })
+        }
+      }
+    }
+
+    // Format for reading; hard char budget so a wide pull can't blow context.
+    var READ_CHAR_CAP = 35000
+    var lines: string[] = []
+    var used = 0
+    for (var rw of readRows) {
+      if (lines.length >= readLimit) break
+      var line = quoteFromRow(rw.data, 300)
+      if (!line) continue
+      if (rw.label) line = '[' + rw.label + '] ' + line
+      if (used + line.length > READ_CHAR_CAP) break
+      lines.push(line)
+      used += line.length
+    }
+
+    var readResult: Record<string, unknown> = {
+      readCount: lines.length,
+      comments: lines,
+    }
+    if (topic) {
+      readResult.totalMatching = matchTotal
+      readResult.scope = 'read ' + lines.length + ' of the ' + matchTotal.toLocaleString() + ' comments matching "' + topic + '" across the ENTIRE dataset' + (ctx.rowIds ? ' (in-view comments listed first)' : '')
+    } else if (ctx.rowIds && ctx.source !== 'collection') {
+      readResult.scope = 'an evenly-spread sample of the user\'s filtered view (' + ctx.rowIds.length.toLocaleString() + ' rows)'
+    } else {
+      readResult.scope = 'a representative sample of the whole dataset'
+    }
+    return readResult
   }
 
   if (name === 'find_quotes') {

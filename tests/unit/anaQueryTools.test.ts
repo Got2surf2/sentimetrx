@@ -149,3 +149,62 @@ describe('chartConfigForQuery — canvas handoff mapping', () => {
     expect(chartConfigForQuery({ op: 'field_counts' })).toBeNull()
   })
 })
+
+describe('read_comments — on-demand reading sample', () => {
+  function readService(opts: { rpcRows?: { id: number; data: Record<string, unknown> }[]; count?: number; sampleRows?: Record<string, unknown>[]; byIdRows?: { id: number; data: Record<string, unknown> }[] }) {
+    const chain: Record<string, unknown> = {}
+    const self = () => chain
+    let inIds: number[] | null = null
+    for (const m of ['select', 'eq', 'order', 'range', 'textSearch']) chain[m] = self
+    chain.in = (_col: string, ids: number[]) => { inIds = ids; return chain }
+    chain.then = (resolve: (v: unknown) => unknown) => {
+      if (inIds) {
+        const wanted = new Set(inIds)
+        return Promise.resolve({ data: (opts.byIdRows || []).filter(r => wanted.has(r.id)), error: null, count: null }).then(resolve)
+      }
+      return Promise.resolve({ data: null, error: null, count: opts.count ?? 0 }).then(resolve)
+    }
+    return {
+      rpc: vi.fn(async (name: string) => {
+        if (name === 'search_dataset_rows') return { data: opts.rpcRows ?? [], error: null }
+        if (name === 'sample_row_pairs') return { data: (opts.sampleRows || []).map(d => ({ data: d })), error: null }
+        return { data: null, error: { message: 'unexpected rpc ' + name } }
+      }),
+      from: vi.fn(() => chain),
+    } as unknown as ServiceArg
+  }
+
+  it('targeted: reads matches, reports the exact total, prefers the filtered view', async () => {
+    const service = readService({
+      rpcRows: [
+        { id: 1, data: { review_text: 'salsa bar was dirty' } },
+        { id: 2, data: { review_text: 'love the salsa bar', _tx: { x: 1 } } },
+      ],
+      count: 283,
+    })
+    const ctx: AnaQueryContext = { ...baseCtx, rowIds: [2] }
+    const out = await executeAnaQueryTool(service, ctx, 'read_comments', { query: 'salsa bar' })
+    expect(out.totalMatching).toBe(283)
+    expect(out.readCount).toBe(2)
+    const comments = out.comments as string[]
+    expect(comments[0]).toContain('love the salsa bar')   // in-view first
+    expect(comments[0]).not.toContain('_tx')
+    expect(String(out.scope)).toContain('283')
+  })
+
+  it('untargeted with filters: reads an evenly-spread slice of the filtered view by id', async () => {
+    const byIdRows = Array.from({ length: 300 }, (_, i) => ({ id: i, data: { review_text: 'comment ' + i } }))
+    const service = readService({ byIdRows })
+    const ctx: AnaQueryContext = { ...baseCtx, rowIds: byIdRows.map(r => r.id) }
+    const out = await executeAnaQueryTool(service, ctx, 'read_comments', { limit: 50 })
+    expect(out.readCount).toBe(50)
+    expect(String(out.scope)).toContain('filtered view')
+  })
+
+  it('untargeted without filters: representative sample via sample_row_pairs', async () => {
+    const service = readService({ sampleRows: Array.from({ length: 40 }, (_, i) => ({ review_text: 'sampled ' + i })) })
+    const out = await executeAnaQueryTool(service, baseCtx, 'read_comments', { limit: 40 })
+    expect(out.readCount).toBe(40)
+    expect(String(out.scope)).toContain('representative sample')
+  })
+})

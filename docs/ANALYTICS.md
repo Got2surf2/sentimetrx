@@ -1947,6 +1947,19 @@ client-confirmation-card behavior and end the turn. Two query tools
   (explicitly labeled as ignoring active filters — filtered counts go through
   `query_data`). When filters are active, quotes prefer the filtered view
   (`inFilteredView` flag).
+- **`read_comments` (2026-09-02)** — the old-Ana qualitative capability, made
+  targeted: for questions that need READING rather than counting ("what are
+  people saying about X", characterizing complaints, summarizing suggestions)
+  Ana pulls a sample of raw comments into context on demand — with a topic
+  query, the most relevant full-text matches (rank-ordered RPC + exact total
+  match count, in-view rows first when filters are active); without one, an
+  evenly-spaced slice of the filtered view's own row ids, or the deterministic
+  `sample_row_pairs` representative sample. ≤200 comments, 300 chars each,
+  35K-char hard cap, internal `_` fields stripped. The result carries an
+  explicit `scope` line and the prompt mandates stating the reading base
+  honestly ("based on 120 of the 283 comments mentioning..."). Owner-directed
+  9/02: the query tools covered counting; this restores reading — as a
+  targeted on-demand pull instead of the old fixed upfront dump.
 The system prompt reframes the row sample as an *orientation sample* and mandates:
 every numeric claim from `query_data`, every quote verbatim from `find_quotes`/the
 sample, "in the analyzed sample" phrasing whenever a result says `sampled:true`.
