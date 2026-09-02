@@ -192,7 +192,7 @@ describe('read_comments — on-demand reading sample', () => {
     expect(String(out.scope)).toContain('283')
   })
 
-  it('field scoping: quotes come from the requested column, falling back when empty', async () => {
+  it('field scoping: quotes come from the requested column ONLY — empty-field rows are excluded with a coverage count', async () => {
     const service = readService({
       rpcRows: [
         { id: 1, data: { review_text: 'customer words', owner_response: 'we apologize for the wait' } },
@@ -202,8 +202,33 @@ describe('read_comments — on-demand reading sample', () => {
     })
     const out = await executeAnaQueryTool(service, baseCtx, 'read_comments', { query: 'wait', field: 'owner_response' })
     const comments = out.comments as string[]
-    expect(comments[0]).toBe('we apologize for the wait')      // scoped to the column
-    expect(comments[1]).toContain('only customer text here')   // fallback when column empty
+    expect(comments).toHaveLength(1)
+    expect(comments[0]).toBe('we apologize for the wait')
+    expect(out.fieldUsed).toBe('owner_response')
+    expect(out.rowsWithoutThisField).toBe(1)   // never padded with other fields (the metadata-strings bug)
+  })
+
+  it('field resolution: a LABEL resolves to the data key; omitted field defaults to the active view column', async () => {
+    const service = readService({
+      rpcRows: [{ id: 1, data: { lik1: 'he fights for the working man', Gender: 'Male', Race: 'White', Age: '29' } }],
+      count: 1,
+    })
+    const ctx: AnaQueryContext = { ...baseCtx, fieldKey: 'lik1', fieldKeyMap: { 'like about': 'lik1', lik1: 'lik1' } }
+    const byLabel = await executeAnaQueryTool(service, ctx, 'read_comments', { query: 'working', field: 'Like About' })
+    expect((byLabel.comments as string[])[0]).toBe('he fights for the working man')
+    expect(byLabel.fieldUsed).toBe('lik1')
+    const byDefault = await executeAnaQueryTool(service, ctx, 'read_comments', { query: 'working' })
+    expect(byDefault.fieldUsed).toBe('lik1')
+  })
+
+  it('no-field fallback prefers substantive text over short descriptor fields', async () => {
+    const service = readService({
+      rpcRows: [{ id: 1, data: { Age: '29', Gender: 'Male', Race: 'White', State: 'OH', response: 'He wants to stop nuclear wars and put a freeze on nuclear weapons development' } }],
+      count: 1,
+    })
+    const out = await executeAnaQueryTool(service, { ...baseCtx, fieldKey: null }, 'read_comments', { query: 'nuclear' })
+    const comments = out.comments as string[]
+    expect(comments[0].startsWith('He wants to stop nuclear wars')).toBe(true)   // not "29 | Male | White | OH"
   })
 
   it('untargeted with filters: reads an evenly-spread slice of the filtered view by id', async () => {

@@ -26,6 +26,10 @@ export interface AnaQueryContext {
   /** Active question's field key (TextMine pill) — rides into tax_* ops so
    *  dimension numbers match the view the user is looking at. */
   fieldKey: string | null
+  /** lower(label) → key and lower(key) → key, so a read targeted by LABEL
+   *  ("Like About") still resolves to the data key (owner-hit: reads fell
+   *  back to joining demographics when the field didn't resolve). */
+  fieldKeyMap?: Record<string, string>
 }
 
 // ── Tool definitions (Anthropic schema) ────────────────────────────────────
@@ -96,24 +100,40 @@ export function anaToolStatusLabel(name: string, input: Record<string, unknown>)
   return (labels[op] || 'Querying the data') + '…'
 }
 
-// Strip internal fields and join a row's text values into one quote line.
-// With onlyField, quote just that column (the analyst's active view) and fall
-// back to all text fields when it's empty on a row.
+// One quote line from a row. With onlyField: that column or NOTHING — a row
+// whose target column is empty is excluded by the caller, never padded with
+// other fields (the old fallback printed demographic metadata on wide survey
+// rows — owner-hit 9/02). Without a field: prefer SUBSTANTIVE text (longest
+// fields first) so a wide row's short descriptor fields never crowd out the
+// actual open-ended response.
 function quoteFromRow(data: Record<string, unknown>, maxChars: number, onlyField?: string): string {
   if (onlyField) {
     var fv = data[onlyField]
     if (typeof fv === 'string' && fv.trim().length > 2) {
       return fv.length > maxChars ? fv.slice(0, maxChars) + '…' : fv
     }
+    return ''
   }
-  var parts: string[] = []
+  var texts: string[] = []
   for (var k in data) {
     if (k.startsWith('_')) continue
     var v = data[k]
-    if (typeof v === 'string' && v.length > 2 && /[a-zA-Z]/.test(v)) parts.push(v)
+    if (typeof v === 'string' && v.length > 2 && /[a-zA-Z]/.test(v)) texts.push(v)
   }
-  var joined = parts.join(' | ')
+  var longs = texts.filter(function(t) { return t.trim().length >= 25 }).sort(function(a, b) { return b.length - a.length })
+  var joined = (longs.length > 0 ? longs : texts).join(' | ')
   return joined.length > maxChars ? joined.slice(0, maxChars) + '…' : joined
+}
+
+// Resolve a requested field (key OR label, any case) to the data key; when
+// nothing is requested, default to the analyst's active view column.
+function resolveReadField(input: Record<string, unknown>, ctx: AnaQueryContext): string | undefined {
+  var raw = typeof input.field === 'string' ? input.field.trim() : ''
+  if (raw) {
+    var mapped = ctx.fieldKeyMap ? ctx.fieldKeyMap[raw.toLowerCase()] : undefined
+    return mapped || raw
+  }
+  return ctx.fieldKey || undefined
 }
 
 // Cap a tool result's serialized size so a wide grid can't blow the context.
@@ -226,7 +246,7 @@ export async function executeAnaQueryTool(
   if (name === 'read_comments') {
     var readLimit = Math.min(Math.max(10, Number(input.limit) || 100), 200)
     var topic = String(input.query || '').trim()
-    var readField = typeof input.field === 'string' && input.field.trim() ? input.field.trim() : undefined
+    var readField = resolveReadField(input, ctx)
     var readTargets = ctx.source === 'collection'
       ? await resolveScopeMembers(service, ctx.datasetId)
       : [{ datasetId: ctx.datasetId, label: null as string | null }]
@@ -301,10 +321,11 @@ export async function executeAnaQueryTool(
     var READ_CHAR_CAP = 35000
     var lines: string[] = []
     var used = 0
+    var emptyField = 0
     for (var rw of readRows) {
       if (lines.length >= readLimit) break
       var line = quoteFromRow(rw.data, 300, readField)
-      if (!line) continue
+      if (!line) { if (readField) emptyField++; continue }
       if (rw.label) line = '[' + rw.label + '] ' + line
       if (used + line.length > READ_CHAR_CAP) break
       lines.push(line)
@@ -314,6 +335,11 @@ export async function executeAnaQueryTool(
     var readResult: Record<string, unknown> = {
       readCount: lines.length,
       comments: lines,
+    }
+    if (readField) {
+      readResult.fieldUsed = readField
+      if (emptyField > 0) readResult.rowsWithoutThisField = emptyField
+      if (lines.length === 0) readResult.hint = 'No rows in this pull carry text in "' + readField + '" — its coverage may be sparse or year-specific. Check coverage with query_data field_counts first, or read without a topic query.'
     }
     if (topic) {
       readResult.totalMatching = matchTotal
@@ -330,7 +356,7 @@ export async function executeAnaQueryTool(
     var q = String(input.query || '').trim()
     if (!q) return { error: 'query required' }
     var quoteLimit = Math.min(Math.max(1, Number(input.limit) || 8), 20)
-    var quoteField = typeof input.field === 'string' && input.field.trim() ? input.field.trim() : undefined
+    var quoteField = resolveReadField(input, ctx)
 
     // Collection → search each member; single dataset → itself.
     var targets = ctx.source === 'collection'
@@ -384,12 +410,18 @@ export async function executeAnaQueryTool(
     return {
       total: total,
       totalScope: 'rows matching across the ENTIRE dataset — active filters are NOT applied to this count',
-      quotes: candidates.slice(0, quoteLimit).map(function(c) {
-        var entry: Record<string, unknown> = { text: quoteFromRow(c.data, 350, quoteField) }
-        if (c.label) entry.source = c.label
-        if (idSet) entry.inFilteredView = idSet.has(c.id)
-        return entry
-      }),
+      quotes: candidates
+        .map(function(c) {
+          var qtext = quoteFromRow(c.data, 350, quoteField)
+          if (!qtext) return null
+          var entry: Record<string, unknown> = { text: qtext }
+          if (c.label) entry.source = c.label
+          if (idSet) entry.inFilteredView = idSet.has(c.id)
+          return entry
+        })
+        .filter(function(e): e is Record<string, unknown> { return e !== null })
+        .slice(0, quoteLimit),
+      ...(quoteField ? { fieldUsed: quoteField } : {}),
     }
   }
 

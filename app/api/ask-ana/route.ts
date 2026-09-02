@@ -541,12 +541,19 @@ Keep your responses concise but thorough. Use markdown formatting for readabilit
 Here is the orientation sample:
 ${dataContext}`
 
+  const fieldKeyMap: Record<string, string> = {}
+  schemaFields.forEach(function(fld) {
+    if (!fld.field) return
+    fieldKeyMap[fld.field.toLowerCase()] = fld.field
+    if (fld.label) fieldKeyMap[fld.label.toLowerCase()] = fld.field
+  })
   const queryCtx: AnaQueryContext = {
     datasetId,
     rowCount: dataset.row_count || 0,
     source: dataset.source,
     rowIds: filterRowIds,
     fieldKey: themeFieldKey || null,
+    fieldKeyMap,
   }
   const fieldTypes: Record<string, string> = {}
   schemaFields.forEach(function(fld) { if (fld.field) fieldTypes[fld.field] = fld.type })

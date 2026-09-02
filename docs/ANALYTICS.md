@@ -2076,7 +2076,16 @@ the 200-row sample for synthesis. Three changes:
   target it — read it, quote it, frame text findings on it — unless the
   question clearly points elsewhere.
 - **Field-scoped reads:** `read_comments` and `find_quotes` take a `field`
-  key; quotes come from that column alone (falling back per-row when empty).
+  key; quotes come from that column ONLY — a row whose target column is empty
+  is EXCLUDED and counted (`rowsWithoutThisField`), never padded with other
+  fields (the original per-row fallback printed demographic metadata on wide
+  survey rows — owner-hit 9/02 on an ANES-style corpus, where Ana honestly
+  refused to synthesize three times because her reads returned "metadata
+  strings"). Field resolution is label-tolerant (case-insensitive label→key
+  map) and defaults to the ACTIVE VIEW column when omitted; results carry
+  `fieldUsed`, and a zero-coverage pull returns a hint to check coverage via
+  `query_data` first. The no-field fallback now prefers SUBSTANTIVE text
+  (longest fields first) so descriptor fields never crowd out the response.
 - **The sample is now truly last-resort:** orientation default cut 200 → 60
   rows (Sampling button still raises it), and quoting/synthesizing from the
   sample is banned outright — every quote must come from a logged tool pull,

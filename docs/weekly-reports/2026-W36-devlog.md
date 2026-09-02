@@ -582,3 +582,18 @@ router navigates. Prompt bans go-do-it-yourself instructions. Zero net lint
 warnings (stash-verified per file). Browser-verified: "set me up to dig into
 1-star Arizona reviews" → one tap → 134 of 9,905 rows, State: Arizona +
 Star Rating 1–1 chips, TextMine filtered. 2 new tests; 2,016 pass.
+
+## 2026-09-02 — reads return the response text, never metadata strings
+
+**Why**: Owner (prod, ANES-style corpus): read_comments/find_quotes returned
+"truncated metadata strings, not readable quotes" — Ana honestly refused to
+synthesize, three exchanges in a row. Cause: full-text matches on rows where
+the target column is EMPTY fell into the join-all-fields fallback, which on
+a wide survey row prints demographics first.
+
+**What**: Field-scoped reads exclude empty-column rows (counted as
+rowsWithoutThisField; zero-coverage pulls return a check-coverage hint) —
+never padded from other fields. Field resolution is label-tolerant
+(label→key map) and defaults to the ACTIVE VIEW column. The no-field
+fallback prefers substantive text (longest fields first). 3 rewritten/new
+tests pin the exact transcript failure modes; 2,018 pass.
