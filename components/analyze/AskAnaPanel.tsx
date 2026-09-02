@@ -37,6 +37,10 @@ interface AnaActionInput {
   merged_sentiment?: string
   // delete_theme
   reason?: string
+  // remember_preference
+  statement?: string
+  scope?: string
+  source?: string
   // generate_report (the whole input is forwarded verbatim as the deck payload)
   title?: string
   subtitle?: string
@@ -48,6 +52,15 @@ interface AnaAction {
   toolId: string
   input: AnaActionInput
   status: 'pending' | 'approved' | 'rejected'
+}
+
+interface MemoryRow {
+  id: string
+  dataset_id: string | null
+  source: 'interview' | 'correction' | 'observed'
+  status: 'active' | 'pending' | 'archived'
+  statement: string
+  created_at: string
 }
 
 interface Message {
@@ -125,9 +138,47 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
       ? { sampleSize: 500, strategy: 'proportional', configured: false }
       : { sampleSize: datasetRowCount, strategy: 'proportional', configured: true }
   )
-  var [phase, setPhase] = useState<'setup' | 'deciding' | 'chat'>(needsSampling ? 'setup' : 'chat')
+  var [phase, setPhase] = useState<'setup' | 'deciding' | 'chat' | 'interview'>(needsSampling ? 'setup' : 'chat')
   var [collectionMembers, setCollectionMembers] = useState<CollectionMember[] | null>(null)
   var [customSizeInput, setCustomSizeInput] = useState('')
+
+  // ── "Ana remembers" state ──
+  var [view, setView] = useState<'chat' | 'memory'>('chat')
+  var [memories, setMemories] = useState<MemoryRow[]>([])
+  var [interviewPending, setInterviewPending] = useState(false)
+  var refreshMemories = useCallback(async function() {
+    try {
+      var r = await fetch('/api/analyst-memory')
+      if (!r.ok) return
+      var j = await r.json()
+      setMemories(j.memories || [])
+      // First-ever visit: no memories and never interviewed → Ana opens with
+      // the getting-to-know-you conversation instead of a blank chat.
+      setInterviewPending(!j.interviewed && (j.memories || []).length === 0)
+    } catch {}
+  }, [])
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- refreshMemories only sets state AFTER awaiting the fetch (async continuation, not a synchronous set); the rule traces the call conservatively
+  useEffect(function() { void refreshMemories() }, [refreshMemories])
+
+  // Enter interview mode when it's pending and the chat would otherwise be
+  // empty (covers both the no-sampling path and post-sampling arrival).
+  useEffect(function() {
+    if (interviewPending && phase === 'chat' && messages.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- seeds the interview phase + scripted opener when the SERVER says the interview is pending (external-system sync, same pattern as ChartsModule's rows sync)
+      setPhase('interview')
+      setMessages([{
+        id: 'interview-opener', role: 'assistant',
+        content: "Before we dig in \u2014 give me two minutes so I can learn how you work. When you open a dataset like this, what do you look at first?",
+      }])
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on phase/pending changes; messages.length guard prevents re-seeding
+  }, [interviewPending, phase])
+
+  var finishInterview = useCallback(async function() {
+    try { await fetch('/api/analyst-memory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ markInterviewed: true }) }) } catch {}
+    setInterviewPending(false)
+    setPhase('chat')
+  }, [])
 
   // Per-question theme sets: Ana edits the set for TextMine's ACTIVE Text
   // pill, not blindly the saved top-level one (viewing "Liked LEAST" while
@@ -168,7 +219,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
 
   // Focus input on mount (when in chat phase)
   useEffect(function() {
-    if (phase === 'chat' || phase === 'deciding') {
+    if (phase === 'chat' || phase === 'deciding' || phase === 'interview') {
       setTimeout(function() { inputRef.current?.focus() }, 200)
     }
   }, [phase])
@@ -201,6 +252,40 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
         setMessages([])
         setPhase('chat')
       }, 800)
+      return
+    }
+
+    // remember_preference → the analyst tapped "Remember this": write it to
+    // their memory. Ana only PROPOSED it; this tap is the sole write path.
+    if (action.tool === 'remember_preference') {
+      try {
+        var memRes = await fetch('/api/analyst-memory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            statement: action.input.statement,
+            source: action.input.source === 'interview' ? 'interview' : 'correction',
+            datasetId: action.input.scope === 'dataset' ? datasetId : undefined,
+          }),
+        })
+        if (!memRes.ok) throw new Error('save failed')
+        void refreshMemories()
+        setMessages(function(prev) {
+          return prev.map(function(m) {
+            if (m.id !== msgId || !m.actions) return m
+            var updated = m.actions.map(function(a, i) { return i === actionIdx ? { ...a, status: 'approved' as const } : a })
+            return { ...m, actions: updated }
+          })
+        })
+      } catch {
+        setMessages(function(prev) {
+          return prev.map(function(m) {
+            if (m.id !== msgId || !m.actions) return m
+            var updated = m.actions.map(function(a, i) { return i === actionIdx ? { ...a, status: 'rejected' as const } : a })
+            return { ...m, actions: updated }
+          })
+        })
+      }
       return
     }
 
@@ -388,6 +473,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
     }
 
     var isDeciding = phase === 'deciding'
+    var isInterview = phase === 'interview'
 
     try {
       var res = await fetch('/api/ask-ana', {
@@ -400,6 +486,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
           filters: serializedFilters,
           rowIds: rowIds,
           metadataOnly: isDeciding,
+          interview: isInterview,
           sampleSize: samplingConfig.sampleSize,
           samplingStrategy: samplingConfig.strategy,
           // active question's theme set (TextMine pill) — Ana's framework
@@ -581,6 +668,14 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
             }
           </div>
         </div>
+        <button onClick={function() { if (view !== 'memory') void refreshMemories(); setView(view === 'memory' ? 'chat' : 'memory') }}
+          style={{
+            fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,.8)', background: view === 'memory' ? 'rgba(255,255,255,.3)' : 'rgba(255,255,255,.15)',
+            border: '1px solid rgba(255,255,255,.25)', borderRadius: 6, padding: '3px 8px',
+            cursor: 'pointer', whiteSpace: 'nowrap',
+          }}>
+          {view === 'memory' ? '\u2190 Chat' : 'Memory'}
+        </button>
         {samplingConfig.configured && totalRows > SAMPLING_THRESHOLD && (
           <button onClick={handleReconfigure}
             style={{
@@ -608,7 +703,13 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
           }}>{'\u00D7'}</button>
       </div>
 
+      {/* ── Memory view: "What Ana remembers" ─────────────────────── */}
+      {view === 'memory' && (
+        <MemoryList memories={memories} datasetId={datasetId} onChanged={refreshMemories} />
+      )}
+
       {/* Messages area */}
+      {view === 'chat' && (
       <div ref={scrollRef} style={{
         flex: 1, overflow: 'auto', padding: '16px 16px 8px',
         display: 'flex', flexDirection: 'column', gap: 8,
@@ -838,13 +939,22 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
           )
         })}
       </div>
+      )}
 
-      {/* Input area — show in chat and deciding phases */}
-      {(phase === 'chat' || phase === 'deciding') && (
+      {view === 'chat' && (phase === 'chat' || phase === 'deciding' || phase === 'interview') && (
         <div style={{
           padding: '12px 16px', borderTop: '1px solid #e5e7eb',
           background: '#fafafa', flexShrink: 0,
         }}>
+          {phase === 'interview' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 11, color: '#9a5a2e', background: '#FDF0E7', border: '1px solid #F3D5BD', borderRadius: 8, padding: '6px 10px' }}>
+              <span style={{ flex: 1 }}>{'\u2B50'} Ana is getting to know you &mdash; answers you confirm are saved to her memory.</span>
+              <button onClick={function() { void finishInterview() }}
+                style={{ fontSize: 11, fontWeight: 600, color: HERMES, background: 'none', border: '1px solid #F3D5BD', borderRadius: 6, padding: '2px 8px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                Done / skip
+              </button>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <textarea
               ref={inputRef}
@@ -852,11 +962,11 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
               value={input}
               onChange={function(e) { setInput(e.target.value) }}
               onKeyDown={handleKeyDown}
-              placeholder={phase === 'deciding' ? 'Tell Ana what you want to learn...' : 'Ask a question or tell Ana to modify themes...'}
+              placeholder={phase === 'deciding' ? 'Tell Ana what you want to learn...' : phase === 'interview' ? 'Tell Ana how you work...' : 'Ask a question or tell Ana to modify themes...'}
               rows={1}
               disabled={loading}
               style={{
-                flex: 1, resize: 'none', fontSize: 14, padding: '10px 14px',
+                flex: 1, resize: 'none', fontSize: 16, padding: '10px 14px',
                 border: '1px solid #d1d5db', borderRadius: 12,
                 background: 'white', color: '#111', lineHeight: 1.4,
                 minHeight: 42, maxHeight: 120, overflow: 'auto',
@@ -1041,6 +1151,16 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
         </div>
       )}
 
+      {action.tool === 'remember_preference' && (
+        <div style={{ fontSize: 13, color: '#111', lineHeight: 1.5 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.07em', color: HERMES, marginBottom: 4 }}>{'\u2B50'} REMEMBER</div>
+          {inp.statement}
+          <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>
+            {inp.scope === 'dataset' ? 'This dataset only' : 'Applies across this account'} &middot; editable anytime in Memory
+          </div>
+        </div>
+      )}
+
       {/* Buttons */}
       {action.status === 'pending' && (
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -1053,8 +1173,8 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
               opacity: applying ? 0.6 : 1,
             }}>
             {applying
-              ? (action.tool === 'generate_report' ? 'Building deck...' : action.tool === 'recommend_sampling' ? 'Applying...' : 'Applying...')
-              : (action.tool === 'generate_report' ? 'Build & Download' : action.tool === 'recommend_sampling' ? 'Use this' : 'Approve')
+              ? (action.tool === 'generate_report' ? 'Building deck...' : action.tool === 'remember_preference' ? 'Saving...' : 'Applying...')
+              : (action.tool === 'generate_report' ? 'Build & Download' : action.tool === 'recommend_sampling' ? 'Use this' : action.tool === 'remember_preference' ? 'Remember this' : 'Approve')
             }
           </button>
           <button onClick={function() { onReject(msgId, actionIdx) }}
@@ -1063,7 +1183,7 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
               background: 'white', color: '#6b7280', border: '1px solid #d1d5db',
               borderRadius: 8, cursor: 'pointer',
             }}>
-            {action.tool === 'recommend_sampling' ? 'Adjust manually' : 'Cancel'}
+            {action.tool === 'recommend_sampling' ? 'Adjust manually' : action.tool === 'remember_preference' ? 'Not quite' : 'Cancel'}
           </button>
         </div>
       )}
@@ -1154,4 +1274,122 @@ function formatInline(text: string): React.ReactNode {
     if (i % 2 === 1) return <strong key={i}>{part}</strong>
     return <span key={i}>{part}</span>
   })
+}
+
+
+// ── "What Ana remembers" — the visible, editable memory list ────────────────
+// Every statement that personalizes Ana, grouped by provenance. Edit and
+// delete are instant; nothing outside this list influences her. Deleting is
+// deliberately unceremonious — if removal feels heavy, memory feels like a trap.
+function MemoryList({ memories, datasetId, onChanged }: {
+  memories: MemoryRow[]
+  datasetId: string
+  onChanged: () => void | Promise<void>
+}) {
+  var [editingId, setEditingId] = useState<string | null>(null)
+  var [draft, setDraft] = useState('')
+  var [busy, setBusy] = useState(false)
+
+  async function patch(id: string, body: Record<string, unknown>) {
+    setBusy(true)
+    try {
+      await fetch('/api/analyst-memory', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, ...body }) })
+      await onChanged()
+    } catch {}
+    setBusy(false)
+  }
+  async function remove(id: string) {
+    setBusy(true)
+    try {
+      await fetch('/api/analyst-memory', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) })
+      await onChanged()
+    } catch {}
+    setBusy(false)
+  }
+
+  var groups: { key: string; label: string; color: string; rows: MemoryRow[] }[] = [
+    { key: 'interview', label: 'You told me', color: HERMES, rows: [] },
+    { key: 'correction', label: 'You corrected me', color: '#0F7173', rows: [] },
+    { key: 'observed', label: 'I noticed', color: '#B45309', rows: [] },
+  ]
+  memories.forEach(function(m) {
+    var g = groups.find(function(x) { return x.key === m.source })
+    if (g) g.rows.push(m)
+  })
+
+  function renderRow(m: MemoryRow) {
+    var isEditing = editingId === m.id
+    return (
+      <div key={m.id} style={{
+        display: 'flex', alignItems: 'flex-start', gap: 8, padding: '9px 11px',
+        border: m.status === 'pending' ? '1px dashed #EBD1A7' : '1px solid #eee',
+        background: m.status === 'pending' ? '#FFFBF3' : 'white',
+        borderRadius: 10, fontSize: 13, color: '#111827', marginBottom: 6,
+      }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {isEditing ? (
+            <input
+              autoFocus
+              value={draft}
+              onChange={function(e) { setDraft(e.target.value) }}
+              onKeyDown={function(e) {
+                if (e.key === 'Enter' && draft.trim()) { void patch(m.id, { statement: draft.trim() }); setEditingId(null) }
+                if (e.key === 'Escape') setEditingId(null)
+              }}
+              onBlur={function() { setEditingId(null) }}
+              style={{ width: '100%', fontSize: 16, padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 6, fontFamily: 'inherit' }}
+            />
+          ) : (
+            <>
+              {m.statement}
+              <span style={{ display: 'block', fontSize: 10, color: '#9ca3af', marginTop: 2 }}>
+                {new Date(m.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                {' \u00B7 '}
+                {m.dataset_id ? (m.dataset_id === datasetId ? 'this dataset' : 'another dataset') : 'applies across this account'}
+                {m.status === 'pending' ? ' \u00B7 pending your confirmation' : ''}
+              </span>
+            </>
+          )}
+        </div>
+        {!isEditing && (
+          <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+            {m.status === 'pending' && (
+              <button title="Confirm" disabled={busy} onClick={function() { void patch(m.id, { status: 'active' }) }}
+                style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: '#0F7173', padding: 2, fontFamily: 'inherit' }}>{'\u2713'}</button>
+            )}
+            <button title="Edit" disabled={busy} onClick={function() { setEditingId(m.id); setDraft(m.statement) }}
+              style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: '#9ca3af', padding: 2, fontFamily: 'inherit' }}>{'\u270E'}</button>
+            <button title="Delete" disabled={busy} onClick={function() { void remove(m.id) }}
+              style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: '#9ca3af', padding: 2, fontFamily: 'inherit' }}>{'\u{1F5D1}'}</button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, padding: '16px' }}>
+        {memories.length === 0 && (
+          <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 13, marginTop: 40, lineHeight: 1.6 }}>
+            <div style={{ fontSize: 26, marginBottom: 8 }}>{'\u2B50'}</div>
+            Ana hasn&apos;t saved anything yet.<br />
+            Tell her how you like to work &mdash; she&apos;ll offer to remember it.
+          </div>
+        )}
+        {groups.map(function(g) {
+          if (g.rows.length === 0) return null
+          return (
+            <div key={g.key} style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: g.color, marginBottom: 6 }}>{g.label}</div>
+              {g.rows.map(renderRow)}
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ borderTop: '1px solid #eee', padding: '10px 16px', fontSize: 11, color: '#9ca3af', flexShrink: 0 }}>
+        Nothing outside this list personalizes Ana. Memories shape framing, emphasis, and ordering &mdash; never the numbers.
+      </div>
+    </div>
+  )
 }

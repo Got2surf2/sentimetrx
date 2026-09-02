@@ -1960,6 +1960,45 @@ filter excluded, scoped counts summed to exactly the header's 9,774 and the
 per-rating complement to the 131 excluded rows. Unit coverage:
 `tests/unit/aggregateOps.test.ts`, `tests/unit/anaQueryTools.test.ts`.
 
+**"Ana remembers" — per-analyst memory + first-visit interview (2026-09-02, sql/197).**
+The personal layer of the Persistent Analyst design. `analyst_memories` (RLS,
+org-scoped SELECT; all writes through the service-role `/api/analyst-memory`
+route pairing org_id+user_id from auth) holds one row per standing instruction,
+with provenance `interview` / `correction` / `observed` and status
+`active`/`pending`/`archived`. **The invariant: memories shape Ana's framing,
+emphasis, and ordering ONLY — never the figures.** Numbers still come from the
+query tools, identical for every analyst; count-changing corrections route to
+the approval-gated theme tools (the account-level "house layer"), never to
+personal memory.
+- **Write path is confirm-only:** Ana proposes via the `remember_preference`
+  ACTION tool (a ⭐ Remember card in the panel, like the theme cards); the
+  analyst's "Remember this" tap POSTs the memory — nothing is saved silently.
+- **Injection:** `lib/analystMemory.memoryPromptBlock` appends active,
+  dataset-applicable statements to the system prompt with the framing-only
+  contract and an instruction to make personalization audible ("parking ticked
+  up too, but I know you don't lead with that"), plus `REMEMBER_GUIDANCE`
+  teaching Ana when to offer a save.
+- **The interview:** first-ever panel open (zero memories + no
+  `ana_interviewed` user_features flag) starts a ≤4-question elicitation
+  (what they look at first / audience / what to ignore / phrasing); each answer
+  distills into a confirm chip. The interview prompt carries the already-saved
+  statements — without them Ana re-proposed a captured preference (seen live
+  9/02). Every interview reply's text ends with the next question so the
+  conversation never stalls while a chip awaits confirmation. "Done / skip"
+  sets the flag; having any memory also suppresses re-triggering.
+- **"What Ana remembers" (Memory button in the panel header):** plain list
+  grouped by provenance, inline edit, one-tap delete, pending-confirm for
+  future observed suggestions, and the contract in the footer ("Nothing outside
+  this list personalizes Ana").
+Browser-verified on TEST (Rubio's): interview triggered on first open → two
+answers produced two correctly-distilled chips (and, after the fix, no
+re-proposals) → saved → a generic "how are we doing" answer came back
+location-led and opened "leading with location, as your VP expects", no parking
+mention → rows edited/deleted in the Memory view. Unit coverage:
+`tests/unit/analystMemory.test.ts` (block filtering, org/user pairing, route
+identity-stamping + cross-org refusal). Migration sql/197 is applied to TEST;
+prod apply rides the next push batch (with 195/196).
+
 - **API**: `POST /api/datasets/[datasetId]/export/pptx`
 - **Rendering (2026-06-25 — the cream flip)**: the route no longer builds slides with its own
   bespoke navy/gold helpers. Its compute phase (auth + cross-org gate, row fetch under the

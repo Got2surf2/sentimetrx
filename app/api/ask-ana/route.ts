@@ -20,6 +20,7 @@ import { serverError } from '@/lib/apiError'
 import type { SchemaConfig, SchemaFieldConfig } from '@/lib/analyzeTypes'
 import { themeSetForField, type ThemeModel as UtilThemeModel } from '@/lib/themeUtils'
 import { ANA_QUERY_TOOLS, ANA_QUERY_TOOL_NAMES, executeAnaQueryTool, anaToolStatusLabel, type AnaQueryContext } from '@/lib/anaQueryTools'
+import { loadAnalystMemories, memoryPromptBlock, REMEMBER_GUIDANCE } from '@/lib/analystMemory'
 
 export const dynamic     = 'force-dynamic'
 // Query-tool rounds are sequential upstream calls — a multi-round answer on a
@@ -152,6 +153,24 @@ const ANA_TOOLS = [
   },
 ]
 
+// ── remember_preference: propose a standing memory ("Ana remembers") ──────
+// An ACTION tool like the theme mutations: it surfaces to the client as a
+// confirmation chip; the panel writes to /api/analyst-memory only when the
+// analyst taps "Remember this". Never executed server-side.
+const REMEMBER_TOOL = {
+  name: 'remember_preference',
+  description: 'Propose saving a STANDING preference about how this analyst works — what to lead with, what to ignore, who the analysis is for, preferred phrasing. The user confirms or dismisses your proposal in the UI; never assume it saved. Durable ways-of-working only, never one-off requests — and never anything that would change the numbers (reclassifying, merging themes): that belongs to the theme tools.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      statement: { type: 'string', description: 'The preference as one clear standing instruction, under 300 characters (e.g. "Lead with the location comparison; the audience is a franchise-focused VP.")' },
+      scope:     { type: 'string', enum: ['org', 'dataset'], description: 'org = applies across all of this account\'s data (default); dataset = only this dataset' },
+      source:    { type: 'string', enum: ['interview', 'correction'], description: 'interview during the getting-to-know-you conversation; correction otherwise' },
+    },
+    required: ['statement'],
+  },
+}
+
 // ── Sampling recommendation tool (metadata-only mode) ─────────────────────
 const RECOMMEND_SAMPLING_TOOL = {
   name: 'recommend_sampling',
@@ -262,6 +281,40 @@ export async function POST(req: Request) {
   // ── Resolve collection members (shared with the ad-hoc report route) ─────
   const collectionMembers = await resolveCollectionMembers(service, { id: datasetId, source: dataset.source })
 
+  // ── Interview mode: first-visit conversational elicitation ──────────────
+  // The panel enters this when the analyst has no memories and no
+  // ana_interviewed flag. No data sample is loaded — this is a short
+  // getting-to-know-you conversation whose only output is remember_preference
+  // proposals (source 'interview') the analyst confirms chip by chip.
+  if (body.interview === true) {
+    const fieldList = schemaFields.length > 0
+      ? schemaFields.filter(function(f) { return f.status !== 'ignored' })
+          .map(function(f) { return f.label || f.field }).join(', ')
+      : ''
+    // What's already saved — the client history carries only text, so without
+    // this Ana re-proposes preferences she already captured (seen live 9/02:
+    // second answer produced a card repeating the first answer's memory).
+    const savedSoFar = await loadAnalystMemories(service, { userId, orgId })
+    const savedNote = savedSoFar.length > 0
+      ? '\n\nALREADY SAVED to their memory (never re-propose these; distill only NEW preferences from their LATEST answer):\n' +
+        savedSoFar.map(function(m) { return '- ' + m.statement }).join('\n')
+      : ''
+    const interviewPrompt = `You are Ana, a senior data analyst assistant, meeting this analyst for the FIRST time. They just opened the dataset "${dataset.name}"${fieldList ? ' (fields: ' + fieldList + ')' : ''}.
+
+Your goal: learn how they work, in at most 4 short questions, ONE per reply:
+1. What they look at first when new data arrives.
+2. Who the analysis is usually for (their audience), and what that audience cares about.
+3. Anything to ignore or never lead with.
+4. Any phrasing or format preferences for what you write.
+
+After EACH answer, your reply must contain BOTH: (a) in the TEXT, a one-line acknowledgment followed by the NEXT question — the text of every reply ends with a question until the interview is done, so the conversation never stalls while they consider the save; and (b) ONE remember_preference call (source "interview", scope "org" unless they clearly mean only this dataset) with a crisp standing instruction distilled from their answer. Skip the tool call if an answer contains no genuine preference. Never re-ask something they already covered.
+
+After the final answer: thank them briefly, tell them everything you saved is theirs to edit or delete under "What Ana remembers", and that you're ready to dig into the data. Do not ask further questions after that.
+
+Keep every reply short and warm — this is a two-minute conversation, not a survey. If they clearly want to skip ("just let me ask my question"), respect it immediately: answer nothing about the data (you have none loaded), just tell them they can start asking and that you'll learn as you go.${savedNote}`
+    return streamAnthropicResponse(interviewPrompt, question, conversationHistory, [REMEMBER_TOOL], dataset.org_id)
+  }
+
   // ── Metadata-only mode: Ana recommends sampling config ──────────────────
   if (metadataOnly) {
     const totalRows = dataset.source === 'collection'
@@ -312,8 +365,10 @@ Ask the user 1-2 brief questions about what they're looking to learn, then make 
   }
 
   // ── Normal mode: fetch + filter + sample rows (shared pipeline) ─────────
-  const { rows: filteredRows, dataContext, totalDatasetRows, totalFiltered, totalFilteredIsEstimate, sampled, signalNote } =
-    await loadAnaSample({ service, dataset, sampleSize, samplingStrategy, filters: filters as SerializedFilters | undefined, collectionMembers })
+  const [{ rows: filteredRows, dataContext, totalDatasetRows, totalFiltered, totalFilteredIsEstimate, sampled, signalNote }, analystMemories] = await Promise.all([
+    loadAnaSample({ service, dataset, sampleSize, samplingStrategy, filters: filters as SerializedFilters | undefined, collectionMembers }),
+    loadAnalystMemories(service, { userId, orgId }),
+  ])
 
   const hasFilters = !!filters && Object.keys(filters).length > 0
   if (filteredRows.length === 0) {
@@ -426,7 +481,7 @@ When the user asks to download their analysis as slides or a deck, call generate
 
 PRODUCT HOW-TO QUESTIONS: You analyze DATA, not the product. If the user asks how to USE Sentimetrx or navigate the app (e.g. "how do I export this?", "where's the Schema tab?", "how do I create an agent?") — a question about the software rather than about their data — do NOT try to answer it from the dataset. Briefly tell them that's what the Help assistant is for and to click the compass (🧭) Help button in the bottom-right corner of the page, where Sherpa can walk them through it.
 
-Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${themeContext}${schemaContext}${entityContext}${filterNote}${signalNote}${sampleNote}${collectionContext}${redditContext}
+Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${memoryPromptBlock(analystMemories, datasetId)}${REMEMBER_GUIDANCE}${themeContext}${schemaContext}${entityContext}${filterNote}${signalNote}${sampleNote}${collectionContext}${redditContext}
 
 Here is the orientation sample:
 ${dataContext}`
@@ -438,7 +493,7 @@ ${dataContext}`
     rowIds: filterRowIds,
     fieldKey: themeFieldKey || null,
   }
-  return streamAnthropicResponse(systemPrompt, question, conversationHistory, [...ANA_TOOLS, ...ANA_QUERY_TOOLS], dataset.org_id, { service, ctx: queryCtx })
+  return streamAnthropicResponse(systemPrompt, question, conversationHistory, [...ANA_TOOLS, REMEMBER_TOOL, ...ANA_QUERY_TOOLS], dataset.org_id, { service, ctx: queryCtx })
 }
 
 // ── Stream Anthropic response (agentic tool loop) ─────────────────────────

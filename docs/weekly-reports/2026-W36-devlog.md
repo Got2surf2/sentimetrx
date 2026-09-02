@@ -375,3 +375,24 @@ Browser-verified on Rubio's (TEST, 9,905 rows): unfiltered star breakdown
 matched the dispatcher exactly (…= 9,905); with Anaheim excluded, scoped counts
 summed to the header's 9,774 and the complement to the 131 excluded rows.
 16 new unit tests; 1,985 total pass.
+
+## 2026-09-02 — "Ana remembers": per-analyst memory + first-visit interview
+
+**Why**: Owner green-lit the Persistent Analyst Phase 2 after the five-state
+mockup. First slice = the memory substrate, the confirm-only save loop, the
+visible memory panel, and the day-one interview.
+
+**What**: sql/197 analyst_memories (RLS + org-scoped SELECT; service-role
+route pairs org+user from auth — body ids ignored). remember_preference is an
+ACTION tool → ⭐ Remember confirm chip; the tap is the only write path.
+memoryPromptBlock injects active applicable statements with the framing-only
+invariant (never the figures — count changes stay with theme tools).
+First-visit interview (≤4 questions) seeds memories chip-by-chip; the prompt
+carries already-saved statements after a live-caught bug (Ana re-proposed a
+captured preference); every reply ends with the next question so chips don't
+stall the flow. "What Ana remembers" view: grouped by provenance, inline
+edit, instant delete, invariant footer. Browser-verified end-to-end on TEST:
+interview → 2 chips → save → generic question answered location-first
+("leading with location, as your VP expects"), parking suppressed audibly →
+delete works. 11 new tests; 1,996 pass; test:rls green. sql/197 applied to
+TEST; prod apply rides the next push batch.

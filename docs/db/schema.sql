@@ -4950,6 +4950,25 @@ CREATE TABLE IF NOT EXISTS "public"."ai_consent_audit" (
 ALTER TABLE "public"."ai_consent_audit" OWNER TO "postgres";
 
 
+-- sql/197 (applied to TEST 2026-09-02; prod apply pending — full regenerated
+-- snapshot lands when `npm run migrate sql/197_analyst_memories.sql` runs)
+CREATE TABLE IF NOT EXISTS "public"."analyst_memories" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "org_id" "uuid" NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "dataset_id" "uuid",
+    "source" "text" NOT NULL,
+    "status" "text" DEFAULT 'active'::"text" NOT NULL,
+    "statement" "text" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "analyst_memories_source_check" CHECK (("source" = ANY (ARRAY['interview'::"text", 'correction'::"text", 'observed'::"text"]))),
+    CONSTRAINT "analyst_memories_status_check" CHECK (("status" = ANY (ARRAY['active'::"text", 'pending'::"text", 'archived'::"text"]))),
+    CONSTRAINT "analyst_memories_statement_check" CHECK ((("char_length"("statement") >= 1) AND ("char_length"("statement") <= 500)))
+);
+-- idx_analyst_memories_user (user_id, org_id, status); RLS enabled;
+-- policy analyst_memories_org_read: SELECT USING org_id = caller's users.org_id.
+
 CREATE TABLE IF NOT EXISTS "public"."archived_dataset_rows" (
     "id" bigint NOT NULL,
     "dataset_id" "uuid" NOT NULL,
