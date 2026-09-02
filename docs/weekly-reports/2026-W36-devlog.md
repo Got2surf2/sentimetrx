@@ -624,3 +624,29 @@ cache breakpoint each round (older markers stripped; one message breakpoint
 + the cached system block, within the 4-max). Next round reads the shared
 prefix from cache at ~10× cheaper input. Smoke-verified live: multi-round
 read question streams to completion. 2,020 pass.
+
+## 2026-09-02 — Data Story proof + /api/story viewer route
+
+**Why**: owner wants engine-backed narrative visualizations ("Data Story" /
+StoryTime evolution) shareable as a plain link — platform-hosted, expirable,
+revocable, no login. Proof ran end-to-end: the EA football corpus (12,174
+Steam reviews from a claude.ai one-off artifact) ingested via the new storage
+pipeline, themed by Mine-with-AI (7 themes; found PC Platform Neglect, 1,702
+comments, which the hand-rolled chat version missed), then a standalone
+narrative HTML built from the ENGINE's numbers (recountThemes over the full
+corpus — byte-identical to the TextMine UI; verbatimGuard-checked quotes;
+dataviz-validated palette) and uploaded to the `report-exports` bucket.
+
+**Found**: Supabase Storage deliberately serves text/html objects as
+text/plain on *.supabase.co (anti-phishing) — a signed storage URL shows page
+SOURCE. This means the existing export/html/share links very likely render as
+source too (pre-existing; worth a prod check).
+
+**What**: `app/api/story/[...path]/route.ts` — public viewer on OUR domain
+that streams a `report-exports/reports/**` object with real text/html.
+Capability model unchanged: caller must present the storage signed-URL token;
+Supabase verifies signature + expiry (7d default). Expiry = token exp;
+revocation = delete the object (link dies instantly, 410/404). CSP locked to
+inline-only + Google fonts, noindex, no-store, DENY framing. Verified in the
+browser on TEST end-to-end. Harnesses `scripts/_ea_story_data.ts` +
+`_upload_story.mts` untracked KEEP.
