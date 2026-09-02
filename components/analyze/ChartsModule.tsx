@@ -2430,6 +2430,28 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     if (sc.config) setChartConfigs(function(prev) { var u = Object.assign({}, prev); u[sc.chartType] = Object.assign({}, sc.config); return u })
   }
 
+  // ── Ana canvas handoff ── the "Open in Charts" chip under an Ask Ana answer
+  // applies the exact {chartType, config} behind that answer (same shape a
+  // saved chart loads). sessionStorage covers the navigate-then-mount path;
+  // the event covers Charts already being open.
+  useEffect(function() {
+    function applyAnaChart(t: { chartType?: string; config?: Record<string, string> } | null) {
+      if (!t || !t.chartType || !CHART_SLOTS[t.chartType]) return
+      setActiveChart(t.chartType)
+      if (t.config) setChartConfigs(function(prev) { var u = Object.assign({}, prev); u[t.chartType!] = Object.assign({}, t.config); return u })
+    }
+    try {
+      var raw = sessionStorage.getItem('anaChart:' + datasetId)
+      if (raw) {
+        sessionStorage.removeItem('anaChart:' + datasetId)
+        applyAnaChart(JSON.parse(raw))
+      }
+    } catch {}
+    function onAnaChart(e: Event) { applyAnaChart((e as CustomEvent<{ chartType?: string; config?: Record<string, string> }>).detail) }
+    window.addEventListener('ana-open-chart', onAnaChart)
+    return function() { window.removeEventListener('ana-open-chart', onAnaChart) }
+  }, [datasetId])
+
   // Dimension fields are server-aggregated (via the tax_* /aggregate ops). Most
   // chart types are wired for them; the rest are hidden from the dim pickers
   // because they need per-row/per-point data the aggregation can't provide

@@ -396,3 +396,23 @@ interview → 2 chips → save → generic question answered location-first
 ("leading with location, as your VP expects"), parking suppressed audibly →
 delete works. 11 new tests; 1,996 pass; test:rls green. sql/197 applied to
 TEST; prod apply rides the next push batch.
+
+## 2026-09-02 — Ana's briefing + the canvas handoff (Phase 2 complete)
+
+**Why**: The last two surfaces of the owner-approved five-state design: Ana
+speaks first when she has memories to work from, and every answer is one tap
+from being the real chart behind it.
+
+**What**: Briefing — hidden auto-trigger (once per dataset per session) with
+briefing:true → BRIEFING MODE prompt block: unprompted opening read built per
+ANALYST MEMORY via query tools, ending with next-step questions. Canvas
+handoff — chartConfigForQuery maps each successful query_data call onto the
+Charts tab's {chartType, config} (saved-chart shape, __dim_* axes), emitted
+as a canvas SSE event → "Open in Charts" chip → sessionStorage +
+ana-open-chart event + navigate; ChartsModule applies on mount or live.
+Mapping is field-type-aware after a live catch: numeric field_counts →
+distribution (bar's category slot rejects numerics → "No data for this
+field"). Browser-verified on TEST: auto-briefing (VP-view, location-led, no
+visible trigger) and a state-breakdown chip that snapped the canvas to
+State × Star Rating with the answer's exact numbers. 3 new mapping tests;
+1,999 pass. Test data cleaned; owner gets a fresh first-run.

@@ -19,7 +19,7 @@ import { loadAnaSample, resolveCollectionMembers } from '@/lib/anaReportContext'
 import { serverError } from '@/lib/apiError'
 import type { SchemaConfig, SchemaFieldConfig } from '@/lib/analyzeTypes'
 import { themeSetForField, type ThemeModel as UtilThemeModel } from '@/lib/themeUtils'
-import { ANA_QUERY_TOOLS, ANA_QUERY_TOOL_NAMES, executeAnaQueryTool, anaToolStatusLabel, type AnaQueryContext } from '@/lib/anaQueryTools'
+import { ANA_QUERY_TOOLS, ANA_QUERY_TOOL_NAMES, executeAnaQueryTool, anaToolStatusLabel, chartConfigForQuery, type AnaQueryContext } from '@/lib/anaQueryTools'
 import { loadAnalystMemories, memoryPromptBlock, REMEMBER_GUIDANCE } from '@/lib/analystMemory'
 
 export const dynamic     = 'force-dynamic'
@@ -481,7 +481,7 @@ When the user asks to download their analysis as slides or a deck, call generate
 
 PRODUCT HOW-TO QUESTIONS: You analyze DATA, not the product. If the user asks how to USE Sentimetrx or navigate the app (e.g. "how do I export this?", "where's the Schema tab?", "how do I create an agent?") — a question about the software rather than about their data — do NOT try to answer it from the dataset. Briefly tell them that's what the Help assistant is for and to click the compass (🧭) Help button in the bottom-right corner of the page, where Sherpa can walk them through it.
 
-Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${memoryPromptBlock(analystMemories, datasetId)}${REMEMBER_GUIDANCE}${themeContext}${schemaContext}${entityContext}${filterNote}${signalNote}${sampleNote}${collectionContext}${redditContext}
+Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${memoryPromptBlock(analystMemories, datasetId)}${REMEMBER_GUIDANCE}${body.briefing === true ? '\n\nBRIEFING MODE: The analyst just opened this dataset — this turn is your unprompted opening read, not an answer to a question. Build it THEIR way per ANALYST MEMORY: run the 1\u20133 query_data calls you need, lead with what they care about, keep it under ~150 words plus at most one compact table, briefly note anything you are de-emphasizing per their preferences, and END with 2\u20133 concrete next steps phrased as short questions they could ask you.' : ''}${themeContext}${schemaContext}${entityContext}${filterNote}${signalNote}${sampleNote}${collectionContext}${redditContext}
 
 Here is the orientation sample:
 ${dataContext}`
@@ -493,7 +493,9 @@ ${dataContext}`
     rowIds: filterRowIds,
     fieldKey: themeFieldKey || null,
   }
-  return streamAnthropicResponse(systemPrompt, question, conversationHistory, [...ANA_TOOLS, REMEMBER_TOOL, ...ANA_QUERY_TOOLS], dataset.org_id, { service, ctx: queryCtx })
+  const fieldTypes: Record<string, string> = {}
+  schemaFields.forEach(function(fld) { if (fld.field) fieldTypes[fld.field] = fld.type })
+  return streamAnthropicResponse(systemPrompt, question, conversationHistory, [...ANA_TOOLS, REMEMBER_TOOL, ...ANA_QUERY_TOOLS], dataset.org_id, { service, ctx: queryCtx, fieldTypes })
 }
 
 // ── Stream Anthropic response (agentic tool loop) ─────────────────────────
@@ -513,7 +515,7 @@ async function streamAnthropicResponse(
   conversationHistory: Message[] | undefined,
   tools: AnthropicTool[],
   orgId: string,
-  queryExec?: { service: ReturnType<typeof createServiceRoleClient>, ctx: AnaQueryContext },
+  queryExec?: { service: ReturnType<typeof createServiceRoleClient>, ctx: AnaQueryContext, fieldTypes?: Record<string, string> },
 ): Promise<Response> {
   // Per-org AI gate: 'off' refuses; 'byo' + anthropic uses customer key;
   // 'byo' + openai falls back to platform env (we eat the cost, same rule
@@ -686,6 +688,13 @@ async function streamAnthropicResponse(
               result = { error: 'Query failed: ' + (e instanceof Error ? e.message : 'unknown error') }
             }
             toolResults.push({ type: 'tool_result', tool_use_id: call.id, content: JSON.stringify(result) })
+            // Canvas handoff: a successful query_data maps onto the exact
+            // Charts-tab config behind this answer — the client renders it as
+            // an "Open in Charts" chip under the finished message.
+            if (call.name === 'query_data' && !result.error) {
+              const target = chartConfigForQuery(call.input, queryExec.fieldTypes)
+              if (target) emit({ canvas: target })
+            }
           }
 
           // Anthropic rejects empty text blocks in assistant content.

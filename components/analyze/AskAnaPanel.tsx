@@ -6,6 +6,7 @@
 // Supports both Q&A (text) and analysis framework mutations (tool_use → confirmation cards).
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { serializeFilters, applyFilters } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
 import { useRows } from '@/components/analyze/RowsContext'
@@ -71,6 +72,10 @@ interface Message {
   actions?: AnaAction[]
   /** transient "Counting values…" line while Ana runs a server-side query */
   statusText?: string
+  /** hidden trigger messages (e.g. the briefing request) — sent in history, never rendered */
+  hidden?: boolean
+  /** canvas handoff — the Charts config behind this answer ("Open in Charts" chip) */
+  canvas?: { chartType: string; config: Record<string, string>; label: string }
 }
 
 interface SamplingConfig {
@@ -142,9 +147,12 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
   var [collectionMembers, setCollectionMembers] = useState<CollectionMember[] | null>(null)
   var [customSizeInput, setCustomSizeInput] = useState('')
 
+  var router = useRouter()
+
   // ── "Ana remembers" state ──
   var [view, setView] = useState<'chat' | 'memory'>('chat')
   var [memories, setMemories] = useState<MemoryRow[]>([])
+  var [memLoaded, setMemLoaded] = useState(false)
   var [interviewPending, setInterviewPending] = useState(false)
   var refreshMemories = useCallback(async function() {
     try {
@@ -155,6 +163,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
       // First-ever visit: no memories and never interviewed → Ana opens with
       // the getting-to-know-you conversation instead of a blank chat.
       setInterviewPending(!j.interviewed && (j.memories || []).length === 0)
+      setMemLoaded(true)
     } catch {}
   }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect -- refreshMemories only sets state AFTER awaiting the fetch (async continuation, not a synchronous set); the rule traces the call conservatively
@@ -173,6 +182,26 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on phase/pending changes; messages.length guard prevents re-seeding
   }, [interviewPending, phase])
+
+  // ── The briefing: Ana speaks first when she has memories to work from ──
+  // Auto-fires once per dataset per browser session, only when the chat is
+  // empty, the analyst has memories, and no interview is pending. Deferred via
+  // timeout so the state updates happen outside the effect body.
+  useEffect(function() {
+    if (!memLoaded || interviewPending || phase !== 'chat' || messages.length > 0 || memories.length === 0) return
+    var key = 'anaBriefed:' + datasetId
+    try { if (sessionStorage.getItem(key)) return } catch { return }
+    try { sessionStorage.setItem(key, '1') } catch {}
+    var t = setTimeout(function() { void sendMessage('Give me my opening briefing.', { briefing: true, hidden: true }) }, 50)
+    return function() { clearTimeout(t) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fires when the gate conditions settle; sendMessage identity is stable enough for a one-shot guarded by sessionStorage
+  }, [memLoaded, interviewPending, phase, messages.length, memories.length, datasetId])
+
+  var openInCharts = useCallback(function(canvas: NonNullable<Message['canvas']>) {
+    try { sessionStorage.setItem('anaChart:' + datasetId, JSON.stringify(canvas)) } catch {}
+    window.dispatchEvent(new CustomEvent('ana-open-chart', { detail: canvas }))
+    router.push('/analyze/' + datasetId + '/charts')
+  }, [datasetId, router])
 
   var finishInterview = useCallback(async function() {
     try { await fetch('/api/analyst-memory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ markInterviewed: true }) }) } catch {}
@@ -442,10 +471,10 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
     })
   }, [messages])
 
-  async function sendMessage(text: string) {
+  async function sendMessage(text: string, opts?: { briefing?: boolean; hidden?: boolean }) {
     if (!text.trim() || loading) return
 
-    var userMsg: Message = { id: Date.now() + '-user', role: 'user', content: text.trim() }
+    var userMsg: Message = { id: Date.now() + '-user', role: 'user', content: text.trim(), hidden: opts?.hidden }
     var assistantId = Date.now() + '-assistant'
     var assistantMsg: Message = { id: assistantId, role: 'assistant', content: '', streaming: true, actions: [] }
 
@@ -487,6 +516,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
           rowIds: rowIds,
           metadataOnly: isDeciding,
           interview: isInterview,
+          briefing: !!opts?.briefing,
           sampleSize: samplingConfig.sampleSize,
           samplingStrategy: samplingConfig.strategy,
           // active question's theme set (TextMine pill) — Ana's framework
@@ -543,6 +573,14 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
               setMessages(function(prev) {
                 return prev.map(function(m) {
                   return m.id === assistantId ? { ...m, statusText: statusSnap } : m
+                })
+              })
+            }
+            if (event.canvas && event.canvas.chartType) {
+              var canvasSnap = event.canvas as Message['canvas']
+              setMessages(function(prev) {
+                return prev.map(function(m) {
+                  return m.id === assistantId ? { ...m, canvas: canvasSnap } : m
                 })
               })
             }
@@ -883,6 +921,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
         {/* ── Messages ─────────────────────────────────────────────── */}
         {messages.map(function(m) {
           var isUser = m.role === 'user'
+          if (m.hidden) return null
           return (
             <div key={m.id} style={{
               display: 'flex', flexDirection: 'column', alignItems: isUser ? 'flex-end' : 'flex-start',
@@ -909,6 +948,16 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
                 <div style={{ marginLeft: 36, marginTop: 4, fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>
                   {m.statusText}
                 </div>
+              )}
+              {!isUser && !m.streaming && m.canvas && (
+                <button onClick={function() { openInCharts(m.canvas!) }}
+                  style={{
+                    marginLeft: 36, marginTop: 6, fontSize: 12, fontWeight: 600, color: HERMES,
+                    background: 'white', border: '1px solid #E5C9B2', borderRadius: 999,
+                    padding: '5px 13px', cursor: 'pointer', fontFamily: 'inherit', alignSelf: 'flex-start',
+                  }}>
+                  {'\uD83D\uDCCA'} Open in Charts &mdash; {m.canvas.label}
+                </button>
               )}
               {/* Action confirmation cards */}
               {!isUser && m.actions && m.actions.length > 0 && (

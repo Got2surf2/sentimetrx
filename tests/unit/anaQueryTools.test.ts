@@ -5,7 +5,7 @@
 // exact whole-dataset total + filtered-view preference + internal-field
 // stripping in quotes.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { executeAnaQueryTool, anaToolStatusLabel, ANA_QUERY_TOOL_NAMES, type AnaQueryContext } from '@/lib/anaQueryTools'
+import { executeAnaQueryTool, anaToolStatusLabel, chartConfigForQuery, ANA_QUERY_TOOL_NAMES, type AnaQueryContext } from '@/lib/anaQueryTools'
 import { runAggregateOp } from '@/lib/aggregateOps'
 
 vi.mock('@/lib/aggregateOps', async (importOriginal) => {
@@ -121,5 +121,31 @@ describe('tool metadata', () => {
   it('status labels are human-readable', () => {
     expect(anaToolStatusLabel('query_data', { op: 'field_counts' })).toBe('Counting values…')
     expect(anaToolStatusLabel('find_quotes', { query: 'wait times' })).toContain('wait times')
+  })
+})
+
+describe('chartConfigForQuery — canvas handoff mapping', () => {
+  it('maps ops onto CHART_SLOTS-shaped configs', () => {
+    expect(chartConfigForQuery({ op: 'field_counts', field: 'State' }))
+      .toEqual({ chartType: 'bar', config: { category: 'State' }, label: 'State counts' })
+    expect(chartConfigForQuery({ op: 'crosstab', rowField: 'State', colField: 'City' })?.config)
+      .toEqual({ rows: 'State', cols: 'City' })
+    expect(chartConfigForQuery({ op: 'group_stats', groupField: 'State', valueField: 'rating' })?.config)
+      .toEqual({ category: 'State', value: 'rating' })
+    expect(chartConfigForQuery({ op: 'date_series', dateField: 'review_date', metricField: 'rating' })?.config)
+      .toEqual({ date: 'review_date', metric: 'rating' })
+    expect(chartConfigForQuery({ op: 'tax_counts', axis: 'touchpoint' })?.config)
+      .toEqual({ category: '__dim_touchpoint__' })
+  })
+
+  it('field_counts on a NUMERIC field maps to distribution — the bar category slot rejects numerics ("No data for this field", seen live 9/02)', () => {
+    expect(chartConfigForQuery({ op: 'field_counts', field: 'rating' }, { rating: 'numeric' }))
+      .toEqual({ chartType: 'distribution', config: { field: 'rating' }, label: 'rating distribution' })
+    expect(chartConfigForQuery({ op: 'field_counts', field: 'State' }, { State: 'categorical' })?.chartType).toBe('bar')
+  })
+
+  it('unmappable ops return null (no chip)', () => {
+    expect(chartConfigForQuery({ op: 'tax_axis_crosstab', field: 'State' })).toBeNull()
+    expect(chartConfigForQuery({ op: 'field_counts' })).toBeNull()
   })
 })

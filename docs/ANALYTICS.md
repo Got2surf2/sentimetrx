@@ -1999,6 +1999,37 @@ mention → rows edited/deleted in the Memory view. Unit coverage:
 identity-stamping + cross-org refusal). Migration sql/197 is applied to TEST;
 prod apply rides the next push batch (with 195/196).
 
+**The briefing + the canvas handoff (2026-09-02).** The remaining two Phase-2
+surfaces from the five-state design:
+- **The briefing — Ana speaks first.** When the panel opens with an empty chat,
+  the analyst has memories, and no interview is pending, a hidden trigger
+  message auto-fires once per dataset per browser session (sessionStorage
+  guard) with `briefing: true`. The route appends a BRIEFING MODE block: an
+  unprompted opening read built THEIR way per ANALYST MEMORY — 1–3 query_data
+  calls, ≤~150 words + one compact table, naming anything de-emphasized, ending
+  with 2–3 next-step questions. The trigger message rides in conversation
+  history (Anthropic requires user-first alternation) but is never rendered.
+- **The canvas handoff — "Open in Charts".** Every successful `query_data`
+  call is mapped by `chartConfigForQuery` onto the Charts tab's
+  `{chartType, config}` shape (the exact object a saved chart loads; dimension
+  axes → `__dim_<axis>__`) and emitted as a `canvas` SSE event; the panel
+  renders it as a chip under the finished answer (last query wins). Tapping it
+  writes `anaChart:<datasetId>` to sessionStorage, dispatches
+  `ana-open-chart`, and navigates to `/charts`; ChartsModule applies the config
+  on mount (sessionStorage path) or live (event path, when Charts is already
+  open). **The mapping is field-type-aware** — `field_counts` on a NUMERIC
+  field goes to the distribution chart, because the bar chart's category slot
+  only accepts categoricals (a type-blind mapping rendered "No data for this
+  field", caught live 9/02). Questions answer in the panel; the canvas changes
+  only on the tap — never a yank.
+Browser-verified on TEST (Rubio's): fresh open auto-fired a location-led "VP
+View" opening briefing with no visible trigger; "breakdown by state" produced
+an Open in Charts chip whose tap (already on the Charts tab — the live event
+path) snapped the canvas to State × Star Rating with exactly the answer's
+numbers (7,462/2,166/248/29); the navigate-and-mount path was exercised by the
+earlier rating-counts chip. Mapping unit tests in
+`tests/unit/anaQueryTools.test.ts`.
+
 - **API**: `POST /api/datasets/[datasetId]/export/pptx`
 - **Rendering (2026-06-25 — the cream flip)**: the route no longer builds slides with its own
   bespoke navy/gold helpers. Its compute phase (auth + cross-org gate, row fetch under the

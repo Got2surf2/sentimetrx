@@ -128,6 +128,40 @@ function compactResult(body: Record<string, unknown>): Record<string, unknown> {
   return out
 }
 
+// ── Canvas handoff mapping ─────────────────────────────────────────────────
+// Map a query_data call onto the Charts tab's {chartType, config} shape (the
+// same object a saved chart applies via handleLoadSaved) — so an answer can
+// become the exact chart behind it with one tap. Slot keys mirror CHART_SLOTS;
+// dimension axes use the derived '__dim_<axis>__' field ids.
+export interface AnaCanvasTarget { chartType: string; config: Record<string, string>; label: string }
+
+export function chartConfigForQuery(input: Record<string, unknown>, fieldTypes?: Record<string, string>): AnaCanvasTarget | null {
+  const op = String(input.op || '')
+  const f = (k: string) => (typeof input[k] === 'string' ? String(input[k]) : '')
+  const dim = f('axis') ? '__dim_' + f('axis') + '__' : ''
+  const isNumeric = (k: string) => fieldTypes?.[k] === 'numeric'
+  // The bar chart's category slot only accepts categoricals — a numeric field
+  // (e.g. a star rating) lands on the distribution chart instead, or the chip
+  // configures a chart the picker rejects ("No data for this field").
+  if (op === 'field_counts' && f('field')) {
+    if (isNumeric(f('field'))) return { chartType: 'distribution', config: { field: f('field') }, label: f('field') + ' distribution' }
+    return { chartType: 'bar', config: { category: f('field') }, label: f('field') + ' counts' }
+  }
+  if (op === 'crosstab' && f('rowField') && f('colField')) return { chartType: 'crosstab', config: { rows: f('rowField'), cols: f('colField') }, label: f('rowField') + ' × ' + f('colField') }
+  if (op === 'group_stats' && f('groupField') && f('valueField')) return { chartType: 'bar', config: { category: f('groupField'), value: f('valueField') }, label: f('valueField') + ' by ' + f('groupField') }
+  if (op === 'numeric_stats' && f('field')) return { chartType: 'distribution', config: { field: f('field') }, label: f('field') + ' distribution' }
+  if (op === 'date_series' && f('dateField')) {
+    const cfg: Record<string, string> = { date: f('dateField') }
+    if (f('metricField')) cfg.metric = f('metricField')
+    return { chartType: 'timeseries', config: cfg, label: 'trend over ' + f('dateField') }
+  }
+  if (op === 'tax_counts' && dim) return { chartType: 'bar', config: { category: dim }, label: f('axis') + ' mentions' }
+  if (op === 'tax_group_stats' && dim && f('valueField')) return { chartType: 'bar', config: { category: dim, value: f('valueField') }, label: f('valueField') + ' by ' + f('axis') }
+  if (op === 'tax_crosstab' && dim && f('field')) return { chartType: 'crosstab', config: { rows: dim, cols: f('field') }, label: f('axis') + ' × ' + f('field') }
+  if (op === 'tax_date_series' && dim && f('dateField')) return { chartType: 'timeseries', config: { date: f('dateField'), colorBy: dim }, label: f('axis') + ' over time' }
+  return null
+}
+
 // ── Executor ───────────────────────────────────────────────────────────────
 export async function executeAnaQueryTool(
   service: Service,
