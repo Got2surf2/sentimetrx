@@ -475,3 +475,16 @@ Ana-flagged (chart:true on the ONE answer-shaped query) instead of
 last-query-wins. Re-verified on the same question: complete risk-led answer,
 "de-emphasizing positives-first per your standing preferences" said out
 loud, no chip where none belongs. 2,003 tests pass.
+
+## 2026-09-02 — ask-ana resilience: upstream retry + silent briefing failure
+
+**Why**: Owner hit "Internal server error" twice on Tabla (both the
+auto-briefing and a question) — most likely my live edits hot-reloading
+under them (lesson repeated: don't edit the route while the owner is in the
+panel) or a transient upstream blip; the same flow reproduced clean minutes
+later with a full risk-first briefing.
+
+**What**: The first Anthropic call retries once after 1.2s on
+408/429/5xx/529 (a momentary 529 surfaced as "Internal server error"). A
+failed briefing now disappears silently instead of leaving an unprompted
+error bubble (session flag stays set — one attempt per visit). 2,003 pass.

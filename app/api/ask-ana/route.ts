@@ -579,7 +579,13 @@ async function streamAnthropicResponse(
 
   // First round is fetched before the Response is constructed so upstream
   // config/auth failures still return a clean JSON error (pre-loop behavior).
-  const firstRes = await callAnthropic()
+  // One retry on transient upstream trouble (rate limit / overload / 5xx) —
+  // a momentary 529 was surfacing to the analyst as "Internal server error".
+  let firstRes = await callAnthropic()
+  if (!firstRes.ok && [408, 429, 500, 502, 503, 504, 529].includes(firstRes.status)) {
+    await new Promise(function(r) { setTimeout(r, 1200) })
+    firstRes = await callAnthropic()
+  }
   if (!firstRes.ok) {
     let errMsg = 'AI API error: ' + firstRes.status
     try { const d = await firstRes.json(); errMsg = d?.error?.message || errMsg } catch {}

@@ -530,6 +530,14 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
       })
 
       if (!res.ok) {
+        // A failed BRIEFING disappears silently — it was unprompted, so an
+        // error bubble with no question above it just reads as a broken app
+        // (owner-hit 9/02). The session flag stays set: one attempt per visit.
+        if (opts?.briefing) {
+          setMessages(function(prev) { return prev.filter(function(m) { return m.id !== assistantId && m.id !== userMsg.id }) })
+          setLoading(false)
+          return
+        }
         var errData = await res.json().catch(function() { return { error: 'Request failed' } })
         setMessages(function(prev) {
           return prev.map(function(m) {
@@ -631,6 +639,11 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
         })
       })
     } catch (err) {
+      if (opts?.briefing) {
+        setMessages(function(prev) { return prev.filter(function(m) { return m.id !== assistantId && m.id !== userMsg.id }) })
+        setLoading(false)
+        return
+      }
       setMessages(function(prev) {
         return prev.map(function(m) {
           return m.id === assistantId ? { ...m, content: 'Connection error. Please try again.', streaming: false } : m
