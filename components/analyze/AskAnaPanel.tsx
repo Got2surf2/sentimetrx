@@ -1103,7 +1103,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
                       border: '1px solid #e5e7eb', borderRadius: 999, padding: '3px 10px',
                       cursor: 'pointer', fontFamily: 'inherit',
                     }}>
-                    {'\uD83E\uDDE0'} {m.showLogic ? 'Hide provenance' : 'Provenance \u2014 how this was derived (' + m.logic.length + ' steps)'}
+                    {'\uD83E\uDDE0'} {m.showLogic ? 'Hide provenance' : 'Provenance \u2014 how this analysis and report was derived (' + m.logic.length + ' steps)'}
                   </button>
                   {m.showLogic && (
                     <div style={{
@@ -1111,7 +1111,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
                       fontSize: 11.5, lineHeight: 1.55, color: '#4b5563', background: '#fafafa',
                     }}>
                       <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: '#0d9488', marginBottom: 6 }}>
-                        Provenance {'\u2014'} how this was derived
+                        Provenance {'\u2014'} how this analysis and report was derived
                       </div>
                       {m.logic.map(function(step, si) {
                         return (
