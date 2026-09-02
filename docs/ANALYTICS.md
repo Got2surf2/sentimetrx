@@ -2031,6 +2031,24 @@ mention → rows edited/deleted in the Memory view. Unit coverage:
 identity-stamping + cross-org refusal). Migration sql/197 is applied to TEST;
 prod apply rides the next push batch (with 195/196).
 
+**set_view — Ana offers to configure the canvas (2026-09-02, owner-directed).**
+Ana once replied "use the platform's filter to set Age ≤ 35, then open the …
+field in the analysis tab" — a to-do list. She now OFFERS instead: the
+`set_view` ACTION tool renders a "🖼 SET UP THIS VIEW" confirmation chip
+(summary + what it applies); one tap and the app does it. The constrained spec
+(`lib/anaViewSpec`) carries filters ({field, cat values | range min/max} →
+converted to the live Filters shape, invalid entries dropped), an optional
+TextMine text column, and a target tab. Application path: the panel dispatches
+`ana-set-view-filters` (DatasetShell merges into `useFilters` — every tab
+follows), `ana-set-text-field` + a sessionStorage handshake (TextMine adopts
+the column whether it's mounted yet or not), then navigates. The prompt bans
+telling the analyst to configure the app themselves. Same trust posture as
+memory: propose → one-tap approve → fully adjustable afterwards.
+Browser-verified: "set me up to dig into 1-star Arizona reviews" → chip
+("1-star reviews · Arizona · TextMine on Review", with Ana first confirming
+Arizona exists in the data) → tap → header "134 of 9,905 rows", filter chips
+State: Arizona + Star Rating 1–1, TextMine on the filtered comments.
+
 **PDF take-away from Ana's answers (2026-09-02, owner-directed).** Any finished
 answer (or the whole thread) exports as a branded findings PDF — the "send
 away". `POST /api/ana/export-pdf` (auth mirrors ask-ana; the client POSTS the

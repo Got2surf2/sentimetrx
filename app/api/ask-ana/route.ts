@@ -176,6 +176,30 @@ const REMEMBER_TOOL = {
   },
 }
 
+// ── set_view: offer to configure the analyst's canvas ─────────────────────
+// ACTION tool (client confirmation chip). When Ana's advice would otherwise
+// be "apply this filter and open that view yourself", she offers to do it.
+const SET_VIEW_TOOL = {
+  name: 'set_view',
+  description: 'OFFER to set up the app view for the analyst — never tell them to apply filters or open tabs themselves. When your recommendation is "look at X with filter Y / text column Z", call set_view: the user approves with one tap and the app applies it. Filters replace that field\'s existing entry; use real field keys and real values from your query results.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      summary:   { type: 'string', description: 'One short line describing the view (shown on the confirmation chip), e.g. "Age ≤ 35 · Top Problem – Personal · themes view"' },
+      tab:       { type: 'string', enum: ['textmine', 'charts', 'stats'], description: 'Which tab to open (textmine = the open-ended themes/comments analysis)' },
+      textField: { type: 'string', description: 'Field key of the verbatim column to make active in TextMine' },
+      filters:   { type: 'array', items: { type: 'object', properties: {
+        field:  { type: 'string', description: 'Field key' },
+        type:   { type: 'string', enum: ['cat', 'range'] },
+        values: { type: 'array', items: { type: 'string' }, description: 'For cat: values to include' },
+        min:    { type: 'number', description: 'For range: lower bound (omit for open)' },
+        max:    { type: 'number', description: 'For range: upper bound (omit for open)' },
+      }, required: ['field', 'type'] }, description: 'Filters to apply' },
+    },
+    required: ['summary'],
+  },
+}
+
 // ── Sampling recommendation tool (metadata-only mode) ─────────────────────
 const RECOMMEND_SAMPLING_TOOL = {
   name: 'recommend_sampling',
@@ -488,6 +512,7 @@ QUERY TOOLS — YOUR NUMBERS COME FROM THESE, NOT THE SAMPLE:
 {"type":"bar","title":"1-star reviews by location","unit":"reviews","data":[["San Diego",58],["Chula Vista",44]]}
 \`\`\`
 Types: "bar" (comparisons/rankings, max 12 rows — aggregate the tail into "Other (n)") and "line" (time series, max 60 points, labels are the buckets). Values must be VERBATIM numbers from your tool results. Use at most 2 charts per answer, keep surrounding prose for the interpretation, and still use a table when rows carry mixed columns a chart can't show. The chart:true "Open in Charts" flag is separate — it opens the full Charts tab.
+- NEVER tell the analyst to go configure the app themselves ("use the platform's filter to...", "open the X tab and..."). When a view would serve them, OFFER it with set_view — one tap and it's applied.
 - RECREATABLE BY A HUMAN: every finding must be reproducible inside the platform itself — your tools ARE the platform's own charts, statistics, and search, so stay within them. Simple arithmetic on tool results (a share, a difference) is fine, but never apply modeling or scoring logic of your own that a user couldn't redo from the app's tabs; if a question needs data or signals the platform doesn't have, say so plainly instead of improvising a proxy.
 
 You serve two roles:
@@ -525,7 +550,7 @@ ${dataContext}`
   }
   const fieldTypes: Record<string, string> = {}
   schemaFields.forEach(function(fld) { if (fld.field) fieldTypes[fld.field] = fld.type })
-  return streamAnthropicResponse(systemPrompt, question, conversationHistory, [...ANA_TOOLS, REMEMBER_TOOL, ...ANA_QUERY_TOOLS], dataset.org_id, { service, ctx: queryCtx, fieldTypes })
+  return streamAnthropicResponse(systemPrompt, question, conversationHistory, [...ANA_TOOLS, REMEMBER_TOOL, SET_VIEW_TOOL, ...ANA_QUERY_TOOLS], dataset.org_id, { service, ctx: queryCtx, fieldTypes })
 }
 
 // ── Stream Anthropic response (agentic tool loop) ─────────────────────────

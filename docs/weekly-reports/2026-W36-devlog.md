@@ -566,3 +566,19 @@ datanautix footer. Chromium tracing entry added (mandatory per PDF route).
 Panel buttons: "PDF" per exchange + "PDF · whole thread". Pixel-QC'd via the
 real pipeline (2 clean pages); route smoke 200 application/pdf. 4 new tests;
 2,014 pass.
+
+## 2026-09-02 — set_view: Ana offers to configure the canvas herself
+
+**Why**: Owner caught Ana replying "use the platform's filter to set
+Age ≤ 35, then open the field in the analysis tab directly" — a to-do list.
+"Should she just offer to do that instead of having the user do it?"
+
+**What**: set_view ACTION tool → "SET UP THIS VIEW" confirmation chip
+(summary + what it applies). On approval: lib/anaViewSpec converts the
+constrained filter specs to the live Filters shape; ana-set-view-filters →
+DatasetShell merges into useFilters (all tabs follow); ana-set-text-field +
+sessionStorage handshake → TextMine adopts the column (mounted or not);
+router navigates. Prompt bans go-do-it-yourself instructions. Zero net lint
+warnings (stash-verified per file). Browser-verified: "set me up to dig into
+1-star Arizona reviews" → one tap → 134 of 9,905 rows, State: Arizona +
+Star Rating 1–1 chips, TextMine filtered. 2 new tests; 2,016 pass.

@@ -39,6 +39,18 @@ interface Props {
 
 function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField, datasetId, outletCount, children }: Props) {
   const { filters, setFilters, lockedFilters, setLockedFilters, effectiveFilters, showFilters, setShowFilters } = useFilters()
+
+  // Ana's set_view handoff: the approved chip dispatches live Filters; merge
+  // them in (per-field replace) so the whole canvas — every tab — follows.
+  useEffect(function() {
+    function onAnaSetFilters(e: Event) {
+      var vf = (e as CustomEvent<{ filters?: Record<string, unknown> }>).detail?.filters
+      if (!vf || Object.keys(vf).length === 0) return
+      setFilters({ ...filters, ...(vf as typeof filters) })
+    }
+    window.addEventListener('ana-set-view-filters', onAnaSetFilters)
+    return function() { window.removeEventListener('ana-set-view-filters', onAnaSetFilters) }
+  }, [filters, setFilters])
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
   const [rowsLoaded, setRowsLoaded] = useState(false)
   const [loadingRows, setLoadingRows] = useState(false)

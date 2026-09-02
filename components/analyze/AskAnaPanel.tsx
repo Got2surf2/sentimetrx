@@ -13,6 +13,7 @@ import { useRows } from '@/components/analyze/RowsContext'
 import { themeSetForField, type ThemeModel } from '@/lib/themeUtils'
 import { splitAnaSegments, type AnaChartSpec } from '@/lib/anaChartSpec'
 import { downloadFile } from '@/lib/browserDownload'
+import { viewSpecFilters, ANA_VIEW_TABS, type AnaViewFilterSpec } from '@/lib/anaViewSpec'
 
 // Tool-use payload from Ana — one bag of optional fields across all tools
 // (create_theme / update_theme / merge_themes / delete_theme / generate_report / recommend_sampling).
@@ -44,6 +45,11 @@ interface AnaActionInput {
   statement?: string
   scope?: string
   source?: string
+  // set_view
+  summary?: string
+  tab?: string
+  textField?: string
+  filters?: AnaViewFilterSpec[]
   // generate_report (the whole input is forwarded verbatim as the deck payload)
   title?: string
   subtitle?: string
@@ -332,6 +338,32 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
         setMessages([])
         setPhase('chat')
       }, 800)
+      return
+    }
+
+    // set_view → apply the offered view: filters via DatasetShell's listener,
+    // the TextMine text column via event + sessionStorage handshake (covers
+    // the not-yet-mounted case), then navigate.
+    if (action.tool === 'set_view') {
+      try {
+        var vf = viewSpecFilters(action.input.filters)
+        if (Object.keys(vf).length > 0) {
+          window.dispatchEvent(new CustomEvent('ana-set-view-filters', { detail: { filters: vf } }))
+        }
+        if (action.input.textField) {
+          try { sessionStorage.setItem('anaTextField:' + datasetId, action.input.textField) } catch {}
+          window.dispatchEvent(new CustomEvent('ana-set-text-field', { detail: { fieldKey: action.input.textField } }))
+        }
+        var tab = typeof action.input.tab === 'string' && ANA_VIEW_TABS.indexOf(action.input.tab) !== -1 ? action.input.tab : null
+        if (tab) router.push('/analyze/' + datasetId + '/' + tab)
+        setMessages(function(prev) {
+          return prev.map(function(m) {
+            if (m.id !== msgId || !m.actions) return m
+            var updated = m.actions.map(function(a, i) { return i === actionIdx ? { ...a, status: 'approved' as const } : a })
+            return { ...m, actions: updated }
+          })
+        })
+      } catch {}
       return
     }
 
@@ -1366,6 +1398,14 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
         </div>
       )}
 
+      {action.tool === 'set_view' && (
+        <div style={{ fontSize: 13, color: '#111', lineHeight: 1.5 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.07em', color: HERMES, marginBottom: 4 }}>{'\uD83D\uDDBC'} SET UP THIS VIEW</div>
+          {inp.summary}
+          <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>Applies filters{inp.textField ? ' + text column' : ''}{inp.tab ? ' and opens the ' + inp.tab + ' tab' : ''} &middot; you can adjust everything afterwards</div>
+        </div>
+      )}
+
       {action.tool === 'remember_preference' && (
         <div style={{ fontSize: 13, color: '#111', lineHeight: 1.5 }}>
           <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.07em', color: HERMES, marginBottom: 4 }}>{'\u2B50'} REMEMBER</div>
@@ -1389,7 +1429,7 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
             }}>
             {applying
               ? (action.tool === 'generate_report' ? 'Building deck...' : action.tool === 'remember_preference' ? 'Saving...' : 'Applying...')
-              : (action.tool === 'generate_report' ? 'Build & Download' : action.tool === 'recommend_sampling' ? 'Use this' : action.tool === 'remember_preference' ? 'Remember this' : 'Approve')
+              : (action.tool === 'generate_report' ? 'Build & Download' : action.tool === 'recommend_sampling' ? 'Use this' : action.tool === 'remember_preference' ? 'Remember this' : action.tool === 'set_view' ? 'Set up view' : 'Approve')
             }
           </button>
           <button onClick={function() { onReject(msgId, actionIdx) }}
@@ -1398,7 +1438,7 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
               background: 'white', color: '#6b7280', border: '1px solid #d1d5db',
               borderRadius: 8, cursor: 'pointer',
             }}>
-            {action.tool === 'recommend_sampling' ? 'Adjust manually' : action.tool === 'remember_preference' ? 'Not quite' : 'Cancel'}
+            {action.tool === 'recommend_sampling' ? 'Adjust manually' : action.tool === 'remember_preference' ? 'Not quite' : action.tool === 'set_view' ? 'Not now' : 'Cancel'}
           </button>
         </div>
       )}

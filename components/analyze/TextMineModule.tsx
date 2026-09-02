@@ -1506,6 +1506,29 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     return activeFields.length > 0 ? activeFields : (activeField ? [activeField] : [])
   }, [activeFields, activeField])
 
+  // Ana's set_view handoff: adopt the requested text column. The event covers
+  // TextMine already being open; the sessionStorage key covers navigation
+  // (chip approved elsewhere → TextMine mounts after the event fired).
+  useEffect(function() {
+    function adoptField(k: string | undefined) {
+      if (!k) return
+      if (!openFields.some(function(o) { return o.field === k })) return
+      setActiveFields([k])
+      setActiveField(k)
+    }
+    try {
+      var pending = sessionStorage.getItem('anaTextField:' + datasetId)
+      if (pending) {
+        sessionStorage.removeItem('anaTextField:' + datasetId)
+        adoptField(pending)
+      }
+    } catch { /* sessionStorage unavailable */ }
+    function onAnaSetField(e: Event) { adoptField((e as CustomEvent<{ fieldKey?: string }>).detail?.fieldKey) }
+    window.addEventListener('ana-set-text-field', onAnaSetField)
+    return function() { window.removeEventListener('ana-set-text-field', onAnaSetField) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- openFields identity churns per render; keying on its length keeps the listener stable while still validating against current fields
+  }, [datasetId, openFields.length])
+
   // Set initial active field(s)
   useEffect(function() {
     if (activeFields.length === 0 && openFields.length > 0) {
