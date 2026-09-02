@@ -2031,6 +2031,18 @@ mention → rows edited/deleted in the Memory view. Unit coverage:
 identity-stamping + cross-org refusal). Migration sql/197 is applied to TEST;
 prod apply rides the next push batch (with 195/196).
 
+**Tool-loop discipline (2026-09-02, owner-hit).** "What are people most upset
+about?" once returned pure process narration ("Let me query… let me broaden…
+let me also…") and then stopped — the model spent one tool call per round,
+hit the round cap mid-gathering, and never wrote an answer. Fixes: the loop's
+second-to-last round appends "[Tool budget exhausted — write your complete
+final answer now]" and the final request pins `tool_choice: none`, so a
+synthesis turn is guaranteed; the prompt mandates BATCHING (all queries in
+one turn) and bans process narration/tool names (one short lead-in max);
+rounds are separated by a paragraph break in the stream (text used to run
+together); cap raised 6 → 8. Re-verified on the same question: complete
+risk-led answer, audible memory framing, next-step questions, no narration.
+
 **The briefing + the canvas handoff (2026-09-02).** The remaining two Phase-2
 surfaces from the five-state design:
 - **The briefing — Ana speaks first.** When the panel opens with an empty chat,
@@ -2041,11 +2053,15 @@ surfaces from the five-state design:
   calls, ≤~150 words + one compact table, naming anything de-emphasized, ending
   with 2–3 next-step questions. The trigger message rides in conversation
   history (Anthropic requires user-first alternation) but is never rendered.
-- **The canvas handoff — "Open in Charts".** Every successful `query_data`
-  call is mapped by `chartConfigForQuery` onto the Charts tab's
-  `{chartType, config}` shape (the exact object a saved chart loads; dimension
-  axes → `__dim_<axis>__`) and emitted as a `canvas` SSE event; the panel
-  renders it as a chip under the finished answer (last query wins). Tapping it
+- **The canvas handoff — "Open in Charts".** A `query_data` call Ana flags
+  with `chart:true` — the ONE query whose view directly answers the question —
+  is mapped by `chartConfigForQuery` onto the Charts tab's `{chartType,
+  config}` shape (the exact object a saved chart loads; dimension axes →
+  `__dim_<axis>__`) and emitted as a `canvas` SSE event; the panel renders it
+  as a chip under the finished answer. (Originally "last query wins" —
+  retired 9/02 after it offered a rating × city heatmap for "what are people
+  most upset about"; owner: "in no way answers anything useful". No flag, no
+  chip.) Tapping it
   writes `anaChart:<datasetId>` to sessionStorage, dispatches
   `ana-open-chart`, and navigates to `/charts`; ChartsModule applies the config
   on mount (sessionStorage path) or live (event path, when Charts is already

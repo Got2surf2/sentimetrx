@@ -47,6 +47,7 @@ export const ANA_QUERY_TOOLS = [
         bucket:      { type: 'string', enum: ['day', 'week', 'month'], description: 'For date_series / tax_date_series: time bucket (default day)' },
         axis:        { type: 'string', enum: TAX_AXES, description: 'For tax_* ops: the dimension axis' },
         limit:       { type: 'number', description: 'Max distinct values returned (default 50, max 100)' },
+        chart:       { type: 'boolean', description: 'Set true ONLY when this query\'s view IS the chart the user would want to open — the one that directly answers their question. The app then offers an "Open in Charts" button for it. Leave unset for intermediate/supporting queries.' },
       },
       required: ['op'],
     },

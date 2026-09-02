@@ -467,7 +467,9 @@ QUERY TOOLS — YOUR NUMBERS COME FROM THESE, NOT THE SAMPLE:
 - For questions that need READING rather than counting — "what are people saying about X", characterizing complaints, summarizing suggestions — use read_comments to pull a targeted sample (with a topic query) or a representative one (without). State your reading base honestly ("based on 120 of the 283 comments mentioning...").
 - find_quotes totals cover the entire dataset and ignore active filters; for filtered counts use query_data.
 - When a tool result says sampled:true, the figures are computed over the app's deterministic 50K analysis sample — say "in the analyzed sample" when reporting them.
-- It's normal to make several tool calls before answering. Prefer one query per claim over guessing.
+- BATCH your queries: request ALL the tools you need in ONE turn (multiple tool calls together) — never one query per turn. You have a hard budget of tool turns; when it runs out you must answer with what you have.
+- DO NOT narrate process. At most ONE short lead-in line (e.g. "Let me pull the numbers.") before your FIRST batch — after that, no step-by-step commentary, no tool names, no "let me also...". When the data is in, write the ANSWER.
+- If exactly one of your queries produces the VIEW that answers the question (the chart the user would want open), set chart:true on that query — the app offers it as an "Open in Charts" button. Never flag intermediate or supporting queries.
 
 You serve two roles:
 1. **Answer questions** — Query the data to answer questions. Be specific; back claims with exact figures from query_data and real quotes from find_quotes. If the data doesn't contain enough to answer, say so clearly.
@@ -513,7 +515,7 @@ ${dataContext}`
 // result back, and let the model continue — all inside one SSE response to the
 // client. Theme/report tools keep their original behavior: they surface to the
 // client as `action` events (confirmation cards) and end the turn.
-const MAX_TOOL_ROUNDS = 6
+const MAX_TOOL_ROUNDS = 8
 
 interface CollectedToolUse { id: string; name: string; input: Record<string, unknown> }
 type AssistantBlock = { type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
@@ -548,7 +550,7 @@ async function streamAnthropicResponse(
   }
   messages.push({ role: 'user', content: question })
 
-  function callAnthropic() {
+  function callAnthropic(opts?: { noMoreTools?: boolean }) {
     return fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -561,6 +563,8 @@ async function streamAnthropicResponse(
         max_tokens: 4000,
         stream: true,
         tools,
+        // Final synthesis turn: the tool budget is spent — force prose.
+        ...(opts?.noMoreTools ? { tool_choice: { type: 'none' } } : {}),
         system: [
           {
             type: 'text',
@@ -673,6 +677,9 @@ async function streamAnthropicResponse(
       try {
         let res: Response | null = firstRes
         for (let round = 0; round < MAX_TOOL_ROUNDS && res; round++) {
+          // Visual paragraph break between a round's text and the next round's
+          // continuation (otherwise "…at once.Now let me…" runs together).
+          if (round > 0) emit({ text: '\n\n' })
           const blocks = await pumpRound(res)
           res = null
 
@@ -687,6 +694,11 @@ async function streamAnthropicResponse(
           // takes over), and we can't send partial tool_results.
           if (!queryExec || queryCalls.length === 0 || actionCalls.length > 0 || round === MAX_TOOL_ROUNDS - 1) break
 
+          // Second-to-last round: answer these calls, then force a synthesis
+          // turn — the owner hit an answer that was ALL process narration and
+          // no conclusion because the loop cut off mid-gathering (9/02).
+          const budgetExhausted = round === MAX_TOOL_ROUNDS - 2
+
           const toolResults: MessageContent[] = []
           for (const call of queryCalls) {
             emit({ status: anaToolStatusLabel(call.name, call.input) })
@@ -697,10 +709,12 @@ async function streamAnthropicResponse(
               result = { error: 'Query failed: ' + (e instanceof Error ? e.message : 'unknown error') }
             }
             toolResults.push({ type: 'tool_result', tool_use_id: call.id, content: JSON.stringify(result) })
-            // Canvas handoff: a successful query_data maps onto the exact
-            // Charts-tab config behind this answer — the client renders it as
-            // an "Open in Charts" chip under the finished message.
-            if (call.name === 'query_data' && !result.error) {
+            // Canvas handoff — ANA's call, not automatic: she sets chart:true
+            // on the one query whose view IS the answer. "Last query wins"
+            // produced non-sequitur charts (owner: a rating × city heatmap
+            // for "what are people most upset about" — "in no way answers
+            // anything useful", 9/02).
+            if (call.name === 'query_data' && call.input.chart === true && !result.error) {
               const target = chartConfigForQuery(call.input, queryExec.fieldTypes)
               if (target) emit({ canvas: target })
             }
@@ -709,9 +723,13 @@ async function streamAnthropicResponse(
           // Anthropic rejects empty text blocks in assistant content.
           const assistantContent = blocks.filter(function(b) { return b.type !== 'text' || b.text.trim().length > 0 }) as unknown as MessageContent[]
           messages.push({ role: 'assistant', content: assistantContent })
-          messages.push({ role: 'user', content: toolResults })
+          const userContent: MessageContent[] = [...toolResults]
+          if (budgetExhausted) {
+            userContent.push({ type: 'text', text: '[Tool budget exhausted — no more tool calls will be answered. Write your complete final answer now from everything gathered above. Do not describe what you would still query.]' })
+          }
+          messages.push({ role: 'user', content: userContent })
 
-          const nextRes = await callAnthropic()
+          const nextRes = await callAnthropic(budgetExhausted ? { noMoreTools: true } : undefined)
           if (!nextRes.ok) {
             let errMsg = 'AI API error: ' + nextRes.status
             try { const d = await nextRes.json(); errMsg = d?.error?.message || errMsg } catch {}

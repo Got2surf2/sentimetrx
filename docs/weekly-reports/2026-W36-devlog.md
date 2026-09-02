@@ -460,3 +460,18 @@ profanity/insult/spam tiers (keeps slurs/threats/sexual + self-harm net) —
 false positive reproduced and re-tested green. Owner's data repaired:
 duplicates removed, the wiped first preference restored, interview marked
 done. 2,003 tests pass.
+
+## 2026-09-02 — tool-loop discipline + model-flagged chart chip (owner: "what a mess")
+
+**Why**: "What are people most upset about?" returned pure process narration
+and no answer (one tool per round → cap hit mid-gathering), leaked tool
+names, ran rounds' text together — and the auto chart chip offered a
+rating × city heatmap that "in no way answers anything useful."
+
+**What**: Guaranteed synthesis turn (budget-exhausted note + tool_choice:
+none on the final round; cap 6→8); prompt mandates batched queries and bans
+narration/tool names; paragraph breaks between rounds. Chart chip is now
+Ana-flagged (chart:true on the ONE answer-shaped query) instead of
+last-query-wins. Re-verified on the same question: complete risk-led answer,
+"de-emphasizing positives-first per your standing preferences" said out
+loud, no chip where none belongs. 2,003 tests pass.
