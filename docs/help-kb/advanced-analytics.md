@@ -27,9 +27,9 @@ Two things both have to be true.
 
 1. **It has to be switched on.** Advanced Analytics is a capability, not
    something every dataset gets automatically. It can be enabled for your whole
-   organisation, or per dataset on the **Schema** tab (tick *Enable the
+   organization, or per dataset on the **Schema** tab (tick *Enable the
    Leaderboard & Outlet Deep-Dive*). Your account team can turn it on for the
-   organisation.
+   organization.
 2. **The data has to identify locations.** Today that means a Google-reviews
    dataset with at least five locations. On the **Schema** tab you can also mark
    the column that identifies a location — and add broader columns above it

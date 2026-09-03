@@ -38,7 +38,7 @@ Beyond themes, TextMine surfaces two more lenses:
 
 If your dataset covers many locations, a fourth section — **Advanced Analytics** —
 appears in the same bar, with Brand Health, a Leaderboard, and a per-location
-Outlet Deep-Dive. It has to be switched on for your organisation or on the
+Outlet Deep-Dive. It has to be switched on for your organization or on the
 dataset's **Schema** tab.
 
 ## Word clouds, comparisons, and search

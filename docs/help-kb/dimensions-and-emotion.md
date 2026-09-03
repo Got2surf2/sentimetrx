@@ -24,17 +24,23 @@ Classification is keyword-based and runs in one pass, so there's no AI cost and 
 waiting on a model.
 
 What you get depends on the data. **Restaurant data** — Google reviews, or an
-organisation in the restaurant industry — gets the full restaurant taxonomy:
+organization in the restaurant industry — gets the full restaurant taxonomy:
 service, food, drinks, ambiance, value and more, each with sentiment and severity.
 **Every other dataset** gets the universal **Emotion** dimension described below.
 
 ### If you don't see a Dimensions section at all
 
-Open the **Schema** tab and tick **Apply Dimensions**. That reveals the
-**Dimensions** section for the dataset, plus dimension breakdowns in **Charts** and
-**Statistics**. You don't need this step for Google-reviews datasets or
-restaurant-industry organisations — those are already eligible, so you can go
-straight to **Enable Dimensions**.
+The **Dimensions** section only appears once Dimensions are enabled for the
+dataset. Three ways that happens:
+
+- **Google-reviews datasets** always show the section — open it and click
+  **Enable Dimensions** there.
+- **Any other dataset**: open the **Schema** tab and tick **Apply Dimensions**.
+  That reveals the **Dimensions** section, plus dimension breakdowns in
+  **Charts** and **Statistics**.
+- **Automatically at mining time**: when you mine themes with AI, Sentimetrx
+  detects restaurant/food-service data (or emotion language in any data) and
+  turns Dimensions on for you — no clicks needed.
 
 ## The Dimensions axes
 
