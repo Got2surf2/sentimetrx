@@ -753,3 +753,6 @@ facts are free, so nothing was transcribed) and each well-documented (famous
 myths excluded by test). The building screen samples a random 40 per build and
 rotates every 15s. `tests/unit/funFacts.test.ts` guards size ≥100, uniqueness,
 one-liner shape, no markup, and the myth exclusions.
+
+## 2026-09-03 — Ask Ana: 120s Vercel timeout killed long ANES questions
+**Why:** Owner's prod question (theme × time × party on 125K-row ANES) ran 19 tool steps and Vercel killed the function at the route's 120s maxDuration before the synthesis turn — the panel showed a provenance trail with an empty bubble and no error (confirmed in Vercel runtime logs: "Task timed out after 120 seconds"). Fix: maxDuration 120→300 (same ceiling as project-report) + the panel renders an honest "ran out of time" message when a stream ends with no text and no actions. The unpushed round-caching commit also shortens these runs materially.

@@ -734,6 +734,12 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
 
       var final_ = accumulated
       var finalActions = [...collectedActions]
+      // Stream died with no answer (e.g. the serverless function hit its time
+      // limit mid-loop — owner 9/02, ANES): say so honestly instead of
+      // leaving an empty bubble above the provenance trail.
+      if (!final_.trim() && finalActions.length === 0 && !opts?.briefing) {
+        final_ = '*Ana ran out of time before she could write the answer — the queries above completed, but the analysis window closed. Try asking again (repeat runs are faster), or narrow the question to fewer themes or a shorter time range.*'
+      }
       setMessages(function(prev) {
         return prev.map(function(m) {
           return m.id === assistantId ? { ...m, content: final_, streaming: false, actions: finalActions, statusText: undefined } : m

@@ -2050,7 +2050,11 @@ The schema context now carries the **data field key** in brackets next to each l
 (query SQL addresses `rating`, not "Star Rating" — without the key, queries silently
 match nothing). The panel shows a transient status line ("Counting values…") per
 tool round via a new `status` SSE event; usage is summed across rounds and logged
-once. Browser-verified on Rubio's (9,905 rows, TEST): star-rating breakdown exactly
+once. Runtime budget: `maxDuration = 300` (raised from 120 on 2026-09-02 —
+a 19-step ANES question was killed by Vercel at 120s mid-loop, leaving a
+provenance trail with an empty answer; the panel now also renders an honest
+"ran out of time" message when a stream ends with no text instead of an empty
+bubble). Browser-verified on Rubio's (9,905 rows, TEST): star-rating breakdown exactly
 matched the dispatcher reference (463/223/296/1197/7726 = 9,905); with a location
 filter excluded, scoped counts summed to exactly the header's 9,774 and the
 per-rating complement to the 131 excluded rows. Unit coverage:

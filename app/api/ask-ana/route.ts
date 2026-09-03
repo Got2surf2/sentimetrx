@@ -24,9 +24,11 @@ import { loadAnalystMemories, memoryPromptBlock, REMEMBER_GUIDANCE } from '@/lib
 import { jsonStringifySafe } from '@/lib/jsonSafe'
 
 export const dynamic     = 'force-dynamic'
-// Query-tool rounds are sequential upstream calls — a multi-round answer on a
-// slow aggregate can outlive the old 60s budget.
-export const maxDuration = 120
+// Query-tool rounds are sequential upstream calls. 120s was not enough on
+// the 125K-row ANES dataset (owner 9/02: 19 tool steps, Vercel killed the
+// function mid-loop → provenance trail with an empty answer). 300 is the
+// same ceiling the project-report route uses.
+export const maxDuration = 300
 
 const CONTEXT_CAP    = 500    // absolute max rows sent to Claude
 // Orientation only since the query engine — Ana's numbers come from tools and
