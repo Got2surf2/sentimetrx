@@ -158,3 +158,107 @@ describe('matchStoredValues', () => {
     expect(matchStoredValues('Hispanic', stored)).toEqual([])
   })
 })
+
+// ── Collection scope (2026-09-04) ───────────────────────────────────────────
+// A collection holds no rows under its own id — resolveWhereRowIds takes the
+// member ids as `scope` and every per-dataset query must walk them.
+function fakeScopedService(byDataset: Record<string, Row[]>) {
+  const rpc = (_name: string, args: Record<string, unknown>) => {
+    const rows = byDataset[String(args.p_dataset_id)] || []
+    const field = String(args.p_field_key)
+    const counts = new Map<string, number>()
+    rows.forEach(r => { const v = r.data[field]; if (v != null && String(v).trim() !== '') counts.set(String(v), (counts.get(String(v)) || 0) + 1) })
+    return Promise.resolve({ data: [...counts.entries()].map(([value, count]) => ({ value, count })), error: null })
+  }
+  function builder() {
+    const state = { dsId: null as string | null, contains: null as Record<string, unknown> | null, ids: null as number[] | null, range: null as [number, number] | null }
+    const match = () => {
+      let out = state.dsId ? (byDataset[state.dsId] || []) : []
+      if (state.contains) {
+        const [k, v] = Object.entries(state.contains)[0]
+        out = out.filter(r => r.data[k] === v)
+      }
+      if (state.ids) out = out.filter(r => state.ids!.includes(r.id))
+      out = [...out].sort((a, b) => a.id - b.id)
+      if (state.range) out = out.slice(state.range[0], state.range[1] + 1)
+      return out
+    }
+    const chain = {
+      select: () => chain,
+      eq: (_c: string, v: unknown) => { state.dsId = String(v); return chain },
+      contains: (_c: string, v: Record<string, unknown>) => { state.contains = v; return chain },
+      in: (_c: string, ids: number[]) => { state.ids = ids; return Promise.resolve({ data: match(), error: null }) },
+      order: () => chain,
+      range: (a: number, b: number) => { state.range = [a, b]; return Promise.resolve({ data: match(), error: null }) },
+    }
+    return chain
+  }
+  return { from: () => builder(), rpc }
+}
+
+describe('resolveWhereRowIds — collection scope', () => {
+  const BY_DS: Record<string, Row[]> = {
+    'm-1': [
+      { id: 1, data: { race: 'Black', age: 24 } },
+      { id: 2, data: { race: 'White', age: 30 } },
+    ],
+    'm-2': [
+      { id: 10, data: { race: 'Black', age: 61 } },
+      { id: 11, data: { race: 'Black', age: 19 } },
+    ],
+    // The collection's OWN id holds nothing — querying it is the bug.
+    'coll-1': [],
+  }
+
+  it('categorical: unions matches from every member (querying only coll-1 would find zero)', async () => {
+    const r = await resolveWhereRowIds(fakeScopedService(BY_DS), {
+      datasetId: 'coll-1', rowCount: 4, scope: ['m-1', 'm-2'],
+      where: [{ field: 'race', values: ['Black'] }],
+    })
+    expect(r).not.toHaveProperty('error')
+    if ('error' in r) return
+    expect(r.ids).toEqual([1, 10, 11])
+  })
+
+  it('value discovery merges stored values across members', async () => {
+    // 'White' exists only in m-1 — a coll-1-only read would list nothing and
+    // every requested value would "not match".
+    const r = await resolveWhereRowIds(fakeScopedService(BY_DS), {
+      datasetId: 'coll-1', rowCount: 4, scope: ['m-1', 'm-2'],
+      where: [{ field: 'race', values: ['white'] }],
+    })
+    expect(r).not.toHaveProperty('error')
+    if ('error' in r) return
+    expect(r.ids).toEqual([2])
+  })
+
+  it('categorical + range narrows across members', async () => {
+    const r = await resolveWhereRowIds(fakeScopedService(BY_DS), {
+      datasetId: 'coll-1', rowCount: 4, scope: ['m-1', 'm-2'],
+      where: [{ field: 'race', values: ['Black'] }, { field: 'age', min: 50 }],
+    })
+    expect(r).not.toHaveProperty('error')
+    if ('error' in r) return
+    expect(r.ids).toEqual([10])
+  })
+
+  it('range-only walks every member', async () => {
+    const r = await resolveWhereRowIds(fakeScopedService(BY_DS), {
+      datasetId: 'coll-1', rowCount: 4, scope: ['m-1', 'm-2'],
+      where: [{ field: 'age', max: 25 }],
+    })
+    expect(r).not.toHaveProperty('error')
+    if ('error' in r) return
+    expect(r.ids).toEqual([1, 11])
+  })
+
+  it('no scope → single-dataset behavior unchanged', async () => {
+    const r = await resolveWhereRowIds(fakeScopedService(BY_DS), {
+      datasetId: 'm-1', rowCount: 2,
+      where: [{ field: 'race', values: ['Black'] }],
+    })
+    expect(r).not.toHaveProperty('error')
+    if ('error' in r) return
+    expect(r.ids).toEqual([1])
+  })
+})

@@ -79,10 +79,9 @@ export async function runAggregateOp(
 
   // Stored row_count (O(1)) gates the sampled path. Above the 50K cap every
   // exact scalar/taxonomy RPC is an O(N) jsonb scan that 57014s at ~1M rows;
-  // below it, exact is fast and stays exact. (Collections don't reach the
-  // scalar ops — the client falls back to raw-row client compute for them —
-  // but Dimensions › Compare DOES send the two tax crosstabs, which fan out
-  // over the members below.)
+  // below it, exact is fast and stays exact. Collections never take the
+  // sampled path — the twins walk a single dataset id — they fan out exact
+  // over the members (see scalarRowsOverMembers / taxRowsOverScope below).
   var rowCount = Number(meta.rowCount) || 0
   var useSampled = rowCount > AGG_SAMPLE_CAP
   var isCollection = meta.source === 'collection'
@@ -109,14 +108,70 @@ export async function runAggregateOp(
     return service.rpc(fn, args)
   }
 
+  // A collection holds no rows of its own, so every scalar RPC keyed on the
+  // collection's id answers zero — Ana's server-side query tools hit exactly
+  // that (owner-hit 2026-09-04: 8 ops, all empty, on a 42K-row collection;
+  // the Charts tab never noticed because it computes client-side over rows
+  // the rows route already fans out). Run the RPC per member and merge in JS
+  // (per-member calls keep idx_drf_id_keyset; an IN() list loses it).
+  async function scalarRowsOverMembers<T>(fn: string, args: Record<string, unknown>): Promise<{ rows: T[] | null; label?: (string | null)[]; error: unknown }> {
+    var members = await resolveScopeMembers(service, datasetId)
+    var out: T[] = []
+    var labels: (string | null)[] = []
+    for (var mm of members) {
+      var r = await scalarRpc(fn, { ...args, p_dataset_id: mm.datasetId })
+      if (r.error) return { rows: null, error: r.error }
+      var rws = (r.data || []) as T[]
+      out = out.concat(rws)
+      rws.forEach(function() { labels.push(mm.label) })
+    }
+    return { rows: out, label: labels, error: null }
+  }
+
+  // Merge per-member numeric stat rows exactly: n sums, min/max extremes,
+  // mean is count-weighted, stddev pools via combined sum-of-squares
+  // (SS_i = (n_i-1)s_i^2, cross term n_i(m_i-M)^2 — exact, not approximate).
+  // The MEDIAN of a union is NOT derivable from per-member medians: keep it
+  // only when a single member holds all the values, else null — never guess.
+  function mergeNumericStats(parts: { n: number; min_val: number | null; max_val: number | null; avg_val: number | null; median_val: number | null; stddev_val: number | null }[]) {
+    var live = parts.filter(function(s) { return Number(s.n) > 0 })
+    if (live.length === 0) return null
+    if (live.length === 1) {
+      var o = live[0]
+      return { n: Number(o.n), min: o.min_val != null ? Number(o.min_val) : null, max: o.max_val != null ? Number(o.max_val) : null, avg: o.avg_val != null ? Number(o.avg_val) : null, median: o.median_val != null ? Number(o.median_val) : null, stddev: o.stddev_val != null ? Number(o.stddev_val) : null }
+    }
+    var N = 0, wsum = 0
+    var mn: number | null = null, mx: number | null = null
+    live.forEach(function(s) {
+      var n = Number(s.n); N += n
+      if (s.avg_val != null) wsum += n * Number(s.avg_val)
+      if (s.min_val != null) mn = mn == null ? Number(s.min_val) : Math.min(mn, Number(s.min_val))
+      if (s.max_val != null) mx = mx == null ? Number(s.max_val) : Math.max(mx, Number(s.max_val))
+    })
+    var M = N > 0 ? wsum / N : null
+    var ss = 0, ssOk = M != null
+    live.forEach(function(s) {
+      var n = Number(s.n)
+      if (s.stddev_val == null || s.avg_val == null || M == null) { ssOk = false; return }
+      var sd = Number(s.stddev_val), m = Number(s.avg_val)
+      ss += (n - 1) * sd * sd + n * (m - M) * (m - M)
+    })
+    return { n: N, min: mn, max: mx, avg: M, median: null, stddev: ssOk && N > 1 ? Math.sqrt(ss / (N - 1)) : null }
+  }
+
   // ── crosstab: row_field × col_field counts ──
   if (op === 'crosstab') {
     var { rowField, colField, limit } = body
     if (!rowField || !colField) return { status: 400, body: { error: 'rowField and colField required' } }
     var xtRows: CrosstabRow[] | null = null
     var xtSampled = false
-    if (useSampled) {
+    if (useSampled && !isCollection) {
       try { var xs = await sampledCrosstabCounts(service, datasetId, rowField, colField, limit || 50, rowCount, filterRowIds); xtRows = xs.rows as CrosstabRow[]; xtSampled = true } catch { /* fall through to exact */ }
+    }
+    if (!xtRows && isCollection) {
+      var xtm = await scalarRowsOverMembers<CrosstabRow>('crosstab_counts', { p_row_field: rowField, p_col_field: colField, p_limit: limit || 50 })
+      if (xtm.error) return dbError(xtm.error, 'datasets.aggregate.crosstab')
+      xtRows = xtm.rows
     }
     if (!xtRows) {
       var xt = await scalarRpc('crosstab_counts', { p_dataset_id: datasetId, p_row_field: rowField, p_col_field: colField, p_limit: limit || 50 })
@@ -128,7 +183,7 @@ export async function runAggregateOp(
     var colSet = new Set<string>()
     ;(xtRows || []).forEach(function(r: CrosstabRow) {
       if (!grid[r.row_val]) grid[r.row_val] = {}
-      grid[r.row_val][r.col_val || '(blank)'] = Number(r.cnt)
+      grid[r.row_val][r.col_val || '(blank)'] = (grid[r.row_val][r.col_val || '(blank)'] || 0) + Number(r.cnt)
       colSet.add(r.col_val || '(blank)')
     })
     return { status: 200, body: { grid: grid, rows: Object.keys(grid), cols: Array.from(colSet), sampled: xtSampled } }
@@ -140,8 +195,39 @@ export async function runAggregateOp(
     if (!groupField || !valueField) return { status: 400, body: { error: 'groupField and valueField required' } }
     var gsRows: GroupStatsRow[] | null = null
     var gsSampled = false
-    if (useSampled) {
+    if (useSampled && !isCollection) {
       try { var gss = await sampledGroupNumericStats(service, datasetId, groupField, valueField, rowCount, filterRowIds); gsRows = gss.rows as unknown as GroupStatsRow[]; gsSampled = true } catch { /* fall through */ }
+    }
+    if (!gsRows && isCollection) {
+      // '_collection_label' ("Source Dataset") is synthetic — never stored on
+      // member rows — so grouping by it in SQL yields nothing. Each member IS
+      // one group: run the single-field stats per member instead.
+      if (groupField === '_collection_label') {
+        var glMembers = await resolveScopeMembers(service, datasetId)
+        var glGroups: Record<string, { n: number; mean: number | null; median: number | null; min: number | null; max: number | null; stddev: number | null }> = {}
+        for (var glm of glMembers) {
+          var gl = await scalarRpc('numeric_field_stats', { p_dataset_id: glm.datasetId, p_field_key: valueField })
+          if (gl.error) return dbError(gl.error, 'datasets.aggregate.groupStats')
+          var glRow = ((gl.data || [])[0] as { n: number; min_val: number | null; max_val: number | null; avg_val: number | null; median_val: number | null; stddev_val: number | null } | undefined)
+          if (glRow && Number(glRow.n) > 0) {
+            glGroups[glm.label || glm.datasetId] = { n: Number(glRow.n), mean: glRow.avg_val != null ? Number(glRow.avg_val) : null, median: glRow.median_val != null ? Number(glRow.median_val) : null, min: glRow.min_val != null ? Number(glRow.min_val) : null, max: glRow.max_val != null ? Number(glRow.max_val) : null, stddev: glRow.stddev_val != null ? Number(glRow.stddev_val) : null }
+          }
+        }
+        return { status: 200, body: { groups: glGroups, sampled: false } }
+      }
+      var gsm = await scalarRowsOverMembers<GroupStatsRow>('group_numeric_stats', { p_group_field: groupField, p_value_field: valueField })
+      if (gsm.error) return dbError(gsm.error, 'datasets.aggregate.groupStats')
+      // Same group value can arrive from several members — merge exactly
+      // (weighted mean, pooled stddev; a cross-member median would be a guess,
+      // so it is null unless one member holds all the group's values).
+      var byGroup: Record<string, GroupStatsRow[]> = {}
+      ;(gsm.rows || []).forEach(function(r) { (byGroup[r.group_val] = byGroup[r.group_val] || []).push(r) })
+      var mgGroups: Record<string, { n: number; mean: number | null; median: number | null; min: number | null; max: number | null; stddev: number | null }> = {}
+      Object.keys(byGroup).forEach(function(gv) {
+        var merged = mergeNumericStats(byGroup[gv])
+        if (merged) mgGroups[gv] = { n: merged.n, mean: merged.avg, median: merged.median, min: merged.min, max: merged.max, stddev: merged.stddev }
+      })
+      return { status: 200, body: { groups: mgGroups, sampled: false, medianNote: Object.keys(byGroup).length ? 'medians spanning multiple member datasets are omitted (not derivable from per-member aggregates)' : undefined } }
     }
     if (!gsRows) {
       var gs = await scalarRpc('group_numeric_stats', { p_dataset_id: datasetId, p_group_field: groupField, p_value_field: valueField })
@@ -161,8 +247,23 @@ export async function runAggregateOp(
     if (!dateField) return { status: 400, body: { error: 'dateField required' } }
     var dsRows: DateSeriesRow[] | null = null
     var dsSampled = false
-    if (useSampled) {
+    if (useSampled && !isCollection) {
       try { var dss = await sampledDateSeriesStats(service, datasetId, dateField, metricField || null, bucket || 'day', rowCount, filterRowIds); dsRows = dss.rows as DateSeriesRow[]; dsSampled = true } catch { /* fall through */ }
+    }
+    if (!dsRows && isCollection) {
+      var dsm = await scalarRowsOverMembers<DateSeriesRow>('date_series_stats', { p_date_field: dateField, p_metric_field: metricField || null, p_bucket: bucket || 'day' })
+      if (dsm.error) return dbError(dsm.error, 'datasets.aggregate.dateSeries')
+      // Same bucket arrives once per member — sum counts, weight averages.
+      var byBucket: Record<string, { n: number; wsum: number; hasAvg: boolean }> = {}
+      ;(dsm.rows || []).forEach(function(r) {
+        var b = byBucket[r.bucket_date] = byBucket[r.bucket_date] || { n: 0, wsum: 0, hasAvg: false }
+        b.n += Number(r.n)
+        if (r.avg_val != null) { b.wsum += Number(r.n) * Number(r.avg_val); b.hasAvg = true }
+      })
+      dsRows = Object.keys(byBucket).sort().map(function(d) {
+        var b = byBucket[d]
+        return { bucket_date: d, n: b.n, avg_val: b.hasAvg && b.n > 0 ? b.wsum / b.n : null }
+      })
     }
     if (!dsRows) {
       var ds = await scalarRpc('date_series_stats', { p_dataset_id: datasetId, p_date_field: dateField, p_metric_field: metricField || null, p_bucket: bucket || 'day' })
@@ -184,8 +285,13 @@ export async function runAggregateOp(
     if (!field) return { status: 400, body: { error: 'field required' } }
     var fcRows: FieldCountRow[] | null = null
     var fcSampled = false
-    if (useSampled) {
+    if (useSampled && !isCollection) {
       try { var fcs = await sampledCountFieldValues(service, datasetId, field, limit || 200, rowCount, filterRowIds); fcRows = fcs.rows as FieldCountRow[]; fcSampled = true } catch { /* fall through */ }
+    }
+    if (!fcRows && isCollection) {
+      var fcm = await scalarRowsOverMembers<FieldCountRow>('count_field_values', { p_field_key: field, p_limit: limit || 200 })
+      if (fcm.error) return dbError(fcm.error, 'datasets.aggregate.fieldCounts')
+      fcRows = fcm.rows
     }
     if (!fcRows) {
       var fc = await scalarRpc('count_field_values', { p_dataset_id: datasetId, p_field_key: field, p_limit: limit || 200 })
@@ -193,7 +299,7 @@ export async function runAggregateOp(
       fcRows = (fc.data || []) as FieldCountRow[]
     }
     var counts: Record<string, number> = {}
-    ;(fcRows || []).forEach(function(r: FieldCountRow) { counts[r.value] = Number(r.count) })
+    ;(fcRows || []).forEach(function(r: FieldCountRow) { counts[r.value] = (counts[r.value] || 0) + Number(r.count) })
     return { status: 200, body: { counts: counts, sampled: fcSampled } }
   }
 
@@ -203,8 +309,15 @@ export async function runAggregateOp(
     if (!field) return { status: 400, body: { error: 'field required' } }
     var nsRow: { n: number; min_val: number | null; max_val: number | null; avg_val: number | null; median_val: number | null; stddev_val: number | null } | null = null
     var nsSampled = false
-    if (useSampled) {
+    if (useSampled && !isCollection) {
       try { var nss = await sampledNumericFieldStats(service, datasetId, field, rowCount, filterRowIds); nsRow = nss.rows; nsSampled = true } catch { /* fall through */ }
+    }
+    if (!nsSampled && isCollection) {
+      var nsm = await scalarRowsOverMembers<NonNullable<typeof nsRow>>('numeric_field_stats', { p_field_key: field })
+      if (nsm.error) return dbError(nsm.error, 'datasets.aggregate.numericStats')
+      var nsMerged = mergeNumericStats(nsm.rows || [])
+      if (!nsMerged) return { status: 200, body: { n: 0, min: null, max: null, avg: null, median: null, stddev: null, sampled: false } }
+      return { status: 200, body: { ...nsMerged, sampled: false, medianNote: nsMerged.median == null ? 'median omitted — the values span multiple member datasets and a union median is not derivable from per-member aggregates' : undefined } }
     }
     if (!nsSampled) {
       var ns = await scalarRpc('numeric_field_stats', { p_dataset_id: datasetId, p_field_key: field })
@@ -255,7 +368,7 @@ export async function runAggregateOp(
   // is never stored on a member's rows, so grouping by it in SQL yields one
   // (blank) bucket. Each fan-out call already IS one member, so the label is
   // stamped onto its rows here instead.
-  async function taxRowsOverScope<T extends { field_val?: string | null }>(fn: string, args: Record<string, unknown>) {
+  async function taxRowsOverScope<T extends object>(fn: string, args: Record<string, unknown>) {
     var members = isCollection
       ? await resolveScopeMembers(service, datasetId)
       : [{ datasetId: datasetId, label: null }]
@@ -266,7 +379,7 @@ export async function runAggregateOp(
       if (r.error) return { rows: null, error: r.error }
       var rows = (r.data || []) as T[]
       var lbl = m.label
-      if (labelByMember) rows = rows.map(row => ({ ...row, field_val: lbl }))
+      if (labelByMember) rows = rows.map(row => ({ ...row, field_val: lbl } as T))
       out = out.concat(rows)
     }
     return { rows: out, error: null }
@@ -277,16 +390,16 @@ export async function runAggregateOp(
     if (!axis || !TAX_AXES.includes(axis)) return { status: 400, body: { error: 'invalid axis' } }
     var tcRows: FieldCountRow[] | null = null
     var tcSampled = false
-    if (useSampled) {
+    if (useSampled && !isCollection) {
       try { var tcs = await sampledTaxonomySubCounts(service, datasetId, axis, taxFieldKey, rowCount, taxRowIds); tcRows = tcs.rows as FieldCountRow[]; tcSampled = true } catch { /* fall through to exact */ }
     }
     if (!tcRows) {
-      var { data, error } = await taxRpc('taxonomy_sub_counts', { p_dataset_id: datasetId, p_axis: axis, p_row_ids: taxRowIds })
-      if (error) return dbError(error, 'datasets.aggregate.taxCounts')
-      tcRows = (data || []) as FieldCountRow[]
+      var tcResp = await taxRowsOverScope<FieldCountRow>('taxonomy_sub_counts', { p_axis: axis, p_row_ids: taxRowIds })
+      if (tcResp.error) return dbError(tcResp.error, 'datasets.aggregate.taxCounts')
+      tcRows = tcResp.rows
     }
     var counts2: Record<string, number> = {}
-    ;(tcRows || []).forEach(function(r: FieldCountRow) { counts2[r.value] = Number(r.count) })
+    ;(tcRows || []).forEach(function(r: FieldCountRow) { counts2[r.value] = (counts2[r.value] || 0) + Number(r.count) })
     return { status: 200, body: { counts: counts2, sampled: tcSampled } }
   }
 
@@ -296,8 +409,27 @@ export async function runAggregateOp(
     if (!valueField) return { status: 400, body: { error: 'valueField required' } }
     var tgRows: TaxGroupStatsRow[] | null = null
     var tgSampled = false
-    if (useSampled) {
+    if (useSampled && !isCollection) {
       try { var tgs = await sampledTaxonomyGroupStats(service, datasetId, axis, valueField, taxFieldKey, rowCount, taxRowIds); tgRows = tgs.rows as unknown as TaxGroupStatsRow[]; tgSampled = true } catch { /* fall through */ }
+    }
+    if (!tgRows && isCollection) {
+      var tgResp = await taxRowsOverScope<TaxGroupStatsRow>('taxonomy_group_stats', { p_axis: axis, p_value_field: valueField, p_row_ids: taxRowIds })
+      if (tgResp.error) return dbError(tgResp.error, 'datasets.aggregate.taxGroupStats')
+      // Same sub can arrive from several members — merge exactly (weighted
+      // mean, pooled stddev); union medians/quartiles are not derivable from
+      // per-member aggregates, so they are null unless one member holds all.
+      var tgByGroup: Record<string, TaxGroupStatsRow[]> = {}
+      ;(tgResp.rows || []).forEach(function(r) { (tgByGroup[r.group_val] = tgByGroup[r.group_val] || []).push(r) })
+      var tgMerged: Record<string, { n: number; mean: number | null; median: number | null; min: number | null; max: number | null; stddev: number | null; q1: number | null; q3: number | null }> = {}
+      Object.keys(tgByGroup).forEach(function(gv) {
+        var parts = tgByGroup[gv]
+        var mg = mergeNumericStats(parts)
+        if (!mg) return
+        var solo = parts.filter(function(s) { return Number(s.n) > 0 })
+        var soloRow = solo.length === 1 ? solo[0] : null
+        tgMerged[gv] = { n: mg.n, mean: mg.avg, median: mg.median, min: mg.min, max: mg.max, stddev: mg.stddev, q1: soloRow && soloRow.q1_val != null ? Number(soloRow.q1_val) : null, q3: soloRow && soloRow.q3_val != null ? Number(soloRow.q3_val) : null }
+      })
+      return { status: 200, body: { groups: tgMerged, sampled: false } }
     }
     if (!tgRows) {
       var { data, error } = await taxRpc('taxonomy_group_stats', { p_dataset_id: datasetId, p_axis: axis, p_value_field: valueField, p_row_ids: taxRowIds })
@@ -317,8 +449,24 @@ export async function runAggregateOp(
     if (!dateField) return { status: 400, body: { error: 'dateField required' } }
     var tdRows: TaxDateSeriesRow[] | null = null
     var tdSampled = false
-    if (useSampled) {
+    if (useSampled && !isCollection) {
       try { var tds = await sampledTaxonomyDateSeries(service, datasetId, axis, dateField, metricField || null, bucket || 'day', taxFieldKey, rowCount, taxRowIds); tdRows = tds.rows as TaxDateSeriesRow[]; tdSampled = true } catch { /* fall through */ }
+    }
+    if (!tdRows && isCollection) {
+      var tdResp = await taxRowsOverScope<TaxDateSeriesRow>('taxonomy_date_series', { p_axis: axis, p_date_field: dateField, p_metric_field: metricField || null, p_bucket: bucket || 'day', p_row_ids: taxRowIds })
+      if (tdResp.error) return dbError(tdResp.error, 'datasets.aggregate.taxDateSeries')
+      // Same (sub, bucket) arrives once per member — sum counts, weight avgs.
+      var tdByKey: Record<string, { sub: string; date: string; n: number; wsum: number; hasAvg: boolean }> = {}
+      ;(tdResp.rows || []).forEach(function(r) {
+        var k = r.sub_val + '\u0001' + r.bucket_date
+        var b = tdByKey[k] = tdByKey[k] || { sub: r.sub_val, date: r.bucket_date, n: 0, wsum: 0, hasAvg: false }
+        b.n += Number(r.n)
+        if (r.avg_val != null) { b.wsum += Number(r.n) * Number(r.avg_val); b.hasAvg = true }
+      })
+      tdRows = Object.keys(tdByKey).sort().map(function(k) {
+        var b = tdByKey[k]
+        return { sub_val: b.sub, bucket_date: b.date, n: b.n, avg_val: b.hasAvg && b.n > 0 ? b.wsum / b.n : null }
+      })
     }
     if (!tdRows) {
       var { data, error } = await taxRpc('taxonomy_date_series', { p_dataset_id: datasetId, p_axis: axis, p_date_field: dateField, p_metric_field: metricField || null, p_bucket: bucket || 'day', p_row_ids: taxRowIds })

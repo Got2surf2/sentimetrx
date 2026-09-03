@@ -2497,6 +2497,31 @@ rules, all verified in-browser on TEST:
   offsets its launcher and chat window `right` by that width. Any future
   fixed bottom-right chrome should subscribe the same way.
 
+**Aggregate ops fan out over collection members (2026-09-04, owner-hit).**
+A collection holds no rows under its own dataset id, and `runAggregateOp`'s
+scalar and taxonomy ops queried that id directly — so every one of Ana's
+`query_data` calls on a collection answered zero (owner saw 8 ops, all
+empty, on the 42K-row Darden Fine Brands collection; the Charts tab never
+noticed because it computes client-side over rows the rows route already
+fans out). Now `field_counts`, `date_series`, `numeric_stats`,
+`group_stats`, `crosstab`, `tax_counts`, `tax_group_stats`, and
+`tax_date_series` all run per member and merge in JS (per-member `.eq`
+keeps `idx_drf_id_keyset`; counts sum, means are count-weighted, stddevs
+pool via combined sum-of-squares — exact, not approximate). **A union
+median is NOT derivable from per-member medians**: it survives only when a
+single member holds all the values, else it is null with a `medianNote`
+saying why — never a guess. `group_stats` on `_collection_label` (the
+synthetic "Source Dataset" field that is never stored on rows) answers one
+group per member from that member's own stats. Collections never use the
+sampled twins (single-dataset walkers) — they fan out exact regardless of
+size. Ana's `where` subgroup resolution (`resolveWhereRowIds`) takes the
+member ids as `scope` and walks them for value discovery, containment
+scans, and range walks (flat row ids are globally unique, so merged id
+sets stay valid; the range-only walk shares one SCAN_CAP budget across
+members). Verified against TEST on the exact owner-reported collection:
+all ops answer and Σ per-member n reconciles to 42,224
+(`scripts/_verify_collection_agg.ts`, untracked KEEP).
+
 **Ana works the CURRENT VIEW (2026-09-02, owner-hit).** Ana answered from the
 default verbatim column while the analyst had another selected, and leaned on
 the 200-row sample for synthesis. Three changes:

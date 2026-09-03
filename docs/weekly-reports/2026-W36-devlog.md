@@ -886,3 +886,14 @@ behavior (centerpiece fact, 7s delay, 8s rotation, pool shared with Ask Ana).
 **The global TopNav was overlaid.** Panel was `top: 0`, covering the nav's right half (Town Hall → Sign out unreachable). Now `top: 56` (TopNav's h-14), so the product nav stays clickable with Ana open.
 
 Floating-window option considered and not taken — a docked panel that everything else adapts to beats drag/overlap/z-order management; revisit only if the owner wants side-by-side with another module. Verified in-browser on TEST (EA Football, panel open: header 1050px, labels c5–c9 collapse to icons, Sherpa visible beside the panel); tsc clean. Dev-server contention from a parallel session (2.5-min row pulls, loadavg 280) made the run slow but didn't change outcomes.
+
+## 2026-09-04 — Ana on collections: every query answered zero, because the queries were right and the id was wrong
+**Why:** owner asked Ana "what happened versus last month and versus last year" on Darden Fine Brands (a 42,224-row collection) and got an honest but useless "all ops returned zero rows" after 8 sequential attempts — which is also why it was slow: each empty result cost an LLM round-trip before Ana tried the next tool.
+
+**Root cause:** a collection holds no rows under its own dataset id. `runAggregateOp`'s scalar + taxonomy ops (`field_counts`, `date_series`, `numeric_stats`, `group_stats`, `crosstab`, `tax_counts`, `tax_group_stats`, `tax_date_series`) queried the collection's id directly. The Charts tab dodged it (client-side compute over fan-out-fetched rows) and two ops (`tax_crosstab`/`tax_axis_crosstab`) already fanned out — Ana's server-side `query_data` hit all the rest.
+
+**Fix:** per-member fan-out + exact JS merges (counts sum, means count-weighted, stddevs pooled via combined sum-of-squares; per-member `.eq` keeps the keyset index). Union medians are NOT derivable from per-member medians — kept only when a single member holds all values, else null + `medianNote`, never a guess. `group_stats` on `_collection_label` answers one group per member. Collections skip the single-dataset sampled twins entirely. **Class swept:** `resolveWhereRowIds` (Ana's `where` subgroups) had the same bug — it now takes the member scope and walks it for value discovery, containment scans, and range walks under one shared SCAN_CAP budget.
+
+**Verified:** 12 new unit tests (pooled-stddev case checked against the hand-computed union: [0,2]+[2,4] → sd √(8/3)) + a live harness against TEST on the exact owner-reported collection — all 7 checks pass, Capital Grille 14,990 + Ruths Chris 27,234 = 42,224 reconciles across ops. Full suite 2,160 green.
+
+**Also (same session):** the panel's expand toggle was an unlabeled ⤢ glyph — now a labeled "⤢ Expand"/"⤣ Shrink" pill styled like its Memory/Sampling neighbors (browser-verified both states), and the panel title no longer wraps under the wider button row.

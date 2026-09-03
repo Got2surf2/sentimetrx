@@ -37,6 +37,8 @@ export interface AnaQueryContext {
   /** Per-request memo of Ana-composed `where` resolutions (same object rides
    *  every tool call in a turn, so repeated subgroup queries resolve once). */
   _whereCache?: Record<string, { ids: number[]; sampled: boolean; label: string; mappings: { requested: string; matched: string[] }[] }>
+  /** collection member dataset ids, resolved once per turn for `where` scans */
+  _memberScope?: string[]
 }
 
 // ── Tool definitions (Anthropic schema) ────────────────────────────────────
@@ -245,7 +247,12 @@ export async function executeAnaQueryTool(
     var cache = (ctx._whereCache = ctx._whereCache || {})
     var resolved = cache[cacheKey]
     if (!resolved) {
-      var res = await resolveWhereRowIds(service, { datasetId: ctx.datasetId, rowCount: ctx.rowCount, where: validated })
+      // A collection holds no rows under its own id — hand the member ids to
+      // the segment resolver so its scans walk them (memoized per turn).
+      if (ctx.source === 'collection' && !ctx._memberScope) {
+        ctx._memberScope = (await resolveScopeMembers(service, ctx.datasetId)).map(function(m) { return m.datasetId })
+      }
+      var res = await resolveWhereRowIds(service, { datasetId: ctx.datasetId, rowCount: ctx.rowCount, where: validated, scope: ctx._memberScope || undefined })
       if ('error' in res) return { error: res.error, hint: 'Run field_counts on the demographic field first and use its EXACT values in where.' }
       cache[cacheKey] = resolved = res
     }

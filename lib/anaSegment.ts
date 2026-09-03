@@ -135,24 +135,26 @@ type Service = {
   }
 }
 
-async function idsForCatValue(service: Service, datasetId: string, field: string, value: string): Promise<Set<number> | { error: string }> {
+async function idsForCatValue(service: Service, scope: string[], field: string, value: string): Promise<Set<number> | { error: string }> {
   const out = new Set<number>()
   // Values arrive as text (field_counts reports them that way) but may be
   // STORED as numbers — containment is type-exact, so try both shapes.
   const shapes: unknown[] = [value]
   const asNum = Number(value)
   if (value.trim() !== '' && !isNaN(asNum)) shapes.push(asNum)
-  for (const shape of shapes) {
-    for (let from = 0; from < 200_000; from += 1000) {
-      const { data, error } = await service.from('dataset_rows_flat')
-        .select('id')
-        .eq('dataset_id', datasetId)
-        .contains('data', { [field]: shape })
-        .order('id', { ascending: true })
-        .range(from, from + 999)
-      if (error) return { error: 'segment scan failed on "' + field + '": ' + error.message }
-      for (const r of data || []) out.add(r.id)
-      if (!data || data.length < 1000) break
+  for (const dsId of scope) {
+    for (const shape of shapes) {
+      for (let from = 0; from < 200_000; from += 1000) {
+        const { data, error } = await service.from('dataset_rows_flat')
+          .select('id')
+          .eq('dataset_id', dsId)
+          .contains('data', { [field]: shape })
+          .order('id', { ascending: true })
+          .range(from, from + 999)
+        if (error) return { error: 'segment scan failed on "' + field + '": ' + error.message }
+        for (const r of data || []) out.add(r.id)
+        if (!data || data.length < 1000) break
+      }
     }
   }
   return out
@@ -160,9 +162,13 @@ async function idsForCatValue(service: Service, datasetId: string, field: string
 
 export async function resolveWhereRowIds(
   service: unknown,
-  opts: { datasetId: string; rowCount: number; where: WhereCondition[] },
+  opts: { datasetId: string; rowCount: number; where: WhereCondition[]; scope?: string[] },
 ): Promise<WhereResolution | { error: string }> {
   const svc = service as Service
+  // A collection holds no rows under its own id — the caller passes the
+  // member dataset ids as `scope` and every row-level query below walks them
+  // (flat row ids are globally unique, so the merged id sets stay valid).
+  const scope = opts.scope?.length ? opts.scope : [opts.datasetId]
   const catConds = opts.where.filter(w => w.values?.length)
   const rangeConds = opts.where.filter(w => !w.values?.length && (w.min != null || w.max != null))
   const mappings: { requested: string; matched: string[] }[] = []
@@ -174,11 +180,18 @@ export async function resolveWhereRowIds(
     // case/whitespace-insensitive, partial labels match compound values. A
     // value with no lexical match fails WITH the stored values listed, so Ana
     // can bridge synonyms (African American ≈ Black) and retry immediately.
-    const { data: fc, error: fcErr } = await svc.rpc('count_field_values', {
-      p_dataset_id: opts.datasetId, p_field_key: cond.field, p_limit: 500,
-    })
-    if (fcErr) return { error: 'could not read values of "' + cond.field + '": ' + fcErr.message }
-    const stored = (fc || []).map(r => String(r.value))
+    const storedCounts = new Map<string, number>()
+    for (const dsId of scope) {
+      const { data: fc, error: fcErr } = await svc.rpc('count_field_values', {
+        p_dataset_id: dsId, p_field_key: cond.field, p_limit: 500,
+      })
+      if (fcErr) return { error: 'could not read values of "' + cond.field + '": ' + fcErr.message }
+      for (const r of fc || []) {
+        const v = String(r.value)
+        storedCounts.set(v, (storedCounts.get(v) || 0) + Number(r.count))
+      }
+    }
+    const stored = [...storedCounts.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0])
     const resolvedValues = new Set<string>()
     for (const v of cond.values!) {
       const hits = matchStoredValues(String(v), stored)
@@ -198,7 +211,7 @@ export async function resolveWhereRowIds(
 
     const condSet = new Set<number>()
     for (const v of resolvedValues) {
-      const r = await idsForCatValue(svc, opts.datasetId, cond.field, v)
+      const r = await idsForCatValue(svc, scope, cond.field, v)
       if ('error' in r) return r
       r.forEach(id => condSet.add(id))
     }
@@ -233,29 +246,38 @@ export async function resolveWhereRowIds(
     const all = [...ids]
     for (let i = 0; i < all.length; i += 500) {
       const chunk = all.slice(i, i + 500)
-      const { data, error } = await svc.from('dataset_rows_flat')
-        .select('id, data')
-        .eq('dataset_id', opts.datasetId)
-        .in('id', chunk)
-      if (error) return { error: 'segment range scan failed: ' + error.message }
-      for (const r of data || []) {
-        if (applyFilters([r.data], rangeFilters).length) matched.push(r.id)
+      for (const dsId of scope) {
+        const { data, error } = await svc.from('dataset_rows_flat')
+          .select('id, data')
+          .eq('dataset_id', dsId)
+          .in('id', chunk)
+        if (error) return { error: 'segment range scan failed: ' + error.message }
+        for (const r of data || []) {
+          if (applyFilters([r.data], rangeFilters).length) matched.push(r.id)
+        }
       }
     }
   } else {
-    // Range-only: walk the dataset up to the app's analysis cap.
+    // Range-only: walk the scope up to the app's analysis cap (the cap is a
+    // shared budget across members, so a many-member collection still stops
+    // at SCAN_CAP rows scanned in total).
     sampled = opts.rowCount > SCAN_CAP
-    for (let from = 0; from < SCAN_CAP; from += 1000) {
-      const { data, error } = await svc.from('dataset_rows_flat')
-        .select('id, data')
-        .eq('dataset_id', opts.datasetId)
-        .order('id', { ascending: true })
-        .range(from, from + 999)
-      if (error) return { error: 'segment range scan failed: ' + error.message }
-      for (const r of (data || []) as { id: number; data: Record<string, unknown> }[]) {
-        if (applyFilters([r.data], rangeFilters).length) matched.push(r.id)
+    let scanned = 0
+    for (const dsId of scope) {
+      if (scanned >= SCAN_CAP) break
+      for (let from = 0; scanned < SCAN_CAP; from += 1000) {
+        const { data, error } = await svc.from('dataset_rows_flat')
+          .select('id, data')
+          .eq('dataset_id', dsId)
+          .order('id', { ascending: true })
+          .range(from, from + 999)
+        if (error) return { error: 'segment range scan failed: ' + error.message }
+        for (const r of (data || []) as { id: number; data: Record<string, unknown> }[]) {
+          if (applyFilters([r.data], rangeFilters).length) matched.push(r.id)
+        }
+        if (!data || data.length < 1000) { scanned += (data || []).length; break }
+        scanned += data.length
       }
-      if (!data || data.length < 1000) break
     }
   }
 

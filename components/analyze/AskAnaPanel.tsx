@@ -868,7 +868,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
           fontSize: 15, fontWeight: 900, color: 'white',
         }}>A</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: 'white', letterSpacing: '-.2px' }}>Ask Ana</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: 'white', letterSpacing: '-.2px', whiteSpace: 'nowrap' }}>Ask Ana</div>
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,.7)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {samplingConfig.configured && totalRows > SAMPLING_THRESHOLD
               ? 'Analyzing ' + samplingConfig.sampleSize.toLocaleString() + ' of ' + totalRows.toLocaleString() + ' rows'
@@ -877,13 +877,13 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
           </div>
         </div>
         <button onClick={function() { setExpanded(!expanded) }}
-          title={expanded ? 'Collapse' : 'Expand for reading'}
+          title={expanded ? 'Back to the narrow docked panel' : 'Widen the panel for reading'}
           style={{
-            fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.85)', background: 'rgba(255,255,255,.15)',
+            fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,.8)', background: expanded ? 'rgba(255,255,255,.3)' : 'rgba(255,255,255,.15)',
             border: '1px solid rgba(255,255,255,.25)', borderRadius: 6, padding: '3px 8px',
-            cursor: 'pointer', lineHeight: 1,
+            cursor: 'pointer', whiteSpace: 'nowrap',
           }}>
-          {expanded ? '\u2924' : '\u2922'}
+          {expanded ? '\u2924 Shrink' : '\u2922 Expand'}
         </button>
         <button onClick={function() { if (view !== 'memory') void refreshMemories(); setView(view === 'memory' ? 'chat' : 'memory') }}
           style={{
