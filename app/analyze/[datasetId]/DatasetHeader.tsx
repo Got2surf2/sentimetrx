@@ -15,6 +15,7 @@ import ShareAnalyticsModal from '@/components/analyze/ShareAnalyticsModal'
 import SearchPanel from '@/components/analyze/textmine/SearchPanel'
 import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
 import ReportsMenu from '@/components/analyze/ReportsMenu'
+import { FUN_FACTS } from '@/lib/funFacts'
 import { downloadFile } from '@/lib/browserDownload'
 import AdHocReportModal from '@/components/analyze/AdHocReportModal'
 import { availableReports, type ReportContext, type ReportType, type ReportFormat } from '@/lib/reportCatalog'
@@ -130,33 +131,13 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
         // a bare about:blank reads as "it broke" (owner, 2026-09-02).
         try {
           // Rotating fun facts (owner, 2026-09-02: real fun facts in the
-          // sciencefocus.com spirit, random, every 15s). Each is written in
-          // OUR OWN words (facts are free; a publisher's wording and curated
-          // list are not) and only well-documented facts made the cut — no
-          // popular myths, per the no-fabricated-content rule.
-          var facts = [
-            'Honey found in ancient Egyptian tombs, thousands of years old, was still perfectly edible.',
-            'An octopus has three hearts — and blue blood.',
-            'A day on Venus lasts longer than its year: it spins slower than it orbits the Sun.',
-            'Botanically, a banana is a berry. A strawberry is not.',
-            'A bolt of lightning is roughly five times hotter than the surface of the Sun.',
-            'Sharks are older than trees — they were swimming the oceans tens of millions of years before the first forests grew.',
-            'The Eiffel Tower grows about 15 centimetres taller in summer as its iron expands in the heat.',
-            'Wombats are the only animal known to produce cube-shaped droppings.',
-            'There are more possible games of chess than atoms in the observable universe.',
-            'A single teaspoon of neutron-star material would weigh billions of tonnes.',
-            'Humans share roughly half their DNA with bananas.',
-            'Tardigrades — microscopic “water bears” — have survived direct exposure to the vacuum of space.',
-            'The Atlantic Ocean gets a few centimetres wider every year.',
-            'The national animal of Scotland is the unicorn.',
-            'A sloth can hold its breath longer than a dolphin can.',
-            'A Venus flytrap counts: it only snaps shut after two touches, to avoid wasting energy on false alarms.',
-            'The Moon is drifting away from Earth at about 3.8 centimetres per year.',
-            'Cleopatra lived closer in time to the Moon landing than to the building of the Great Pyramid.',
-          ]
-          // Random order, no immediate repeats.
-          var fi = Math.floor(Math.random() * facts.length)
-          facts = facts.slice(fi).concat(facts.slice(0, fi))
+          // sciencefocus.com spirit, random, every 15s). Pool lives in
+          // lib/funFacts (~130 well-documented facts in our own words); a
+          // random 40-fact slice keeps the written document small.
+          var facts: string[] = []
+          for (var pool = FUN_FACTS.slice(), fi = 0; fi < 40 && pool.length; fi++) {
+            facts.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0])
+          }
           storyTab.document.write(
             '<meta charset="utf-8"><title>Building your Data Story…</title>' +
             '<body style="margin:0;display:grid;place-items:center;height:100vh;font-family:system-ui;background:#FCFCFB;color:#1A2421">' +

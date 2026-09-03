@@ -745,3 +745,11 @@ well-documented ones included (no goldfish-memory-tier myths). Random order,
 
 ## 2026-09-02 — Data Story: benchmark-grade upgrade (taken over from the story session)
 **Why:** Owner benchmarked the generated story against a bespoke interactive piece (ea-football-explorer.html) and said "take it over". The generator now argues instead of inventorying: AI thesis H1 + findings-led section heads (deterministic numbered fallbacks always exist), and three new deterministic analytics — theme-share/rating timeline (week/month/quarter), numeric-band quartile cross-cut (quartiles from rows, not the stored analytics percentiles — those were degenerate on ea_football), segment drift — plus a % recommended score derivation for recommend-style datasets and an embedded 360-excerpt verbatim explorer with vanilla-JS filters. All figures stay engine-computed; AI writes prose only. Browser-verified on TEST (ea_football, 3 generations): launch-window troughs visible in the timeline, low-hours band 19pts below, explorer filters live. 19 unit tests.
+
+**Revision 2 (owner: "there were 151 on that site — use as many as you can")**:
+the pool moves to `lib/funFacts.ts` — **138 facts**, each written in our own
+words (a publisher's exact wording/curated list is copyright even when the
+facts are free, so nothing was transcribed) and each well-documented (famous
+myths excluded by test). The building screen samples a random 40 per build and
+rotates every 15s. `tests/unit/funFacts.test.ts` guards size ≥100, uniqueness,
+one-liner shape, no markup, and the myth exclusions.
