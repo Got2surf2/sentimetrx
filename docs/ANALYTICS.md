@@ -1977,9 +1977,12 @@ and one link can be revoked from a future Share-tab surface without touching
 storage. When the insert fails (a DB that has not run sql/198), the route
 falls back to the long signed-token `/api/story` link — deploy-order safe.
 The header opens the story in
-a new tab (painted with a building screen that rotates “Did you know?” fun
-facts — a random 40 of the 138 in `lib/funFacts.ts`, every 15s; all
-well-documented, all in our own words while the ~30–90s build runs) and
+a new tab (painted with a building screen whose centerpiece is a rotating
+“Did you know?” fun fact — large type, dead center; a random 40 of the ~138
+in `lib/funFacts.ts`, first fact only after 7s so a fast build never flashes
+trivia, then a new one every 8s (reading-speed grounded: ~238wpm non-fiction,
+160–180wpm subtitle standards, NN/g ~5–7s/frame) — the SAME pool and rhythm
+as Ask Ana's wait-state; all well-documented, all in our own words while the ~30–90s build runs) and
 copies the link. The h1 de-stutters a doubled trailing word in the dataset
 name and adapts its suffix (“what the reviews say” when a trailing
 “Reviews” was stripped, else “what the text says”); the layout is a

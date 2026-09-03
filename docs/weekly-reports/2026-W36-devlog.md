@@ -781,3 +781,9 @@ rotating text. 8s = one relaxed read + a beat; 7s first-fact delay unchanged.
 
 ## 2026-09-03 — American English output-side backstop + muted story tone (owner)
 **Why:** Owner found "penalised" in the EA story's AI prose — the prompt rule asks, it doesn't guarantee ("not just prompts"). New lib/americanize.ts: explicit-pair British→American converter (no suffix heuristics — franchise/hour/tour class stays safe), applied to the story narrative at render; verbatim quotes and explorer excerpts pass through untouched (test-pinned). Same pass: story headline register muted to consultant-memo tone (owner: "not like a Fox News headline") in narrativePrompt.
+
+**Spec sync (owner: "update spec and devlog and memory")**: FEATURES.md Data
+Story entry brought current (findings-led sections incl. timeline/bands/
+explorer, sql/198 short links with editable lifecycle, the building screen)
+and ANALYTICS.md's building-screen paragraph corrected to the shipped
+behavior (centerpiece fact, 7s delay, 8s rotation, pool shared with Ask Ana).

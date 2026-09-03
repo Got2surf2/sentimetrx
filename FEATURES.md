@@ -297,7 +297,9 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 
 ### Data Story (2026-09-02)
 
-- **Shareable narrative web page** from the Reports picker: one click builds a self-contained, Datanautix-branded story page from the mined theme model — theme prevalence, avg-rating-by-theme (when a rating field exists), per-segment profiles, and premise-verified verbatims — hosted on the platform (`report-exports` bucket) behind a **no-login share link that expires in 7 days and is revocable** (delete the object). Served via `GET /api/story/[...path]` on our domain (Supabase's storage host refuses to render HTML). AI writes the narrative prose only; every figure is the engine's own recount.
+- **Shareable narrative web page** from the Reports picker: one click builds a self-contained, Datanautix-branded story page from the mined theme model — findings-led sections (theme prevalence, what-moves-the-score when a rating exists, per-segment profiles, theme-over-time timeline, rating-band cross-cuts, a reader-driven verbatim explorer) with premise-verified quotes — hosted on the platform (`report-exports` bucket). AI writes the narrative prose only; every figure is the engine's own recount.
+- **Short share links (sql/198)**: generation mints `sentimetrx.ai/story/<slug>` — crypto-random slug is the capability, `expires_at` is editable after sending (7-day default), `revoked_at` kills one link from data without touching storage; the public `/story/[slug]` viewer checks both per request (the long signed-token `/api/story/...` link remains as the pre-migration fallback and for old links).
+- **Building screen**: a compact status strip plus a centerpiece "Did you know?" fun fact (shared `lib/funFacts.ts` pool with Ask Ana's wait-state — first fact after 7s, new fact every 8s).
 
 ### Statistics Module (Regression)
 - OLS linear regression (multi-outcome) and binary logistic regression (categorical/ordinal/theme predictors, VIF pruning, separation guard) — `docs/ANALYTICS.md`
