@@ -1915,7 +1915,48 @@ numbers TextMine shows; a rating field (name heuristic) adds a
 (≥60% coverage, ≥30 substantive rows per segment) adds a per-segment profile;
 quotes are sentence-level, keyword-anchored, and MUST pass `verbatimSupports`
 for the theme's sentiment (the verbatim-premise rule) — neutral themes get no
-quote. The AI writes narrative PROSE only (facts passed in, instructed to use
+quote.
+
+**Benchmark upgrade (2026-09-02 later, owner: match the bespoke
+ea-football-explorer piece).** The story now ARGUES instead of inventorying —
+findings-led throughout, plus three new deterministic analytics and reader
+interactivity, all computed in code (the AI still writes prose only, and every
+head has a deterministic numbered fallback in `deterministicNarrative`):
+- **Thesis H1** — the AI writes a ≤90-char argument headline over the payload
+  facts (deterministic fallback: `storyTitle`); the old title becomes an
+  uppercase kicker. Every section H2 is a FINDING with its number in the
+  sentence ("…hits 42% of College Football 27 reviews, against 22% in the
+  Maddens"), never a category label.
+- **Timeline** (`pickDateField` — typed date, else date-named + ≥70% parseable;
+  `buildTimeline`) — buckets by week/month/quarter on span, drops buckets
+  <20 rows, needs ≥4; per bucket: volume, avg rating, and share of the top ≤3
+  non-neutral themes within that bucket's own substantive base. Findings:
+  first-third→last-third rating move and the biggest theme-share shift. Two
+  ONE-AXIS figures (rating line; theme-share lines with direct labels) — never
+  a dual axis.
+- **Numeric bands** (`pickBandField` + `buildBands`) — the benchmark's playtime
+  move: a continuous behavior numeric (not the rating) split into quartiles
+  **computed from the rows, not the stored analytics percentiles** (those can
+  be degenerate — ea_football's snapshot had p25=median=p75); per band: n, avg
+  rating, top complaint share. Finding: lowest-rated band, or (no rating) the
+  widest complaint-share spread via `bandThemeSpread`.
+- **Segment drift** (`computeDrift`) — the theme whose share varies most
+  (≥5pp) across segments becomes the section's headline.
+- **Derived score** (`deriveScoreField`) — when no numeric rating exists, a
+  two-value recommend-style categorical (strict gate: recommend-ish name AND
+  boolean-ish values, ≤5% stragglers) maps to 0/100 so every rating surface
+  reads as **% recommended** (Steam-style); quote/explorer star meta is
+  suppressed for derived scores.
+- **Verbatim explorer** ("Read the responses yourselves") — up to 360
+  evenly-sampled substantive excerpts (≤300 chars) embedded as JSON
+  (`</`-escaped), tagged with matched themes / segment / rating / period;
+  vanilla-JS filters (theme, segment, rating low/high, text search) render the
+  first 60 matches with a count line. Labeled raw browsing, NOT curated
+  evidence — the curated quotes keep the verbatim guard.
+Verified in-browser on TEST against ea_football_reviews (12,174 rows): thesis
+H1, all five finding heads, % recommended derivation (49.49 overall), monthly
+timeline with launch-window troughs, hours_played quartiles (37.34 low band vs
+56.49), live explorer filtering. Narrative budget 700→1200 tokens. The AI writes narrative PROSE only (facts passed in, instructed to use
 no other numbers; usage logged as `data_story`); on any AI failure the
 deterministic narrative ships. Output is uploaded to the private
 `report-exports` bucket and served through **`GET /api/story/[...path]`** on

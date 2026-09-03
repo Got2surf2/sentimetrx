@@ -4,7 +4,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildStoryPayload, deterministicNarrative, parseNarrative, renderDataStory,
-  pickRatingField, pickSegmentField, storyTitle, type StoryData,
+  pickRatingField, pickSegmentField, pickDateField, buildTimeline, buildBands,
+  computeDrift, storyTitle, type StoryData,
 } from '@/lib/dataStory'
 import { recountThemes, type ThemeModel } from '@/lib/themeUtils'
 import type { SchemaFieldConfig, DatasetAnalytics } from '@/lib/analyzeTypes'
@@ -126,7 +127,8 @@ describe('renderDataStory', () => {
     expect(html).toContain('datanautix')
     expect(html).not.toContain('Sentimetrx')
     for (const t of story().themes) expect(html).toContain(t.name)
-    expect(html).toContain('What moves the score')
+    // Findings-led heads: the rating section headline carries the claim.
+    expect(html).toContain('drags the score hardest')
     expect(html).toContain('How it differs by region')
     expect(html).not.toMatch(/undefined|NaN/)
   })
@@ -146,9 +148,139 @@ describe('renderDataStory', () => {
     s.overallAvgRating = null
     s.segments = []
     s.narrative.ratingIntro = null
+    s.narrative.ratingHead = null
     s.narrative.segmentIntro = null
     const html = renderDataStory(s)
-    expect(html).not.toContain('What moves the score')
+    expect(html).not.toContain('drags the score hardest')
     expect(html).not.toContain('How it differs by')
+  })
+
+  it('renders the explorer with escaped embedded JSON and drops it below 40 items', () => {
+    const s = story()
+    const html = renderDataStory(s)
+    expect(html).toContain('Read the responses yourselves')
+    expect(html).toContain('id="xTheme"')
+    // </script> injection through excerpt text must be neutralized
+    const s2 = story()
+    s2.explorer = s2.explorer.map(e => ({ ...e, t: e.t + ' </script><b>x</b>' }))
+    expect(renderDataStory(s2)).not.toContain('</script><b>x</b>')
+    const s3 = story()
+    s3.explorer = s3.explorer.slice(0, 10)
+    expect(renderDataStory(s3)).not.toContain('Read the responses yourselves')
+  })
+
+  it('renders timeline and bands sections when their payloads exist', () => {
+    const s = story()
+    s.timeline = {
+      fieldLabel: 'review_date', unit: 'month',
+      points: [
+        { label: 'Jan 2026', count: 30, avgRating: 4.1, shares: { Service: 20 } },
+        { label: 'Feb 2026', count: 30, avgRating: 3.9, shares: { Service: 24 } },
+        { label: 'Mar 2026', count: 30, avgRating: 3.4, shares: { Service: 33 } },
+        { label: 'Apr 2026', count: 30, avgRating: 3.2, shares: { Service: 41 } },
+      ],
+      tracked: ['Service'], ratingFrom: 4.1, ratingTo: 3.2,
+      shiftTheme: { name: 'Service', fromPct: 20, toPct: 41 },
+    }
+    s.bands = {
+      fieldLabel: 'playtime', lowest: { label: '≤ 2', avgRating: 2.9 },
+      bands: [
+        { label: '≤ 2', n: 100, avgRating: 2.9, topTheme: 'Service', topThemePct: 40 },
+        { label: '2–8', n: 100, avgRating: 3.4, topTheme: 'Service', topThemePct: 30 },
+        { label: '8–30', n: 100, avgRating: 3.8, topTheme: 'Service', topThemePct: 22 },
+        { label: '> 30', n: 100, avgRating: 4.2, topTheme: 'Service', topThemePct: 12 },
+      ],
+    }
+    s.narrative = deterministicNarrative(s)
+    const html = renderDataStory(s)
+    expect(html).toContain('moved from 20% to 41%')
+    expect(html).toContain('band rates lowest')
+    expect(html).toContain('playtime quartiles')
+  })
+})
+
+// ── New deterministic analytics ─────────────────────────────────────────
+
+describe('pickDateField / buildTimeline', () => {
+  const dateFields = [...fields, { field: 'posted_at', label: 'Posted At', type: 'categorical' }] as unknown as SchemaFieldConfig[]
+  function datedRows(): Record<string, unknown>[] {
+    const out: Record<string, unknown>[] = []
+    // 6 months; "service" complaints ramp up over time, ratings fall.
+    for (let m = 0; m < 6; m++) {
+      for (let i = 0; i < 40; i++) {
+        const negShare = m / 6 // 0 → 5/6 across months
+        const neg = i / 40 < negShare
+        out.push({
+          comment: neg
+            ? 'The service was terrible and the waiter was rude to our whole table tonight.'
+            : 'The food and tacos were absolutely delicious and fresh every single visit.',
+          rating: neg ? 1 : 5,
+          posted_at: `2026-0${m + 1}-15`,
+        })
+      }
+    }
+    return out
+  }
+
+  it('finds a parseable date-named field without a typed date column', () => {
+    expect(pickDateField(dateFields, datedRows())).toBe('posted_at')
+    expect(pickDateField(fields, rows())).toBeNull()
+  })
+
+  it('buckets by month, tracks theme shares, and finds the biggest shift', () => {
+    const themes = recountThemes(THEMES, datedRows(), ['comment'], 'rating')
+    const tl = buildTimeline(datedRows(), 'posted_at', 'rating', themes, ['comment'])!
+    expect(tl).not.toBeNull()
+    expect(tl.unit).toBe('month')
+    expect(tl.points.length).toBe(6)
+    expect(tl.points[0].label).toBe('Jan 2026')
+    // service rises exactly as food falls — either is the biggest shift,
+    // but the direction must match the theme picked
+    const sh = tl.shiftTheme!
+    expect(['Service', 'Food']).toContain(sh.name)
+    if (sh.name === 'Service') expect(sh.toPct).toBeGreaterThan(sh.fromPct)
+    else expect(sh.toPct).toBeLessThan(sh.fromPct)
+    expect(Math.abs(sh.toPct - sh.fromPct)).toBeGreaterThan(20)
+    expect(tl.ratingTo!).toBeLessThan(tl.ratingFrom!)
+    // every point's share is that bucket's own recount base
+    expect(tl.points[0].shares['Service']).toBeLessThan(tl.points[5].shares['Service'])
+  })
+
+  it('returns null on too few dated rows or too few buckets', () => {
+    expect(buildTimeline(datedRows().slice(0, 50), 'posted_at', 'rating', [], ['comment'])).toBeNull()
+  })
+})
+
+describe('buildBands / computeDrift', () => {
+  it('splits on quartiles and finds the lowest-rated band', () => {
+    const rs: Record<string, unknown>[] = []
+    for (let i = 0; i < 400; i++) {
+      const hours = i % 4 === 0 ? 1 : i % 4 === 1 ? 5 : i % 4 === 2 ? 20 : 100
+      const neg = hours === 1 // the light users are the angry ones
+      rs.push({
+        comment: neg
+          ? 'The service was terrible and the waiter was rude to our whole table tonight.'
+          : 'The food and tacos were absolutely delicious and fresh every single visit.',
+        rating: neg ? 1 : 5, hours,
+      })
+    }
+    const summary = { type: 'numeric', nonNull: 400, min: 1, max: 100, avg: 31, median: 5, stddev: 40, p25: 1, p75: 20, histogram: [], uniqueCount: 4, isDiscrete: false } as never
+    const themes = recountThemes(THEMES, rs, ['comment'], 'rating')
+    const b = buildBands(rs, 'hours', summary, 'rating', themes, ['comment'])!
+    expect(b.bands.length).toBe(4)
+    expect(b.lowest!.label).toBe(b.bands[0].label)
+    expect(b.bands[0].avgRating).toBe(1)
+    expect(b.bands[0].topTheme).toBe('Service')
+  })
+
+  it('drift picks the theme with the widest cross-segment spread, ≥5pp', () => {
+    expect(computeDrift([
+      { label: 'A', substantive: 100, themes: [{ name: 'Service', pct: 40 }, { name: 'Food', pct: 30 }] },
+      { label: 'B', substantive: 100, themes: [{ name: 'Service', pct: 12 }, { name: 'Food', pct: 28 }] },
+    ])).toMatchObject({ theme: 'Service', maxSeg: 'A', maxPct: 40, minSeg: 'B', minPct: 12 })
+    expect(computeDrift([
+      { label: 'A', substantive: 100, themes: [{ name: 'Food', pct: 30 }] },
+      { label: 'B', substantive: 100, themes: [{ name: 'Food', pct: 28 }] },
+    ])).toBeNull()
   })
 })
