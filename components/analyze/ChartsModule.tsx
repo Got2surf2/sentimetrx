@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { smartOrder, isOrdinalScale, scaleDirectionLabel, detectScale } from '@/lib/scaleUtils'
 import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
 import { cachedRequest } from '@/lib/clientRequestCache'
-import { themeSetForField } from '@/lib/themeUtils'
+import { themeSetForField, buildKwRegex } from '@/lib/themeUtils'
 import type { Theme, ThemeModel } from '@/lib/themeUtils'
 import { axisOfDimField, isDimField, dimVirtualFields, DIM_AXIS_LABEL_LONG } from '@/lib/dimensionFields'
 import { readSession, writeSession } from '@/lib/useSessionState'
@@ -52,7 +52,7 @@ var COLOR_PALETTES: Record<string, { name: string; colors: string[] }> = {
 }
 
 // SchemaField, SchemaConfig imported from @/lib/analyzeTypes
-interface FieldSummary { type: string; nonNull: number; counts?: Record<string, number>; topN?: string[]; histogram?: { min: number; max: number; count: number }[]; min?: number; max?: number; avg?: number; median?: number; stddev?: number; avgWordCount?: number; sample?: string[] }
+interface FieldSummary { type: string; nonNull: number; counts?: Record<string, number>; topN?: string[]; histogram?: { min: number; max: number; count: number }[]; min?: number; max?: number; avg?: number; median?: number; stddev?: number; p25?: number; p75?: number; avgWordCount?: number; sample?: string[] }
 interface Analytics { totalRows: number; computedAt: string; fieldSummaries: Record<string, FieldSummary> }
 interface Props { datasetId: string; schema: SchemaConfig; analytics: Analytics | null; themeModel?: ThemeModel | null; datasetSource?: string; taxonomyEnabled?: boolean; taxonomySuppressed?: boolean }
 
@@ -71,6 +71,27 @@ function clipBadge(n: number, total: number): string {
   // HTML in title strings, so this renders as a small grey second line.
   if (total <= n) return ''
   return '<br><span style="font-size:11px;color:#9ca3af;font-weight:400">Showing top ' + n + ' of ' + total + ' values</span>'
+}
+
+// Percentile with linear interpolation over a SORTED ascending array —
+// same formula as lib/analyticsCompute's (server-only, not exported).
+function pctl(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0
+  var k = (sorted.length - 1) * p
+  var f = Math.floor(k), c = Math.ceil(k)
+  if (f === c) return sorted[f]
+  return sorted[f] + (sorted[c] - sorted[f]) * (k - f)
+}
+
+// Top-N subset for capped categorical charts. The SUBSET is always the top
+// `cap` values by count (ties alphabetical) so a clipped chart keeps the
+// biggest categories and the "Showing top N of M" badge is truthful; callers
+// apply their own DISPLAY ordering to the returned keys afterwards. Several
+// charts previously sliced AFTER smartOrder — which is alphabetical for
+// nominal fields — silently dropping the largest categories (2026-09-03 audit).
+export function topCategoryKeys(counts: Record<string, number>, cap: number): { keys: string[]; total: number } {
+  var entries = Object.entries(counts).sort(function(a, b) { return b[1] !== a[1] ? b[1] - a[1] : a[0].localeCompare(b[0]) })
+  return { keys: entries.slice(0, cap).map(function(e) { return e[0] }), total: entries.length }
 }
 
 // ─── Chart slot definitions ───────────────────────────────────────────────
@@ -93,7 +114,9 @@ var CHART_SLOTS: Record<string, SlotDef[]> = {
   waterfall:    [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }],
   bullet:       [{ key: 'field', label: 'Measure', accepts: ['numeric'], required: true }, { key: 'splitBy', label: 'Split by', accepts: ['categorical'], required: false }],
   funnel:       [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }],
-  gantt:        [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }, { key: 'range', label: 'Range Field', accepts: ['numeric', 'date'], required: true }],
+  // Range accepts numeric ONLY — the renderer runs values through
+  // toNumericOrNull, so a date field produced a silent blank chart.
+  gantt:        [{ key: 'category', label: 'Category', accepts: ['categorical'], required: true }, { key: 'range', label: 'Range Field', accepts: ['numeric'], required: true }],
   driver:       [{ key: 'score', label: 'Score Field', accepts: ['numeric'], required: true }, { key: 'groupBy', label: 'Group by', accepts: ['categorical'], required: false }],
   table:        [],
 }
@@ -436,19 +459,20 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     // Smart axes: order by remapping, then detected scale, then alphabetical (Item 20)
     var catFieldObj = schema.find(function(f) { return f.field === catField })
     var catRemap = catFieldObj?.remapping
-    // Themes: always sort by frequency descending
-    // Smart Axes ON + ordinal field: use smartOrder (preserves scale). Smart Axes ON + nominal field: sort by frequency.
-    // Smart Axes OFF: alphabetical.
+    // Subset FIRST (top-N by count, topCategoryKeys — a clipped chart keeps the
+    // biggest categories), then apply display ordering to the subset:
+    // Themes/dimensions: frequency desc. Smart Axes ON + ordinal: scale order.
+    // Smart Axes ON + nominal: frequency desc. Smart Axes OFF: alphabetical.
     var rawKeys = rawEntries.map(function(e) { return e[0] })
     var isOrd = !!(catRemap && Object.keys(catRemap).length >= 2) || isOrdinalScale(rawKeys)
-    var freqThenAlpha = function(a: [string, number], b: [string, number]) { return b[1] !== a[1] ? b[1] - a[1] : a[0].localeCompare(b[0]) }
+    var top = topCategoryKeys(summary.counts, MAX_CATEGORIES_PER_CHART)
     var orderedKeys = catField === '__themes__' || axisOfDimField(catField)
-      ? rawEntries.slice().sort(freqThenAlpha).map(function(e) { return e[0] })
+      ? top.keys
       : useSmartOrder
-        ? (isOrd ? smartOrder(rawKeys, catRemap) : rawEntries.slice().sort(freqThenAlpha).map(function(e) { return e[0] }))
-        : rawKeys.slice().sort()
-    var totalKeys = orderedKeys.length
-    var entries = orderedKeys.slice(0, MAX_CATEGORIES_PER_CHART).map(function(k) { return [k, summary.counts![k] || 0] as [string, number] })
+        ? (isOrd ? smartOrder(top.keys, catRemap) : top.keys)
+        : top.keys.slice().sort()
+    var totalKeys = top.total
+    var entries = orderedKeys.map(function(k) { return [k, summary.counts![k] || 0] as [string, number] })
     var isH = opts?.orient === 'h'
     // Reverse for horizontal so first item (largest/alphabetically first) renders at top
     if (isH) entries.reverse()
@@ -457,7 +481,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     // Percentage denominator = ALL categories, not just the shown top-30 — else
     // a clipped chart's bars sum to 100% and each % is inflated (the axis title
     // claims "% of <field>"). clipBadge discloses "showing 30 of N".
-    var totalCount = orderedKeys.reduce(function(s, k) { return s + (summary.counts![k] || 0) }, 0)
+    var totalCount = rawEntries.reduce(function(s, e) { return s + e[1] }, 0)
     var isPercent = opts?.barMode === 'percent'
     var displayVals = isPercent ? vals.map(function(v) { return totalCount > 0 ? Math.round(v / totalCount * 1000) / 10 : 0 }) : vals
     var catLabel = flByName(catField, schema)
@@ -514,7 +538,11 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
         layout={{ title: fieldAlias, xaxis: { title: fieldAlias, ...(intX ? { dtick: 1, tick0: sum.min } : {}) }, yaxis: { title: 'Count', tickformat: ',d' }, bargap: 0.04, barcornerradius: 3, shapes: distShapes, annotations: distAnnotations }}
       />
     }
-    return <PlotlyChart traces={[{ type: 'box', y: [sum.min, sum.avg, sum.median, sum.max].filter(function(v) { return v != null }), boxpoints: 'all', marker: { color: primaryColor }, name: fieldAlias }]} layout={{ title: fieldAlias, yaxis: { title: fieldAlias, ...(isSmallIntRange(sum.min, sum.max) ? { dtick: 1 } : {}) } }} />
+    // No precomputed histogram (seeded/compute-failed summaries) — build a real
+    // box from the rows. The old fallback fed [min, avg, median, max] to Plotly
+    // AS DATA POINTS and let it derive quartiles from those 4 numbers — a
+    // fabricated distribution (2026-09-03 audit).
+    return <DistRowsFallbackInner datasetId={datasetId} numField={field} schema={schema} color={primaryColor} />
   }
 
   if (chartType === 'scatter') {
@@ -535,8 +563,11 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'treemap') {
     var catF2 = config.category; if (!catF2) return <EmptyChart msg="Assign a category field above." />
     var s2 = fs[catF2]; if (!s2 || !s2.counts) return <EmptyChart msg="No data." />
-    var totalKeys2 = Object.keys(s2.counts).length
-    var e2 = (function() { var raw = Object.entries(s2.counts); var f2Obj = schema.find(function(f) { return f.field === catF2 }); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] }), f2Obj?.remapping) : raw.map(function(e) { return e[0] }).sort(); return keys.slice(0, MAX_CATEGORIES_PER_CHART).map(function(k) { return [k, s2.counts![k] || 0] as [string, number] }) })()
+    // Top-N by COUNT (tiles are size-ordered by Plotly anyway) — slicing a
+    // smartOrder/alphabetical list dropped the largest categories.
+    var top2 = topCategoryKeys(s2.counts, MAX_CATEGORIES_PER_CHART)
+    var totalKeys2 = top2.total
+    var e2 = top2.keys.map(function(k) { return [k, s2.counts![k] || 0] as [string, number] })
     var labels = e2.map(function(e) { return e[0] }); var values = e2.map(function(e) { return e[1] }); var parents = labels.map(function() { return '' })
     return <PlotlyChart traces={[{ type: 'treemap', labels: labels, values: values, parents: parents, marker: { colors: labels.map(function(_, i) { return pal[i % pal.length] }) }, branchvalues: 'remainder' as const, textinfo: 'label+value' }]} layout={{ title: flByName(catF2, schema) + clipBadge(MAX_CATEGORIES_PER_CHART, totalKeys2), margin: { t: 48, r: 8, b: 8, l: 8 } }} />
   }
@@ -544,11 +575,12 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'bubbles') {
     var catF3 = config.category; if (!catF3) return <EmptyChart msg="Assign a category field above." />
     var s3 = fs[catF3]; if (!s3 || !s3.counts) return <EmptyChart msg="No data." />
-    var totalKeys3 = Object.keys(s3.counts).length
-    var f3Obj = schema.find(function(f) { return f.field === catF3 })
     var BUBBLES_CAP = 25
-    var e3Keys = smartOrder(Object.keys(s3.counts), f3Obj?.remapping).slice(0, BUBBLES_CAP)
-    var e3 = e3Keys.map(function(k) { return [k, s3.counts![k] || 0] as [string, number] }).sort(function(a, b) { return b[1] - a[1] })
+    // Top-N by COUNT (packing places largest first) — slicing a smartOrder
+    // (alphabetical for nominal) list dropped the largest categories.
+    var top3 = topCategoryKeys(s3.counts, BUBBLES_CAP)
+    var totalKeys3 = top3.total
+    var e3 = top3.keys.map(function(k) { return [k, s3.counts![k] || 0] as [string, number] })
     // Circle-pack layout: place largest first, then find best position for each subsequent circle
     var maxVal = Math.max.apply(null, e3.map(function(e) { return e[1] })) || 1
     var radii = e3.map(function(e) { return 15 + Math.sqrt(e[1] / maxVal) * 55 })
@@ -589,9 +621,14 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'waterfall') {
     var catF4 = config.category; if (!catF4) return <EmptyChart msg="Assign a category field above." />
     var s4 = fs[catF4]; if (!s4 || !s4.counts) return <EmptyChart msg="No data." />
-    var totalKeys4 = Object.keys(s4.counts).length
     var WATERFALL_CAP = 15
-    var e4 = (function() { var raw = Object.entries(s4.counts); var f4Obj = schema.find(function(f) { return f.field === catF4 }); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] }), f4Obj?.remapping) : raw.map(function(e) { return e[0] }).sort(); return keys.slice(0, WATERFALL_CAP).map(function(k) { return [k, s4.counts![k] || 0] as [string, number] }) })()
+    // Subset = top-N by count; display order applied to the SUBSET (scale
+    // order with Smart Axes, else alphabetical).
+    var top4 = topCategoryKeys(s4.counts, WATERFALL_CAP)
+    var totalKeys4 = top4.total
+    var f4Obj = schema.find(function(f) { return f.field === catF4 })
+    var keys4 = useSmartOrder ? smartOrder(top4.keys, f4Obj?.remapping) : top4.keys.slice().sort()
+    var e4 = keys4.map(function(k) { return [k, s4.counts![k] || 0] as [string, number] })
     var wLabels = wrapLabels(e4.map(function(e) { return e[0] }).concat(['Total']), 18)
     var wValues = e4.map(function(e) { return e[1] })
     var total = wValues.reduce(function(a, b) { return a + b }, 0)
@@ -609,7 +646,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var bs = fs[bField]; if (!bs || bs.avg == null) return <EmptyChart msg="No numeric data." />
     return (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16, maxWidth: 320, margin: '0 auto' }}>
-        <GaugeCard label={flByName(bField, schema)} avg={bs.avg || 0} median={bs.median || bs.avg || 0} min={bs.min || 0} max={bs.max || 100} n={bs.nonNull || 0} overallAvg={null} accentColor={primaryColor} />
+        <GaugeCard label={flByName(bField, schema)} avg={bs.avg || 0} median={bs.median || bs.avg || 0} min={bs.min || 0} max={bs.max || 100} n={bs.nonNull || 0} overallAvg={null} accentColor={primaryColor} q1={bs.p25 ?? null} q3={bs.p75 ?? null} />
       </div>
     )
   }
@@ -617,15 +654,19 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
   if (chartType === 'funnel') {
     var catF5 = config.category; if (!catF5) return <EmptyChart msg="Assign a category field above." />
     var s5 = fs[catF5]; if (!s5 || !s5.counts) return <EmptyChart msg="No data." />
-    var totalKeys5 = Object.keys(s5.counts).length
     var FUNNEL_CAP = 12
-    var e5 = (function() { var raw = Object.entries(s5.counts); var f5Obj = schema.find(function(f) { return f.field === catF5 }); var keys = useSmartOrder ? smartOrder(raw.map(function(e) { return e[0] }), f5Obj?.remapping) : raw.sort(function(a, b) { return b[1] - a[1] }).map(function(e) { return e[0] }); return keys.slice(0, FUNNEL_CAP).map(function(k) { return [k, s5.counts![k] || 0] as [string, number] }) })()
+    // A funnel is only readable monotonically decreasing — ALWAYS top-N by
+    // count, count-desc display, regardless of Smart Axes (which reordered
+    // stages by scale/alphabet and produced mid-bulging funnels).
+    var top5 = topCategoryKeys(s5.counts, FUNNEL_CAP)
+    var totalKeys5 = top5.total
+    var e5 = top5.keys.map(function(k) { return [k, s5.counts![k] || 0] as [string, number] })
     return <PlotlyChart traces={[{ type: 'funnel', y: wrapLabels(e5.map(function(e) { return e[0] }), 28), x: e5.map(function(e) { return e[1] }), marker: { color: e5.map(function(_, i) { return pal[i % pal.length] }) } }]} layout={{ title: flByName(catF5, schema) + clipBadge(FUNNEL_CAP, totalKeys5), margin: { t: 48, r: 16, b: 8, l: 120 }, showlegend: false }} />
   }
 
   if (chartType === 'gantt') {
     var gCat = config.category, gRange = config.range; if (!gCat || !gRange) return <EmptyChart msg="Assign category and range fields above." />
-    return <GanttInner analytics={analytics} schema={schema} datasetId={datasetId} catField={gCat} rangeField={gRange} />
+    return <GanttInner analytics={analytics} schema={schema} datasetId={datasetId} catField={gCat} rangeField={gRange} colors={pal} />
   }
 
   if (chartType === 'driver') {
@@ -791,6 +832,14 @@ function enrichRows(rows: Record<string, unknown>[]): Record<string, unknown>[] 
     ? (_enrichCtx.themeSourceOverride || themeModel!.fieldName || (schema?.fields || []).find(function(f) { return f.type === 'open-ended' })?.field || '')
     : ''
 
+  // Canonical keyword matcher (themeUtils.buildKwRegex — the SAME patterns
+  // TextMine's recount and the SQL counting RPCs use), replacing a raw
+  // substring test that both over-matched ("rap" hit "therapy") and missed
+  // lemmas ("ran" never matched "running"). Precompiled once, not per row.
+  // __themes__ stays winner-take-all single-label — it's one column per row;
+  // the simple Themes bar shows the server's multi-label counts.
+  var themeRegexes = themes.map(function(t) { return (t.keywords || []).filter(Boolean).map(buildKwRegex) })
+
   return rows.map(function(row) {
     var enriched = Object.assign({}, row)
 
@@ -800,11 +849,9 @@ function enrichRows(rows: Record<string, unknown>[]): Record<string, unknown>[] 
         enriched['__themes__'] = ''
       } else {
         var bestTheme = '', bestCount = 0
-        themes.forEach(function(t) {
+        themes.forEach(function(t, ti) {
           var hits = 0
-          ;(t.keywords || []).forEach(function(kw: string) {
-            if (text.includes(kw.toLowerCase())) hits++
-          })
+          themeRegexes[ti].forEach(function(re) { if (re.test(text)) hits++ })
           if (hits > bestCount) { bestCount = hits; bestTheme = (t.name || t.label)! }
         })
         enriched['__themes__'] = bestTheme  // '' when unclassified — excluded from groupings
@@ -856,6 +903,7 @@ export function recomputeFilteredSummaries(
         type: 'numeric', nonNull: sc(n), min: vals[0], max: vals[n - 1], avg: mean,
         median: n % 2 ? vals[(n - 1) / 2] : (vals[n / 2 - 1] + vals[n / 2]) / 2,
         stddev: Math.sqrt(variance),
+        p25: pctl(vals, 0.25), p75: pctl(vals, 0.75),
       }
       var baseHist = base[f.field] && base[f.field].histogram
       if (baseHist && baseHist.length) {
@@ -947,7 +995,15 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
       cats.sort()
     }
   }
-  cats = cats.slice(0, 30)
+  // Subset = top-30 categories by row total (display order preserved), with a
+  // title badge when clipped — was a display-order slice with no disclosure.
+  var totalCats = cats.length
+  if (cats.length > 30) {
+    var rowTotals: Record<string, number> = {}
+    cats.forEach(function(c) { rowTotals[c] = Object.values(grid[c] || {}).reduce(function(s, v) { return s + v }, 0) })
+    var keepStack = new Set(cats.slice().sort(function(a, b) { return (rowTotals[b] || 0) - (rowTotals[a] || 0) }).slice(0, 30))
+    cats = cats.filter(function(c) { return keepStack.has(c) })
+  }
   var isH = orient === 'h'
   if (isH) cats.reverse()
   var catLabels = wrapLabels(cats.map(function(c) { return resolveAlias(catField, c, schema) }), isH ? 28 : 18)
@@ -982,7 +1038,7 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
   var catLabel = flByName(catField, schema)
   var valLabel = barMode === 'percent' ? 'Percentage' : 'Count'
   var isStackedCount = barMode !== 'percent'
-  return <PlotlyChart traces={traces} layout={{ title: catLabel + ' by ' + flByName(colorByField, schema), barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : '', ...(!isH ? catXAxis(catLabels) : {}), ...(isH && isStackedCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? '' : valLabel, ...(!isH && isStackedCount ? { tickformat: ',d' } : {}) }, legend: { orientation: 'h' as const, y: -0.2, traceorder: 'normal' as const, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
+  return <PlotlyChart traces={traces} layout={{ title: catLabel + ' by ' + flByName(colorByField, schema) + clipBadge(30, totalCats), barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : '', ...(!isH ? catXAxis(catLabels) : {}), ...(isH && isStackedCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? '' : valLabel, ...(!isH && isStackedCount ? { tickformat: ',d' } : {}) }, legend: { orientation: 'h' as const, y: -0.2, traceorder: 'normal' as const, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
 }
 
 // ─── Bar Aggregated Inner (average/sum of numeric value by category) ─────
@@ -1048,7 +1104,14 @@ function BarAggInner({ analytics, schema, datasetId, catField, valueField, smart
     : groups.slice().sort(function(a, b) { return a.group.localeCompare(b.group) })
 
   var isH = orient === 'h'
-  var displayGroups = sortedGroups.slice(0, 30)
+  // Subset = top-30 by group SIZE (n) so the biggest categories survive the
+  // cap even when the display order is by mean/scale; disclosed in the title.
+  var totalGroups = sortedGroups.length
+  var displayGroups = sortedGroups
+  if (totalGroups > MAX_CATEGORIES_PER_CHART) {
+    var keepAgg = new Set(sortedGroups.slice().sort(function(a, b) { return b.n - a.n }).slice(0, MAX_CATEGORIES_PER_CHART).map(function(g) { return g.group }))
+    displayGroups = sortedGroups.filter(function(g) { return keepAgg.has(g.group) })
+  }
   if (isH) displayGroups = displayGroups.slice().reverse()
   var cats = wrapLabels(displayGroups.map(function(g) { return resolveAlias(catField, g.group, schema) }), isH ? 28 : 18)
   var vals = displayGroups.map(function(g) { return Math.round(g.mean * 100) / 100 })
@@ -1096,7 +1159,7 @@ function BarAggInner({ analytics, schema, datasetId, catField, valueField, smart
   }] : []
 
   return <PlotlyChart traces={[trace]} layout={{
-    title: catLabel,
+    title: catLabel + clipBadge(MAX_CATEGORIES_PER_CHART, totalGroups),
     xaxis: { title: isH ? valLabel : '', ...(!isH ? catXAxis(cats) : {}) },
     yaxis: { title: isH ? '' : valLabel },
     barcornerradius: 4,
@@ -1107,11 +1170,20 @@ function BarAggInner({ analytics, schema, datasetId, catField, valueField, smart
 
 // ─── Gauge Card (SVG arc gauge matching Ana.html style) ───────────────────
 
-function GaugeCard({ label, avg, median, min, max, n, overallAvg, accentColor }: { label: string; avg: number; median: number; min: number; max: number; n: number; overallAvg: number | null; accentColor?: string }) {
+function GaugeCard({ label, avg, median, min, max, n, overallAvg, accentColor, q1, q3 }: { label: string; avg: number; median: number; min: number; max: number; n: number; overallAvg: number | null; accentColor?: string; q1?: number | null; q3?: number | null }) {
   var gaugeAccent = accentColor || T.accent
   var range = max - min || 1
   var pct = Math.max(0, Math.min(1, (avg - min) / range))
   var angle = -90 + pct * 180 // -90 to 90 degrees
+  // Band boundaries: REAL quartiles when the caller has them, so the legend's
+  // "Bottom 25% / Middle 50% / Top 25%" is true of the data. Without quartiles
+  // the bands fall back to fixed quarters of the min–max RANGE and the legend
+  // says so — the old card always drew range-quarters but labeled them as
+  // percentiles (2026-09-03 audit).
+  var toAngle = function(v: number) { return -90 + Math.max(0, Math.min(1, (v - min) / range)) * 180 }
+  var hasQ = n > 0 && q1 != null && q3 != null && isFinite(q1) && isFinite(q3) && q1 <= q3 && q1 >= min && q3 <= max
+  var bandLo = hasQ ? toAngle(q1!) : -45
+  var bandHi = hasQ ? toAngle(q3!) : 45
   // Arc centered at (100, 100) with r=65 — fully inside 200-wide viewBox
   var r = 65, gx = 100, gy = 100
   var arcPath = function(startAngle: number, endAngle: number, radius: number) {
@@ -1134,10 +1206,11 @@ function GaugeCard({ label, avg, median, min, max, n, overallAvg, accentColor }:
         {/* Label */}
         <text x="100" y="20" textAnchor="middle" style={{ fontSize: 13, fontWeight: 700, fill: T.text }}>{label}</text>
 
-        {/* Background bands: bottom 25% pink, middle 50% amber, top 25% green */}
-        <path d={arcPath(-90, -45, r)} fill="none" stroke="#fecdd3" strokeWidth={14} strokeLinecap="round" />
-        <path d={arcPath(-45, 45, r)} fill="none" stroke="#fed7aa" strokeWidth={14} strokeLinecap="round" />
-        <path d={arcPath(45, 90, r)} fill="none" stroke="#bbf7d0" strokeWidth={14} strokeLinecap="round" />
+        {/* Background bands: below-Q1 pink, IQR amber, above-Q3 green (range
+            thirds-of-quarters fallback when quartiles are unavailable) */}
+        {bandLo - (-90) > 1 && <path d={arcPath(-90, bandLo, r)} fill="none" stroke="#fecdd3" strokeWidth={14} strokeLinecap="round" />}
+        {bandHi - bandLo > 1 && <path d={arcPath(bandLo, bandHi, r)} fill="none" stroke="#fed7aa" strokeWidth={14} strokeLinecap="round" />}
+        {90 - bandHi > 1 && <path d={arcPath(bandHi, 90, r)} fill="none" stroke="#bbf7d0" strokeWidth={14} strokeLinecap="round" />}
 
         {/* Needle */}
         {(function() {
@@ -1176,14 +1249,27 @@ function GaugeCard({ label, avg, median, min, max, n, overallAvg, accentColor }:
 
         {/* Legend */}
         <rect x="8" y="172" width="8" height="8" rx="2" fill="#fecdd3" />
-        <text x="20" y="180" style={{ fontSize: 8, fill: T.textFaint }}>Bottom 25%</text>
+        <text x="20" y="180" style={{ fontSize: 8, fill: T.textFaint }}>{hasQ ? 'Bottom 25%' : 'Low range'}</text>
         <rect x="76" y="172" width="8" height="8" rx="2" fill="#fed7aa" />
-        <text x="88" y="180" style={{ fontSize: 8, fill: T.textFaint }}>Middle 50%</text>
+        <text x="88" y="180" style={{ fontSize: 8, fill: T.textFaint }}>{hasQ ? 'Middle 50%' : 'Mid range'}</text>
         <rect x="148" y="172" width="8" height="8" rx="2" fill="#bbf7d0" />
-        <text x="160" y="180" style={{ fontSize: 8, fill: T.textFaint }}>Top 25%</text>
+        <text x="160" y="180" style={{ fontSize: 8, fill: T.textFaint }}>{hasQ ? 'Top 25%' : 'High range'}</text>
       </svg>
     </div>
   )
+}
+
+// Distribution fallback when the summary has no histogram: hand Plotly the raw
+// numeric values so the box's quartiles/whiskers are computed from real data.
+function DistRowsFallbackInner({ datasetId, numField, schema, color }: { datasetId: string; numField: string; schema: SchemaField[]; color: string }) {
+  var { rows, loaded } = useChartRows(datasetId, _enrichCtx.enrichKey || 0)
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data…" /></div>
+  var vals: number[] = []
+  rows.forEach(function(r) { var v = toNumericOrNull(r[numField]); if (v !== null) vals.push(v) })
+  if (!vals.length) return <EmptyChart msg="No numeric data." />
+  var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals)
+  var fieldAlias = flByName(numField, schema)
+  return <PlotlyChart traces={[{ type: 'box', y: vals, boxpoints: 'outliers', boxmean: true, marker: { color: color }, name: fieldAlias }]} layout={{ title: fieldAlias, yaxis: { title: fieldAlias, ...(isSmallIntRange(lo, hi) ? { dtick: 1 } : {}) }, showlegend: false }} />
 }
 
 function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, colors, smartAxes }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; numField: string; splitByField: string; colors?: string[]; smartAxes?: boolean }) {
@@ -1265,15 +1351,17 @@ function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByF
   var [showAllKPI, setShowAllKPI] = useState(false)
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
 
-  // Build stats from aggregation API or rows
-  var stats: { label: string; avg: number; median: number; min: number; max: number; n: number }[] = []
+  // Build stats from aggregation API or rows. q1/q3 feed the gauge's quartile
+  // bands — the tax_group_stats path returns them, plain group_stats doesn't
+  // (gauge falls back to labeled range bands).
+  var stats: { label: string; avg: number; median: number; min: number; max: number; n: number; q1: number | null; q3: number | null }[] = []
   var totalKPI = 0
 
   if (!needsRows && aggData && aggData.groups) {
-    var aggGroups = aggData.groups as Record<string, { n: number; mean: number; median: number; min: number; max: number }>
+    var aggGroups = aggData.groups as Record<string, { n: number; mean: number; median: number; min: number; max: number; q1?: number | null; q3?: number | null }>
     Object.entries(aggGroups).forEach(function(e) {
       totalKPI += e[1].n
-      stats.push({ label: resolveAlias(splitByField, e[0], schema), avg: e[1].mean, median: e[1].median, min: e[1].min, max: e[1].max, n: e[1].n })
+      stats.push({ label: resolveAlias(splitByField, e[0], schema), avg: e[1].mean, median: e[1].median, min: e[1].min, max: e[1].max, n: e[1].n, q1: e[1].q1 ?? null, q3: e[1].q3 ?? null })
     })
   } else {
     var groups: Record<string, number[]> = {}
@@ -1287,7 +1375,7 @@ function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByF
     totalKPI = Object.values(groups).reduce(function(s, v) { return s + v.length }, 0)
     Object.keys(groups).forEach(function(grp) {
       var vs = groups[grp].slice().sort(function(a, b) { return a - b })
-      stats.push({ label: resolveAlias(splitByField, grp, schema), avg: vs.reduce(function(a, b) { return a + b }, 0) / vs.length, median: vs[Math.floor(vs.length / 2)], min: vs[0], max: vs[vs.length - 1], n: vs.length })
+      stats.push({ label: resolveAlias(splitByField, grp, schema), avg: vs.reduce(function(a, b) { return a + b }, 0) / vs.length, median: pctl(vs, 0.5), min: vs[0], max: vs[vs.length - 1], n: vs.length, q1: pctl(vs, 0.25), q3: pctl(vs, 0.75) })
     })
   }
 
@@ -1328,7 +1416,7 @@ function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByF
         {stats.map(function(s) {
           var pctB = totalNB > 0 ? Math.round(s.n / totalNB * 100) : 0
           var si = stats.indexOf(s)
-          return <GaugeCard key={s.label} label={s.label + ' (' + pctB + '%)'} avg={s.avg} median={s.median} min={stats.reduce(function(m, x) { return Math.min(m, x.min) }, Infinity)} max={stats.reduce(function(m, x) { return Math.max(m, x.max) }, -Infinity)} n={s.n} overallAvg={overallAvg} accentColor={bulletPal[si % bulletPal.length]} />
+          return <GaugeCard key={s.label} label={s.label + ' (' + pctB + '%)'} avg={s.avg} median={s.median} min={stats.reduce(function(m, x) { return Math.min(m, x.min) }, Infinity)} max={stats.reduce(function(m, x) { return Math.max(m, x.max) }, -Infinity)} n={s.n} overallAvg={overallAvg} accentColor={bulletPal[si % bulletPal.length]} q1={s.q1} q3={s.q3} />
         })}
       </div>
     </div>
@@ -1411,16 +1499,10 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
   var perFieldDeltas: { fieldLabel: string; stats: { name: string; avg: number; n: number; delta: number }[] }[] = []
 
   if (hasThemes && oeArr.length > 0) {
-    // Build keyword regexes for theme matching
-    var { expandLemma } = require('@/lib/lemmas')
-    var buildKwRe = function(kw: string) {
-      var forms = expandLemma(kw)
-      var seen: Record<string, boolean> = {}; var alts: string[] = []
-      for (var i = 0; i < forms.length; i++) { var alt = forms[i].replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\w*'; if (!seen[alt]) { seen[alt] = true; alts.push(alt) } }
-      var esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\w*'; if (!seen[esc]) alts.push(esc)
-      return new RegExp('(?<![a-z])(?:' + alts.join('|') + ')', 'i')
-    }
-    var themeRegexes = themeModel!.themes.map(function(t) { return (t.keywords || []).filter(Boolean).map(buildKwRe) })
+    // Canonical matcher from themeUtils — replaces a local near-duplicate that
+    // lacked multi-word gap handling, so driver mention counts disagreed with
+    // TextMine's recount over the same themes.
+    var themeRegexes = themeModel!.themes.map(function(t) { return (t.keywords || []).filter(Boolean).map(buildKwRegex) })
 
     for (var fi = 0; fi < oeArr.length; fi++) {
       var oeFld = oeArr[fi]
@@ -1791,12 +1873,23 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
   }
   var rowFieldObj = schema.find(function(f) { return f.field === rowField })
   var colFieldObj = schema.find(function(f) { return f.field === colField })
-  var rArr = smartOrder(Array.from(rSet), rowFieldObj?.remapping)
-  var cArr = smartOrder(Array.from(cSet), colFieldObj?.remapping)
+  // Cap each dimension at the top-30 values by marginal count \u2014 the rows
+  // fallback path was unbounded (a 200-value field drew a 200-row heatmap).
+  // Display order (smartOrder) applies to the kept subset; clip disclosed.
+  var HEATMAP_CAP = 30
+  var rTotals: Record<string, number> = {}, cTotals: Record<string, number> = {}
+  Object.keys(grid).forEach(function(rv) { Object.entries(grid[rv]).forEach(function(e) { rTotals[rv] = (rTotals[rv] || 0) + e[1]; cTotals[e[0]] = (cTotals[e[0]] || 0) + e[1] }) })
+  var totalR = rSet.size, totalC = cSet.size
+  var rKept = Array.from(rSet), cKept = Array.from(cSet)
+  if (rKept.length > HEATMAP_CAP) rKept = rKept.sort(function(a, b) { return (rTotals[b] || 0) - (rTotals[a] || 0) }).slice(0, HEATMAP_CAP)
+  if (cKept.length > HEATMAP_CAP) cKept = cKept.sort(function(a, b) { return (cTotals[b] || 0) - (cTotals[a] || 0) }).slice(0, HEATMAP_CAP)
+  var rArr = smartOrder(rKept, rowFieldObj?.remapping)
+  var cArr = smartOrder(cKept, colFieldObj?.remapping)
   var z = rArr.map(function(r) { return cArr.map(function(c) { return grid[r] ? (grid[r][c] || 0) : 0 }) })
   var rLabels = wrapLabels(rArr.map(function(v) { return resolveAlias(rowField, v, schema) }), 22)
   var cLabels = wrapLabels(cArr.map(function(v) { return resolveAlias(colField, v, schema) }), 18)
-  return <PlotlyChart traces={[{ type: 'heatmap', x: cLabels, y: rLabels, z: z, colorscale: 'YlOrRd', showscale: true }]} layout={{ title: flByName(rowField, schema) + ' \u00D7 ' + flByName(colField, schema), xaxis: { title: flByName(colField, schema), ...catXAxis(cLabels) }, yaxis: { title: flByName(rowField, schema) }, margin: { t: 48, r: 60, b: 60, l: 100 } }} />
+  var xtClip = (totalR > HEATMAP_CAP || totalC > HEATMAP_CAP) ? clipBadge(HEATMAP_CAP, Math.max(totalR, totalC)) : ''
+  return <PlotlyChart traces={[{ type: 'heatmap', x: cLabels, y: rLabels, z: z, colorscale: 'YlOrRd', showscale: true }]} layout={{ title: flByName(rowField, schema) + ' \u00D7 ' + flByName(colField, schema) + xtClip, xaxis: { title: flByName(colField, schema), ...catXAxis(cLabels) }, yaxis: { title: flByName(rowField, schema) }, margin: { t: 48, r: 60, b: 60, l: 100 } }} />
 }
 
 function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField, colorByField, colors }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; dateField: string; metricField: string; colorByField?: string; colors?: string[] }) {
@@ -2080,7 +2173,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
   )
 }
 
-function GanttInner({ analytics, schema, datasetId, catField, rangeField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; rangeField: string }) {
+function GanttInner({ analytics, schema, datasetId, catField, rangeField, colors }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; catField: string; rangeField: string; colors?: string[] }) {
   var ganttDimAxis = axisOfDimField(catField)
   var agg = useAggregation(datasetId, ganttDimAxis ? { op: 'tax_group_stats', axis: ganttDimAxis, valueField: rangeField } : null)
   var { rows, loaded: rowsLoaded } = useChartRows(datasetId, ganttDimAxis ? -1 : (_enrichCtx.enrichKey || 0))
@@ -2098,7 +2191,9 @@ function GanttInner({ analytics, schema, datasetId, catField, rangeField }: { an
     rows.forEach(function(r) { var c = String(r[catField] || '').trim(); var v = toNumericOrNull(r[rangeField]); if (c && v !== null) { if (!groups[c]) groups[c] = []; groups[c].push(v) } })
     catArr = smartOrder(Object.keys(groups), ganttFieldObj?.remapping); mins = catArr.map(function(c) { return Math.min.apply(null, groups[c]) }); ranges = catArr.map(function(c) { return Math.max.apply(null, groups[c]) - Math.min.apply(null, groups[c]) })
   }
-  return <PlotlyChart traces={[{ type: 'bar', orientation: 'h' as const, y: catArr, x: mins, marker: { color: 'rgba(0,0,0,0)' }, showlegend: false, hoverinfo: 'skip' as const }, { type: 'bar', orientation: 'h' as const, y: catArr, x: ranges, marker: { color: CHART_COLORS.slice(0, catArr.length) }, name: 'Range' }]} layout={{ title: flByName(catField, schema), barmode: 'stack', xaxis: { title: flByName(rangeField, schema) }, showlegend: false, margin: { l: 120 } }} />
+  if (!catArr.length) return <EmptyChart msg={'No numeric values in "' + flByName(rangeField, schema) + '" to plot as a range.'} />
+  var gPal = colors || CHART_COLORS
+  return <PlotlyChart traces={[{ type: 'bar', orientation: 'h' as const, y: catArr, x: mins, marker: { color: 'rgba(0,0,0,0)' }, showlegend: false, hoverinfo: 'skip' as const }, { type: 'bar', orientation: 'h' as const, y: catArr, x: ranges, marker: { color: catArr.map(function(_, i) { return gPal[i % gPal.length] }) }, name: 'Range' }]} layout={{ title: flByName(catField, schema), barmode: 'stack', xaxis: { title: flByName(rangeField, schema) }, showlegend: false, margin: { l: 120 } }} />
 }
 
 function TableInner({ analytics, schema, datasetId }: { analytics: Analytics; schema: SchemaField[]; datasetId: string }) {
@@ -2388,11 +2483,21 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
       if (!vals.length) return
       vals.sort(function(a, b) { return a - b })
       var sum = vals.reduce(function(a, b) { return a + b }, 0)
+      // Discrete histogram (one bin per mapped scale value) so Distribution
+      // renders the real bar shape instead of the no-histogram fallback; real
+      // quartiles feed the gauge's percentile bands.
+      var mValCounts: Record<number, number> = {}
+      Object.entries(catSummary.counts).forEach(function(entry) {
+        var nv = f.remapping![entry[0]]
+        if (nv != null) mValCounts[nv] = (mValCounts[nv] || 0) + entry[1]
+      })
       extraSummaries['__mapped_' + f.field + '__'] = {
         type: 'numeric', nonNull: vals.length,
         min: vals[0], max: vals[vals.length - 1],
-        avg: sum / vals.length, median: vals[Math.floor(vals.length / 2)],
-        stddev: Math.sqrt(vals.reduce(function(s, v) { return s + (v - sum / vals.length) * (v - sum / vals.length) }, 0) / vals.length)
+        avg: sum / vals.length, median: pctl(vals, 0.5),
+        p25: pctl(vals, 0.25), p75: pctl(vals, 0.75),
+        stddev: Math.sqrt(vals.reduce(function(s, v) { return s + (v - sum / vals.length) * (v - sum / vals.length) }, 0) / vals.length),
+        histogram: Object.keys(mValCounts).map(Number).sort(function(a, b) { return a - b }).map(function(v) { return { min: v, max: v, count: mValCounts[v] } }),
       }
     })
     // Dimension fields: counts come from the taxonomy rollup (per-sub mention

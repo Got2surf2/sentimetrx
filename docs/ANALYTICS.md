@@ -624,6 +624,40 @@ against the real Carrabba's GSS dataset (56,117 rows) in the TEST project:
   `totalRows/sampledCount` to match `scaleSampledCount`, means/extents unscaled) and overrides the
   summaries in `enrichedAnalytics` — so the whole tab agrees under a filter.
 
+**Charts audit fix set (2026-09-03; audit registered in `docs/AUDITS.md`).** A second correctness pass
+over every chart type — the findings and their fixes:
+- **Truncation now always keeps the biggest categories.** Treemap, Packed Bubbles, Waterfall, Funnel
+  (and Bar with Smart Axes off) sliced their top-N *after* `smartOrder`, which is **alphabetical** for
+  nominal fields — so a clipped chart could silently drop its largest categories while the badge
+  claimed "Showing top N of M". The shared `topCategoryKeys` helper now picks the subset by count
+  (ties alphabetical) FIRST; display ordering (scale order, alphabetical, count) applies to the
+  subset. The Average bar subsets by group size n, the stacked bar by row total, and the crosstab caps
+  both dimensions at top-30 by marginal count (its rows-fallback path was unbounded) — all three now
+  disclose the clip in the title, where before they truncated silently.
+- **Funnel is always monotonic.** Stages sort count-desc regardless of Smart Axes (which used to
+  reorder them by scale/alphabet, producing mid-bulging funnels).
+- **One theme matcher.** `enrichRows` (the `__themes__` virtual column behind stacked bars, crosstab,
+  time-series breakdowns, the table) matched keywords with a raw `includes()` substring test, and
+  Score Driver carried a private near-duplicate regex builder — three matchers, three counts for the
+  same theme. Both now use `themeUtils.buildKwRegex`, the canonical lemma-aware pattern shared with
+  TextMine's recount and the SQL counting RPCs. `__themes__` remains winner-take-all single-label
+  (one column per row); the simple Themes bar shows the server's multi-label counts — that difference
+  is inherent, the matcher no longer is.
+- **No fabricated distributions.** The Distribution fallback for a summary without a histogram fed
+  `[min, avg, median, max]` to Plotly *as data points* (it derived quartiles from those 4 numbers).
+  It now renders a real box from the rows (`DistRowsFallbackInner`). Remapped-Likert virtual fields
+  (`__mapped_*`) additionally get a synthesized discrete histogram (one bin per scale value) plus
+  real p25/p75, so they take the normal histogram path.
+- **Gauge bands tell the truth.** The Bullet/KPI gauge always painted fixed quarters of the min–max
+  range but labeled them "Bottom 25% / Middle 50% / Top 25%". Band boundaries now sit at real
+  quartiles when available (field summaries carry p25/p75 since sql/199; `tax_group_stats` returns
+  q1/q3; the client rows path computes them) and keep the percentile labels; without quartiles the
+  fixed bands remain but the legend reads "Low / Mid / High range". `recomputeFilteredSummaries` also
+  computes p25/p75 so the bands stay honest under a filter.
+- **Gantt takes numeric ranges only.** Its Range slot accepted `date` fields the renderer nulls out
+  via `toNumericOrNull` — a silent blank chart. The slot is numeric-only, an empty result now says
+  so, and the bars use the selected palette instead of hard-coded colors.
+
 **Statistics → Regression: Logistic mode (2026-07-15).** The Statistics `RegressionPanel` gained a
 Linear/Logistic toggle. Logistic fits a binary outcome via maximum-likelihood IRLS/Newton
 (`lib/statsUtils.logisticRegression`, reusing `invertMatrix`) and reports **odds ratios** with 95% CI,

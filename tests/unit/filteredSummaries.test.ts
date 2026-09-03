@@ -50,4 +50,11 @@ describe('recomputeFilteredSummaries', () => {
       { min: 0, max: 2.5, count: 2 }, { min: 2.5, max: 5, count: 6 },
     ])
   })
+
+  it('computes real interpolated quartiles (feed the distribution box + gauge bands)', () => {
+    const out = recomputeFilteredSummaries(rows as never, fields as never, {}, 1)
+    // sorted values 2,3,4,5 → p25 at k=0.75 → 2.75 ; p75 at k=2.25 → 4.25
+    expect(out['Rating'].p25).toBeCloseTo(2.75, 5)
+    expect(out['Rating'].p75).toBeCloseTo(4.25, 5)
+  })
 })
