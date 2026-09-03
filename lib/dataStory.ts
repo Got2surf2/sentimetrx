@@ -1259,8 +1259,9 @@ h2{font-size:clamp(21px,2.7vw,29px);font-weight:720;letter-spacing:-.015em;margi
 .fig{background:var(--card);border-radius:12px;padding:22px;margin:18px 0 8px;overflow-x:auto}
 .fig svg{width:100%;height:auto;min-width:640px}
 .figcap{font-size:13px;color:var(--dim);margin-top:8px}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:20px 0 4px}
-.tile{background:var(--card);border-radius:12px;padding:16px 18px;text-align:center}.tile b{display:block;font-size:28px;font-weight:750}.tile span{font-size:13px;color:var(--dim)}
+.tiles{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:10px;margin:20px 0 4px}
+@media(max-width:760px){.tiles{grid-auto-flow:row;grid-template-columns:repeat(2,1fr)}}
+.tile{background:var(--card);border-radius:12px;padding:14px 10px;text-align:center}.tile b{display:block;font-size:24px;font-weight:750}.tile span{font-size:11.5px;color:var(--dim);line-height:1.35;display:block;margin-top:3px}
 .sgwrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:20px}
 .sgcard{background:var(--card);border-radius:12px;padding:16px}
 .sgname{font-weight:700;font-size:14px}.sgsub{font-size:11.5px;color:var(--dim);margin-bottom:8px}
@@ -1320,13 +1321,13 @@ ${n.headline ? `<p class="kicker">${esc(storyTitle(d.datasetName))}</p>` : ''}
 <p class="stamp">Generated ${esc(d.generated)} · every figure computed by the analytics engine${sampledNote ? ' · sampled' : ''}</p>
 </div>
 <div class="tiles">
-<div class="tile"><b>${fmt(d.totalRows)}</b><span>responses in the dataset</span></div>
-<div class="tile"><b>${fmt(d.substantiveBase)}</b><span>substantive written responses (the base for every theme figure)</span></div>
-<div class="tile"><b>${d.themes.length}</b><span>themes mined from “${esc(d.fieldLabel)}”</span></div>
+<div class="tile"><b>${fmt(d.totalRows)}</b><span>responses</span></div>
+<div class="tile"><b>${fmt(d.substantiveBase)}</b><span>written responses (the theme base)</span></div>
+<div class="tile"><b>${d.themes.length}</b><span>themes mined</span></div>
 ${d.overallAvgRating != null ? `<div class="tile"><b>${fmtScoreValue(d.overallAvgRating, d.scorePercent)}</b><span>${d.scorePercent ? 'recommend' : 'average ' + esc(d.ratingFieldLabel || 'rating')} \u2014 all responses</span></div>` : ''}
-${d.writtenAvgRating != null ? `<div class="tile"><b>${fmtScoreValue(d.writtenAvgRating, d.scorePercent)}</b><span>${d.scorePercent ? 'recommend' : 'average'} among written responses</span></div>` : ''}
-${d.signaledAvgRating != null ? `<div class="tile"><b>${fmtScoreValue(d.signaledAvgRating, d.scorePercent)}</b><span>${d.scorePercent ? 'recommend' : 'average'} when the text carries a theme signal</span></div>` : ''}
-${d.signalsPerComment != null ? `<div class="tile"><b>${d.signalsPerComment}</b><span>theme signals per written response${d.signaledSharePct != null ? ` (${d.signaledSharePct}% carry at least one)` : ''}</span></div>` : ''}
+${d.writtenAvgRating != null ? `<div class="tile"><b>${fmtScoreValue(d.writtenAvgRating, d.scorePercent)}</b><span>${d.scorePercent ? 'recommend' : 'average'} — written responses</span></div>` : ''}
+${d.signaledAvgRating != null ? `<div class="tile"><b>${fmtScoreValue(d.signaledAvgRating, d.scorePercent)}</b><span>${d.scorePercent ? 'recommend' : 'average'} — with a theme signal</span></div>` : ''}
+${d.signalsPerComment != null ? `<div class="tile"><b>${d.signalsPerComment}</b><span>signals per written response${d.signaledSharePct != null ? ` (${d.signaledSharePct}% have one)` : ''}</span></div>` : ''}
 </div>
 <nav class="snav" id="snav"></nav>
 <section data-nav="Themes"><h2>${esc(n.themesHead)}</h2>

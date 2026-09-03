@@ -1650,12 +1650,13 @@ function WorkingFactoid() {
   var [faded, setFaded] = useState(false)
   useEffect(function() {
     var alive = true
-    var current = -1
+    // No-repeat rotation (owner 9/03: saw the same fact twice): walk the
+    // pool sequentially from a random start — a repeat is impossible until
+    // the whole pool has been shown.
+    var current = Math.floor(Math.random() * FUN_FACTS.length)
     function pick() {
-      var j = current
-      while (j === current) j = Math.floor(Math.random() * FUN_FACTS.length)
-      current = j
-      return FUN_FACTS[j]
+      current = (current + 1) % FUN_FACTS.length
+      return FUN_FACTS[current]
     }
     var showTimer = setTimeout(function() { if (alive) setFact(pick()) }, 3000)
     var rotate = setInterval(function() {

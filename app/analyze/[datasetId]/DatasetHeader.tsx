@@ -141,26 +141,33 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           // Layout (owner, 2026-09-02): the FACT is the centerpiece — big
           // type, dead center of the viewport; the build status is a compact
           // strip at the top.
+          // DOCTYPE matters: document.write without it lands the tab in
+          // quirks mode, which broke the vertical centering (owner 9/03:
+          // "too much whitespace above the factoid"). The fact is centered
+          // against the FULL viewport (fixed inset grid); the build status is
+          // an absolute strip at the top that takes no layout space.
           storyTab.document.write(
-            '<meta charset="utf-8"><title>Building your Data Story…</title>' +
-            '<body style="margin:0;display:flex;flex-direction:column;height:100vh;font-family:system-ui;background:#FCFCFB;color:#1A2421">' +
-            '<div style="text-align:center;padding:34px 24px 0">' +
+            '<!DOCTYPE html><meta charset="utf-8"><title>Building your Data Story…</title>' +
+            '<body style="margin:0;font-family:system-ui;background:#FCFCFB;color:#1A2421">' +
+            '<div style="position:fixed;top:0;left:0;right:0;text-align:center;padding:34px 24px 0">' +
             '<div style="font-weight:800;font-style:italic;font-size:15px">' +
             '<span style="color:#0E7476">data</span><span style="color:#E85A1A">nautix</span></div>' +
             '<p style="font-size:15px;margin:12px 0 4px;font-weight:600">Building your Data Story…</p>' +
             '<p style="font-size:12.5px;color:#5C6B64;margin:0">Recounting themes and writing the narrative — usually under a minute. This page will load the story automatically.</p>' +
             '</div>' +
-            '<div style="flex:1;display:grid;place-items:center;padding:0 24px">' +
+            '<div style="position:fixed;inset:0;display:grid;place-items:center;padding:0 24px">' +
             '<div id="fwrap" style="text-align:center;max-width:820px;transition:opacity .5s;opacity:0">' +
             '<p style="font-size:12px;letter-spacing:.14em;color:#8FA3AE;margin:0 0 18px;text-transform:uppercase">Did you know?</p>' +
             '<p id="fct" style="font-size:clamp(22px,3.2vw,30px);line-height:1.4;font-weight:600;color:#1A2421;margin:0;transition:opacity .5s;opacity:1"></p>' +
             '</div></div>' +
-            // Same rhythm as Ask Ana's wait-state (components/analyze/
-            // AskAnaPanel): first fact only AFTER 3s (owner 9/03; a fast build never
-            // flashes trivia), then a new random fact every 12s, soft fade.
+            // Same rhythm as Ask Ana's wait-state: first fact only AFTER 3s
+            // (a fast build never flashes trivia), then every 8s. The facts
+            // slice is ALREADY a shuffled no-repeat sample — step through it
+            // sequentially instead of random re-picks, which could repeat a
+            // fact within a session (owner 9/03).
             '<script>(function(){var f=' + JSON.stringify(facts) + ',i=0,el=document.getElementById("fct"),w=document.getElementById("fwrap");' +
             'setTimeout(function(){el.textContent=f[0];w.style.opacity=1;' +
-            'setInterval(function(){el.style.opacity=0;setTimeout(function(){var j=i;while(j===i){j=Math.floor(Math.random()*f.length)}i=j;el.textContent=f[i];el.style.opacity=1},500)},8000)},3000)})()<' + '/script>' +
+            'setInterval(function(){el.style.opacity=0;setTimeout(function(){i=(i+1)%f.length;el.textContent=f[i];el.style.opacity=1},500)},8000)},3000)})()<' + '/script>' +
             '</body>')
           storyTab.document.close()
         } catch { /* cross-origin guard — cosmetic only */ }
