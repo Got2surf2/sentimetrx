@@ -2056,8 +2056,16 @@ Links are SHORT (sql/198): generation mints a crypto-random slug into
 `data_stories` and returns `sentimetrx.ai/story/<slug>`; the public
 `/story/[slug]` viewer checks `revoked_at`/`expires_at` on every request and
 streams the HTML from the bucket — so expiry is EDITABLE after a link is sent
-and one link can be revoked from a future Share-tab surface without touching
-storage. When the insert fails (a DB that has not run sql/198), the route
+and one link can be revoked without touching storage. **Management surface
+(2026-09-03): the Share Analytics modal carries a "Data Story links" section**
+(`components/analyze/DataStoryLinks`, passed via ShareModal's `extra` slot)
+listing every minted link with Copy / **+7d** (extends a live link's expiry;
+REVIVES an expired one — 7 days from now) / **× revoke** (row grays to
+"Revoked", the public link 410s immediately). Backing API on the same route:
+`GET /datasets/[id]/story` (list) and `PATCH` (`{storyId, action: revoke |
+extend, days?}`) — both org-gated, and every `data_stories` query pairs
+`dataset_id` with the gated dataset's `org_id` (service-role invariant).
+A pre-sql/198 DB returns an empty list, which hides the section. When the insert fails (a DB that has not run sql/198), the route
 falls back to the long signed-token `/api/story` link — deploy-order safe.
 The header opens the story in
 a new tab (painted with a building screen whose centerpiece is a rotating

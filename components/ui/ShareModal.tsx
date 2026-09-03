@@ -15,6 +15,9 @@ export interface ShareModalProps {
   onClose: () => void
   // Analytics-specific
   metadata?: Record<string, unknown>
+  // Optional caller-supplied section rendered under the create form
+  // (analytics passes its Data Story links list here)
+  extra?: React.ReactNode
 }
 
 interface ShareLink {
@@ -43,7 +46,7 @@ function fmtAccess(iso: string | null): string {
   return 'Viewed ' + new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
-export default function ShareModal({ type, targetId, title, onClose, metadata }: ShareModalProps) {
+export default function ShareModal({ type, targetId, title, onClose, metadata, extra }: ShareModalProps) {
   var [expiry, setExpiry] = useState<string>('7d')
   var [loading, setLoading] = useState(false)
   var [copied, setCopied] = useState<string | null>(null)
@@ -185,6 +188,8 @@ export default function ShareModal({ type, targetId, title, onClose, metadata }:
             {loading ? 'Creating...' : 'Create Share Link'}
           </button>
         </div>
+
+        {extra}
       </div>
     </div>
   )

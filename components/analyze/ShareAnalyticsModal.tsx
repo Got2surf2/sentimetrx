@@ -4,6 +4,7 @@
 // Thin wrapper around unified ShareModal — passes analytics metadata (filters, includeThemes)
 
 import ShareModal from '@/components/ui/ShareModal'
+import DataStoryLinks from '@/components/analyze/DataStoryLinks'
 import { useFilters } from '@/components/analyze/FilterContext'
 import { serializeFilters } from '@/lib/filterUtils'
 
@@ -30,6 +31,7 @@ export default function ShareAnalyticsModal({ datasetId, datasetName, onClose }:
         label: datasetName,
         includeThemes: true,
       }}
+      extra={<DataStoryLinks datasetId={datasetId} />}
     />
   )
 }

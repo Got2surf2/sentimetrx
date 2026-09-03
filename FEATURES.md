@@ -299,6 +299,7 @@ English, Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean
 
 - **Shareable narrative web page** from the Reports picker: one click builds a self-contained, Datanautix-branded story page from the mined theme model — findings-led sections (theme prevalence, what-moves-the-score when a rating exists, per-segment profiles, theme-over-time timeline, rating-band cross-cuts, a reader-driven verbatim explorer) with premise-verified quotes — hosted on the platform (`report-exports` bucket). AI writes the narrative prose only; every figure is the engine's own recount.
 - **Short share links (sql/198)**: generation mints `sentimetrx.ai/story/<slug>` — crypto-random slug is the capability, `expires_at` is editable after sending (7-day default), `revoked_at` kills one link from data without touching storage; the public `/story/[slug]` viewer checks both per request (the long signed-token `/api/story/...` link remains as the pre-migration fallback and for old links).
+- **Link management (2026-09-03)**: the Share Analytics modal lists every minted story link with Copy, +7d (extends a live link; revives an expired one), and revoke (the public link 410s immediately) — org-gated GET/PATCH on the dataset story route.
 - **Building screen**: a compact status strip plus a centerpiece "Did you know?" fun fact (shared `lib/funFacts.ts` pool with Ask Ana's wait-state — first fact after 7s, new fact every 8s).
 
 ### Statistics Module (Regression)
