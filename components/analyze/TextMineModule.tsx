@@ -17,6 +17,8 @@ import { THEME_PALETTE,
   ratingColor,
   themeFieldKey, themeModelKey, themeFieldEntries, stripFieldEntries,
 } from '@/lib/themeUtils'
+import type { MinedTheme } from '@/lib/themeMining'
+import { stratumKeys, stratifiedDisjointSamples, compositionNote, consensusThemes } from '@/lib/consensusMining'
 import { expandEntityTerms } from '@/lib/entityVariants'
 import { computeThemeEntities, themeKey } from '@/lib/themeEntities'
 import { DIM_AXIS_LABEL, dimSubLabel, AXIS_COLOR, type Axis } from '@/lib/dimensionFields'
@@ -1074,6 +1076,96 @@ function CompareTab({ themes, parsedData, schema, activeField, themeColors, brea
 
 
 
+// ─── Consensus mining (2026-09-03, lib/consensusMining) ────────────────────────
+// K independent mines on DISJOINT stratified samples (rating bucket × time
+// position); only themes recurring across runs survive, with stability
+// metadata for the theme cards. Falls back to a single classic mine when the
+// corpus can't support K disjoint runs of useful size (or the user's sample
+// slider already covers most of the corpus).
+
+const CONSENSUS_RUNS = 3
+const MIN_CONSENSUS_RUN = 30
+
+interface MineRunResult {
+  themes: MinedTheme[]
+  summary?: string
+  foodService?: boolean
+}
+
+async function postMine(datasetId: string, body: Record<string, unknown>): Promise<MineRunResult> {
+  var res = await fetch('/api/datasets/' + datasetId + '/mine-themes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  var data = await res.json()
+  if (!res.ok) {
+    var errMsg = data.error || 'Mining failed'
+    if (errMsg.startsWith('AUTH_ERROR')) throw new Error('AUTH_ERROR')
+    if (errMsg.startsWith('QUOTA_ERROR')) throw new Error('QUOTA_ERROR')
+    throw new Error(errMsg)
+  }
+  if (!data.themes) throw new Error('No themes returned')
+  return data as MineRunResult
+}
+
+async function mineWithConsensus(opts: {
+  datasetId: string
+  apiKey: string
+  fieldName: string
+  schemaCtx: string
+  texts: string[]
+  ratings: (string | number | null | undefined)[]
+  n: number
+}): Promise<MineRunResult & { sampledCount: number; consensus: NonNullable<ThemeModel['consensus']> | null }> {
+  var k = opts.texts.length >= CONSENSUS_RUNS * opts.n && opts.n >= MIN_CONSENSUS_RUN ? CONSENSUS_RUNS : 1
+  if (k === 1) {
+    var sampled = evenSample(opts.texts, Math.max(1, opts.n))
+    var single = await postMine(opts.datasetId, {
+      apiKey: opts.apiKey, texts: sampled, fieldName: opts.fieldName, schemaCtx: opts.schemaCtx,
+    })
+    return { ...single, sampledCount: sampled.length, consensus: null }
+  }
+
+  var runsIdx = stratifiedDisjointSamples(stratumKeys(opts.ratings), opts.n, k)
+  var settled = await Promise.allSettled(runsIdx.map(function(idx) {
+    var note = compositionNote(idx.map(function(i) { return opts.ratings[i] }), 'rating')
+    return postMine(opts.datasetId, {
+      apiKey: opts.apiKey,
+      texts: idx.map(function(i) { return opts.texts[i] }),
+      fieldName: opts.fieldName,
+      schemaCtx: opts.schemaCtx,
+      sampleNote: note || undefined,
+    })
+  }))
+  var ok: MineRunResult[] = []
+  settled.forEach(function(s) { if (s.status === 'fulfilled') ok.push(s.value) })
+  if (!ok.length) throw (settled[0] as PromiseRejectedResult).reason
+  var okRows = 0
+  settled.forEach(function(s, i) { if (s.status === 'fulfilled') okRows += runsIdx[i].length })
+  if (ok.length === 1) return { ...ok[0], sampledCount: okRows, consensus: null }
+
+  var consensus = consensusThemes(ok.map(function(o) { return o.themes }))
+  if (consensus.themes.length < 2) {
+    // Runs disagreed almost entirely — ship the first run rather than an
+    // empty model, and carry no consensus claim.
+    return { ...ok[0], sampledCount: okRows, consensus: null }
+  }
+  var foodVotes = ok.map(function(o) { return o.foodService }).filter(function(v) { return typeof v === 'boolean' })
+  var summary = (ok[0].summary || '').trim()
+  summary += (summary ? ' ' : '') +
+    'Validated by consensus: ' + consensus.themes.length + ' of ' +
+    (consensus.themes.length + consensus.dropped.length) + ' candidate themes were stable across ' +
+    ok.length + ' independent stratified samples.'
+  return {
+    themes: consensus.themes,
+    summary: summary,
+    foodService: foodVotes.length ? foodVotes.filter(Boolean).length > foodVotes.length / 2 : undefined,
+    sampledCount: okRows,
+    consensus: { runs: ok.length, kept: consensus.themes.length, dropped: consensus.dropped.length, minSupport: consensus.minSupport },
+  }
+}
+
 // ─── Main TextMineModule ───────────────────────────────────────────────────────
 
 export default function TextMineModule({ datasetId, schema, analytics, savedThemeModel, datasetSource, taxonomyEnabled, taxonomySuppressed, anaLibrary, initialOpenEditor, outletCount, outletReportingEnabled, initialHasEntities }: Props) {
@@ -2042,9 +2134,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     return computeThemeEntities(ths, filteredRows, effectiveFields, entityCatalogRows)
   }, [displayThemes, themes, filteredRows, effectiveFields, entityCatalogRows])
 
-  // Prepare corpus sample for mining (combines all active fields)
+  // Prepare the mining corpus (combines all active fields). Returns the FULL
+  // substantive corpus plus aligned rating values and the per-run sample size
+  // n — sampling itself happens in mineWithConsensus (stratified disjoint
+  // draws, or a single evenSample fallback).
   function prepareCorpus() {
-    if (!effectiveFields.length || !filteredRows.length) return { texts: [], total: 0 }
+    if (!effectiveFields.length || !filteredRows.length) return { texts: [] as string[], ratings: [] as (string | number | null | undefined)[], total: 0, n: 0 }
     // Mine themes from SUBSTANTIVE feedback only. "Nothing" / "N/A" / "all
     // good" answers carry no theme signal, and feeding them in diluted BOTH
     // the AI's discovery sample and the sample-fit denominator (owner
@@ -2052,16 +2147,20 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     // answers were non-substantive; over real feedback the same themes cover
     // ~48%). isSubstantiveText (≥5 words, or ≥4 with a function word) subsumes
     // the old length>0 check, so blanks are still excluded.
-    var texts = filteredRows
-      .map(function(r) { return effectiveFields.map(function(f) { return String(r[f] || '') }).join(' ').trim() })
-      .filter(function(t) { return isSubstantiveText(t) })
+    var texts: string[] = []
+    var ratings: (string | number | null | undefined)[] = []
+    filteredRows.forEach(function(r) {
+      var t = effectiveFields.map(function(f) { return String(r[f] || '') }).join(' ').trim()
+      if (!isSubstantiveText(t)) return
+      texts.push(t)
+      ratings.push(ratingField ? (r[ratingField] as string | number | null | undefined) : null)
+    })
     const total = texts.length
     const defaultN = sampleSize95(total)
     const defaultPct = total > 0 ? Math.round(defaultN / total * 100) : 100
     const activePct = samplePct === 0 ? defaultPct : samplePct
     const n = Math.max(1, Math.round(total * (activePct / 100)))
-    const sampled = evenSample(texts, n)
-    return { texts: sampled, total }
+    return { texts, ratings, total, n }
   }
 
   async function mineThemes(forceMode?: 'merge' | 'fresh') {
@@ -2145,36 +2244,28 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         void fetchServerThemeCounts(tm, effectiveFields)
         void enrichSearchInterest(tm)
       } else {
-        // ── Standard: mine from combined corpus ──────────────────────
-        var { texts, total } = prepareCorpus()
-        if (!texts.length) throw new Error('No text found in selected fields.')
-        var res = await fetch('/api/datasets/' + datasetId + '/mine-themes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiKey: liveKey, texts: texts, fieldName: effectiveFields[0], schemaCtx: schemaCtx }),
+        // ── Standard: consensus mine from the stratified corpus ──────
+        var corpus = prepareCorpus()
+        if (!corpus.texts.length) throw new Error('No text found in selected fields.')
+        var mined = await mineWithConsensus({
+          datasetId: datasetId, apiKey: liveKey, fieldName: effectiveFields[0], schemaCtx: schemaCtx,
+          texts: corpus.texts, ratings: corpus.ratings, n: corpus.n,
         })
-        var data = await res.json()
-        if (!res.ok) {
-          var errMsg = data.error || 'Mining failed'
-          if (errMsg.startsWith('AUTH_ERROR')) throw new Error('AUTH_ERROR')
-          if (errMsg.startsWith('QUOTA_ERROR')) throw new Error('QUOTA_ERROR')
-          throw new Error(errMsg)
-        }
-        if (!data.themes) throw new Error('No themes returned')
         var tm2: ThemeModel = {
-          themes: data.themes,
-          summary: data.summary || '',
+          themes: mined.themes as Theme[],
+          summary: mined.summary || '',
           fieldName: effectiveFields[0],
           fieldNames: effectiveFields,
           themeSource: 'ai',
           themeLibName: null,
-          samplingInfo: { sampled: texts.length, total: total },
+          samplingInfo: { sampled: mined.sampledCount, total: corpus.total },
+          consensus: mined.consensus || undefined,
         }
         setThemes(tm2)
         setFieldModels(function(prev) { return { ...prev, [themeModelKey(tm2)]: stripFieldEntries(tm2) } })
         setThemeSource('ai')
         setThemeLibName(null)
-        setSamplingInfo({ sampled: texts.length, total: total })
+        setSamplingInfo({ sampled: mined.sampledCount, total: corpus.total })
         setLastRunPct(samplePct)
         setSection('themes'); setView('overview')
         void persistThemeModel(tm2)
@@ -2187,8 +2278,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
         // Dimensions section only if emotion language fired, and refreshes — which
         // also hides the irrelevant restaurant tab on an otherwise-proxied
         // google_reviews dataset).
-        if (data.foodService === true) void autoEnableDimensions(effectiveFields)
-        else if (data.foodService === false) void autoTagEmotion(effectiveFields)
+        if (mined.foodService === true) void autoEnableDimensions(effectiveFields)
+        else if (mined.foodService === false) void autoTagEmotion(effectiveFields)
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Mining failed')
@@ -2218,33 +2309,35 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       for (var i = 0; i < fieldsToMine.length; i++) {
         var f = fieldsToMine[i]
         setMultiMineStatus('Mining “' + fieldLabel(f) + '” — ' + (i + 1) + ' of ' + fieldsToMine.length)
-        var texts = rows
-          .map(function(r) { return String(r[f] || '').trim() })
-          .filter(function(t) { return t.length > 0 })
+        var texts: string[] = []
+        var fieldRatings: (string | number | null | undefined)[] = []
+        rows.forEach(function(r) {
+          var t = String(r[f] || '').trim()
+          if (!t.length) return
+          texts.push(t)
+          fieldRatings.push(ratingField ? (r[ratingField] as string | number | null | undefined) : null)
+        })
         if (!texts.length) continue
         var total = texts.length
-        var sampled = evenSample(texts, Math.max(1, sampleSize95(total)))
-        var res = await fetch('/api/datasets/' + datasetId + '/mine-themes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiKey: liveKey, texts: sampled, fieldName: f, schemaCtx: schemaCtx }),
-        })
-        var data = await res.json()
-        if (!res.ok) {
-          var errMsg = data.error || 'Mining failed'
-          if (errMsg.startsWith('AUTH_ERROR')) throw new Error('AUTH_ERROR')
-          if (errMsg.startsWith('QUOTA_ERROR')) throw new Error('QUOTA_ERROR')
-          throw new Error(errMsg)
+        var mined
+        try {
+          mined = await mineWithConsensus({
+            datasetId: datasetId, apiKey: liveKey, fieldName: f, schemaCtx: schemaCtx,
+            texts: texts, ratings: fieldRatings, n: Math.max(1, sampleSize95(total)),
+          })
+        } catch (e) {
+          if (e instanceof Error && (e.message === 'AUTH_ERROR' || e.message === 'QUOTA_ERROR')) throw e
+          throw new Error(e instanceof Error && e.message ? e.message : 'No themes returned for ' + fieldLabel(f))
         }
-        if (!data.themes) throw new Error('No themes returned for ' + fieldLabel(f))
         var tm: ThemeModel = {
-          themes: data.themes,
-          summary: data.summary || '',
+          themes: mined.themes as Theme[],
+          summary: mined.summary || '',
           fieldName: f,
           fieldNames: [f],
           themeSource: 'ai',
           themeLibName: null,
-          samplingInfo: { sampled: sampled.length, total: total },
+          samplingInfo: { sampled: mined.sampledCount, total: total },
+          consensus: mined.consensus || undefined,
         }
         newModels[themeFieldKey([f])] = tm
         // Persist as we go — each PATCH merges into the stored per-field map.
@@ -2253,7 +2346,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ theme_model: tm }),
         })
-        if (firstFoodService === null && typeof data.foodService === 'boolean') firstFoodService = data.foodService
+        if (firstFoodService === null && typeof mined.foodService === 'boolean') firstFoodService = mined.foodService
       }
       var minedFields = fieldsToMine.filter(function(mf) { return !!newModels[themeFieldKey([mf])] })
       if (minedFields.length > 0) {
@@ -3136,6 +3229,12 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                     )}
                                     {t.avgRating != null && (
                                       <span title={'Average rating for this theme: ' + t.avgRating.toFixed(2)} style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, background: ratingColor(normRating(t.avgRating)) + '18', color: ratingColor(normRating(t.avgRating)), fontWeight: 700 }}>{'\u2605'} {t.avgRating.toFixed(1)}</span>
+                                    )}
+                                    {t.stability && (
+                                      <span title={'Stable in ' + t.stability.support + ' of ' + t.stability.runs + ' independent mining runs on separate stratified samples \u00b7 keyword agreement ' + t.stability.kwAgreement + '%'}
+                                        style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', fontWeight: 700, cursor: 'help', whiteSpace: 'nowrap' }}>
+                                        {'\u2713'} {t.stability.support}/{t.stability.runs} runs
+                                      </span>
                                     )}
                                     <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, background: sentBg(t.sentiment), color: sentColor(t.sentiment), fontWeight: 700, textTransform: 'capitalize' }}>{t.sentiment || '\u2014'}</span>
                                   </div>

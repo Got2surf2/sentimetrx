@@ -19,7 +19,7 @@ import {
 } from '@/lib/themeMining'
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 120 // two AI calls when the validation loop refines
+export const maxDuration = 300 // main mine (up to 100s) + refine; consensus mining runs 3 of these in parallel
 
 interface Props { params: Promise<{ datasetId: string }> }
 
@@ -42,6 +42,7 @@ export async function POST(request: Request, props: Props) {
     texts?: string[]
     fieldName?: string
     schemaCtx?: string
+    sampleNote?: string
   }
   try {
     body = await request.json()
@@ -49,7 +50,7 @@ export async function POST(request: Request, props: Props) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { apiKey, texts, fieldName, schemaCtx } = body
+  const { apiKey, texts, fieldName, schemaCtx, sampleNote } = body
 
   // No more NO_API_KEY rejection. callAI() falls back to ANTHROPIC_API_KEY
   // env when body.apiKey is undefined, so customer orgs piggyback on the
@@ -65,9 +66,14 @@ export async function POST(request: Request, props: Props) {
   const corpusText = texts.map(function(t, i) { return (i + 1) + '. ' + t }).join('\n')
   const fieldLabel = fieldName || 'responses'
   const schemaLine = schemaCtx ? '\n\nSchema: ' + schemaCtx : ''
+  // Consensus mining passes the stratified sample's composition so the AI
+  // doesn't collapse a mixed sample into its dominant tone (the 2026-09-03
+  // EA Football failure: an "overwhelmingly negative" draw lost the corpus's
+  // positive theme entirely). Truncated defensively — it's prompt text.
+  const sampleLine = sampleNote && typeof sampleNote === 'string' ? '\n\n' + sampleNote.slice(0, 600) : ''
   const userMsg =
     'Thematic analysis on ' + texts.length + ' responses for field \'' + fieldLabel + '\'.' +
-    schemaLine + '\n\nResponses:\n' + corpusText +
+    schemaLine + sampleLine + '\n\nResponses:\n' + corpusText +
     '\n\nIdentify 4-7 distinct themes. For each theme, provide 8-15 keywords. Keywords are matched ' +
     'against responses by word stem (multi-word phrases match their words in order, allowing a few ' +
     'words in between), so every keyword must be wording that LITERALLY appears in the responses:\n' +
@@ -88,10 +94,14 @@ export async function POST(request: Request, props: Props) {
   try {
     let result
     try {
+      // 100s, not 60: consensus mining fires 3 of these in parallel, and the
+      // measured spread on a 350-review sample is ~55-70s — at 60s exactly one
+      // of the three timed out in three consecutive generations (2026-09-03),
+      // silently shrinking every consensus to 2 runs.
       result = await callAI({
         tier: 'standard',
         maxTokens: 4000,
-        timeoutMs: 60000,
+        timeoutMs: 100000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMsg }],
         apiKey,

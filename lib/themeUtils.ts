@@ -72,6 +72,9 @@ export interface Theme {
   keywordRatings?: Record<string, { avg: number; count: number; delta: number }>
   searchInterest?: SearchInterestTier  // Google search volume tier (Reddit/Substack only)
   searchTrend?: SearchTrend            // Google search trend direction (Reddit/Substack only)
+  // Consensus mining (2026-09-03): how stable this theme was across K
+  // independent mines on disjoint stratified samples (lib/consensusMining).
+  stability?: { support: number; runs: number; kwAgreement: number }
 }
 
 export interface ThemeModel {
@@ -88,6 +91,9 @@ export interface ThemeModel {
   // unchanged. Entries never nest (no `fields` inside an entry). Maintained
   // centrally by the dataset state route via mergeThemeModelWrite().
   fields?: Record<string, ThemeModel>
+  // Consensus mining metadata (2026-09-03): present when this model came from
+  // K independent mines on disjoint stratified samples.
+  consensus?: { runs: number; kept: number; dropped: number; minSupport: number }
 }
 
 // Canonical key for the open-ended selection a theme set was mined from —

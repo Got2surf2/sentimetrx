@@ -277,7 +277,38 @@ feature key cannot silently miss one path again.
   words respondents actually wrote, informal variants, 2-3 word phrases only where a
   single word is ambiguous
 - Input: caller-supplied `texts[]` + field name + schema context (no hard cap;
-  the calling page picks the sample)
+  the calling page picks the sample) + optional `sampleNote` (consensus mining
+  passes the stratified sample's composition so the AI doesn't collapse a mixed
+  sample into its dominant tone; when both satisfied and dissatisfied voices
+  appear, at least one theme per side is required)
+- **Stratified + consensus mining (2026-09-03, `lib/consensusMining`).** A single
+  mine is one draw of a stochastic process — measured failure on EA Football: a
+  350-review sample whose own summary said "overwhelmingly negative" lost the
+  corpus's positive theme (~half the reviews recommend the game). Every AI mine
+  from `TextMineModule` (single and first-open sequential) now runs
+  `mineWithConsensus`: K=3 mine-themes calls **in parallel** on **disjoint
+  stratified samples** (proportional allocation over rating-bucket × time-quartile
+  strata; rating buckets are raw values when ≤6 distinct, else low/mid/high
+  thirds; deterministic — same corpus → same samples). Themes are matched across
+  runs by the STRONGEST of three scaled signals (matcher-equivalent keyword
+  Jaccard > 0.8×description-token overlap > 0.7×name-token overlap — a weighted
+  average dilutes a decisive signal; measured: keyword+name alone scored two
+  crash themes 0.14 and dropped a 3/3-stable theme); only themes recurring in
+  ≥2 runs survive. Merged theme: medoid name/description, keywords by cross-run
+  votes (union, cap 15), sentiment by majority. Each theme carries
+  `stability { support, runs, kwAgreement }` (theme-card badge "✓ 2/3 runs");
+  the model carries `consensus { runs, kept, dropped, minSupport }` and the
+  summary appends "Validated by consensus: X of Y candidate themes were stable
+  across K independent stratified samples." Falls back to one classic
+  `evenSample` mine when the corpus can't support K disjoint runs of ≥30
+  (or the user's sample slider covers most of the corpus); failed runs degrade
+  gracefully (consensus over the survivors; 1 survivor → classic behavior).
+  Route `timeoutMs` on the main call is 100s (at 60s exactly one of the three
+  parallel calls timed out in three consecutive generations) and `maxDuration`
+  is 300. `foodService` is decided by majority across runs. Tests:
+  `tests/unit/consensusMining.test.ts`. Caveat (stated): consensus stabilizes
+  STRUCTURE, not truth — stratification protects representativeness, consensus
+  kills run noise; both halves are required.
 - **Substantive-only corpus (2026-07-14).** `TextMineModule.prepareCorpus` filters the
   mining texts with `scoreUsefulness` (`lib/usefulness.ts` v1 = `isSubstantiveText`:
   ≥5 words, or ≥4 with a function word) instead of the old `length>0`. "Nothing"/"N/A"/
