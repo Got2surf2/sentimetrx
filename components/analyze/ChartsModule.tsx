@@ -6,13 +6,13 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { smartOrder, isOrdinalScale, scaleDirectionLabel, detectScale } from '@/lib/scaleUtils'
 import { resolveAlias, aliasedCounts } from '@/lib/aliasUtils'
 import { cachedRequest } from '@/lib/clientRequestCache'
-import { themeSetForField, buildKwRegex } from '@/lib/themeUtils'
+import { themeSetForField, buildKwRegex, evenSample } from '@/lib/themeUtils'
 import type { Theme, ThemeModel } from '@/lib/themeUtils'
 import { axisOfDimField, isDimField, dimVirtualFields, DIM_AXIS_LABEL_LONG } from '@/lib/dimensionFields'
 import { readSession, writeSession } from '@/lib/useSessionState'
 import type { TimeBucket} from '@/lib/timeBucket';
 import { BUCKET_OPTIONS, autoBucket, bucketKey } from '@/lib/timeBucket'
-import { buildPeriodComparison, type PeriodComparison } from '@/lib/periodCompare'
+import { buildPeriodComparison, fillBuckets, type PeriodComparison } from '@/lib/periodCompare'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { injectSignalTier } from '@/lib/signalTier'
 import { useRows } from '@/components/analyze/RowsContext'
@@ -187,8 +187,9 @@ function fieldMatchesAccepts(f: SchemaField, accepts: string[]): boolean {
 }
 
 // ── Collapsible sidebar field group (Charts) ──────────────────
-function ChartCollapsibleGroup({ label, icon, color, fields, currentConfig }: {
+function ChartCollapsibleGroup({ label, icon, color, fields, currentConfig, onDragState }: {
   label: string; icon: string; color: string; fields: SchemaField[]; currentConfig: Record<string, string>
+  onDragState?: (d: { type: string; dual?: boolean } | null) => void
 }) {
   var [open, setOpen] = useState(true)
   if (fields.length === 0) return null
@@ -221,8 +222,11 @@ function ChartCollapsibleGroup({ label, icon, color, fields, currentConfig }: {
                   _chartDrag = { field: f.field, type: f.type, label: fl(f), dual: dual }
                   e.dataTransfer.setData('text/field', JSON.stringify({ field: f.field, type: f.type, label: fl(f), section: f.section || 'core', dual: dual }))
                   e.dataTransfer.effectAllowed = 'copy'
+                  // Announce the drag so every slot can show whether it can
+                  // take this field (viable slots light up, others dim).
+                  if (onDragState) onDragState({ type: f.type, dual: dual })
                 }}
-                onDragEnd={function() { _chartDrag = null }}
+                onDragEnd={function() { _chartDrag = null; if (onDragState) onDragState(null) }}
                 style={{ fontSize: 11, padding: '4px 8px', borderRadius: 5, color: isAssigned ? T.accent : T.textMid, fontWeight: isAssigned ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 1, background: isAssigned ? T.accentBg : 'transparent', transition: 'all .1s', cursor: 'grab', userSelect: 'none' }}
                 title={hoverTitle}>
                 {isAssigned && '\u2713 '}{fl(f)}
@@ -236,7 +240,7 @@ function ChartCollapsibleGroup({ label, icon, color, fields, currentConfig }: {
   )
 }
 
-function ChartFieldGroups({ fields, currentConfig }: { fields: SchemaField[]; currentConfig: Record<string, string> }) {
+function ChartFieldGroups({ fields, currentConfig, onDragState }: { fields: SchemaField[]; currentConfig: Record<string, string>; onDragState?: (d: { type: string; dual?: boolean } | null) => void }) {
   var psychoFields = fields.filter(function(f) { return f.section === 'psychographic' })
   var demoFields = fields.filter(function(f) { return f.section === 'demographic' })
   var customFields = fields.filter(function(f) { return f.section === 'custom' })
@@ -256,16 +260,16 @@ function ChartFieldGroups({ fields, currentConfig }: { fields: SchemaField[]; cu
 
   return (
     <>
-      <ChartCollapsibleGroup label="Numeric" icon="#" color="#16a34a" fields={numFields} currentConfig={currentConfig} />
-      <ChartCollapsibleGroup label="Categorical" icon={'\u2261'} color="#7c3aed" fields={catFields} currentConfig={currentConfig} />
-      <ChartCollapsibleGroup label="Themes" icon={'\u2728'} color="#0EA5E9" fields={themeFields} currentConfig={currentConfig} />
-      <ChartCollapsibleGroup label="Dimensions" icon={'\ud83c\udff7'} color="#e8622a" fields={dimFields} currentConfig={currentConfig} />
-      <ChartCollapsibleGroup label="Open-ended" icon={'\u2756'} color="#2563eb" fields={openFields} currentConfig={currentConfig} />
-      <ChartCollapsibleGroup label="Date" icon={'\uD83D\uDCC5'} color="#d97706" fields={dateFields} currentConfig={currentConfig} />
-      <ChartCollapsibleGroup label="Survey Questions" icon={'\uD83D\uDCCB'} color="#f59e0b" fields={customFields} currentConfig={currentConfig} />
-      <ChartCollapsibleGroup label="Psychographic" icon={'\uD83E\uDDE0'} color="#ec4899" fields={psychoFields} currentConfig={currentConfig} />
-      <ChartCollapsibleGroup label="Demographic" icon={'\uD83D\uDC64'} color="#0891b2" fields={demoFields} currentConfig={currentConfig} />
-      <ChartCollapsibleGroup label="URL Parameters" icon={'\uD83D\uDD17'} color="#6366f1" fields={urlParamFields} currentConfig={currentConfig} />
+      <ChartCollapsibleGroup label="Numeric" icon="#" color="#16a34a" fields={numFields} currentConfig={currentConfig} onDragState={onDragState} />
+      <ChartCollapsibleGroup label="Categorical" icon={'\u2261'} color="#7c3aed" fields={catFields} currentConfig={currentConfig} onDragState={onDragState} />
+      <ChartCollapsibleGroup label="Themes" icon={'\u2728'} color="#0EA5E9" fields={themeFields} currentConfig={currentConfig} onDragState={onDragState} />
+      <ChartCollapsibleGroup label="Dimensions" icon={'\ud83c\udff7'} color="#e8622a" fields={dimFields} currentConfig={currentConfig} onDragState={onDragState} />
+      <ChartCollapsibleGroup label="Open-ended" icon={'\u2756'} color="#2563eb" fields={openFields} currentConfig={currentConfig} onDragState={onDragState} />
+      <ChartCollapsibleGroup label="Date" icon={'\uD83D\uDCC5'} color="#d97706" fields={dateFields} currentConfig={currentConfig} onDragState={onDragState} />
+      <ChartCollapsibleGroup label="Survey Questions" icon={'\uD83D\uDCCB'} color="#f59e0b" fields={customFields} currentConfig={currentConfig} onDragState={onDragState} />
+      <ChartCollapsibleGroup label="Psychographic" icon={'\uD83E\uDDE0'} color="#ec4899" fields={psychoFields} currentConfig={currentConfig} onDragState={onDragState} />
+      <ChartCollapsibleGroup label="Demographic" icon={'\uD83D\uDC64'} color="#0891b2" fields={demoFields} currentConfig={currentConfig} onDragState={onDragState} />
+      <ChartCollapsibleGroup label="URL Parameters" icon={'\uD83D\uDD17'} color="#6366f1" fields={urlParamFields} currentConfig={currentConfig} onDragState={onDragState} />
     </>
   )
 }
@@ -385,11 +389,18 @@ function ComputePrompt({ datasetId }: { datasetId: string }) {
 
 // ─── Chart Slot — grouped dropdown + drag-drop target ────────────────────
 
-function ChartSlot({ label, value, onChange, options, required, accepts }: {
+function ChartSlot({ label, value, onChange, options, required, accepts, dragging }: {
   label: string; value: string; onChange: (v: string) => void
   options: { v: string; l: string; section?: string }[]; required?: boolean; accepts?: string[]
+  dragging?: { type: string; dual?: boolean } | null
 }) {
   var [dragOver, setDragOver] = useState(false)
+  // While a field is being dragged, tell the user where it can land: viable
+  // slots light up ("Drop here"), non-viable slots dim and stop accepting
+  // pointer events so a wrong drop can't even register. Naive-user rule:
+  // never make someone guess which slot takes which field type.
+  var viable = !dragging ? null
+    : !accepts || accepts.includes('any') || accepts.includes(dragging.type) || (!!dragging.dual && accepts.includes('numeric'))
   var coreOpts  = options.filter(function(o) { return !o.section || o.section === 'core' })
   var customOpts = options.filter(function(o) { return o.section === 'custom' })
   var psychoOpts = options.filter(function(o) { return o.section === 'psychographic' })
@@ -398,7 +409,11 @@ function ChartSlot({ label, value, onChange, options, required, accepts }: {
   var hasGroups = customOpts.length > 0 || psychoOpts.length > 0 || demoOpts.length > 0 || urlParamOpts.length > 0
 
   return (
-    <div style={{ minWidth: 140 }}
+    <div style={{
+      minWidth: 140, transition: 'opacity .12s',
+      ...(viable === false ? { opacity: 0.3, pointerEvents: 'none' as const } : {}),
+      ...(viable === true ? { outline: '2px dashed ' + T.accent, outlineOffset: 3, borderRadius: 9 } : {}),
+    }}
       onDragOver={function(e) { e.preventDefault(); setDragOver(true) }}
       onDragLeave={function(e) { var rt = e.relatedTarget as Node | null; if (!rt || !e.currentTarget.contains(rt)) setDragOver(false) }}
       onDrop={function(e) {
@@ -415,8 +430,9 @@ function ChartSlot({ label, value, onChange, options, required, accepts }: {
         } catch {}
       }}
     >
-      <div style={{ fontSize: 10, fontWeight: 700, color: T.textFaint, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 4 }}>
-        {label}{!required && ' (optional)'}
+      <div style={{ fontSize: 10, fontWeight: 700, color: viable === true ? T.accent : T.textFaint, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 4 }}>
+        {label}{!required && viable !== true && ' (optional)'}
+        {viable === true && <span style={{ marginLeft: 6, fontWeight: 800 }}>{'▼'} drop here</span>}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <select
@@ -550,24 +566,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var sum = fs[field]; if (!sum) return <EmptyChart msg="No data." />
     var fieldAlias = flByName(field, schema)
     if (sum.histogram) {
-      var hx = sum.histogram.map(function(b) { return (b.min + b.max) / 2 })
-      var hy = sum.histogram.map(function(b) { return b.count })
-      var intX = isSmallIntRange(sum.min, sum.max)
-      var maxY = Math.max.apply(null, hy)
-      var distShapes: Record<string, unknown>[] = []
-      var distAnnotations: Record<string, unknown>[] = []
-      if (sum.avg != null) {
-        distShapes.push({ type: 'line', x0: sum.avg, x1: sum.avg, y0: 0, y1: 1, yref: 'paper', line: { color: T.accent, width: 2, dash: 'dash' } })
-        distAnnotations.push({ x: sum.avg, y: 0.98, yref: 'paper', text: 'Mean ' + sum.avg.toFixed(1), showarrow: false, font: { size: 11, color: T.accent }, xanchor: sum.avg > (sum.max || 0) * 0.7 ? 'right' : 'left', yanchor: 'top', xshift: sum.avg > (sum.max || 0) * 0.7 ? -4 : 4 })
-      }
-      if (sum.median != null) {
-        distShapes.push({ type: 'line', x0: sum.median, x1: sum.median, y0: 0, y1: 1, yref: 'paper', line: { color: T.blue, width: 2, dash: 'dot' } })
-        distAnnotations.push({ x: sum.median, y: 0.82, yref: 'paper', text: 'Median ' + sum.median.toFixed(1), showarrow: false, font: { size: 11, color: T.blue }, xanchor: sum.median > (sum.max || 0) * 0.7 ? 'right' : 'left', yanchor: 'top', xshift: sum.median > (sum.max || 0) * 0.7 ? -4 : 4 })
-      }
-      return <PlotlyChart
-        traces={[{ type: 'bar', x: hx, y: hy, marker: { color: primaryColor, opacity: 0.8, line: { color: primaryColor + '60', width: 1 } }, hovertemplate: '%{x}: %{y}<extra></extra>' }]}
-        layout={{ title: fieldAlias, xaxis: { title: fieldAlias, ...(intX ? { dtick: 1, tick0: sum.min } : {}) }, yaxis: { title: 'Count', tickformat: ',d' }, bargap: 0.04, barcornerradius: 3, shapes: distShapes, annotations: distAnnotations }}
-      />
+      return <DistHistogramInner sum={sum} fieldAlias={fieldAlias} color={primaryColor} />
     }
     // No precomputed histogram (seeded/compute-failed summaries) — build a real
     // box from the rows. The old fallback fed [min, avg, median, max] to Plotly
@@ -600,7 +599,7 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var totalKeys2 = top2.total
     var e2 = top2.keys.map(function(k) { return [k, s2.counts![k] || 0] as [string, number] })
     var labels = e2.map(function(e) { return e[0] }); var values = e2.map(function(e) { return e[1] }); var parents = labels.map(function() { return '' })
-    return <PlotlyChart traces={[{ type: 'treemap', labels: labels, values: values, parents: parents, marker: { colors: labels.map(function(_, i) { return pal[i % pal.length] }) }, branchvalues: 'remainder' as const, textinfo: 'label+value' }]} layout={{ title: flByName(catF2, schema) + clipBadge(MAX_CATEGORIES_PER_CHART, totalKeys2), margin: { t: 48, r: 8, b: 8, l: 8 } }} />
+    return <PlotlyChart traces={[{ type: 'treemap', labels: labels, values: values, parents: parents, marker: { colors: labels.map(function(_, i) { return pal[i % pal.length] }) }, branchvalues: 'remainder' as const, textinfo: 'label+value+percent parent' }]} layout={{ title: flByName(catF2, schema) + clipBadge(MAX_CATEGORIES_PER_CHART, totalKeys2), margin: { t: 48, r: 8, b: 8, l: 8 } }} />
   }
 
   if (chartType === 'bubbles') {
@@ -692,7 +691,9 @@ function renderChart(chartType: string, config: Record<string, string>, analytic
     var top5 = topCategoryKeys(s5.counts, FUNNEL_CAP)
     var totalKeys5 = top5.total
     var e5 = top5.keys.map(function(k) { return [k, s5.counts![k] || 0] as [string, number] })
-    return <PlotlyChart traces={[{ type: 'funnel', y: wrapLabels(e5.map(function(e) { return e[0] }), 28), x: e5.map(function(e) { return e[1] }), marker: { color: e5.map(function(_, i) { return pal[i % pal.length] }) } }]} layout={{ title: flByName(catF5, schema) + clipBadge(FUNNEL_CAP, totalKeys5), margin: { t: 48, r: 16, b: 8, l: 120 }, showlegend: false }} />
+    // Each stage shows its absolute count AND % of the top stage — the
+    // conversion reading a funnel exists for.
+    return <PlotlyChart traces={[{ type: 'funnel', y: wrapLabels(e5.map(function(e) { return e[0] }), 28), x: e5.map(function(e) { return e[1] }), textinfo: 'value+percent initial' as const, marker: { color: e5.map(function(_, i) { return pal[i % pal.length] }) } }]} layout={{ title: flByName(catF5, schema) + clipBadge(FUNNEL_CAP, totalKeys5), margin: { t: 48, r: 16, b: 8, l: 120 }, showlegend: false }} />
   }
 
   if (chartType === 'gantt') {
@@ -973,7 +974,7 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
   var needsRows = !taxSpec && (isCollection || catField.startsWith('__') || colorByField.startsWith('__'))
   var { rows, loaded: rowsLoaded } = useChartRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
   var loaded = needsRows ? rowsLoaded : aggLoaded
-  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data…" /></div>
   var pal = colors || CHART_COLORS
 
   // Build crosstab: from aggregation API or from rows
@@ -1290,6 +1291,45 @@ function GaugeCard({ label, avg, median, min, max, n, overallAvg, accentColor, q
   )
 }
 
+// Histogram view with a Count / % of responses toggle; mean + median guide
+// lines. % divides each bin by the total binned count.
+function DistHistogramInner({ sum, fieldAlias, color }: { sum: FieldSummary; fieldAlias: string; color: string }) {
+  var [distPct, setDistPct] = useState(false)
+  var hist = sum.histogram || []
+  var hx = hist.map(function(b) { return (b.min + b.max) / 2 })
+  var hyCount = hist.map(function(b) { return b.count })
+  var totalBinned = hyCount.reduce(function(a, b) { return a + b }, 0)
+  var hy = distPct ? hyCount.map(function(c) { return totalBinned > 0 ? Math.round(c / totalBinned * 1000) / 10 : 0 }) : hyCount
+  var intX = isSmallIntRange(sum.min, sum.max)
+  var distShapes: Record<string, unknown>[] = []
+  var distAnnotations: Record<string, unknown>[] = []
+  if (sum.avg != null) {
+    distShapes.push({ type: 'line', x0: sum.avg, x1: sum.avg, y0: 0, y1: 1, yref: 'paper', line: { color: T.accent, width: 2, dash: 'dash' } })
+    distAnnotations.push({ x: sum.avg, y: 0.98, yref: 'paper', text: 'Mean ' + sum.avg.toFixed(1), showarrow: false, font: { size: 11, color: T.accent }, xanchor: sum.avg > (sum.max || 0) * 0.7 ? 'right' : 'left', yanchor: 'top', xshift: sum.avg > (sum.max || 0) * 0.7 ? -4 : 4 })
+  }
+  if (sum.median != null) {
+    distShapes.push({ type: 'line', x0: sum.median, x1: sum.median, y0: 0, y1: 1, yref: 'paper', line: { color: T.blue, width: 2, dash: 'dot' } })
+    distAnnotations.push({ x: sum.median, y: 0.82, yref: 'paper', text: 'Median ' + sum.median.toFixed(1), showarrow: false, font: { size: 11, color: T.blue }, xanchor: sum.median > (sum.max || 0) * 0.7 ? 'right' : 'left', yanchor: 'top', xshift: sum.median > (sum.max || 0) * 0.7 ? -4 : 4 })
+  }
+  return (
+    <div>
+      <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 12, padding: 2, border: '1px solid ' + T.border, marginBottom: 8 }}>
+        {[[false, 'Count'], [true, '% of responses']].map(function(pair) {
+          var active = distPct === pair[0]
+          return <button key={String(pair[0])} onClick={function() { setDistPct(pair[0] as boolean) }}
+            style={{ fontSize: 10, fontWeight: active ? 700 : 500, padding: '2px 10px', borderRadius: 10, background: active ? T.bgCard : 'transparent', color: active ? T.accent : T.textMute, border: 'none', cursor: 'pointer' }}>
+            {pair[1] as string}
+          </button>
+        })}
+      </div>
+      <PlotlyChart
+        traces={[{ type: 'bar', x: hx, y: hy, marker: { color: color, opacity: 0.8, line: { color: color + '60', width: 1 } }, hovertemplate: distPct ? '%{x}: %{y:.1f}%<extra></extra>' : '%{x}: %{y}<extra></extra>' }]}
+        layout={{ title: fieldAlias, xaxis: { title: fieldAlias, ...(intX ? { dtick: 1, tick0: sum.min } : {}) }, yaxis: { title: distPct ? '% of responses' : 'Count', ...(distPct ? { ticksuffix: '%' } : { tickformat: ',d' }) }, bargap: 0.04, barcornerradius: 3, shapes: distShapes, annotations: distAnnotations }}
+      />
+    </div>
+  )
+}
+
 // Distribution fallback when the summary has no histogram: hand Plotly the raw
 // numeric values so the box's quartiles/whiskers are computed from real data.
 function DistRowsFallbackInner({ datasetId, numField, schema, color }: { datasetId: string; numField: string; schema: SchemaField[]; color: string }) {
@@ -1308,7 +1348,7 @@ function DistSplitInner({ analytics, schema, datasetId, numField, splitByField, 
   var distAgg = useAggregation(datasetId, distDimAxis ? { op: 'tax_group_stats', axis: distDimAxis, valueField: numField } : null)
   var { rows, loaded: distRowsLoaded } = useChartRows(datasetId, distDimAxis ? -1 : (_enrichCtx.enrichKey || 0))
   var loaded = distDimAxis ? distAgg.loaded : distRowsLoaded
-  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data…" /></div>
   var pal = colors || CHART_COLORS
   var numSumD = analytics.fieldSummaries?.[numField]
   var intYD = isSmallIntRange(numSumD?.min, numSumD?.max)
@@ -1380,7 +1420,7 @@ function BulletSplitInner({ analytics, schema, datasetId, measureField, splitByF
   var { rows, loaded: rowsLoaded } = useChartRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
   var loaded = needsRows ? rowsLoaded : aggLoaded
   var [showAllKPI, setShowAllKPI] = useState(false)
-  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data…" /></div>
 
   // Build stats from aggregation API or rows. q1/q3 feed the gauge's quartile
   // bands — the tax_group_stats path returns them, plain group_stats doesn't
@@ -1507,7 +1547,7 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
     // the filtered rows change — without them it went stale under an active filter.
   }, [mode, loaded, selectedOE, scoreField, rows, schema, themeModel, hasThemes])
 
-  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data…" /></div>
 
   var groupField = groupByField || (hasThemes ? '__themes__' : '')
   if (!groupField) return <EmptyChart msg="Add themes in TextMine, or assign a categorical 'Group by' field to see score drivers." />
@@ -1872,20 +1912,85 @@ function ScoreDriverInner({ datasetId, scoreField, schema, groupByField, colors 
   )
 }
 
+// Deterministic per-point jitter in \u00b10.35 \u2014 hashed from the index, never
+// Math.random(), so re-renders and PNG exports draw the identical chart.
+export function detJitter(i: number, salt: number): number {
+  var h = (i * 2654435761 + salt * 97) % 1000003
+  return ((h % 997) / 997 - 0.5) * 0.7
+}
+
+var SCATTER_CAP = 5000
+
 function ScatterChartInner({ analytics, schema, datasetId, xField, yField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; xField: string; yField: string }) {
   var { rows, loaded } = useChartRows(datasetId, _enrichCtx.enrichKey || 0)
-  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
+  // Jitter defaults ON when both axes are small-int scales (two ratings put
+  // every point on ~25 lattice positions \u2014 unreadable without it); null = auto.
+  var [jitterOn, setJitterOn] = useState<boolean | null>(null)
+  var [trendOn, setTrendOn] = useState(false)
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data…" /></div>
   var x: number[] = [], y: number[] = []
   rows.forEach(function(r) { var xv = toNumericOrNull(r[xField]), yv = toNumericOrNull(r[yField]); if (xv !== null && yv !== null) { x.push(xv); y.push(yv) } })
   if (!x.length) return <EmptyChart msg="No numeric pairs found." />
+  var totalPts = x.length
+  if (x.length > SCATTER_CAP) {
+    // Deterministic even sample \u2014 an SVG scatter with 50K points is unusable
+    // and slow; disclosed in the caption below.
+    var keepIdx = evenSample(x.map(function(_, i) { return i }), SCATTER_CAP)
+    x = keepIdx.map(function(i) { return x[i] }); y = keepIdx.map(function(i) { return y[i] })
+  }
   var xSum = analytics.fieldSummaries?.[xField]
   var ySum = analytics.fieldSummaries?.[yField]
   var intX = isSmallIntRange(xSum?.min, xSum?.max)
   var intY = isSmallIntRange(ySum?.min, ySum?.max)
-  return <PlotlyChart traces={[{ x: x, y: y, mode: 'markers', type: 'scatter', marker: { color: T.accent, size: 6, opacity: 0.6 } }]} layout={{ title: flByName(xField, schema) + ' vs ' + flByName(yField, schema), xaxis: { title: flByName(xField, schema), ...(intX ? { dtick: 1, tick0: xSum?.min } : {}) }, yaxis: { title: flByName(yField, schema), ...(intY ? { dtick: 1, tick0: ySum?.min } : {}) }, showlegend: false }} />
+  var jitter = jitterOn === null ? (intX && intY) : jitterOn
+  var xd = jitter && intX ? x.map(function(v, i) { return v + detJitter(i, 1) }) : x
+  var yd = jitter && intY ? y.map(function(v, i) { return v + detJitter(i, 2) }) : y
+  // OLS trend over the ORIGINAL (unjittered) values
+  var trendTrace: Record<string, unknown> | null = null
+  var r2: number | null = null
+  if (trendOn && x.length >= 3) {
+    var n = x.length, mx = 0, my = 0
+    for (var i = 0; i < n; i++) { mx += x[i]; my += y[i] }
+    mx /= n; my /= n
+    var sxy = 0, sxx = 0, syy = 0
+    for (var j = 0; j < n; j++) { var dx = x[j] - mx, dy = y[j] - my; sxy += dx * dy; sxx += dx * dx; syy += dy * dy }
+    if (sxx > 0) {
+      var slope = sxy / sxx, icept = my - slope * mx
+      r2 = syy > 0 ? (sxy * sxy) / (sxx * syy) : 0
+      var lx = [Math.min.apply(null, x), Math.max.apply(null, x)]
+      trendTrace = { x: lx, y: lx.map(function(v) { return icept + slope * v }), type: 'scatter', mode: 'lines', line: { color: '#475569', width: 2, dash: 'dash' }, hoverinfo: 'skip' as const, showlegend: false }
+    }
+  }
+  var scTraces: Record<string, unknown>[] = [{ x: xd, y: yd, customdata: x.map(function(v, i) { return v + ', ' + y[i] }), mode: 'markers', type: 'scatter', marker: { color: T.accent, size: 6, opacity: totalPts > 500 ? 0.35 : 0.6 }, hovertemplate: '%{customdata}<extra></extra>' }]
+  if (trendTrace) scTraces.push(trendTrace)
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 8, flexWrap: 'wrap' }}>
+        {(intX || intY) && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}
+            title="Spreads points that share the same rating so you can see how many are stacked there \u2014 hover still shows the true values">
+            <input type="checkbox" checked={jitter} onChange={function() { setJitterOn(!jitter) }} style={{ accentColor: T.accent }} />
+            Jitter stacked points
+          </label>
+        )}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
+          <input type="checkbox" checked={trendOn} onChange={function() { setTrendOn(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
+          Trend line
+        </label>
+        <span style={{ fontSize: 11, color: T.textFaint, marginLeft: 'auto' }}>
+          {totalPts > SCATTER_CAP ? 'Showing ' + SCATTER_CAP.toLocaleString() + ' of ' + totalPts.toLocaleString() + ' points' : totalPts.toLocaleString() + ' points'}
+          {r2 != null ? ' \u00b7 R\u00b2 = ' + (Math.round(r2 * 1000) / 1000) : ''}
+        </span>
+      </div>
+      <PlotlyChart traces={scTraces} layout={{ title: flByName(xField, schema) + ' vs ' + flByName(yField, schema), xaxis: { title: flByName(xField, schema), ...(intX ? { dtick: 1, tick0: xSum?.min } : {}) }, yaxis: { title: flByName(yField, schema), ...(intY ? { dtick: 1, tick0: ySum?.min } : {}) }, showlegend: false }} />
+    </div>
+  )
 }
 
 function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; rowField: string; colField: string }) {
+  // Count / % of row / % of column — the three standard crosstab readings
+  // (a heatmap of raw counts hides composition when row sizes differ).
+  var [xtMode, setXtMode] = useState<'count' | 'row' | 'col'>('count')
   var isCollection = _enrichCtx.datasetSource === 'collection'
   var taxSpec = !isCollection ? taxCrosstabSpec(rowField, colField, 30) : null
   var needsRows = !taxSpec && (isCollection || rowField.startsWith('__') || colField.startsWith('__'))
@@ -1893,7 +1998,7 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
   var { data: aggData, loaded: aggLoaded } = useAggregation(datasetId, aggSpec)
   var { rows, loaded: rowsLoaded } = useChartRows(datasetId, needsRows ? (_enrichCtx.enrichKey || 0) : -1)
   var loaded = needsRows ? rowsLoaded : aggLoaded
-  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data…" /></div>
   var grid: Record<string, Record<string, number>> = {}; var rSet = new Set<string>(); var cSet = new Set<string>()
   if (!needsRows && aggData && aggData.grid) {
     grid = aggData.grid
@@ -1916,17 +2021,86 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
   if (cKept.length > HEATMAP_CAP) cKept = cKept.sort(function(a, b) { return (cTotals[b] || 0) - (cTotals[a] || 0) }).slice(0, HEATMAP_CAP)
   var rArr = smartOrder(rKept, rowFieldObj?.remapping)
   var cArr = smartOrder(cKept, colFieldObj?.remapping)
-  var z = rArr.map(function(r) { return cArr.map(function(c) { return grid[r] ? (grid[r][c] || 0) : 0 }) })
+  var zCount = rArr.map(function(r) { return cArr.map(function(c) { return grid[r] ? (grid[r][c] || 0) : 0 }) })
+  // Row/column % over the KEPT grid: each cell as a share of its row (reads
+  // across) or its column (reads down).
+  var rowSums = zCount.map(function(row) { return row.reduce(function(s, v) { return s + v }, 0) })
+  var colSums = cArr.map(function(_, ci) { return zCount.reduce(function(s, row) { return s + row[ci] }, 0) })
+  var z = zCount.map(function(row, ri) {
+    return row.map(function(v, ci) {
+      if (xtMode === 'row') return rowSums[ri] > 0 ? Math.round(v / rowSums[ri] * 1000) / 10 : 0
+      if (xtMode === 'col') return colSums[ci] > 0 ? Math.round(v / colSums[ci] * 1000) / 10 : 0
+      return v
+    })
+  })
+  // Hover always shows the count AND both shares so no mode hides the base n.
+  var custom = zCount.map(function(row, ri) {
+    return row.map(function(v, ci) {
+      var rp = rowSums[ri] > 0 ? Math.round(v / rowSums[ri] * 100) : 0
+      var cp = colSums[ci] > 0 ? Math.round(v / colSums[ci] * 100) : 0
+      return v.toLocaleString() + ' \u00B7 ' + rp + '% of row \u00B7 ' + cp + '% of column'
+    })
+  })
   var rLabels = wrapLabels(rArr.map(function(v) { return resolveAlias(rowField, v, schema) }), 22)
   var cLabels = wrapLabels(cArr.map(function(v) { return resolveAlias(colField, v, schema) }), 18)
   var xtClip = (totalR > HEATMAP_CAP || totalC > HEATMAP_CAP) ? clipBadge(HEATMAP_CAP, Math.max(totalR, totalC)) : ''
-  return <PlotlyChart traces={[{ type: 'heatmap', x: cLabels, y: rLabels, z: z, colorscale: 'YlOrRd', showscale: true }]} layout={{ title: flByName(rowField, schema) + ' \u00D7 ' + flByName(colField, schema) + xtClip, xaxis: { title: flByName(colField, schema), ...catXAxis(cLabels) }, yaxis: { title: flByName(rowField, schema) }, margin: { t: 48, r: 60, b: 60, l: 100 } }} />
+  // In-cell values (like a Tableau highlight table) \u2014 skipped on very dense
+  // grids where the text would be unreadable.
+  var showCellText = rArr.length * cArr.length <= 400
+  var xtPill = function(mode: 'count' | 'row' | 'col', text: string) {
+    var active = xtMode === mode
+    return <button key={mode} onClick={function() { setXtMode(mode) }}
+      style={{ fontSize: 10, fontWeight: active ? 700 : 500, padding: '2px 10px', borderRadius: 10, background: active ? T.bgCard : 'transparent', color: active ? T.accent : T.textMute, border: 'none', cursor: 'pointer' }}>
+      {text}
+    </button>
+  }
+  return (
+    <div>
+      <div style={{ display: 'inline-flex', background: T.bg, borderRadius: 12, padding: 2, border: '1px solid ' + T.border, marginBottom: 8 }}
+        title="% of row reads across (composition of each row value); % of column reads down">
+        {xtPill('count', 'Count')}{xtPill('row', '% of row')}{xtPill('col', '% of column')}
+      </div>
+      <PlotlyChart traces={[{
+        type: 'heatmap', x: cLabels, y: rLabels, z: z, customdata: custom, colorscale: 'YlOrRd', showscale: true,
+        hovertemplate: '%{y} \u00D7 %{x}<br>%{customdata}<extra></extra>',
+        ...(showCellText ? { texttemplate: xtMode === 'count' ? '%{z:,d}' : '%{z:.0f}%', textfont: { size: 10 } } : {}),
+      }]} layout={{ title: flByName(rowField, schema) + ' \u00D7 ' + flByName(colField, schema) + xtClip, xaxis: { title: flByName(colField, schema), ...catXAxis(cLabels) }, yaxis: { title: flByName(rowField, schema) }, margin: { t: 48, r: 60, b: 60, l: 100 } }} />
+    </div>
+  )
 }
+
+// Convert aligned per-category series to % share per bucket: each index's
+// denominator is the sum of non-null values across categories at that index.
+// A bucket with nothing to share (total 0 / all null) maps to null, not 0.
+export function percentShareSeries(byCat: Record<string, (number | null)[]>): Record<string, (number | null)[]> {
+  var names = Object.keys(byCat)
+  var len = names.length ? byCat[names[0]].length : 0
+  var totals: number[] = []
+  for (var i = 0; i < len; i++) {
+    var t = 0
+    names.forEach(function(n) { var v = byCat[n][i]; if (v != null) t += v })
+    totals.push(t)
+  }
+  var out: Record<string, (number | null)[]> = {}
+  names.forEach(function(n) {
+    out[n] = byCat[n].map(function(v, i) {
+      if (v == null || totals[i] <= 0) return null
+      return Math.round(v / totals[i] * 1000) / 10
+    })
+  })
+  return out
+}
+
+var TS_MAX_SERIES = 12
 
 function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField, colorByField, colors }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; dateField: string; metricField: string; colorByField?: string; colors?: string[] }) {
   var [bucketOverride, setBucketOverride] = useState<TimeBucket | 'auto'>('auto')
   var [splitMode, setSplitMode] = useState(false)
   var [compareMode, setCompareMode] = useState<'off' | 'prev' | 'yoy'>('off')
+  // Count vs % share for breakdown lines (owner ask 2026-09-03): raw counts
+  // conflate a theme's drift with overall volume drift — share-of-bucket is
+  // the honest way to show composition change over time.
+  var [tsPercent, setTsPercent] = useState(false)
   var pal = colors || CHART_COLORS
 
   // Determine smart bucket from field summary date counts
@@ -1971,7 +2145,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
   }
   var [smooth, setSmooth] = useState(false)
   var [window, setWindow] = useState(7)
-  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data…" /></div>
 
   // ── Build traces — with optional categorical breakdown ──────────────
   var traces: Record<string, unknown>[] = []
@@ -2019,11 +2193,12 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
       })
     }
     sortedDates = Array.from(allDates).sort()
+    // Zero-fill the calendar so quiet buckets show a real 0 (count mode) or a
+    // gap (metric mode) instead of the line skipping them entirely.
+    if (sortedDates.length >= 2 && effectiveBucket !== 'hour' && effectiveBucket !== 'year') {
+      sortedDates = fillBuckets(sortedDates[0], sortedDates[sortedDates.length - 1], effectiveBucket as 'day' | 'week' | 'month' | 'quarter')
+    }
     catNames = (catAgg ? Object.keys(catAgg) : Object.keys(catGroups)).sort()
-    catNames.forEach(function(cat, ci) {
-      var yVals = sortedDates.map(function(d) { return tsBreakdownY(cat, d) })
-      traces.push({ x: sortedDates, y: yVals, type: 'scatter', mode: 'lines+markers', line: { color: pal[ci % pal.length], width: 2 }, marker: { size: 4 }, name: cat, showlegend: true })
-    })
   } else {
     // Single line — original behavior
     var dates: string[] = []
@@ -2071,6 +2246,14 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
         line: { color: T.accent, width: 2.5 }, marker: { size: 5 }, name: 'Current period', showlegend: true,
       })
     } else {
+      // Zero-fill quiet calendar buckets in count mode — a skipped empty week
+      // used to make the line glide over it as if it never happened.
+      if (!metricField && dates.length >= 2 && effectiveBucket !== 'hour' && effectiveBucket !== 'year') {
+        var obs: Record<string, number> = {}
+        dates.forEach(function(d, i) { obs[d] = yVals[i] })
+        dates = fillBuckets(dates[0], dates[dates.length - 1], effectiveBucket as 'day' | 'week' | 'month' | 'quarter')
+        yVals = dates.map(function(d) { return obs[d] || 0 })
+      }
       // Moving average smoothing
       var smoothed = yVals
       if (smooth && yVals.length > window) {
@@ -2091,17 +2274,45 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
     }
   }
 
+  // Aligned per-category display series (combined + split views share these).
+  // % share is computed over the FULL pre-cap category set so shares stay
+  // honest even when the line cap hides small series.
+  var tsShowPercent = hasBreakdown && tsPercent && !metricField
+  var tsClippedFrom = 0
+  var tsDisplayByCat: Record<string, (number | null)[]> = {}
+  if (hasBreakdown) {
+    var rawByCat: Record<string, (number | null)[]> = {}
+    catNames.forEach(function(cat) { rawByCat[cat] = sortedDates.map(function(d) { return tsBreakdownY(cat, d) }) })
+    var dispByCat = tsShowPercent ? percentShareSeries(rawByCat) : rawByCat
+    if (catNames.length > TS_MAX_SERIES) {
+      // Keep the highest-volume series — an uncapped breakdown drew one line
+      // per category (50-line spaghetti); disclosed in the caption below.
+      tsClippedFrom = catNames.length
+      var vol: Record<string, number> = {}
+      catNames.forEach(function(cat) { vol[cat] = rawByCat[cat].reduce(function(s: number, v) { return s + (v || 0) }, 0) })
+      catNames = catNames.slice().sort(function(a, b) { return (vol[b] || 0) - (vol[a] || 0) }).slice(0, TS_MAX_SERIES)
+    }
+    catNames.forEach(function(cat) { tsDisplayByCat[cat] = dispByCat[cat] })
+    catNames.forEach(function(cat, ci) {
+      traces.push({
+        x: sortedDates, y: tsDisplayByCat[cat], type: 'scatter', mode: 'lines+markers',
+        line: { color: pal[ci % pal.length], width: 2 }, marker: { size: 4 }, name: cat, showlegend: true,
+        ...(tsShowPercent ? { hovertemplate: '%{y:.1f}%<extra>' + cat + '</extra>' } : {}),
+      })
+    })
+  }
+
   var bucketLabel = BUCKET_OPTIONS.find(function(o) { return o.value === effectiveBucket })?.label || 'Daily'
 
-  // Build split chart data if splitMode + breakdown
+  // Build split chart data if splitMode + breakdown — same display series
+  // (incl. % share + cap) as the combined view so the two always agree.
   var splitCharts: { name: string; traces: Record<string, unknown>[]; color: string }[] = []
   if (hasBreakdown && splitMode && catNames.length > 0) {
     catNames.forEach(function(cat, ci) {
-      var yVals = sortedDates.map(function(d) { return tsBreakdownY(cat, d) })
       splitCharts.push({
         name: cat,
         color: pal[ci % pal.length],
-        traces: [{ x: sortedDates, y: yVals, type: 'scatter', mode: 'lines+markers', line: { color: pal[ci % pal.length], width: 2 }, marker: { size: 4 }, showlegend: false }],
+        traces: [{ x: sortedDates, y: tsDisplayByCat[cat], type: 'scatter', mode: 'lines+markers', line: { color: pal[ci % pal.length], width: 2 }, marker: { size: 4 }, showlegend: false }],
       })
     })
   }
@@ -2127,6 +2338,18 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
               return <button key={pair[0]} onClick={function() { setSplitMode(isSplit) }}
                 style={{ fontSize: 10, fontWeight: active ? 700 : 500, padding: '2px 10px', borderRadius: 10, background: active ? T.bgCard : 'transparent', color: active ? T.text : T.textMute, border: 'none', cursor: 'pointer' }}>
                 {pair[1]}
+              </button>
+            })}
+          </div>
+        )}
+        {hasBreakdown && !metricField && (
+          <div style={{ display: 'flex', background: T.bg, borderRadius: 12, padding: 2, border: '1px solid ' + T.border }}
+            title="% share shows each line as a percentage of that period's total — separates a category's drift from overall volume drift">
+            {[[false, 'Count'], [true, '% share']].map(function(pair) {
+              var active = tsPercent === pair[0]
+              return <button key={String(pair[0])} onClick={function() { setTsPercent(pair[0] as boolean) }}
+                style={{ fontSize: 10, fontWeight: active ? 700 : 500, padding: '2px 10px', borderRadius: 10, background: active ? T.bgCard : 'transparent', color: active ? T.accent : T.textMute, border: 'none', cursor: 'pointer' }}>
+                {pair[1] as string}
               </button>
             })}
           </div>
@@ -2182,6 +2405,11 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
           Not enough history for this comparison — it needs at least 4 {effectiveBucket} buckets per period{compareMode === 'yoy' ? ' and a full year of earlier data' : ''}.
         </div>
       )}
+      {tsClippedFrom > 0 && (
+        <div style={{ fontSize: 11, color: T.textFaint, marginBottom: 6 }}>
+          Showing the top {TS_MAX_SERIES} of {tsClippedFrom} categories by volume{tsShowPercent ? ' — % shares are still computed over all ' + tsClippedFrom : ''}.
+        </div>
+      )}
       {hasBreakdown && splitMode && splitCharts.length > 0 ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
           {splitCharts.map(function(sc) {
@@ -2190,7 +2418,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
                 <div style={{ fontSize: 12, fontWeight: 700, color: sc.color, marginBottom: 4 }}>{sc.name}</div>
                 <PlotlyChart traces={sc.traces} layout={{
                   xaxis: { title: '', tickfont: { size: 9 } },
-                  yaxis: { title: metricField ? 'Avg' : 'Count', titlefont: { size: 10 }, tickfont: { size: 9 } },
+                  yaxis: { title: metricField ? 'Avg' : (tsShowPercent ? '% share' : 'Count'), titlefont: { size: 10 }, tickfont: { size: 9 }, ...(tsShowPercent ? { ticksuffix: '%' } : {}) },
                   height: 200, margin: { t: 10, b: 40, l: 40, r: 10 },
                 }} />
               </div>
@@ -2198,7 +2426,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
           })}
         </div>
       ) : (
-        <PlotlyChart traces={traces} layout={{ title: metricField ? flByName(metricField, schema) + ' over Time' : flByName(dateField, schema), xaxis: { title: flByName(dateField, schema) }, yaxis: { title: metricField ? 'Avg ' + flByName(metricField, schema) : 'Count' }, legend: { orientation: 'h' as const, y: -0.15 } }} />
+        <PlotlyChart traces={traces} layout={{ title: metricField ? flByName(metricField, schema) + ' over Time' : flByName(dateField, schema), xaxis: { title: flByName(dateField, schema) }, yaxis: { title: metricField ? 'Avg ' + flByName(metricField, schema) : (tsShowPercent ? '% share per ' + effectiveBucket : 'Count'), ...(tsShowPercent ? { ticksuffix: '%', rangemode: 'tozero' as const } : {}) }, legend: { orientation: 'h' as const, y: -0.15 } }} />
       )}
     </div>
   )
@@ -2209,7 +2437,7 @@ function GanttInner({ analytics, schema, datasetId, catField, rangeField, colors
   var agg = useAggregation(datasetId, ganttDimAxis ? { op: 'tax_group_stats', axis: ganttDimAxis, valueField: rangeField } : null)
   var { rows, loaded: rowsLoaded } = useChartRows(datasetId, ganttDimAxis ? -1 : (_enrichCtx.enrichKey || 0))
   var loaded = ganttDimAxis ? agg.loaded : rowsLoaded
-  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data…" /></div>
   var ganttFieldObj = schema.find(function(f) { return f.field === catField })
   var catArr: string[], mins: number[], ranges: number[]
   if (ganttDimAxis && agg.data && agg.data.groups) {
@@ -2227,13 +2455,38 @@ function GanttInner({ analytics, schema, datasetId, catField, rangeField, colors
   return <PlotlyChart traces={[{ type: 'bar', orientation: 'h' as const, y: catArr, x: mins, marker: { color: 'rgba(0,0,0,0)' }, showlegend: false, hoverinfo: 'skip' as const }, { type: 'bar', orientation: 'h' as const, y: catArr, x: ranges, marker: { color: catArr.map(function(_, i) { return gPal[i % gPal.length] }) }, name: 'Range' }]} layout={{ title: flByName(catField, schema), barmode: 'stack', xaxis: { title: flByName(rangeField, schema) }, showlegend: false, margin: { l: 120 } }} />
 }
 
+// Numeric-aware cell comparator for table sorting: numbers compare as
+// numbers, everything else as case-insensitive text; blanks sort last.
+export function compareCells(a: unknown, b: unknown): number {
+  var as = a == null ? '' : String(a), bs = b == null ? '' : String(b)
+  if (!as && !bs) return 0
+  if (!as) return 1
+  if (!bs) return -1
+  var an = toNumericOrNull(as), bn = toNumericOrNull(bs)
+  if (an !== null && bn !== null) return an - bn
+  return as.localeCompare(bs, undefined, { sensitivity: 'base' })
+}
+
 function TableInner({ analytics, schema, datasetId }: { analytics: Analytics; schema: SchemaField[]; datasetId: string }) {
   var { rows: allRows, loaded } = useChartRows(datasetId, _enrichCtx.enrichKey || 0)
   var [page, setPage] = useState(0)
+  var [sortField, setSortField] = useState('')
+  var [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   var PAGE = 50
-  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data\u2026" /></div>
+  if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}><LottieLoader size={120} message="Loading chart data…" /></div>
   var total = allRows.length
+  if (sortField) {
+    allRows = allRows.slice().sort(function(a, b) {
+      var c = compareCells(a[sortField], b[sortField])
+      return sortDir === 'desc' ? -c : c
+    })
+  }
   var rows = allRows.slice(page * PAGE, (page + 1) * PAGE)
+  var handleSort = function(fieldName: string) {
+    setPage(0)
+    if (sortField === fieldName) { setSortDir(function(d) { return d === 'asc' ? 'desc' : 'asc' }); return }
+    setSortField(fieldName); setSortDir('asc')
+  }
   // Use allFields from enrichment context — includes __themes__ and __mapped__
   var virtualFields: SchemaField[] = []
   if (_enrichCtx.themeModel?.themes?.length) virtualFields.push({ field: '__themes__', type: 'categorical', label: 'Themes' })
@@ -2246,7 +2499,13 @@ function TableInner({ analytics, schema, datasetId }: { analytics: Analytics; sc
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-        <thead><tr>{cols.map(function(f) { return <th key={f.field} style={{ padding: '8px 10px', textAlign: 'left', background: T.bg, borderBottom: '2px solid ' + T.border, fontSize: 11, fontWeight: 700, color: T.textMid, whiteSpace: 'nowrap' }}>{fl(f)}</th> })}</tr></thead>
+        <thead><tr>{cols.map(function(f) {
+          var isSorted = sortField === f.field
+          return <th key={f.field} onClick={function() { handleSort(f.field) }} title="Click to sort"
+            style={{ padding: '8px 10px', textAlign: 'left', background: T.bg, borderBottom: '2px solid ' + T.border, fontSize: 11, fontWeight: 700, color: isSorted ? T.accent : T.textMid, whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+            {fl(f)}{isSorted && <span style={{ marginLeft: 3 }}>{sortDir === 'asc' ? '▲' : '▼'}</span>}
+          </th>
+        })}</tr></thead>
         <tbody>{rows.map(function(r, i) { return <tr key={i}>{cols.map(function(f) { var val = r[f.field]; return <td key={f.field} style={{ padding: '6px 10px', borderBottom: '1px solid ' + T.border, color: T.textMid, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{val != null ? String(val) : ''}</td> })}</tr> })}</tbody>
       </table>
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', fontSize: 11, color: T.textMute }}>
@@ -2685,6 +2944,9 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
 
   // Smart-drop state for the chart body area
   var [bodyDragOver, setBodyDragOver] = useState(false)
+  // Live drag descriptor — set on a sidebar field's dragstart, cleared on
+  // dragend — so every slot can show/dim itself as a viable target.
+  var [dragField, setDragField] = useState<{ type: string; dual?: boolean } | null>(null)
 
   var handleBodyDrop = function(e: React.DragEvent) {
     e.preventDefault()
@@ -2704,6 +2966,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     } catch {}
     // eslint-disable-next-line react-hooks/globals -- module-level drag payload cleared inside the drop event handler (not during render)
     _chartDrag = null
+    setDragField(null)
   }
 
   // Download PNG (or CSV for table)
@@ -2862,10 +3125,10 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
           {/* Field groups — filtered to types accepted by the current chart's slots */}
           {(function() {
             var slots = CHART_SLOTS[activeChart] || []
-            if (slots.length === 0) return <ChartFieldGroups fields={pickerFields} currentConfig={currentConfig} />
+            if (slots.length === 0) return <ChartFieldGroups fields={pickerFields} currentConfig={currentConfig} onDragState={setDragField} />
             var accepted = new Set(slots.flatMap(function(s) { return s.accepts }))
             var visible = accepted.has('any') ? pickerFields : pickerFields.filter(function(f) { return accepted.has(f.type) || (isDualPurpose(f) && accepted.has('numeric')) })
-            return <ChartFieldGroups fields={visible} currentConfig={currentConfig} />
+            return <ChartFieldGroups fields={visible} currentConfig={currentConfig} onDragState={setDragField} />
           })()}
 
           {/* Theme filter — at bottom of sidebar */}
@@ -2960,7 +3223,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
                 })
                   .sort(function(a, b) { return a.l.localeCompare(b.l) })
                 return <ChartSlot key={slot.key} label={slot.label} value={currentConfig[slot.key] || ''} required={slot.required}
-                  accepts={slot.accepts}
+                  accepts={slot.accepts} dragging={dragField}
                   onChange={function(v) { setChartConfigs(function(prev) { var u = Object.assign({}, prev); var cfg = Object.assign({}, u[activeChart] || {}); cfg[slot.key] = v; u[activeChart] = cfg; return u }) }}
                   options={opts} />
               })}

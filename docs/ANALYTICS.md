@@ -726,6 +726,36 @@ parity) so sampled snapshots keep true quartiles. On the exact path (≤50K), an
 throws — failing the compute request — instead of writing fake zeros; a genuinely empty field still
 summarizes to zero.
 
+**Chart options pass + guided drag-and-drop (2026-09-03, owner ask: "% option… best available
+options for characterizing… naive users").** Every chart type re-reviewed for whether its options
+can honestly characterize the data; what shipped:
+- **Time Series % share** (the headline ask): with a breakdown active, a Count / % share toggle —
+  each line as a share of that bucket's total, separating a category's drift from overall volume
+  drift. Shares are computed over the FULL category set even when the new **top-12 series cap**
+  (by volume, disclosed in a caption) hides small lines; empty buckets are null, not 0%. Both
+  breakdown and single-line count charts now **zero-fill quiet calendar buckets** (reusing
+  `periodCompare.fillBuckets`) so the line shows a real 0 instead of gliding over missing weeks.
+- **Crosstab Count / % of row / % of column** pills + **in-cell values** (≤400 cells, like a
+  Tableau highlight table); hover always carries count AND both shares so no mode hides the base n.
+- **Scatter**: deterministic **jitter** (±0.35, hash-of-index — identical on re-render/export;
+  auto-ON when both axes are small-int scales, where two ratings collapse onto ~25 lattice
+  positions), an OLS **trend line** with R², and a **5,000-point cap** (deterministic even sample,
+  disclosed) replacing the unbounded SVG scatter.
+- **Distribution** histogram: Count / % of responses toggle (extracted to `DistHistogramInner`).
+- **Funnel** stages show value + **% of the top stage** (the conversion reading); **Treemap** tiles
+  show label + value + **% of total**.
+- **Data Table**: click-to-sort headers (numeric-aware comparator `compareCells`, blanks last) —
+  the tooltip's "Sortable" claim is finally true.
+- **Guided drag-and-drop**: dragging a sidebar field announces its type to every slot — viable
+  slots light up with a dashed accent ring + "▼ drop here", incompatible slots dim to 30% and stop
+  accepting pointer events so a wrong drop can't even register. Complements the existing smart-drop
+  body banner. Behavior pinned in `chartsOptionsUI.test.tsx` (real ChartsModule + Plotly mock:
+  % shares sum to 100, zero-fill bucket count, highlight + dim + dragend cleanup).
+- Also fixed in passing: chart loaders rendered a literal `…` (JSX attribute strings don't
+  process unicode escapes) — now a real ellipsis.
+Not built (unchanged from the audit's deferred list): saved charts still don't capture display
+options; `_aggCache` invalidation; the ChartsModule file split.
+
 **Charts "never computed" recovery + last matcher copy (2026-09-03, follow-up).** The prod ANES
 dataset (script-uploaded, 125K rows) sat unplottable: its analytics blob carried only TextMine caches
 (no `totalRows`/`fieldSummaries` — the compute route is only triggered by the Analyze-button/wizard/
