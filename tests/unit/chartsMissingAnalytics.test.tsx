@@ -6,7 +6,7 @@
 // remapped-fields summary build) — surfacing as the route error boundary.
 // Charts/Stats must render their degraded states instead of throwing.
 import { describe, it, expect, vi } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import React from 'react'
 
 vi.mock('@/components/analyze/RowsContext', () => ({
@@ -54,6 +54,11 @@ describe('analytics without fieldSummaries/totalRows', () => {
         datasetSource: 'csv', taxonomyEnabled: true,
       })
     )).not.toThrow()
+    // A blob with TextMine caches but no totalRows/fieldSummaries = never
+    // computed → the tab must offer the fix, not a dead-end "No data loaded."
+    // (2026-09-03: the ANES dataset sat unplottable with no way out.)
+    expect(screen.getByText('Compute analytics')).toBeTruthy()
+    expect(screen.getByText(/haven't been computed/)).toBeTruthy()
   })
 
   it('StatsModule renders without throwing', () => {

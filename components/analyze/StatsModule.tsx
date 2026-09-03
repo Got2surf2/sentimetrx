@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from 'react'
 import { readSession, writeSession } from '@/lib/useSessionState'
-import { themeSetForField, type Theme, type ThemeModel } from '@/lib/themeUtils'
+import { themeSetForField, buildKwRegex, type Theme, type ThemeModel } from '@/lib/themeUtils'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { injectSignalTier } from '@/lib/signalTier'
 
@@ -2629,6 +2629,11 @@ export default function StatsModule({ datasetId, datasetName, schema, themeModel
     if (filteredData.length === 0) return filteredData
     var openField = hasThemes ? (themeSourceField || effectiveThemeModel!.fieldName || allSchemaFields.find(function(f) { return f.type === 'open-ended' })?.field || '') : ''
     var activeThemes = hasThemes ? (activeThemeNames ? effectiveThemeModel!.themes.filter(function(t: { name?: string; label?: string }) { return (activeThemeNames as Set<string>).has(t.name || t.label || '') }) : effectiveThemeModel!.themes) : []
+    // Canonical keyword matcher (themeUtils.buildKwRegex) — same patterns as
+    // TextMine's recount, the SQL counting RPCs, and ChartsModule's enrichRows
+    // (unified there 2026-09-03; this was the last raw-substring copy).
+    // Precompiled once per theme, not per row.
+    var activeThemeRegexes = activeThemes.map(function(t: Theme) { return (t.keywords || []).filter(Boolean).map(buildKwRegex) })
     return filteredData.map(function(row) {
       var enriched = Object.assign({}, row)
       if (hasThemes && openField) {
@@ -2637,11 +2642,9 @@ export default function StatsModule({ datasetId, datasetName, schema, themeModel
           enriched['__themes__'] = ''
         } else {
           var bestTheme = '', bestCount = 0
-          activeThemes.forEach(function(t: Theme) {
+          activeThemes.forEach(function(t: Theme, ti: number) {
             var hits = 0
-            ;(t.keywords || []).forEach(function(kw: string) {
-              if (text.includes(kw.toLowerCase())) hits++
-            })
+            activeThemeRegexes[ti].forEach(function(re) { if (re.test(text)) hits++ })
             if (hits > bestCount) { bestCount = hits; bestTheme = t.name }
           })
           enriched['__themes__'] = bestTheme  // '' when unclassified — excluded from groupings

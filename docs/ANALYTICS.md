@@ -658,6 +658,18 @@ over every chart type — the findings and their fixes:
   via `toNumericOrNull` — a silent blank chart. The slot is numeric-only, an empty result now says
   so, and the bars use the selected palette instead of hard-coded colors.
 
+**Charts "never computed" recovery + last matcher copy (2026-09-03, follow-up).** The prod ANES
+dataset (script-uploaded, 125K rows) sat unplottable: its analytics blob carried only TextMine caches
+(no `totalRows`/`fieldSummaries` — the compute route is only triggered by the Analyze-button/wizard/
+append flows, which a scripted upload bypasses), and the Charts tab's `hasData` gate rendered a bare
+"No data loaded." with no cause and no way out. The tab now distinguishes **never computed** (no
+`totalRows` AND no `fieldSummaries`) from **computed-and-empty**: the former renders `ComputePrompt`
+— "Analytics haven't been computed for this dataset yet" plus a **Compute analytics** button that
+POSTs the normal compute route and reloads (pinned in `chartsMissingAnalytics.test.tsx`). Also fixed
+in the same pass: `StatsModule`'s theme-enrichment kept a private raw-substring keyword matcher — the
+last copy the 2026-09-03 unification missed — now on canonical `buildKwRegex` like every other
+consumer. (Stats itself loads raw rows and never needed the analytics gate.)
+
 **Statistics → Regression: Logistic mode (2026-07-15).** The Statistics `RegressionPanel` gained a
 Linear/Logistic toggle. Logistic fits a binary outcome via maximum-likelihood IRLS/Newton
 (`lib/statsUtils.logisticRegression`, reusing `invertMatrix`) and reports **odds ratios** with 95% CI,

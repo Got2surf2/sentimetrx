@@ -352,6 +352,37 @@ function EmptyChart({ msg }: { msg: string }) {
   return <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 40px', color: T.textFaint }}><div style={{ fontSize: 40, marginBottom: 12 }}>{'\uD83D\uDCCA'}</div><div style={{ fontSize: 14, fontWeight: 600, color: T.textMid }}>{msg}</div></div>
 }
 
+// Shown when the dataset's analytics snapshot was never computed (no
+// totalRows/fieldSummaries \u2014 script-seeded uploads, failed computes). The old
+// bare "No data loaded." gave no cause and no way out even though schema and
+// themes were fine; one compute run fixes the whole tab.
+function ComputePrompt({ datasetId }: { datasetId: string }) {
+  var [busy, setBusy] = useState(false)
+  var [err, setErr] = useState('')
+  var run = function() {
+    setBusy(true); setErr('')
+    fetch('/api/datasets/' + datasetId + '/compute', { method: 'POST' })
+      .then(function(r) { return r.json().catch(function() { return {} }).then(function(d: { error?: string }) { return { ok: r.ok, d: d } }) })
+      .then(function(res) {
+        if (!res.ok) { setErr(res.d?.error || 'Compute failed \u2014 try again.'); setBusy(false); return }
+        window.location.reload()
+      })
+      .catch(function() { setErr('Compute failed \u2014 try again.'); setBusy(false) })
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 40px' }}>
+      <div style={{ fontSize: 40, marginBottom: 12 }}>{'\uD83D\uDCCA'}</div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: T.textMid, marginBottom: 6 }}>Analytics haven&apos;t been computed for this dataset yet.</div>
+      <div style={{ fontSize: 12, color: T.textFaint, marginBottom: 16 }}>Charts need a one-time analytics pass over the rows. This usually takes a few seconds.</div>
+      <button onClick={run} disabled={busy}
+        style={{ padding: '8px 20px', fontSize: 13, fontWeight: 700, borderRadius: 8, color: 'white', background: busy ? T.accent + 'cc' : T.accent, border: 'none', cursor: busy ? 'wait' : 'pointer' }}>
+        {busy ? 'Computing\u2026' : 'Compute analytics'}
+      </button>
+      {err && <div style={{ fontSize: 12, color: T.red, marginTop: 10 }}>{err}</div>}
+    </div>
+  )
+}
+
 // ─── Chart Slot — grouped dropdown + drag-drop target ────────────────────
 
 function ChartSlot({ label, value, onChange, options, required, accepts }: {
@@ -2331,6 +2362,11 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   var currentColors = COLOR_PALETTES[activePalette]?.colors || CHART_COLORS
   var fields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' && f.hidden !== true })
   var hasData = analytics && analytics.totalRows > 0
+  // "Never computed" ≠ "computed and empty": a blob with no totalRows AND no
+  // fieldSummaries (script-seeded uploads, failed computes — it may still
+  // carry TextMine caches like signal_stats) is fixable by running compute;
+  // a computed dataset that truly has 0 rows is not.
+  var neverComputed = !analytics || (analytics.totalRows == null && !analytics.fieldSummaries)
 
   // Inject virtual "Themes" field if theme model exists
   var hasThemes = effectiveThemeModel && effectiveThemeModel.themes && effectiveThemeModel.themes.length > 0
@@ -3065,7 +3101,8 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
                 {'≈'} Estimated from a 50,000-row sample
               </div>
             )}
-            {!hasData && <EmptyChart msg="No data loaded." />}
+            {!hasData && neverComputed && <ComputePrompt datasetId={datasetId} />}
+            {!hasData && !neverComputed && <EmptyChart msg="No data loaded." />}
             {hasData && renderChart(activeChart, currentConfig, enrichedAnalytics!, allFields, datasetId, { barMode: barMode, barStack: barStack, smartAxes: smartAxes, colors: currentColors, orient: barOrient })}
           </div>
         </div>
