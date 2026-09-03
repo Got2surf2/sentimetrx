@@ -778,3 +778,6 @@ rotating text. 8s = one relaxed read + a beat; 7s first-fact delay unchanged.
 
 ## 2026-09-03 — Standing rule: American English for all LLM output (owner)
 **Why:** British spellings were leaking into product text (funFacts shipped "centimetres"/"grey"). Enforced structurally, not per-prompt: AMERICAN_ENGLISH_RULE in lib/ai.ts is appended to every system prompt inside the central renderers (after cache breakpoints, so cached prefixes are unaffected); ask-ana's own Anthropic client includes it too. funFacts swept (16 Briticisms fixed). Rule recorded in CLAUDE.md content rules.
+
+## 2026-09-03 — American English output-side backstop + muted story tone (owner)
+**Why:** Owner found "penalised" in the EA story's AI prose — the prompt rule asks, it doesn't guarantee ("not just prompts"). New lib/americanize.ts: explicit-pair British→American converter (no suffix heuristics — franchise/hour/tour class stays safe), applied to the story narrative at render; verbatim quotes and explorer excerpts pass through untouched (test-pinned). Same pass: story headline register muted to consultant-memo tone (owner: "not like a Fox News headline") in narrativePrompt.

@@ -121,6 +121,16 @@ describe('storyTitle', () => {
 describe('renderDataStory', () => {
   const story = (): StoryData => { const p = payload(); return { ...p, narrative: deterministicNarrative(p) } }
 
+  it('americanizes AI narrative prose but never verbatim quotes', () => {
+    const s = story()
+    s.narrative.lede = 'Players penalised the colour scheme whilst the organisation centred on defence.'
+    s.quotes = [{ text: 'the colour and offence in this game are grey', theme: 'Service', meta: 'Service' }]
+    const html = renderDataStory(s)
+    expect(html).toContain('Players penalized the color scheme while the organization centered on defense.')
+    // verbatim quote passes through untouched
+    expect(html).toContain('the colour and offence in this game are grey')
+  })
+
   it('renders every engine figure and section, with no leakage artifacts', () => {
     const html = renderDataStory(story())
     expect(html).toContain('Coastal Grill')

@@ -1953,6 +1953,10 @@ head has a deterministic numbered fallback in `deterministicNarrative`):
   vanilla-JS filters (theme, segment, rating low/high, text search) render the
   first 60 matches with a count line. Labeled raw browsing, NOT curated
   evidence — the curated quotes keep the verbatim guard.
+Narrative register (owner 9/03): muted, consultant-memo tone — findings with
+figures, no drama verbs or news-headline framing. Output-side American-English
+backstop: `lib/americanize.ts` (explicit pairs, case-preserving) converts the
+narrative prose at render; quotes/explorer stay verbatim.
 Verified in-browser on TEST against ea_football_reviews (12,174 rows): thesis
 H1, all five finding heads, % recommended derivation (49.49 overall), monthly
 timeline with launch-window troughs, hours_played quartiles (37.34 low band vs

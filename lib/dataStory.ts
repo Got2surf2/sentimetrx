@@ -20,6 +20,7 @@
 import { recountThemes, evenSample, buildKwRegex, type Theme, type ThemeModel, themeSetForField } from '@/lib/themeUtils'
 import { isSubstantiveText } from '@/lib/datasetUtils'
 import { verbatimSupports, type VerbatimPremise } from '@/lib/verbatimGuard'
+import { americanize } from '@/lib/americanize'
 import type { SchemaFieldConfig, DatasetAnalytics, NumericSummary } from '@/lib/analyzeTypes'
 
 export const STORY_ROW_CAP = 50_000  // no sampling under 50K (CLAUDE.md); evenSample above
@@ -662,13 +663,17 @@ export function narrativePrompt(d: Omit<StoryData, 'narrative'>): { system: stri
   }
   return {
     system:
-      'You write the narrative for a data story published to a client — the register of good data journalism: ' +
-      'every headline is a FINDING (a claim with its number in it), never a category label. Respond with ONLY raw JSON: ' +
+      'You write the narrative for a data story a consulting firm publishes to its client. The register is a findings ' +
+      'memo: measured, precise, professional — every headline is a FINDING (a claim with its number in it), never a ' +
+      'category label, and never sensational. Think the title of a consulting exhibit, not a news headline: no drama ' +
+      'verbs (crash, plunge, collapse, failing), no alarm framing, no wordplay. State what the data shows and let the ' +
+      'number carry the weight. Respond with ONLY raw JSON: ' +
       '{"headline":"...","lede":"...","themesHead":"...","themesIntro":"...","ratingHead":...,"ratingIntro":...,' +
       '"segmentHead":...,"segmentIntro":...,"timelineHead":...,"timelineIntro":...,"bandsHead":...,"bandsIntro":...} ' +
       '— fields marked null in the instructions must be null; heads are one sentence, no terminal period; intros 2–3 sentences. ' +
-      'HARD RULES: "headline" is the page H1 — the single most important tension in the data, stated as an argument ' +
-      '(like "Three seasons in, the drive is going backwards"), ≤ 90 characters, no dataset-name repetition. ' +
+      'HARD RULES: "headline" is the page H1 — the single most important pattern in the data, stated plainly with its ' +
+      'figure (like "Satisfaction is declining across three releases, led by technical complaints"), ≤ 90 characters, ' +
+      'no dataset-name repetition, muted consultant tone. ' +
       'Use ONLY numbers that appear verbatim in the provided facts — never compute, extrapolate, or invent a figure. ' +
       'Never mention data you were not given. No exclamation marks. Plain confident prose, no headline-speak clichés.',
     user: 'Facts:\n' + JSON.stringify(facts, null, 1) +
@@ -872,7 +877,19 @@ export function storyTitle(datasetName: string): string {
 }
 
 export function renderDataStory(d: StoryData): string {
-  const n = d.narrative
+  // Output-side American-English enforcement (owner 9/03: "not just
+  // prompts") — narrative prose is AI-origin; quotes and explorer excerpts
+  // are verbatim user data and pass through untouched.
+  const raw = d.narrative
+  const am = (v: string | null) => (v == null ? null : americanize(v))
+  const n: StoryNarrative = {
+    headline: am(raw.headline), lede: americanize(raw.lede),
+    themesHead: americanize(raw.themesHead), themesIntro: americanize(raw.themesIntro),
+    ratingHead: am(raw.ratingHead), ratingIntro: am(raw.ratingIntro),
+    segmentHead: am(raw.segmentHead), segmentIntro: am(raw.segmentIntro),
+    timelineHead: am(raw.timelineHead), timelineIntro: am(raw.timelineIntro),
+    bandsHead: am(raw.bandsHead), bandsIntro: am(raw.bandsIntro),
+  }
   const quotes = d.quotes.map(q =>
     `<div class="q"><p>“${esc(q.text)}”</p><div class="qm">${esc(q.meta)}</div></div>`).join('')
   const tableRows = [...d.themes].sort((a, b) => b.count - a.count).map(t =>
