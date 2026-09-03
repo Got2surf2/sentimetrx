@@ -727,3 +727,11 @@ deploy-order safe for a prod that hasn't run 198. 6 route tests. Applied to
 TEST via :6543 (RLS + policy verified); **prod apply = owner-run Management
 API script (sql/198), snapshot regenerates at that `npm run migrate`.**
 Verified live on TEST: `/story/NSd8V7meXoKX` renders the EA story.
+
+**Polish (owner idea)**: the building screen now rotates "factoids" every 9s
+while the ~30–90s build runs. Deliberately NOT trivia — every line is a TRUE
+claim about what the pipeline is doing to THIS dataset (full-corpus vs
+50K-sample read, quotes premise-checked, AI writes prose never numbers, CVD-
+validated palette, 7-day revocable link, snapshots) — the no-fabricated-facts
+content rule applies to loading screens too, and the rotation doubles as
+feature education. Rotation mechanics verified in-browser.
