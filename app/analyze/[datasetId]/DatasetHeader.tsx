@@ -129,26 +129,34 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
         // Never leave the tab blank while the build runs (~30–90s in dev):
         // a bare about:blank reads as "it broke" (owner, 2026-09-02).
         try {
-          // Rotating factoids (owner, 2026-09-02): every line is a TRUE claim
-          // about what the pipeline is doing to THIS dataset — never invented
-          // trivia (content rules: no fabricated facts, even on a loading
-          // screen). Doubles as feature education while the ~30-90s build runs.
-          var bigCorpus = (dataset.row_count || 0) > 50000
+          // Rotating fun facts (owner, 2026-09-02: real fun facts in the
+          // sciencefocus.com spirit, random, every 15s). Each is written in
+          // OUR OWN words (facts are free; a publisher's wording and curated
+          // list are not) and only well-documented facts made the cut — no
+          // popular myths, per the no-fabricated-content rule.
           var facts = [
-            bigCorpus
-              ? 'Reading a deterministic 50,000-row sample of your ' + (dataset.row_count || 0).toLocaleString() + ' rows — the same sampling discipline the Statistics tab uses.'
-              : 'Reading all ' + (dataset.row_count || 0).toLocaleString() + ' rows — every figure in your story is computed over the full corpus, not a sample.',
-            'Themes are being recounted fresh from the text. The story’s numbers will match TextMine to the digit.',
-            'Every quote is auto-checked to confirm it actually carries the point it illustrates — a quote that argues the other way is dropped.',
-            'The AI writes only the prose. It is handed the computed figures and is not allowed to invent a number.',
-            'Neutral themes get no quote at all — better one fewer verbatim than a misleading one.',
-            'If your data has a rating column, the story will show which themes drag the score below the overall average.',
-            'Segments like location or product line get their own theme profiles — but only with at least 30 substantive responses each. Thin samples never rank.',
-            'The chart palette is validated for color-blind readers: every adjacent color pair stays distinguishable under all three CVD types.',
-            'Your link will be short and login-free. It expires in 7 days, and you can revoke it at any time.',
-            'Recipients see a clean page on your domain — no login, no app chrome.',
-            'Stories are snapshots. Regenerate any time and the narrative is rewritten over fresh numbers — old links keep showing what they showed.',
+            'Honey found in ancient Egyptian tombs, thousands of years old, was still perfectly edible.',
+            'An octopus has three hearts — and blue blood.',
+            'A day on Venus lasts longer than its year: it spins slower than it orbits the Sun.',
+            'Botanically, a banana is a berry. A strawberry is not.',
+            'A bolt of lightning is roughly five times hotter than the surface of the Sun.',
+            'Sharks are older than trees — they were swimming the oceans tens of millions of years before the first forests grew.',
+            'The Eiffel Tower grows about 15 centimetres taller in summer as its iron expands in the heat.',
+            'Wombats are the only animal known to produce cube-shaped droppings.',
+            'There are more possible games of chess than atoms in the observable universe.',
+            'A single teaspoon of neutron-star material would weigh billions of tonnes.',
+            'Humans share roughly half their DNA with bananas.',
+            'Tardigrades — microscopic “water bears” — have survived direct exposure to the vacuum of space.',
+            'The Atlantic Ocean gets a few centimetres wider every year.',
+            'The national animal of Scotland is the unicorn.',
+            'A sloth can hold its breath longer than a dolphin can.',
+            'A Venus flytrap counts: it only snaps shut after two touches, to avoid wasting energy on false alarms.',
+            'The Moon is drifting away from Earth at about 3.8 centimetres per year.',
+            'Cleopatra lived closer in time to the Moon landing than to the building of the Great Pyramid.',
           ]
+          // Random order, no immediate repeats.
+          var fi = Math.floor(Math.random() * facts.length)
+          facts = facts.slice(fi).concat(facts.slice(0, fi))
           storyTab.document.write(
             '<meta charset="utf-8"><title>Building your Data Story…</title>' +
             '<body style="margin:0;display:grid;place-items:center;height:100vh;font-family:system-ui;background:#FCFCFB;color:#1A2421">' +
@@ -157,9 +165,12 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             '<p style="font-size:17px;margin:14px 0 6px">Building your Data Story…</p>' +
             '<p style="font-size:13.5px;color:#5C6B64">Recounting themes and writing the narrative — usually under a minute.<br>' +
             'This page will load the story automatically when it is ready.</p>' +
-            '<p id="fct" style="font-size:14px;color:#1A2421;min-height:3.2em;margin-top:26px;transition:opacity .5s;opacity:1">' + facts[0] + '</p>' +
+            '<p style="font-size:11px;letter-spacing:.08em;color:#8FA3AE;margin:26px 0 4px;text-transform:uppercase">Did you know?</p>' +
+            '<p id="fct" style="font-size:14px;color:#1A2421;min-height:3.2em;margin:0;transition:opacity .5s;opacity:1">' + facts[0] + '</p>' +
+            // Random rotation every 15s (pre-shuffled start offset above +
+            // random non-repeating pick here), soft cross-fade.
             '<script>(function(){var f=' + JSON.stringify(facts) + ',i=0,el=document.getElementById("fct");' +
-            'setInterval(function(){el.style.opacity=0;setTimeout(function(){i=(i+1)%f.length;el.textContent=f[i];el.style.opacity=1},500)},9000)})()<' + '/script>' +
+            'setInterval(function(){el.style.opacity=0;setTimeout(function(){var j=i;while(j===i){j=Math.floor(Math.random()*f.length)}i=j;el.textContent=f[i];el.style.opacity=1},500)},15000)})()<' + '/script>' +
             '</div></body>')
           storyTab.document.close()
         } catch { /* cross-origin guard — cosmetic only */ }

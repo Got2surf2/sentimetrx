@@ -735,3 +735,10 @@ claim about what the pipeline is doing to THIS dataset (full-corpus vs
 validated palette, 7-day revocable link, snapshots) — the no-fabricated-facts
 content rule applies to loading screens too, and the rotation doubles as
 feature education. Rotation mechanics verified in-browser.
+
+**Revision (owner: real fun facts, sciencefocus.com spirit, random/15s)**: the
+building screen's rotation is now 18 general-audience science facts under a
+"Did you know?" kicker — each REWRITTEN in our own words (facts are free; a
+publisher's wording/curation is not, so nothing is quoted or scraped) and only
+well-documented ones included (no goldfish-memory-tier myths). Random order,
+15s interval, no immediate repeats.
