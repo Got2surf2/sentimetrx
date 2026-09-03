@@ -573,6 +573,11 @@ export interface BuildStoryOpts {
   totalRows: number
   fields: SchemaFieldConfig[]
   analytics: DatasetAnalytics | null
+  /** Force this field as the segment axis when its values are present on the
+   *  rows — collections pass the injected __member__ column so the members
+   *  become the story's segments (pickSegmentField can't see it: synthetic
+   *  columns have no stored analytics summary). */
+  preferSegmentField?: string
 }
 
 export function buildStoryPayload(opts: BuildStoryOpts): Omit<StoryData, 'narrative'> {
@@ -606,8 +611,10 @@ export function buildStoryPayload(opts: BuildStoryOpts): Omit<StoryData, 'narrat
       scoreSourceField = derived.field
     }
   }
-  const segmentField = pickSegmentField(
-    fields.filter(f => f.field !== ratingField && f.field !== scoreSourceField), analytics, totalRows)
+  const segmentField = opts.preferSegmentField && rows.some(r => String(r[opts.preferSegmentField!] ?? '').trim())
+    ? opts.preferSegmentField
+    : pickSegmentField(
+        fields.filter(f => f.field !== ratingField && f.field !== scoreSourceField), analytics, totalRows)
   const themed = recountThemes(baseThemes, rows, fieldNames, ratingField)
   const substantive = rows.filter(r => fieldNames.some(f => isSubstantiveText(String(r[f] ?? ''))))
 
@@ -722,7 +729,11 @@ export function buildStoryPayload(opts: BuildStoryOpts): Omit<StoryData, 'narrat
     signaledSharePct,
     ratingFieldLabel: ratingField ? ratingLabel : null,
     scorePercent: !!scoreSourceField,
-    segmentFieldLabel: keptSegments.length ? segmentField : null,
+    // The LABEL, not the raw key — the injected collection column would
+    // otherwise render as "How it differs by __member__".
+    segmentFieldLabel: keptSegments.length && segmentField
+      ? (fields.find(f => f.field === segmentField)?.label || segmentField)
+      : null,
     themes: themed.map(t => ({
       id: t.id, name: t.name, description: t.description, sentiment: t.sentiment,
       keywords: (t.keywords || []).slice(0, 8),

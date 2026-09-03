@@ -15,6 +15,7 @@ import LottieLoader from '@/components/ui/LottieLoader'
 import { FavoriteStar } from '@/components/ui/FavoriteStar'
 import type { DatasetWithState, FieldSummary, OpenEndedSummary, SchemaFieldConfig } from '@/lib/analyzeTypes'
 import ReportsMenu from '@/components/analyze/ReportsMenu'
+import { launchDataStory } from '@/lib/storyLaunch'
 import DatasetAboutPopover from '@/components/analyze/DatasetAboutPopover'
 import AdHocReportModal from '@/components/analyze/AdHocReportModal'
 import { hasAnyReport } from '@/lib/reportCatalog'
@@ -329,6 +330,12 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
   }
   function handleReportLaunch(type: ReportType, format: ReportFormat) {
     if (type.id === 'ad-hoc') { setMenuOpen(false); setAdHocOpen(true); return }
+    if (type.id === 'data-story') {
+      // Shared launcher (lib/storyLaunch): synchronous tab + building screen.
+      setMenuOpen(false)
+      void launchDataStory({ datasetId: dataset.id, format: format === 'pdf' ? 'pdf' : 'html' })
+      return
+    }
     const purpose = type.id === 'brand-360' ? 'brand_360' : type.id as 'community' | 'competitive'
     if (format === 'html') {
       // GET route returns the report HTML — open it in a new tab.

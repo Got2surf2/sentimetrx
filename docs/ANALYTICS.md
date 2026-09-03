@@ -2121,6 +2121,19 @@ strips the INTERACTIVE machinery — what-if modeler, verbatim explorer,
 sticky nav — per owner decision, and forces sections + the data table open.
 The viewer injects a floating "Download PDF" button (hidden in print). Same
 capability model as the viewer: slug is the credential, revoked/expired = 410.
+**Collections tell stories too (owner, 2026-09-04).** The Data Story appears in
+every Reports menu — single datasets AND collections — with **HTML + PDF**
+formats ('the PDF export needs to be globally available'; the pdf chip points
+the opened tab at the short link's `/pdf` sibling, and the signed-token
+fallback link opens the HTML viewer whose own Download PDF button covers it).
+For a collection the route fans out to the members (proportional split of the
+50K cap), tags every row with its member's label via an injected `__member__`
+categorical, and passes `preferSegmentField` so **the members become the
+story's segments** — per-member profiles, cross-member drift, member names on
+quotes. `segmentFieldLabel` now carries the schema LABEL (never a raw key like
+`__member__`). The launch flow (synchronous tab + fun-facts building screen +
+TextMine-selection focus) is shared by the dataset header and the collection
+card via `lib/storyLaunch.launchDataStory` (extracted on second occurrence).
 **The story is told about the verbatim selected in the UI (owner, 2026-09-04):**
 the header reads TextMine's session selection (`textMine_<id>` sessionStorage,
 `activeFields`/`activeField`) and POSTs it as `{ fields }`; the route resolves

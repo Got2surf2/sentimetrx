@@ -77,11 +77,15 @@ function deckType(): ReportType {
   }
 }
 
-function dataStoryType(): ReportType {
+function dataStoryType(isCollection = false): ReportType {
   return {
     id: 'data-story', label: 'Data Story',
-    description: 'A shareable narrative web page built from the mined themes — send the link, no login needed; it expires in 7 days and can be revoked.',
-    formats: ['html'],
+    description: isCollection
+      ? 'A shareable narrative web page across the collection\u2019s members — themes, per-member profiles, quotes; send the link, no login needed; expires in 7 days, revocable.'
+      : 'A shareable narrative web page built from the mined themes — send the link, no login needed; it expires in 7 days and can be revoked.',
+    // PDF everywhere the story exists (owner, 2026-09-04): the pdf format
+    // points the opened tab at the short link's /pdf sibling.
+    formats: ['html', 'pdf'],
     configurable: false,
     scopes: ['full'],
     // POST returns JSON { url } (a share link), not a file — the header opens
@@ -143,6 +147,9 @@ export function availableReports(ctx: ReportContext): ReportType[] {
     if (!p || p === 'community')   out.push(projectType('community', 'Community report', 'Synthesis across this collection’s town halls, agents, and feedback — community voices only.', 'community'))
     if ((!p || p === 'competitive') && enough) out.push(projectType('competitive', 'Competitive report', 'Head-to-head comparison across the collection’s members, with a focus brand.', 'competitive'))
     if (!p || p === 'brand_360')   out.push(projectType('brand-360', 'Brand 360 report', 'One brand triangulated across every source in the collection.', 'brand_360'))
+    // Collections tell stories too (owner, 2026-09-04): same generator, with
+    // the members as the story's segments (the route injects a Member column).
+    if (ctx.aiEnabled !== false) out.push(dataStoryType(true))
   } else {
     if (ctx.aiEnabled !== false) out.push(deckType())
     if (ctx.aiEnabled !== false) out.push(dataStoryType())

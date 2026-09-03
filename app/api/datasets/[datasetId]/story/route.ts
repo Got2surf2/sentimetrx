@@ -14,6 +14,7 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { serverError } from '@/lib/apiError'
+import { resolveScopeMembers } from '@/lib/collectionScope'
 import { randomUUID, randomBytes } from 'crypto'
 import {
   buildStoryPayload, deterministicNarrative, narrativePrompt, parseNarrative,
@@ -47,11 +48,12 @@ export async function POST(req: Request, props: Params) {
 
   const service = createServiceRoleClient()
   const { data: dataset } = await service
-    .from('datasets').select('id, org_id, name, row_count').eq('id', params.datasetId).single()
+    .from('datasets').select('id, org_id, name, row_count, source').eq('id', params.datasetId).single()
   if (!dataset) return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
   if (!isAdmin && dataset.org_id !== orgId) {
     return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
   }
+  const isCollection = dataset.source === 'collection'
 
   const { data: stateRow } = await service
     .from('dataset_state').select('theme_model, schema_config, analytics')
@@ -78,20 +80,48 @@ export async function POST(req: Request, props: Params) {
 
   try {
     // Rows for the recount — capped; evenSample inside the builder past the cap.
+    // A COLLECTION owns no rows (owner, 2026-09-04): fan out to the members,
+    // split the cap proportionally, and TAG each row with its member's label —
+    // the members then become the story's segments (per-member profiles).
     const rows: Record<string, unknown>[] = []
-    for (let from = 0; rows.length < STORY_ROW_CAP; from += 1000) {
-      const { data: page, error } = await service
-        .from('dataset_rows_flat').select('data').eq('dataset_id', params.datasetId)
-        .order('row_index', { ascending: true }).range(from, from + 999)
-      if (error) return serverError(error, 'datasets.story.rows', { orgId })
-      rows.push(...((page || []) as { data: Record<string, unknown> }[]).map(p => p.data))
-      if (!page || page.length < 1000) break
+    async function pageRows(dsId: string, cap: number, tag: string | null) {
+      for (let from = 0; from < cap; from += 1000) {
+        const { data: page, error } = await service
+          .from('dataset_rows_flat').select('data').eq('dataset_id', dsId)
+          .order('row_index', { ascending: true }).range(from, Math.min(from + 999, cap - 1))
+        if (error) throw error
+        for (const p of (page || []) as { data: Record<string, unknown> }[]) {
+          rows.push(tag != null ? { ...p.data, __member__: tag } : p.data)
+        }
+        if (!page || page.length < 1000) break
+      }
+    }
+    if (isCollection) {
+      const members = (await resolveScopeMembers(service, params.datasetId))
+        .filter(m => m.datasetId !== params.datasetId)
+      const { data: memberDs } = await service
+        .from('datasets').select('id, name, row_count').in('id', members.map(m => m.datasetId))
+      const rowsOf = new Map(((memberDs || []) as { id: string; name: string | null; row_count: number | null }[])
+        .map(d => [d.id, { rows: Number(d.row_count) || 0, name: d.name || 'Member' }]))
+      const totalMemberRows = members.reduce((s, m) => s + (rowsOf.get(m.datasetId)?.rows || 0), 0) || 1
+      for (const m of members) {
+        const info = rowsOf.get(m.datasetId)
+        if (!info?.rows) continue
+        const share = Math.max(1000, Math.round(STORY_ROW_CAP * info.rows / totalMemberRows))
+        await pageRows(m.datasetId, Math.min(share, info.rows), m.label || info.name)
+      }
+    } else {
+      await pageRows(params.datasetId, STORY_ROW_CAP, null)
     }
     if (!rows.length) return NextResponse.json({ error: 'No rows to tell a story about.' }, { status: 400 })
 
+    const storyFields = isCollection
+      ? [...fields, { field: '__member__', label: 'Member', type: 'categorical' } as SchemaFieldConfig]
+      : fields
     const payload = buildStoryPayload({
       rows, themeModel, datasetName: dataset.name || 'Dataset',
-      totalRows: Number(dataset.row_count) || rows.length, fields, analytics,
+      totalRows: Number(dataset.row_count) || rows.length, fields: storyFields, analytics,
+      preferSegmentField: isCollection ? '__member__' : undefined,
     })
 
     // Narrative: AI prose over the computed facts; deterministic on failure.

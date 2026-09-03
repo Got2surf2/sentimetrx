@@ -81,7 +81,9 @@ describe('buildStoryPayload', () => {
 
   it('builds per-segment profiles over each segment’s own recount', () => {
     const p = payload()
-    expect(p.segmentFieldLabel).toBe('region')
+    // The schema LABEL, not the raw key (2026-09-04 — the collection story's
+    // injected __member__ column must never surface as a heading).
+    expect(p.segmentFieldLabel).toBe('Region')
     expect(p.segments.map(s => s.label).sort()).toEqual(['East', 'West'])
     for (const s of p.segments) expect(s.substantive).toBe(60)
   })
@@ -139,7 +141,7 @@ describe('renderDataStory', () => {
     for (const t of story().themes) expect(html).toContain(t.name)
     // Findings-led heads: the rating section headline carries the claim.
     expect(html).toContain('drags the score hardest')
-    expect(html).toContain('How it differs by region')
+    expect(html).toContain('How it differs by Region')
     expect(html).not.toMatch(/undefined|NaN/)
   })
 

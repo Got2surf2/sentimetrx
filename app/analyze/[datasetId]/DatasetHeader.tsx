@@ -15,19 +15,7 @@ import ShareAnalyticsModal from '@/components/analyze/ShareAnalyticsModal'
 import SearchPanel from '@/components/analyze/textmine/SearchPanel'
 import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
 import ReportsMenu from '@/components/analyze/ReportsMenu'
-import { FUN_FACTS } from '@/lib/funFacts'
-
-// Module-level so the react-hooks purity pass can see this never runs during
-// render (Math.random in component scope trips 'impure function during
-// render' even inside an event handler — CI ratchet 9/03).
-function sampleFunFacts(n: number): string[] {
-  const out: string[] = []
-  const pool = FUN_FACTS.slice()
-  for (let i = 0; i < n && pool.length; i++) {
-    out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0])
-  }
-  return out
-}
+import { launchDataStory } from '@/lib/storyLaunch'
 import { downloadFile } from '@/lib/browserDownload'
 import AdHocReportModal from '@/components/analyze/AdHocReportModal'
 import { availableReports, type ReportContext, type ReportType, type ReportFormat } from '@/lib/reportCatalog'
@@ -133,84 +121,9 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
     if (type.id === 'deck') { setShowExport(true); return }   // configurable → its own modal
     if (type.id === 'ad-hoc') { setAdHocOpen(true); return }
     if (type.id === 'data-story') {
-      // Returns a share LINK (JSON { url }), not a file. The tab must be
-      // opened SYNCHRONOUSLY in the click (a window.open after the await has
-      // lost the user activation and gets popup-blocked — verified 2026-09-02),
-      // then pointed at the story once the build finishes.
-      var storyTab = window.open('about:blank', '_blank')
-      if (storyTab) {
-        // Never leave the tab blank while the build runs (~30–90s in dev):
-        // a bare about:blank reads as "it broke" (owner, 2026-09-02).
-        try {
-          // Rotating fun facts (owner, 2026-09-02: real fun facts in the
-          // sciencefocus.com spirit, random, every 15s). Pool lives in
-          // lib/funFacts (~130 well-documented facts in our own words); a
-          // random 40-fact slice keeps the written document small.
-          var facts = sampleFunFacts(40)
-          // Layout (owner, 2026-09-02): the FACT is the centerpiece — big
-          // type, dead center of the viewport; the build status is a compact
-          // strip at the top.
-          // DOCTYPE matters: document.write without it lands the tab in
-          // quirks mode, which broke the vertical centering (owner 9/03:
-          // "too much whitespace above the factoid"). The fact is centered
-          // against the FULL viewport (fixed inset grid); the build status is
-          // an absolute strip at the top that takes no layout space.
-          storyTab.document.write(
-            '<!DOCTYPE html><meta charset="utf-8"><title>Building your Data Story…</title>' +
-            '<body style="margin:0;font-family:system-ui;background:#FCFCFB;color:#1A2421">' +
-            '<div style="position:fixed;top:0;left:0;right:0;text-align:center;padding:34px 24px 0">' +
-            '<div style="font-weight:800;font-style:italic;font-size:15px">' +
-            '<span style="color:#0E7476">data</span><span style="color:#E85A1A">nautix</span></div>' +
-            '<p style="font-size:15px;margin:12px 0 4px;font-weight:600">Building your Data Story…</p>' +
-            '<p style="font-size:12.5px;color:#5C6B64;margin:0">Recounting themes and writing the narrative — usually under a minute. This page will load the story automatically.</p>' +
-            '</div>' +
-            '<div style="position:fixed;inset:0;display:grid;place-items:center;padding:0 24px">' +
-            '<div id="fwrap" style="text-align:center;max-width:820px;transition:opacity .5s;opacity:0">' +
-            '<p style="font-size:12px;letter-spacing:.14em;color:#8FA3AE;margin:0 0 18px;text-transform:uppercase">Did you know?</p>' +
-            '<p id="fct" style="font-size:clamp(22px,3.2vw,30px);line-height:1.4;font-weight:600;color:#1A2421;margin:0;transition:opacity .5s;opacity:1"></p>' +
-            '</div></div>' +
-            // Same rhythm as Ask Ana's wait-state: first fact only AFTER 3s
-            // (a fast build never flashes trivia), then every 8s. The facts
-            // slice is ALREADY a shuffled no-repeat sample — step through it
-            // sequentially instead of random re-picks, which could repeat a
-            // fact within a session (owner 9/03).
-            '<script>(function(){var f=' + JSON.stringify(facts) + ',i=0,el=document.getElementById("fct"),w=document.getElementById("fwrap");' +
-            'setTimeout(function(){el.textContent=f[0];w.style.opacity=1;' +
-            'setInterval(function(){el.style.opacity=0;setTimeout(function(){i=(i+1)%f.length;el.textContent=f[i];el.style.opacity=1},500)},8000)},3000)})()<' + '/script>' +
-            '</body>')
-          storyTab.document.close()
-        } catch { /* cross-origin guard — cosmetic only */ }
-      }
-      setReportBusy(true)
-      try {
-        var storyReq = type.launch(dataset.id, format)
-        // Focus the story on the verbatim currently selected in TextMine
-        // (owner, 2026-09-04): the UI selection lives in sessionStorage
-        // (textMine_<id>); without it the route falls back to the stored
-        // top-level theme model's binding (the last selection persisted).
-        var storyFields: string[] = []
-        try {
-          var tmSaved = JSON.parse(sessionStorage.getItem('textMine_' + dataset.id) || 'null')
-          if (Array.isArray(tmSaved?.activeFields) && tmSaved.activeFields.length) storyFields = tmSaved.activeFields.map(String)
-          else if (tmSaved?.activeField) storyFields = [String(tmSaved.activeField)]
-        } catch { /* no saved selection — route falls back */ }
-        var storyRes = await fetch(storyReq.url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(storyFields.length ? { fields: storyFields } : {}),
-        })
-        var storyData = await storyRes.json()
-        if (!storyRes.ok || !storyData.url) throw new Error(storyData.error || 'Could not build the story')
-        var storyUrl = new URL(storyData.url, window.location.origin).toString()
-        try { await navigator.clipboard.writeText(storyUrl) } catch { /* clipboard optional */ }
-        if (storyTab) storyTab.location.href = storyUrl
-        else window.open(storyUrl, '_blank', 'noopener')
-      } catch (storyErr) {
-        if (storyTab) storyTab.close()
-        window.alert(storyErr instanceof Error ? storyErr.message : 'Could not build the story')
-      } finally {
-        setReportBusy(false)
-      }
+      // Shared launcher (lib/storyLaunch): synchronous tab + fun-facts
+      // building screen + TextMine-selection focus + pdf variant.
+      await launchDataStory({ datasetId: dataset.id, format: format === 'pdf' ? 'pdf' : 'html', onBusy: setReportBusy })
       return
     }
     var req = type.launch(dataset.id, format)

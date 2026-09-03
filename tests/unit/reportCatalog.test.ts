@@ -9,9 +9,10 @@ describe('availableReports — single dataset', () => {
     expect(ids).toEqual(['deck', 'data-story', 'ad-hoc'])
   })
 
-  it('the Data Story is a link-producing POST, html-only, full scope', () => {
+  it('the Data Story is a link-producing POST with html + pdf, full scope', () => {
     const story = availableReports(ctx({ source: 'upload' })).find(r => r.id === 'data-story')!
-    expect(story.formats).toEqual(['html'])
+    // PDF everywhere the story exists (owner, 2026-09-04)
+    expect(story.formats).toEqual(['html', 'pdf'])
     expect(story.scopes).toEqual(['full'])
     expect(story.launch('d1', 'html')).toEqual({ url: '/api/datasets/d1/story', method: 'POST' })
   })
@@ -48,12 +49,12 @@ describe('availableReports — single dataset', () => {
 describe('availableReports — collection', () => {
   it('an untyped (legacy) collection offers all three synthesis reports + ad-hoc', () => {
     const ids = availableReports(ctx({ isCollection: true, collectionPurpose: null, memberCount: 3 })).map(r => r.id)
-    expect(ids).toEqual(['community', 'competitive', 'brand-360', 'ad-hoc'])
+    expect(ids).toEqual(['community', 'competitive', 'brand-360', 'data-story', 'ad-hoc'])
   })
 
   it('a competitive collection offers only the competitive report + ad-hoc', () => {
     const ids = availableReports(ctx({ isCollection: true, collectionPurpose: 'competitive', memberCount: 4 })).map(r => r.id)
-    expect(ids).toEqual(['competitive', 'ad-hoc'])
+    expect(ids).toEqual(['competitive', 'data-story', 'ad-hoc'])
   })
 
   it('hides the competitive report when there are < 2 members', () => {
