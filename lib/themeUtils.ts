@@ -55,10 +55,17 @@ export interface Theme {
   description: string
   keywords: string[]
   sentiment: string
-  count: number             // unique rows matched ("records")
+  count: number             // unique rows matched ("records"). Summed across
+                            // themes this is the dataset's SIGNAL count — one
+                            // signal = one theme carried by one comment.
   snippetCount?: number     // total keyword-match occurrences across matched rows
-                            // ("signals" / "snippets"): a row mentioning a theme
-                            // keyword 3 times contributes 3 to this count.
+                            // ("snippets"): a row mentioning a theme keyword 3
+                            // times contributes 3 to this count.
+                            // NOT signals — the 2026-05-12 vocabulary used the
+                            // two words interchangeably, but they were settled
+                            // apart on 2026-09-03: signals count THEMES per
+                            // comment (see lib/signalStats), snippets count
+                            // KEYWORD HITS. Only the theme cards show snippets.
   percentage: number
   ciLow?: number
   ciHigh?: number

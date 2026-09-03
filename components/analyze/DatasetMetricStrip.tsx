@@ -7,7 +7,8 @@
 // product wants to lead with: a small dataset that "feels small" by
 // row count alone gets its real size from the signal/theme-fit pair.
 //
-//   480 comments  ·  12,400 signals  ·  Theme fit  Tight  79% ▓▓▓▓▓▓▓▓░░
+//   480 comments · 72% of 660 wrote, 51% substantive  ·  1,240 signals · 2.6
+//   per comment  ·  Theme fit  Tight  79% ▓▓▓▓▓▓▓▓░░  ·  6 themes
 //
 // Data fetched once per mount from /api/datasets/[id]/signal-stats.
 // Skeleton + small Lottie spinner stands in until the response lands
@@ -18,8 +19,15 @@ import LottieLoader from '@/components/ui/LottieLoader'
 import { SUBSTANTIVE_RULE_NOTE } from '@/lib/usefulness'
 
 interface SignalStats {
+  /** Coverage trio tier 1 — every row, text or not. Optional so a cache written
+   *  before the trio landed still renders (the tier is dropped, not faked). */
+  totalRows?: number
   records: number
+  /** Themes carried across all comments (a 3-theme comment contributes 3),
+   *  substantive-gated so it sums to the theme cards. Not keyword occurrences. */
   signals: number
+  /** signals / substantive comments — average themes per comment. */
+  signalRatio?: number | null
   inThemes: number
   themeFitPct: number
   themeFitBand: 'Tight' | 'Mixed' | 'Diffuse'
@@ -164,25 +172,66 @@ export default function DatasetMetricStrip({ datasetId, embedded }: Props) {
     ? ' These are exact counts over the deterministic 50,000-row sample (the dataset exceeds the exact-count cap, so the sample is the current view).'
     : ''
 
-  // Substantive share of answered comments — the "% substantive" the AI-mined
-  // banner used to carry (now folded here so there's one comment count, not two).
+  // Coverage trio (owner 2026-09-03): total rows -> carry a comment -> that
+  // comment is substantive. Each tier is shown only where it was actually
+  // measured; a tier we can't defend is dropped, never rendered as 0/100%.
   const answered = stats.records || 0
   // Null when the substantive breakdown isn't usable — showing "100% of N
   // answered" off the fallback would imply we measured something we didn't.
   const substPct = substantiveUsable && answered > 0 ? Math.round((commentCount / answered) * 100) : null
+  // Tier 1. Guarded on `> answered` as well as presence: a stale datasets.row_count
+  // below the measured comment count would render "110% wrote".
+  const totalRows = typeof stats.totalRows === 'number' && stats.totalRows >= answered
+    ? stats.totalRows : null
+  const wrotePct = totalRows && totalRows > 0 ? Math.round((answered / totalRows) * 100) : null
+  const ofAllPct = totalRows && totalRows > 0 && substantiveUsable
+    ? Math.round((commentCount / totalRows) * 100) : null
+
+  // Signals are counted on the SUBSTANTIVE base, so an unstamped dataset (the
+  // 2026-08-13 class — ingested outside the stamping path) reports zero signals
+  // for the same reason it reports zero substantive comments: nothing was
+  // measured. Rendering "0 signals · 0.0 per comment" there repeats exactly the
+  // verdict-on-unmeasured-data bug the comment count above guards against, so
+  // the whole span is suppressed rather than shown as a zero.
+  const showSignals = substantiveUsable && stats.signals > 0
 
   return (
     <div style={outerStyle}>
-      <span title={substantiveUsable
-        ? commentCount.toLocaleString() + ' of ' + answered.toLocaleString() + ' answered comments carry usable feedback. ' + SUBSTANTIVE_RULE_NOTE + sampledNote
-        : commentCount.toLocaleString() + ' answered comments. The usable-feedback breakdown isn’t available for this dataset, so this is the answered count.' + sampledNote}>
+      <span title={(totalRows
+        ? totalRows.toLocaleString() + ' rows' + (wrotePct != null ? ' · ' + answered.toLocaleString() + ' carry a comment (' + wrotePct + '%)' : '') + ' · '
+        : '')
+        + (substantiveUsable
+          ? commentCount.toLocaleString() + ' of those comments carry usable feedback (' + (substPct ?? 0) + '%'
+            + (ofAllPct != null ? ', ' + ofAllPct + '% of all rows' : '') + '). ' + SUBSTANTIVE_RULE_NOTE
+          : commentCount.toLocaleString() + ' answered comments. The usable-feedback breakdown isn’t available for this dataset, so this is the answered count.')
+        + sampledNote}>
         <strong style={{ color: '#111827' }}>{approx}{commentCount.toLocaleString()}</strong>{' '}
         <span style={{ color: '#6b7280' }}>comments</span>
-        {substPct != null && (
-          <span style={{ color: '#9ca3af' }}> · {substPct}% of {answered.toLocaleString()} answered</span>
+        {(wrotePct != null || substPct != null) && (
+          <span style={{ color: '#9ca3af' }}>
+            {' · '}
+            {wrotePct != null && <>{wrotePct}% of {totalRows!.toLocaleString()} wrote</>}
+            {wrotePct != null && substPct != null && ', '}
+            {substPct != null && <>{substPct}% substantive</>}
+          </span>
         )}
       </span>
       <span style={{ color: '#d1d5db' }}>·</span>
+      {showSignals && (
+        <>
+          <span title={'A signal is one theme carried by one comment, so a comment matching 3 themes contributes 3. '
+            + stats.signals.toLocaleString() + ' signals across ' + commentCount.toLocaleString() + ' comments'
+            + (typeof stats.signalRatio === 'number' ? ' = ' + stats.signalRatio.toFixed(2) + ' themes per comment on average' : '')
+            + '. This total is the sum of the per-theme comment counts on the theme cards.' + sampledNote}>
+            <strong style={{ color: '#111827' }}>{approx}{stats.signals.toLocaleString()}</strong>{' '}
+            <span style={{ color: '#6b7280' }}>signals</span>
+            {typeof stats.signalRatio === 'number' && (
+              <span style={{ color: '#9ca3af' }}> · {stats.signalRatio.toFixed(2)} per comment</span>
+            )}
+          </span>
+          <span style={{ color: '#d1d5db' }}>·</span>
+        </>
+      )}
       <span
         style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
         title={

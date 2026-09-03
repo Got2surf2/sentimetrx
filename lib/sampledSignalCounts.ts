@@ -44,6 +44,13 @@ export interface SampledSignalCounts {
   unionSubstantive: number
   /** Rows actually scanned — the scaling denominator (≤ cap). */
   scanned: number
+  /** Did the RPC actually return the substantive twins (sql/181)? A database
+   *  that predates them omits the keys entirely, which accumulates to all-zero
+   *  — indistinguishable from "genuinely no substantive matches" unless we say
+   *  so. Callers gating on the substantive numerator use this to fall back to
+   *  the ungated count instead of publishing a zero they can't defend
+   *  (deploy-order safety, same idiom as the legacy keyword build above). */
+  substantiveAvailable: boolean
 }
 
 interface PageResult {
@@ -78,6 +85,7 @@ export async function sampledSignalCounts(
     union: 0,
     unionSubstantive: 0,
     scanned: 0,
+    substantiveAvailable: false,
   }
   // `patterns` = canonical prebuilt fragments (kwPatternFragment), used by
   // sql/166+; `keywords` kept alongside so a pre-166 database still counts
@@ -103,7 +111,10 @@ export async function sampledSignalCounts(
     page.records.forEach((c, i) => { acc.recordsPerField[i] += Number(c) || 0 })
     ;(page.records_substantive || []).forEach((c, i) => { acc.recordsSubstantivePerField[i] += Number(c) || 0 })
     page.theme_counts.forEach((c, i) => { acc.perTheme[i] += Number(c) || 0 })
-    ;(page.theme_counts_substantive || []).forEach((c, i) => { acc.perThemeSubstantive[i] += Number(c) || 0 })
+    if (Array.isArray(page.theme_counts_substantive)) {
+      acc.substantiveAvailable = true
+      page.theme_counts_substantive.forEach((c, i) => { acc.perThemeSubstantive[i] += Number(c) || 0 })
+    }
     acc.union += Number(page.union_count) || 0
     acc.unionSubstantive += Number(page.union_substantive) || 0
     if (page.last_row_index == null) break

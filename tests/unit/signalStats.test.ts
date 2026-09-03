@@ -27,6 +27,8 @@ interface FakeOpts {
   cachedByField?: Record<string, unknown> | null
   // page queue for the sampled_signal_counts RPC (sql/162)
   sampledPages?: Record<string, unknown>[]
+  // observes every rpc(fn, args) call — used to pin the substantive gate
+  rpcSpy?: (fn: string, args: unknown) => void
 }
 
 // Minimal Supabase fake covering exactly the chains signalStats walks:
@@ -78,6 +80,7 @@ function makeService(o: FakeOpts): SupabaseClient {
     // comma-safe records counter) mirrors the fake DB's non-empty count; the
     // theme-match count RPCs return rpcVal.
     rpc: (fn: string, args: unknown) => {
+      o.rpcSpy?.(fn, args)
       if (fn === 'merge_dataset_analytics') {
         o.updateSpy(args)
         return Promise.resolve({ error: null })
@@ -100,7 +103,7 @@ describe('computeSignalStats — cache freshness', () => {
       records: 67, signals: 115, inThemes: 59, themeFitPct: 88,
       themeFitBand: 'Tight', themeCount: 8,
       substantiveRecords: 50, inThemesSubstantive: 47, themeFitPctSubstantive: 94, themeFitBandSubstantive: 'Tight',
-      theme_model_hash: HASH, row_count: 67, computed_at: '2026-05-13T12:59:36Z', stats_v: 3,
+      theme_model_hash: HASH, row_count: 67, computed_at: '2026-05-13T12:59:36Z', stats_v: 4,
     }
     const svc = makeService({ cached, flatCount: 67, rpcVal: 0, updateSpy })
 
@@ -118,7 +121,7 @@ describe('computeSignalStats — cache freshness', () => {
       records: 67, signals: 115, inThemes: 59, themeFitPct: 88,
       themeFitBand: 'Tight', themeCount: 8,
       substantiveRecords: 50, inThemesSubstantive: 47, themeFitPctSubstantive: 94, themeFitBandSubstantive: 'Tight',
-      theme_model_hash: HASH, row_count: 67, computed_at: '2026-05-13T12:59:36Z', stats_v: 3,
+      theme_model_hash: HASH, row_count: 67, computed_at: '2026-05-13T12:59:36Z', stats_v: 4,
     }
     // live DB now has 80 non-empty rows for the field
     const svc = makeService({ cached, flatCount: 80, rpcVal: 10, updateSpy })
@@ -217,7 +220,7 @@ describe('computeSignalStatsForSet — per-field cache slots', () => {
       records: 40, signals: 12, inThemes: 10, themeFitPct: 25,
       themeFitBand: 'Diffuse', themeCount: 1,
       substantiveRecords: 30, inThemesSubstantive: 9, themeFitPctSubstantive: 30, themeFitBandSubstantive: 'Diffuse',
-      theme_model_hash: HASH_B, row_count: 67, computed_at: '2026-07-11T00:00:00Z', stats_v: 3,
+      theme_model_hash: HASH_B, row_count: 67, computed_at: '2026-07-11T00:00:00Z', stats_v: 4,
     }
     const svc = makeService({
       cached: null, flatCount: 67, rpcVal: 0, updateSpy,
@@ -256,7 +259,7 @@ describe('computeSignalStatsForSet — per-field cache slots', () => {
       records: 67, signals: 115, inThemes: 59, themeFitPct: 88,
       themeFitBand: 'Tight', themeCount: 8,
       substantiveRecords: 50, inThemesSubstantive: 47, themeFitPctSubstantive: 94, themeFitBandSubstantive: 'Tight',
-      theme_model_hash: HASH, row_count: 67, computed_at: '2026-05-13T12:59:36Z', stats_v: 3,
+      theme_model_hash: HASH, row_count: 67, computed_at: '2026-05-13T12:59:36Z', stats_v: 4,
     }
     const svc = makeService({
       cached, flatCount: 67, rpcVal: 0, updateSpy, themeModel: TM_WITH_FIELDS,
@@ -266,5 +269,124 @@ describe('computeSignalStatsForSet — per-field cache slots', () => {
 
     expect(stats.records).toBe(67) // the active slot's cache, untouched
     expect(updateSpy).not.toHaveBeenCalled()
+  })
+})
+
+// ── Signals: themes carried per comment (owner 2026-09-03) ────────────────
+// "Signals should be the number of themes in a specific comment, and the signal
+// ratio should be total signals / total comments." The total is therefore the
+// sum of the per-theme comment counts — which the theme cards also display, so
+// it MUST be counted on the same substantive base they are (sql/181). A signals
+// total that didn't sum to the visible cards would be a second denominator.
+describe('signals + signal ratio', () => {
+  it('counts the per-theme numerator on the SUBSTANTIVE base (exact path)', async () => {
+    const calls: { fn: string; args: Record<string, unknown> }[] = []
+    // Two single-keyword themes, so a PER-THEME call is identifiable by its
+    // one-keyword payload — the any-theme union calls pass both keywords.
+    const svc = makeService({
+      cached: null, flatCount: 100, rpcVal: 40, updateSpy: vi.fn(), rowCount: 100,
+      themeModel: {
+        fieldNames: ['experience_followup'],
+        themes: [{ id: 't1', keywords: ['great'] }, { id: 't2', keywords: ['slow'] }],
+      },
+      rpcSpy: (fn, args) => { calls.push({ fn, args: args as Record<string, unknown> }) },
+    })
+
+    await computeSignalStats(svc, 'd1')
+
+    // Every per-theme call carries the substantive gate — the same flag
+    // theme-counts' themeMatchCount sets, so the two agree row for row.
+    const perTheme = calls.filter(c =>
+      c.fn === 'count_theme_matches' && (c.args.p_keywords as unknown[]).length === 1)
+    expect(perTheme).toHaveLength(2)
+    for (const c of perTheme) expect(c.args.p_substantive_only).toBe(true)
+    // The all-based theme-fit numerator stays UNGATED — it divides by the
+    // all-based records, so gating it would mix two populations.
+    const ungatedUnion = calls.filter(c =>
+      c.fn === 'count_theme_matches' && (c.args.p_keywords as unknown[]).length === 2
+      && c.args.p_substantive_only === undefined)
+    expect(ungatedUnion).toHaveLength(1)
+  })
+
+  it('ratio = signals / substantive comments, and totalRows carries the trio tier 1', async () => {
+    // One theme, every RPC returns 40 matches against a 100-row / 100-comment
+    // dataset: 40 signals over 100 substantive comments = 0.4 themes per comment.
+    const svc = makeService({
+      cached: null, flatCount: 100, rpcVal: 40, updateSpy: vi.fn(), rowCount: 250,
+    })
+
+    const stats = await computeSignalStats(svc, 'd1')
+
+    expect(stats.signals).toBe(40)
+    expect(stats.substantiveRecords).toBe(100)
+    expect(stats.signalRatio).toBe(0.4)
+    expect(stats.totalRows).toBe(250)  // tier 1 — rows, not comments
+  })
+
+  it('multi-theme comments push the ratio above 1 (a comment can carry several)', async () => {
+    const svc = makeService({
+      cached: null, flatCount: 100, rpcVal: 60, updateSpy: vi.fn(), rowCount: 100,
+      themeModel: {
+        fieldNames: ['experience_followup'],
+        themes: [{ id: 't1', keywords: ['great'] }, { id: 't2', keywords: ['slow'] }],
+      },
+    })
+
+    const stats = await computeSignalStats(svc, 'd1')
+
+    // 2 themes x 60 matching comments = 120 signals over 100 comments. The
+    // total EXCEEDS the comment count precisely because signals count themes,
+    // not comments — the property that distinguishes it from inThemes.
+    expect(stats.signals).toBe(120)
+    expect(stats.signalRatio).toBe(1.2)
+  })
+
+  it('uses the substantive twin on the sampled path when the RPC returns it', async () => {
+    const page = {
+      n: 25000, records: [20000], records_substantive: [10000],
+      theme_counts: [5000], theme_counts_substantive: [3000],
+      union_count: 5000, union_substantive: 4000, last_row_index: 456,
+    }
+    const svc = makeService({
+      cached: null, flatCount: 150000, rpcVal: 99999, updateSpy: vi.fn(),
+      rowCount: 150000, sampledPages: [page, page],
+    })
+
+    const stats = await computeSignalStats(svc, 'd1')
+
+    expect(stats.signals).toBe(6000)          // 3000+3000, the gated twin
+    expect(stats.substantiveRecords).toBe(20000)
+    expect(stats.signalRatio).toBe(0.3)       // 6000/20000
+  })
+
+  it('falls back to the ungated count when the DB predates the substantive twin', async () => {
+    // Deploy-order safety: a database without theme_counts_substantive omits
+    // the key entirely. Accumulating that as 0 would publish "0 signals" on a
+    // dataset that plainly has them — an unmeasured zero rendered as a verdict,
+    // the 2026-08-13 metric-strip bug class. Fall back to the ungated count.
+    const page = {
+      n: 25000, records: [20000], records_substantive: [10000],
+      theme_counts: [5000], union_count: 5000, union_substantive: 4000,
+      last_row_index: 456,
+    }
+    const svc = makeService({
+      cached: null, flatCount: 150000, rpcVal: 99999, updateSpy: vi.fn(),
+      rowCount: 150000, sampledPages: [page, page],
+    })
+
+    const stats = await computeSignalStats(svc, 'd1')
+
+    expect(stats.signals).toBe(10000)  // ungated 5000+5000, NOT 0
+  })
+
+  it('reports a null ratio rather than 0.0 when there is no substantive base', async () => {
+    const svc = makeService({
+      cached: null, flatCount: 0, rpcVal: 0, updateSpy: vi.fn(), rowCount: 500,
+    })
+
+    const stats = await computeSignalStats(svc, 'd1')
+
+    expect(stats.signalRatio).toBeNull()  // "not measured", never "no signal"
+    expect(stats.totalRows).toBe(500)
   })
 })

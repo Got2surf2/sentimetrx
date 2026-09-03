@@ -252,6 +252,60 @@ on pages using `getUserContext` — a nav pill and the route behind it could
 disagree. Both now call `allModulesOn()`, derived from `MODULE_KEYS`, so a new
 feature key cannot silently miss one path again.
 
+**Signals, the signal ratio, and the coverage trio (owner, 2026-09-03)**
+
+Three metrics settled by definition, after "signals" had drifted into meaning two
+different things in two places.
+
+- **A signal is one theme carried by one comment.** A comment matching three
+  themes contributes three signals. The dataset total (`SignalStats.signals`) is
+  therefore the sum of the per-theme counts, and `signals >= inThemes` whenever
+  any comment is multi-theme.
+- **Signal ratio = total signals / total comments** — the average number of
+  themes a comment carries. Ranges ~0.5 (thin, off-model corpora) to ~2.9 on
+  dense review text; a 5.8 was measured on a rich town-hall transcript.
+- **Coverage trio: total rows -> carry a comment -> that comment is
+  substantive.** Substantive stays the existing text rule (`isSubstantiveText`:
+  ≥5 words, or 4 with a function word) and is deliberately NOT "has ≥1 signal" —
+  gating it on theme matching would collapse Theme fit to 100% by construction
+  and move every substantive denominator a second time (they already moved once
+  on 2026-08-18).
+
+Two invariants hold this together:
+
+1. **Signals are counted on the SUBSTANTIVE base** (`p_substantive_only`, sql/181),
+   the same gate `theme-counts`' `themeMatchCount` uses. This is not cosmetic: the
+   theme cards display those per-theme counts, so a signals total counted on any
+   other base would publish a second denominator for the same data. Verified
+   exactly (strip total == sum of per-theme counts) on 12 datasets including 4
+   brand collections.
+2. **An unmeasured tier is dropped, never rendered as a zero or a 100%.** Because
+   signals ride the substantive base, a dataset whose `substantive` flag was never
+   stamped reports zero signals for the same reason it reports zero substantive
+   comments — nothing was measured. The strip suppresses the whole signals span
+   there rather than printing "0 signals · 0.00 per comment", which is the same
+   verdict-on-unmeasured-data trap as the 2026-08-13 guard below. Tier 1 is
+   likewise dropped when `datasets.row_count` is stale (below the measured comment
+   count), and the ratio is `null`, never `0.0`, when there is no base.
+
+**Not to be confused with `snippetCount`.** The 2026-05-12 vocabulary used
+"signal" and "snippet" interchangeably; they were settled apart here. Snippets are
+KEYWORD OCCURRENCES ("slow" 3x in one comment = 3), computed client-side in
+`recountThemes` and shown only on the theme cards. Signals count THEMES. The Data
+Story's `signalsPerComment` was dividing snippets and now divides signals.
+
+**Where they surface.** The metric strip leads every /analyze/[id] tab with
+`N comments · X% of R wrote, Y% substantive · S signals · r per comment`. The Data
+Story carries the same ladder as tiles plus a signals total, with each share
+naming its base (`82% of the 1,000 analyzed`) so a sampled story can't be read
+against the full row count. The **listing cards deliberately do not** carry
+signals or the substantive tier: those need the 1-4s-when-cold `signal-stats`
+compute, which on a listing is one cold compute per card (and has already hit the
+DB statement timeout in production on a single 27K-row dataset). Cards keep the
+two tiers that come free with cached analytics — rows and how many carry a comment.
+`STATS_MODEL_VERSION` = 4; v3 entries hold the old ungated signals total and
+recompute once on next read.
+
 **Metric strip — unstamped `substantive` guard (2026-08-13)**
 - The strip leads with the SUBSTANTIVE comment count (`sql/178/179`). A dataset ingested outside the stamping path (a direct-write script, a legacy import) has the flag unstamped, which counts as **zero** — and the strip used to render that as *"0 comments · 0% of 49,033 answered · Theme fit Diffuse 0%"*, a damning verdict on data that had simply never been scored, flatly contradicting the theme cards below counting the same rows in the thousands.
 - `DatasetMetricStrip` now guards on the DATA as well as the cache shape: when `substantiveRecords === 0` it falls back to the all-based `records`/`inThemes`/`themeFitPct`, **suppresses the "% of N answered" share** (rendering it off the fallback would claim 100% off a measurement never taken), and swaps the tooltip. `DatasetAboutPopover` suppresses its per-field "N substantive" clause under the same condition. Neither asserts "not scored" nor "zero substantive" — they fall back to the count they can defend.
@@ -464,7 +518,9 @@ stored schema — detection applies at upload/auto-detect time; the Schema tab r
 override. Tests: `tests/unit/datasetUtils.test.ts` ("freeform vs identifier/PII detection").
 
 **Metric strip + listing cards (2026-07-11).** The dataset metric strip (`DatasetMetricStrip`,
-every /analyze/[id] tab: comments · signals · Theme fit band/%) now (1) **re-fetches when themes
+every /analyze/[id] tab; since 2026-09-03 it reads
+comments · coverage trio · signals · ratio · Theme fit band/% — see the signals
+section above) now (1) **re-fetches when themes
 are saved in-session** ('dataset-themes-saved' fires on every theme-model persist; fresh uploads
 used to mine in the first visit and the strip stayed hidden until reload), and (2) **follows the
 active Text pill**: TextMine dispatches 'dataset-active-field-changed' (themeFieldKey) and the

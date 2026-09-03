@@ -42,10 +42,17 @@ interface DonutSummary {
   max?:     number
 }
 
-// Phase C: dataset listing carries server-computed signal stats keyed
-// by dataset id, fetched in one batch from /api/datasets/signal-stats-batch.
-// Cards render skeleton until their entry lands so the listing doesn't
-// flash + reflow.
+// The card shows only DATA FACTS — counts that come free with the listing's
+// cached analytics (f38623a2 dropped the signal-stats-batch fetch that used to
+// put signals + theme fit here). That is deliberate and worth keeping: those
+// numbers cost a 1-4s per-dataset compute when cold, which on a listing of N
+// datasets is N cold computes at page load — and signal-stats has already hit
+// the DB statement timeout in production on a single 27K-row dataset. Signals,
+// the signal ratio, and the substantive tier live on the dataset page's metric
+// strip, where exactly one dataset is being computed.
+//
+// So the card carries the coverage trio's first two tiers only: total rows and
+// how many carry a comment. The third (substantive) needs the same compute.
 
 interface Props {
   dataset:             DatasetWithState
@@ -680,7 +687,7 @@ export default function DatasetCard({ dataset, onDelete, onRename, onToggleVisib
             <span><strong style={{ color: '#111827' }}>{dataset.row_count.toLocaleString()}</strong> reviews</span>
             {withComments > 0 ? (
               <>
-                <span><strong style={{ color: '#059669' }}>{withComments.toLocaleString()}</strong> with comments</span>
+                <span><strong style={{ color: '#059669' }}>{withComments.toLocaleString()}</strong> with comments{dataset.row_count > 0 && <span style={{ color: '#9ca3af' }}> ({Math.round(withComments / dataset.row_count * 100)}%)</span>}</span>
                 <span><strong style={{ color: '#d97706' }}>{ratingOnly.toLocaleString()}</strong> rating only</span>
               </>
             ) : (

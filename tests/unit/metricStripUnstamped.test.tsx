@@ -45,9 +45,22 @@ describe('DatasetMetricStrip — substantive flag unstamped', () => {
     expect(screen.queryByText('0')).toBeNull()
   })
 
-  it('suppresses the "% of N answered" share rather than claiming 100%', async () => {
+  it('suppresses the substantive share rather than claiming 100%', async () => {
     const { container } = await strip({ ...BASE, substantiveRecords: 0, inThemesSubstantive: 0, themeFitPctSubstantive: 0, themeFitBandSubstantive: 'Diffuse' })
-    expect(container.textContent).not.toMatch(/% of 49,033 answered/)
+    expect(container.textContent).not.toMatch(/substantive/)
+  })
+
+  // Signals are counted on the substantive base too (2026-09-03), so an
+  // unstamped dataset reports zero of them for the same reason — nothing was
+  // measured. Rendering "0 signals · 0.00 per comment" repeats exactly the
+  // verdict-on-unmeasured-data bug this file exists to prevent.
+  it('suppresses signals entirely rather than reporting an unmeasured zero', async () => {
+    const { container } = await strip({
+      ...BASE, signals: 0, signalRatio: 0,
+      substantiveRecords: 0, inThemesSubstantive: 0, themeFitPctSubstantive: 0, themeFitBandSubstantive: 'Diffuse',
+    })
+    expect(container.textContent).not.toMatch(/signals/)
+    expect(container.textContent).not.toMatch(/per comment/)
   })
 
   it('uses the all-based theme fit, not the empty substantive one', async () => {
@@ -60,7 +73,51 @@ describe('DatasetMetricStrip — substantive flag unstamped', () => {
   it('still prefers the substantive numbers when the flag IS stamped', async () => {
     const { container } = await strip({ ...BASE, substantiveRecords: 40000, inThemesSubstantive: 12000, themeFitPctSubstantive: 30, themeFitBandSubstantive: 'Mixed' })
     expect(screen.getByText('40,000')).toBeTruthy()
-    expect(container.textContent).toMatch(/82% of 49,033 answered/)
+    expect(container.textContent).toMatch(/82% substantive/)
     expect(screen.getByText('30%')).toBeTruthy()
+  })
+})
+
+// The coverage trio (owner 2026-09-03): total rows -> carry a comment ->
+// that comment is substantive. Each tier renders only where it was measured.
+describe('DatasetMetricStrip — coverage trio + signals', () => {
+  const STAMPED = {
+    ...BASE, substantiveRecords: 40000, inThemesSubstantive: 12000,
+    themeFitPctSubstantive: 30, themeFitBandSubstantive: 'Mixed' as const,
+  }
+
+  it('renders all three tiers when totalRows is present', async () => {
+    // 70,000 rows -> 49,033 wrote (70%) -> 40,000 substantive (82% of those).
+    // Deliberately different percentages so a tier swap can't pass by accident.
+    const { container } = await strip({ ...STAMPED, totalRows: 70000 })
+    expect(screen.getByText('40,000')).toBeTruthy()          // tier 3, the lead
+    expect(container.textContent).toMatch(/70% of 70,000 wrote/)  // tiers 1+2
+    expect(container.textContent).toMatch(/82% substantive/)
+  })
+
+  it('drops tier 1 rather than faking it when totalRows is absent', async () => {
+    // Caches written before the trio landed have no totalRows.
+    const { container } = await strip(STAMPED)
+    expect(container.textContent).not.toMatch(/wrote/)
+    expect(container.textContent).toMatch(/82% substantive/)
+  })
+
+  it('drops tier 1 when a stale row_count sits below the comment count', async () => {
+    // datasets.row_count is a stored column; a stale one under the measured
+    // comment count would render "110% wrote".
+    const { container } = await strip({ ...STAMPED, totalRows: 100 })
+    expect(container.textContent).not.toMatch(/wrote/)
+  })
+
+  it('shows signals with the ratio to two decimals', async () => {
+    const { container } = await strip({ ...STAMPED, totalRows: 60000, signals: 22000, signalRatio: 0.55 })
+    expect(screen.getByText('22,000')).toBeTruthy()
+    expect(container.textContent).toMatch(/0\.55 per comment/)
+  })
+
+  it('shows the signals count alone when the ratio is unmeasured', async () => {
+    const { container } = await strip({ ...STAMPED, signals: 22000, signalRatio: null })
+    expect(screen.getByText('22,000')).toBeTruthy()
+    expect(container.textContent).not.toMatch(/per comment/)
   })
 })

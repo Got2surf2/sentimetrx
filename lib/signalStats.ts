@@ -18,7 +18,23 @@ import { sampledSignalCounts, SIGNAL_SAMPLE_CAP } from '@/lib/sampledSignalCount
 import { kwPatternFragment, themeFieldEntries, themeModelKey, type ThemeModel as UtilThemeModel } from '@/lib/themeUtils'
 
 export interface SignalStats {
+  /** Tier 1 of the coverage trio (owner 2026-09-03): total rows in the dataset
+   *  (or summed across collection members), whether or not they carry text.
+   *  The trio is total rows -> `records` (carry a comment) -> `substantiveRecords`
+   *  (that comment says something). */
+  totalRows: number
   records: number
+  /** SIGNALS (owner 2026-09-03): "the number of themes in a specific comment",
+   *  summed over comments — so a comment matching 3 themes contributes 3 and
+   *  `signals` >= `inThemes` whenever any comment is multi-theme. It is the sum
+   *  of the per-theme counts the theme cards print, which means it is gated to
+   *  the SUBSTANTIVE base (sql/181) exactly like they are: a signals total that
+   *  didn't sum to the visible cards would be a second denominator (see
+   *  ENGINEERING: every number reconciles to ONE method).
+   *
+   *  NOT keyword occurrences. `themeUtils.snippetCount` counts those ("slow"
+   *  3x in one comment = 3) and is a different, card-local metric labelled
+   *  "snippets". */
   signals: number
   inThemes: number
   themeFitPct: number
@@ -33,6 +49,12 @@ export interface SignalStats {
   inThemesSubstantive: number
   themeFitPctSubstantive: number
   themeFitBandSubstantive: 'Tight' | 'Mixed' | 'Diffuse'
+  /** SIGNAL RATIO (owner 2026-09-03): total signals / total comments — the
+   *  average number of themes a comment carries. Same substantive base as
+   *  `signals`, so the division is within one population. Null when there is
+   *  no substantive base to divide by (never rendered as 0.0, which would read
+   *  as "no signal" rather than "not measured"). */
+  signalRatio: number | null
   /** True when counts were computed over the deterministic 50K sample and
    *  scaled to the dataset's total rows (datasets above the sampling cap —
    *  exact per-theme scans exceed the DB statement timeout there). */
@@ -55,7 +77,11 @@ interface ThemeModel {
 // and NEITHER moves when the sampling scheme changes — so without this bump
 // every existing entry would survive the conversion and keep serving numbers
 // computed over rows that are no longer the sample.
-const STATS_MODEL_VERSION = 3
+// v4 = 2026-09-03: `signals` is now substantive-gated (it was counted over all
+// non-empty rows, so it could not sum to the theme cards) and the payload gained
+// totalRows + signalRatio. v3 entries hold the old ungated total and lack both
+// new fields, so they must recompute rather than render a mismatched ratio.
+const STATS_MODEL_VERSION = 4
 
 interface CachedSignalStats extends SignalStats {
   theme_model_hash: string
@@ -97,12 +123,14 @@ function isStatementTimeout(err: unknown): boolean {
   return typeof e.message === 'string' && /statement timeout|57014/i.test(e.message)
 }
 
-function emptyStats(themeCount: number): SignalStats {
+function emptyStats(themeCount: number, totalRows: number): SignalStats {
   return {
+    totalRows,
     records: 0, signals: 0, inThemes: 0,
     themeFitPct: 0, themeFitBand: 'Diffuse',
     substantiveRecords: 0, inThemesSubstantive: 0,
     themeFitPctSubstantive: 0, themeFitBandSubstantive: 'Diffuse',
+    signalRatio: null,
     themeCount,
   }
 }
@@ -223,8 +251,15 @@ export async function computeSignalStatsRaw(
   // Resolve the dataset (or its collection members) that hold the rows
   const datasetIds = await resolveDatasetIds(service, datasetId)
 
+  // Fetched before the empty guard (it reads the stored datasets.row_count
+  // column, so it costs one indexed select): a dataset with no themes yet still
+  // has a defensible tier-1 count for the coverage trio, and returning 0 there
+  // would render as "0 reviews" on a dataset that plainly has rows.
+  const rowCounts = await memberRowCounts(service, datasetIds)
+  const totalRows = sumCounts(rowCounts)
+
   if (!themes.length || !fields.length || !datasetIds.length) {
-    return emptyStats(themes.length)
+    return emptyStats(themes.length, totalRows)
   }
 
   // Per member, three groups of counts:
@@ -243,8 +278,6 @@ export async function computeSignalStatsRaw(
   // the 8s DB statement timeout (~1.4GB of jsonb per scan at 785K rows,
   // prod 2026-07-11). If the sampled RPC isn't in the target database yet
   // (PGRST202 et al.) we fall back to the exact path — pre-sql/162 behavior.
-  const rowCounts = await memberRowCounts(service, datasetIds)
-
   const perMember = await Promise.all(datasetIds.map(async did => {
     const memberTotal = rowCounts.get(did) || 0
     if (memberTotal > SIGNAL_SAMPLE_CAP) {
@@ -261,7 +294,14 @@ export async function computeSignalStatsRaw(
         return {
           recordsPerField: s.recordsPerField,
           recordsSubstantivePerField: s.recordsSubstantivePerField,
-          perTheme: s.perTheme,
+          // perThemeSubstantive, not perTheme: `signals` must sum to the theme
+          // cards, whose numerator has been substantive-gated since sql/181.
+          // The sampled RPC returns both in the same pass, so this is free.
+          // On a database that predates the substantive twin the RPC omits it
+          // and the accumulator is all-zero, so fall back to the ungated count
+          // — a slightly high signals total beats reporting zero signals on a
+          // dataset that plainly has them.
+          perTheme: s.substantiveAvailable ? s.perThemeSubstantive : s.perTheme,
           union: s.union,
           unionSubstantive: s.unionSubstantive,
           sampled: true,
@@ -294,7 +334,7 @@ export async function computeSignalStatsRaw(
       return {
         recordsPerField: s.recordsPerField,
         recordsSubstantivePerField: s.recordsSubstantivePerField,
-        perTheme: s.perTheme,
+        perTheme: s.substantiveAvailable ? s.perThemeSubstantive : s.perTheme,
         union: s.union,
         unionSubstantive: s.unionSubstantive,
         sampled: true,
@@ -323,6 +363,10 @@ export async function computeSignalStatsRaw(
           // client matcher compiles; the RPC splices them unescaped into its
           // \m(…|…) alternation, so SQL counts and client recounts agree.
           p_keywords: (t.keywords || []).filter(Boolean).map(kwPatternFragment),
+          // Substantive-gated (sql/181), matching theme-counts' themeMatchCount
+          // exactly, so summing these yields the signals total the theme cards
+          // add up to. Same RPC, same round-trip — the flag costs nothing.
+          p_substantive_only: true,
         }),
       )),
       service.rpc('count_theme_matches', {
@@ -359,6 +403,9 @@ export async function computeSignalStatsRaw(
     perMember.reduce((s, m) => s + (m.recordsSubstantivePerField[i] || 0), 0),
   )
   const substantiveRecords = recordsSubstantivePerField.reduce((m, v) => Math.max(m, v), 0)
+  // Sum of every theme's substantive match count = total themes carried across
+  // all comments (a 3-theme comment contributes 3). Same number the theme cards
+  // add up to.
   const signals = perMember.reduce((s, m) => s + m.perTheme.reduce((a, b) => a + b, 0), 0)
   const inThemes = perMember.reduce((s, m) => s + m.union, 0)
   const inThemesSubstantive = perMember.reduce((s, m) => s + m.unionSubstantive, 0)
@@ -366,11 +413,17 @@ export async function computeSignalStatsRaw(
 
   const themeFitPct = records > 0 ? Math.round((inThemes / records) * 100) : 0
   const themeFitPctSubstantive = substantiveRecords > 0 ? Math.round((inThemesSubstantive / substantiveRecords) * 100) : 0
+  // Signals per comment, over the base the signals themselves were counted on.
+  const signalRatio = substantiveRecords > 0
+    ? Math.round((signals / substantiveRecords) * 100) / 100
+    : null
   return {
+    totalRows,
     records, signals, inThemes,
     themeFitPct, themeFitBand: band(themeFitPct),
     substantiveRecords, inThemesSubstantive,
     themeFitPctSubstantive, themeFitBandSubstantive: band(themeFitPctSubstantive),
+    signalRatio,
     themeCount: themes.length,
     ...(sampled ? { sampled: true } : {}),
   }

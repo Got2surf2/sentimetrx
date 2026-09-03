@@ -105,11 +105,19 @@ export interface StoryData {
   totalRows: number
   analyzedRows: number       // rows the recount ran over (≤ STORY_ROW_CAP)
   substantiveBase: number
+  /** Coverage trio tier 2 (owner 2026-09-03): analyzed rows carrying ANY text in
+   *  the theme fields. Sits between analyzedRows and substantiveBase — the
+   *  ladder is rows -> wrote something -> said something. */
+  commentedBase: number
+  /** Total signals = themes carried across all comments (a 3-theme comment
+   *  contributes 3). Sum of the per-theme substantive counts, so it reconciles
+   *  with the theme bars below it. */
+  totalSignals: number
   fieldLabel: string
   overallAvgRating: number | null
   writtenAvgRating: number | null    // score among substantive-text responses
   signaledAvgRating: number | null   // score among responses carrying >=1 COMPLAINT signal (neg/mixed themes)
-  signalsPerComment: number | null   // theme keyword hits per substantive response
+  signalsPerComment: number | null   // signals (themes carried) per substantive response
   signaledSharePct: number | null    // share of substantive responses voicing a recognized complaint
   ratingFieldLabel: string | null
   scorePercent: boolean      // true when the score is a 0-100 %-recommended: render whole percents
@@ -661,9 +669,16 @@ export function buildStoryPayload(opts: BuildStoryOpts): Omit<StoryData, 'narrat
     if (complaintRegexes.length && sgN >= 30) signaledAvgRating = rnd(sgSum / sgN)
     if (complaintRegexes.length && substantive.length) signaledSharePct = Math.round(sgCount / substantive.length * 100)
   }
-  const totalSignals = themed.reduce((a, t) => a + (t.snippetCount || 0), 0)
+  // SIGNALS = themes carried, not keyword occurrences (owner 2026-09-03). This
+  // used to sum `snippetCount`, which counts every keyword hit ("slow" 3x in one
+  // comment = 3) — a different unit that made the ratio disagree with both the
+  // theme bars and the metric strip. `t.count` is recountThemes' substantive-
+  // gated per-theme comment count, so summing it gives the same total the strip
+  // computes in SQL and the bars below add up to.
+  const totalSignals = themed.reduce((a, t) => a + (t.count || 0), 0)
   const signalsPerComment = substantive.length && totalSignals
-    ? Math.round(totalSignals / substantive.length * 10) / 10 : null
+    ? Math.round(totalSignals / substantive.length * 100) / 100 : null
+  const commentedBase = rows.filter(r => fieldNames.some(f => String(r[f] ?? '').trim().length > 0)).length
 
   // Per-segment theme profiles through the SAME recount.
   const segments: StorySegment[] = []
@@ -721,6 +736,8 @@ export function buildStoryPayload(opts: BuildStoryOpts): Omit<StoryData, 'narrat
     totalRows,
     analyzedRows: rows.length,
     substantiveBase: substantive.length,
+    commentedBase,
+    totalSignals,
     fieldLabel: fieldNames.join(' + '),
     overallAvgRating,
     writtenAvgRating,
@@ -1241,6 +1258,13 @@ export function renderDataStory(d: StoryData): string {
     `<div class="q"><p>“${esc(q.text)}”</p><div class="qm">${esc(q.meta)}</div></div>`).join('')
   const tableRows = [...d.themes].sort((a, b) => b.count - a.count).map(t =>
     `<tr><td>${esc(t.name)}</td><td>${fmt(t.count)}</td><td>${t.pct}%</td><td>${t.avgRating ?? '—'}</td></tr>`).join('')
+  const coverPct = (n: number): string => {
+    if (!d.analyzedRows) return ''
+    const pct = Math.round(n / d.analyzedRows * 100)
+    return d.analyzedRows < d.totalRows
+      ? ` (${pct}% of the ${fmt(d.analyzedRows)} analyzed)`
+      : ` (${pct}%)`
+  }
   const sampledNote = d.analyzedRows < d.totalRows
     ? ` Figures are computed over a deterministic ${fmt(d.analyzedRows)}-row sample of the ${fmt(d.totalRows)}-row dataset.` : ''
 
@@ -1360,12 +1384,15 @@ ${n.headline ? `<p class="kicker">${esc(storyTitle(d.datasetName))}</p>` : ''}
 </div>
 <div class="tiles">
 <div class="tile"><b>${fmt(d.totalRows)}</b><span>responses</span></div>
-<div class="tile"><b>${fmt(d.substantiveBase)}</b><span>written responses (the theme base)</span></div>
+<div class="tile"><b>${fmt(d.commentedBase)}</b><span>left a comment${coverPct(d.commentedBase)}</span></div>
+<div class="tile"><b>${fmt(d.substantiveBase)}</b><span>substantive — the theme base${coverPct(d.substantiveBase)}</span></div>
 <div class="tile"><b>${d.themes.length}</b><span>themes mined</span></div>
 ${d.overallAvgRating != null ? `<div class="tile"><b>${fmtScoreValue(d.overallAvgRating, d.scorePercent)}</b><span>${d.scorePercent ? 'recommend' : 'average ' + esc(d.ratingFieldLabel || 'rating')} \u2014 all responses</span></div>` : ''}
 ${d.writtenAvgRating != null ? `<div class="tile"><b>${fmtScoreValue(d.writtenAvgRating, d.scorePercent)}</b><span>${d.scorePercent ? 'recommend' : 'average'} — written responses</span></div>` : ''}
 ${d.signaledAvgRating != null ? `<div class="tile"><b>${fmtScoreValue(d.signaledAvgRating, d.scorePercent)}</b><span>${d.scorePercent ? 'recommend' : 'average'} — with a complaint signal</span></div>` : ''}
-${d.signalsPerComment != null ? `<div class="tile"><b>${d.signalsPerComment}</b><span>signals per written response${d.signaledSharePct != null ? ` (${d.signaledSharePct}% have one)` : ''}</span></div>` : ''}
+${d.totalSignals > 0 ? `<div class="tile"><b>${fmt(d.totalSignals)}</b><span>signals — themes carried across all comments</span></div>` : ''}
+${d.signalsPerComment != null ? `<div class="tile"><b>${d.signalsPerComment}</b><span>signals per substantive comment</span></div>` : ''}
+${d.signaledSharePct != null ? `<div class="tile"><b>${d.signaledSharePct}%</b><span>voice a recognized complaint</span></div>` : ''}
 </div>
 <nav class="snav" id="snav"></nav>
 <section data-nav="Themes"><h2>${esc(n.themesHead)}</h2>
@@ -1392,7 +1419,7 @@ ${d.quotes.length ? `<section data-nav="In their words"><h2>In their words</h2>
 <p class="sub">Verbatim sentences, each verified to carry the sentiment of the theme it illustrates.</p>
 ${quotes}</section>` : ''}
 ${explorerHtml(d)}
-<div class="method"><b>Method.</b> ${fmt(d.totalRows)} responses; themes are AI-mined keyword models recounted over every analyzed row — the ${fmt(d.substantiveBase)} responses with substantive text form the denominator for every share shown.${sampledNote} Time and band figures use the same recount within each bucket. Quotes pass an automated check that the displayed sentence supports the point it illustrates; the explorer is an uncurated even sample.</div>
+<div class="method"><b>Method.</b> ${fmt(d.totalRows)} responses; of the ${fmt(d.analyzedRows)} analyzed, ${fmt(d.commentedBase)} left a comment and ${fmt(d.substantiveBase)} of those are substantive (five or more words, or four with a common word) — that substantive count is the denominator for every share shown. Themes are AI-mined keyword models recounted over every analyzed row. A <b>signal</b> is one theme carried by one comment, so a comment matching three themes contributes three; the ${fmt(d.totalSignals)} signals here are the per-theme counts in the chart above, added up.${sampledNote} Time and band figures use the same recount within each bucket. Quotes pass an automated check that the displayed sentence supports the point it illustrates; the explorer is an uncurated even sample.</div>
 <details><summary>Data table — themes</summary><table><tr><th>Theme</th><th>Responses</th><th>% of base</th><th>Avg ${esc(d.ratingFieldLabel || 'rating')}</th></tr>${tableRows}</table></details>
 <div class="foot"><span class="brand"><span class="d">data</span><span class="n">nautix</span></span> · datanautix.com · This link is time-limited and can be revoked by the publisher at any time.</div>
 <script>
