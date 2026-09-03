@@ -240,6 +240,17 @@ of the computed options `{fingerprint, computedAt, fields}`, fingerprint
 = flat count + last_synced_at + fields-signature sha1, invalidated by
 recompute-on-mismatch.
 
+sql/199 (2026-09-03) DROP+re-CREATE'd `numeric_field_stats` with two extra
+return columns `p25_val`/`p75_val` (`percentile_cont(0.25/0.75)` in the same
+WITHIN GROUP pass). Before this the analytics snapshot's SQL path stored
+**p25 = median = p75** for every numeric field (the TS caller copied
+`median_val` into both quartiles — found via ea_football's degenerate Data
+Story bands). Extra columns are inert for the other named-field callers;
+`computeAnalyticsSQL` reads them with a median fallback so pre-199 DBs keep
+the old behavior. Stored snapshots refresh per dataset on its next
+compute/sync. sql/190 REVOKE block re-applied (mandatory on every
+SECURITY DEFINER re-CREATE).
+
 sql/169 (2026-07-13, perf review §7 Brief C) reworked the five scalar
 `/aggregate` RPCs — `crosstab_counts`, `group_numeric_stats`,
 `date_series_stats`, `count_field_values`, `numeric_field_stats`. Each

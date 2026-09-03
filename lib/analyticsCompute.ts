@@ -409,8 +409,10 @@ export async function computeAnalyticsSQL(
         avg: parseFloat(Number(nr.avg_val).toFixed(4)),
         median: parseFloat(Number(nr.median_val).toFixed(4)),
         stddev: parseFloat(Number(nr.stddev_val || 0).toFixed(4)),
-        p25: parseFloat(Number(nr.median_val).toFixed(4)),  // approximate
-        p75: parseFloat(Number(nr.median_val).toFixed(4)),  // approximate
+        // Real quartiles since sql/199; a pre-199 DB returns no p25_val/p75_val
+        // and falls back to the old median approximation (deploy-order safe).
+        p25: parseFloat(Number(nr.p25_val ?? nr.median_val).toFixed(4)),
+        p75: parseFloat(Number(nr.p75_val ?? nr.median_val).toFixed(4)),
         histogram: histBuckets,
         valueCounts: isDiscrete ? valCounts : undefined,
         uniqueCount: uniqueNumCount, isDiscrete: isDiscrete,

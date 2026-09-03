@@ -2652,7 +2652,10 @@ Two paths, both producing the same `DatasetAnalytics` JSON shape:
   pushes work into Postgres via RPCs (`count_field_values`, `numeric_field_stats`) so
   no rows are pulled into Node. Top-value lists are capped at `p_limit: 500` per field;
   open-ended summaries use a 20-row sample for shape stats and an exact `COUNT(*)` for
-  nonNull.
+  nonNull. Numeric quartiles are REAL since sql/199 (`p25_val`/`p75_val` from the RPC,
+  median fallback on a pre-199 DB) — before that this path stored **p25 = median = p75**
+  for every numeric field ("approximate"), which is why any stored snapshot computed
+  pre-199 has degenerate bands until the dataset's next compute/sync.
 - **`computeAnalyticsFromRows`** (collection-rollup path): runs JS accumulators over
   rows already in memory (used when the rollup loads members for a virtual dataset).
   Uses Knuth/Vitter reservoir sampling for numerics: `NUMERIC_RESERVOIR_SIZE = 50_000`.

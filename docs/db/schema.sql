@@ -1340,7 +1340,7 @@ COMMENT ON FUNCTION "public"."merge_outlet_action_plan"("p_dataset_id" "uuid", "
 
 
 
-CREATE OR REPLACE FUNCTION "public"."numeric_field_stats"("p_dataset_id" "uuid", "p_field_key" "text", "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS TABLE("n" bigint, "min_val" double precision, "max_val" double precision, "avg_val" double precision, "median_val" double precision, "stddev_val" double precision)
+CREATE OR REPLACE FUNCTION "public"."numeric_field_stats"("p_dataset_id" "uuid", "p_field_key" "text", "p_row_ids" bigint[] DEFAULT NULL::bigint[]) RETURNS TABLE("n" bigint, "min_val" double precision, "max_val" double precision, "avg_val" double precision, "median_val" double precision, "stddev_val" double precision, "p25_val" double precision, "p75_val" double precision)
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
@@ -1359,7 +1359,9 @@ BEGIN
     max(v) AS max_val,
     avg(v) AS avg_val,
     percentile_cont(0.5) WITHIN GROUP (ORDER BY v) AS median_val,
-    stddev_samp(v) AS stddev_val
+    stddev_samp(v) AS stddev_val,
+    percentile_cont(0.25) WITHIN GROUP (ORDER BY v) AS p25_val,
+    percentile_cont(0.75) WITHIN GROUP (ORDER BY v) AS p75_val
   FROM nums;
 END;
 $$;

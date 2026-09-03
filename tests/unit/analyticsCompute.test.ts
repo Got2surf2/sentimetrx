@@ -155,7 +155,7 @@ describe('computeAnalyticsSQL', () => {
         if (name === 'count_field_values' && args.p_field_key === 'color')
           return { data: [{ value: 'red', count: '600' }, { value: 'blue', count: 400 }], error: null }
         if (name === 'numeric_field_stats')
-          return { data: [{ n: 1000, min_val: 1, max_val: 5, avg_val: '4.2', median_val: 4, stddev_val: 0.9 }], error: null }
+          return { data: [{ n: 1000, min_val: 1, max_val: 5, avg_val: '4.2', median_val: 4, stddev_val: 0.9, p25_val: 3, p75_val: 5 }], error: null }
         if (name === 'count_field_values' && args.p_field_key === 'rating')
           return { data: [{ value: '5', count: 500 }, { value: '4', count: 300 }, { value: '1', count: 200 }], error: null }
         if (name === 'count_field_values' && args.p_field_key === 'day')
@@ -173,13 +173,26 @@ describe('computeAnalyticsSQL', () => {
     expect(color.counts).toEqual({ red: 600, blue: 400 })
     expect(color.nonNull).toBe(1000)
     const rating = a.fieldSummaries.rating as NumericSummary
-    expect(rating).toMatchObject({ nonNull: 1000, min: 1, max: 5, avg: 4.2, isDiscrete: true })
+    // Real quartiles from the RPC since sql/199 — NOT the median copied twice
+    // (the pre-199 bug that stored p25 = median = p75 for every numeric field).
+    expect(rating).toMatchObject({ nonNull: 1000, min: 1, max: 5, avg: 4.2, isDiscrete: true, median: 4, p25: 3, p75: 5 })
     // Discrete histogram: one bucket per value, sorted numerically
     expect(rating.histogram).toEqual([
       { min: 1, max: 1, count: 200 }, { min: 4, max: 4, count: 300 }, { min: 5, max: 5, count: 500 },
     ])
     const day = a.fieldSummaries.day as DateSummary
     expect(day).toMatchObject({ min: '2026-01-15', max: '2026-02-01', nonNull: 1000 })
+  })
+
+  it('falls back to the median when the RPC lacks p25_val/p75_val (pre-sql/199 DB)', async () => {
+    const service = fakeService({
+      totalRows: 100,
+      rpc: (name) => name === 'numeric_field_stats'
+        ? { data: [{ n: 100, min_val: 1, max_val: 5, avg_val: 3, median_val: 4, stddev_val: 1 }], error: null }
+        : { data: [], error: null },
+    })
+    const a = await computeAnalyticsSQL(service, 'd1', schema([{ field: 'rating', type: 'numeric' }]))
+    expect(a.fieldSummaries.rating).toMatchObject({ median: 4, p25: 4, p75: 4 })
   })
 
   it('zeroes a numeric field the stats RPC finds empty', async () => {
