@@ -93,7 +93,25 @@ export default function HelpWidget({ currentPage, features }: Props) {
   const [streamText, setStreamText] = useState('')
   const [busy, setBusy] = useState(false)
   const [hydrated, setHydrated] = useState(false)
+  // When the Ask Ana panel is open it docks fixed to the right edge at
+  // z-1500 and buried this widget (z-60) completely. The panel announces its
+  // occupancy via an 'ask-ana-panel' CustomEvent; we slide left of it.
+  const [anaOffset, setAnaOffset] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function onAnaPanel(e: Event) {
+      const d = (e as CustomEvent<{ open: boolean; width: number }>).detail
+      setAnaOffset(d?.open ? d.width : 0)
+    }
+    window.addEventListener('ask-ana-panel', onAnaPanel)
+    // Catch-up read: this widget remounts per page (it lives in TopNav), so
+    // the panel's announce event may predate the listener.
+    const stamped = Number(document.documentElement.dataset.askAnaWidth || 0)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot mount sync from a DOM stamp written by a sibling tree; deps are [], cannot cascade
+    if (stamped > 0) setAnaOffset(stamped)
+    return () => window.removeEventListener('ask-ana-panel', onAnaPanel)
+  }, [])
 
   // Hydrate persisted conversation on mount (survives page navigation + reload).
   useEffect(() => {
@@ -210,8 +228,8 @@ export default function HelpWidget({ currentPage, features }: Props) {
           onClick={() => setOpen(true)}
           aria-label="Open Help"
           title="Help"
-          className="fixed bottom-5 right-5 z-[60] flex items-center justify-center rounded-full shadow-lg transition-transform hover:scale-105"
-          style={{ width: 52, height: 52, background: 'white', border: '1px solid #eee', fontSize: 26 }}
+          className="fixed bottom-5 z-[60] flex items-center justify-center rounded-full shadow-lg transition-transform hover:scale-105"
+          style={{ width: 52, height: 52, background: 'white', border: '1px solid #eee', fontSize: 26, right: 20 + anaOffset, transition: 'right .2s' }}
         >
           <span aria-hidden>🧭</span>
         </button>
@@ -220,8 +238,8 @@ export default function HelpWidget({ currentPage, features }: Props) {
       {/* Panel */}
       {open && (
         <div
-          className="fixed bottom-5 right-5 z-[60] flex flex-col rounded-2xl shadow-2xl bg-white overflow-hidden"
-          style={{ width: 'min(380px, calc(100vw - 24px))', height: 'min(560px, calc(100vh - 88px))', border: '1px solid #eee' }}
+          className="fixed bottom-5 z-[60] flex flex-col rounded-2xl shadow-2xl bg-white overflow-hidden"
+          style={{ width: 'min(380px, calc(100vw - 24px))', height: 'min(560px, calc(100vh - 88px))', border: '1px solid #eee', right: 20 + anaOffset, maxWidth: 'calc(100vw - ' + (24 + anaOffset) + 'px)', transition: 'right .2s' }}
           role="dialog"
           aria-label="Help"
         >

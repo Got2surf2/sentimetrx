@@ -2473,6 +2473,30 @@ anywhere` so the table compresses to the panel instead of clipping. Verified
 in-browser on TEST against a live Ana answer in both the docked (~360px) and
 expanded (940px) panel.
 
+**The panel coexists with the rest of the chrome (2026-09-04, owner-hit:
+"sherpa disappears when Ask Ana is invoked" + clipped header items).** Three
+rules, all verified in-browser on TEST:
+- **The panel docks BELOW the global TopNav** (`top: 56`), so the top-level
+  product nav (Favorites → Sign out) stays fully visible and clickable while
+  Ana is open — it no longer overlays the nav's right half.
+- **The dataset header collapses by CONTAINER width, not viewport width.**
+  The `.ana-c1..c9` progressive-collapse ladder in DatasetHeader is
+  `@container` queries on the header (`container-type: inline-size`), because
+  opening the panel shrinks the header by 420/940px while the viewport is
+  unchanged — viewport media queries never fired and the right-side actions
+  were silently clipped by `overflow: hidden`. Same thresholds as before;
+  they now respond to the width the header actually has. The whole-tab hide
+  rules (≤850px, ≤640px) carry `!important` — the tabs' inline
+  `display: flex` beat the stylesheet, so those rungs of the ladder had
+  never actually fired.
+- **Fixed bottom-right neighbors slide out from under the panel.** The panel
+  (z-1500) announces its occupancy via an `ask-ana-panel` CustomEvent
+  (`{open, width}`) on mount/unmount and expand/collapse, and stamps
+  `data-ask-ana-width` on `<html>` so late-mounting listeners can catch up
+  (Sherpa's HelpWidget lives in TopNav and remounts per page). HelpWidget
+  offsets its launcher and chat window `right` by that width. Any future
+  fixed bottom-right chrome should subscribe the same way.
+
 **Ana works the CURRENT VIEW (2026-09-02, owner-hit).** Ana answered from the
 default verbatim column while the analyst had another selected, and leaned on
 the 200-row sample for synthesis. Three changes:

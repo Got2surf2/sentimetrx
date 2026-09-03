@@ -231,22 +231,29 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           </div>
         </div>
       )}
+      {/* CONTAINER queries, not viewport media queries (owner-hit 2026-09-04):
+          when the Ask Ana panel opens, the header loses 420px of width while
+          the VIEWPORT stays put — media queries never fired and the right-side
+          actions were silently clipped by overflow:hidden. The header is its
+          own size container, so the same progressive collapse now responds to
+          the width the header actually has, panel open or closed. */}
       <style>{'\
+        .ana-header { container-type: inline-size; }\
         .ana-tab { padding: 0 14px; transition: all .12s; }\
         .ana-tab .ana-lbl { transition: all .15s; }\
-        @media (max-width: 1440px) { .ana-c9 .ana-lbl { display: none; } .ana-c9 { padding: 0 10px; } }\
-        @media (max-width: 1380px) { .ana-c8 .ana-lbl { display: none; } .ana-c8 { padding: 0 10px; } }\
-        @media (max-width: 1300px) { .ana-c7 .ana-lbl { display: none; } .ana-c7 { padding: 0 10px; } }\
-        @media (max-width: 1200px) { .ana-c6 .ana-lbl { display: none; } .ana-c6 { padding: 0 10px; } }\
-        @media (max-width: 1100px) { .ana-c5 .ana-lbl { display: none; } .ana-c5 { padding: 0 10px; } }\
-        @media (max-width: 1000px) { .ana-c4 .ana-lbl { display: none; } .ana-c4 { padding: 0 10px; } }\
-        @media (max-width: 920px)  { .ana-c3 .ana-lbl { display: none; } .ana-c3 { padding: 0 10px; } }\
-        @media (max-width: 850px)  { .ana-c9 { display: none; } .ana-c8 { display: none; } .ana-c7 { display: none; } }\
-        @media (max-width: 780px)  { .ana-c2 .ana-lbl { display: none; } .ana-c2 { padding: 0 10px; } }\
-        @media (max-width: 700px)  { .ana-c1 .ana-lbl { display: none; } .ana-c1 { padding: 0 10px; } }\
-        @media (max-width: 640px)  { .ana-c6 { display: none; } }\
+        @container (max-width: 1440px) { .ana-c9 .ana-lbl { display: none; } .ana-c9 { padding: 0 10px; } }\
+        @container (max-width: 1380px) { .ana-c8 .ana-lbl { display: none; } .ana-c8 { padding: 0 10px; } }\
+        @container (max-width: 1300px) { .ana-c7 .ana-lbl { display: none; } .ana-c7 { padding: 0 10px; } }\
+        @container (max-width: 1200px) { .ana-c6 .ana-lbl { display: none; } .ana-c6 { padding: 0 10px; } }\
+        @container (max-width: 1100px) { .ana-c5 .ana-lbl { display: none; } .ana-c5 { padding: 0 10px; } }\
+        @container (max-width: 1000px) { .ana-c4 .ana-lbl { display: none; } .ana-c4 { padding: 0 10px; } }\
+        @container (max-width: 920px)  { .ana-c3 .ana-lbl { display: none; } .ana-c3 { padding: 0 10px; } }\
+        @container (max-width: 850px)  { .ana-c9 { display: none !important; } .ana-c8 { display: none !important; } .ana-c7 { display: none !important; } }\
+        @container (max-width: 780px)  { .ana-c2 .ana-lbl { display: none; } .ana-c2 { padding: 0 10px; } }\
+        @container (max-width: 700px)  { .ana-c1 .ana-lbl { display: none; } .ana-c1 { padding: 0 10px; } }\
+        @container (max-width: 640px)  { .ana-c6 { display: none !important; } }\
       '}</style>
-      <div style={{ background: HERMES, height: 48, display: 'flex', alignItems: 'stretch', flexShrink: 0 }}>
+      <div className="ana-header" style={{ background: HERMES, height: 48, display: 'flex', alignItems: 'stretch', flexShrink: 0 }}>
 
         {/* ═══ LEFT ZONE: flexible, tabs shrink via CSS ═══ */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'stretch', overflow: 'hidden' }}>

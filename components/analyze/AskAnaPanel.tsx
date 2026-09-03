@@ -168,6 +168,23 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
   // ── "Ana remembers" state ──
   var [view, setView] = useState<'chat' | 'memory'>('chat')
   var [expanded, setExpanded] = useState(false)
+  // Tell fixed-position neighbors (Sherpa's help launcher, bottom-right) how
+  // much viewport the panel occupies, so they can shift out from UNDER it —
+  // the panel is z-1500 and covered the z-60 launcher entirely (owner-hit
+  // 2026-09-04: "sherpa disappears when Ask Ana is invoked").
+  useEffect(function() {
+    var width = expanded ? Math.min(940, Math.round(window.innerWidth * 0.92)) : 420
+    try {
+      document.documentElement.dataset.askAnaWidth = String(width)
+      window.dispatchEvent(new CustomEvent('ask-ana-panel', { detail: { open: true, width: width } }))
+    } catch { /* SSR-safe */ }
+    return function() {
+      try {
+        delete document.documentElement.dataset.askAnaWidth
+        window.dispatchEvent(new CustomEvent('ask-ana-panel', { detail: { open: false, width: 0 } }))
+      } catch { /* SSR-safe */ }
+    }
+  }, [expanded])
   var [memories, setMemories] = useState<MemoryRow[]>([])
   var [memLoaded, setMemLoaded] = useState(false)
   var [interviewPending, setInterviewPending] = useState(false)
@@ -828,7 +845,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
 
   return (
     <div style={{
-      position: 'fixed', top: 0, right: 0, bottom: 0, width: expanded ? 'min(940px, 92vw)' : 420, maxWidth: '100vw',
+      position: 'fixed', top: 56, right: 0, bottom: 0, width: expanded ? 'min(940px, 92vw)' : 420, maxWidth: '100vw',
       transition: 'width .2s ease',
       background: 'white', boxShadow: '-8px 0 32px rgba(0,0,0,.15)',
       display: 'flex', flexDirection: 'column', zIndex: 1500,

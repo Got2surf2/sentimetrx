@@ -58,6 +58,24 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
   const [sessionSaving, setSessionSaving] = useState(false)
   const [sessionSaved, setSessionSaved] = useState(false)
   const [askAnaOpen, setAskAnaOpen] = useState(false)
+  // Track the panel's ACTUAL width (420 docked / ~940 expanded) via its
+  // ask-ana-panel occupancy event — a hardcoded 420 margin left the expanded
+  // panel overlaying half the dataset header (owner-hit 2026-09-04).
+  const [askAnaWidth, setAskAnaWidth] = useState(420)
+
+  useEffect(function() {
+    function onAnaPanel(e: Event) {
+      const d = (e as CustomEvent<{ open: boolean; width: number }>).detail
+      if (d?.open && d.width > 0) setAskAnaWidth(d.width)
+    }
+    window.addEventListener('ask-ana-panel', onAnaPanel)
+    // Catch-up read: after a remount (HMR, navigation) the panel's announce
+    // event predates this listener; the <html> stamp carries the live width.
+    const stamped = Number(document.documentElement.dataset.askAnaWidth || 0)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot mount sync from a DOM stamp; deps [], cannot cascade
+    if (stamped > 0) setAskAnaWidth(stamped)
+    return function() { window.removeEventListener('ask-ana-panel', onAnaPanel) }
+  }, [])
 
   // Build aliases from schema
   const aliases: Record<string, string> = {}
@@ -217,7 +235,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
 
   return (
     <>
-      <div style={{ marginRight: askAnaOpen ? 420 : 0, transition: 'margin-right .25s ease', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+      <div style={{ marginRight: askAnaOpen ? askAnaWidth : 0, transition: 'margin-right .25s ease', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       <DatasetHeader dataset={dataset} userName={userName} orgName={orgName} outletCount={outletCount} filterCount={fCount} inViewFilters={Object.keys(serializedFilters).length ? serializedFilters : undefined} filteredRowCount={filteredRowCount} filteredRowCountIsEstimate={ctxSampled && ctxSampledCount > 0 && ctxTotalRows > ctxSampledCount} onFilterClick={function() { setShowFilters(true) }} onSaveSession={handleSaveSession} sessionSaving={sessionSaving} sessionSaved={sessionSaved} onAskAna={function() { setAskAnaOpen(function(v) { return !v }) }} askAnaOpen={askAnaOpen} />
 
       {/* Metric strip (comments / theme-fit / themes) + Saved Views switcher
