@@ -3,7 +3,7 @@
 
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
-import { resolveOrg, orgTaxonomyEnabled } from '@/lib/resolveOrg'
+import { resolveOrg } from '@/lib/resolveOrg'
 import StatsModule from '@/components/analyze/StatsModule'
 
 export const dynamic = 'force-dynamic'
@@ -44,5 +44,5 @@ export default async function StatsPage(props: Props) {
     schema = { ...schema, fields: [...(schema.fields || []), { field: 'signal_tier', type: 'categorical', label: 'Signal Tier' }] }
   }
 
-  return <StatsModule datasetId={params.datasetId} datasetName={dataset?.name} schema={schema} themeModel={themeModel} datasetSource={dataset?.source} taxonomyEnabled={orgTaxonomyEnabled(orgData?.features) || !!dataset?.taxonomy_enabled} />
+  return <StatsModule datasetId={params.datasetId} datasetName={dataset?.name} schema={schema} themeModel={themeModel} datasetSource={dataset?.source} taxonomyEnabled={!!dataset?.taxonomy_enabled} />
 }

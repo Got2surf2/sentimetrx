@@ -326,7 +326,7 @@ export default function SettingsClient({ dataset, schema: initialSchema, isOwner
             className="accent-orange-500 mt-0.5" />
           <div>
             <p className="text-sm font-semibold text-gray-700">Apply Dimensions{taxSaving && <span className="text-xs text-gray-400 font-normal"> · saving…</span>}</p>
-            <p className="text-xs text-gray-400">Reveals the <strong>Dimensions</strong> tab for this dataset, plus dimension breakdowns in Charts &amp; Stats. Restaurant data (Google reviews, restaurant orgs) gets the full restaurant taxonomy — service, food, drinks, ambiance, value…; <strong>every other dataset gets the universal Emotion dimension</strong> (disappointment, blame, and churn-intent language). You don’t need this toggle for Google-reviews datasets (already eligible) or restaurant-industry orgs (automatic) — in either case just open the Dimensions tab and click <strong>Enable Dimensions</strong> there, which turns it on and classifies in one step.</p>
+            <p className="text-xs text-gray-400">Reveals the <strong>Dimensions</strong> tab for this dataset, plus dimension breakdowns in Charts &amp; Stats. Restaurant data (Google reviews, restaurant orgs) gets the full restaurant taxonomy — service, food, drinks, ambiance, value…; <strong>every other dataset gets the universal Emotion dimension</strong> (disappointment, blame, and churn-intent language). You don’t need this toggle for Google-reviews datasets — just open the Dimensions tab and click <strong>Enable Dimensions</strong> there, which turns it on and classifies in one step. For every other dataset, this toggle (or restaurant detection at mining time) is what reveals the tab.</p>
           </div>
         </label>
       </div>

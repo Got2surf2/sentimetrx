@@ -65,7 +65,8 @@ export function viewLocked(section: Section, view: LensView, hasThemes: boolean)
 // Returned in bar order: Themes, Dimensions, Entities, Advanced.
 // taxonomySuppressed: AI detected non-food-service data → hide the restaurant
 // taxonomy even for google_reviews. It overrides ONLY the source proxy, never an
-// explicit taxonomyEnabled (manual opt-in / restaurant-org capability).
+// explicit taxonomyEnabled (the dataset's own `taxonomy_enabled` flag; org
+// capability alone no longer lights the tab — owner decision 2026-09-03).
 export interface SectionGateOpts {
   datasetSource?: string; taxonomyEnabled?: boolean; taxonomySuppressed?: boolean
   hasEntities?: boolean; outletCount?: number

@@ -3,7 +3,7 @@
 
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
-import { resolveOrg, orgTaxonomyEnabled } from '@/lib/resolveOrg'
+import { resolveOrg } from '@/lib/resolveOrg'
 import ChartsModule from '@/components/analyze/ChartsModule'
 
 export const dynamic = 'force-dynamic'
@@ -45,5 +45,5 @@ export default async function ChartsPage(props: Props) {
     schema = { ...schema, fields: [...(schema.fields || []), { field: 'signal_tier', type: 'categorical', label: 'Signal Tier' }] }
   }
 
-  return <ChartsModule datasetId={params.datasetId} schema={schema} analytics={analytics} themeModel={themeModel} datasetSource={dataset?.source} taxonomyEnabled={orgTaxonomyEnabled(orgData?.features) || !!dataset?.taxonomy_enabled} taxonomySuppressed={!!dataset?.taxonomy_suppressed} />
+  return <ChartsModule datasetId={params.datasetId} schema={schema} analytics={analytics} themeModel={themeModel} datasetSource={dataset?.source} taxonomyEnabled={!!dataset?.taxonomy_enabled} taxonomySuppressed={!!dataset?.taxonomy_suppressed} />
 }

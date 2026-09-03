@@ -167,7 +167,7 @@ interface Props {
   analytics:         DatasetAnalytics | null
   savedThemeModel:   ThemeModel | null
   datasetSource?:    'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection'
-  taxonomyEnabled?:  boolean   // org has the 'taxonomy' (Dimensions) capability → show Dimensions on any analyze dataset, not just google_reviews
+  taxonomyEnabled?:  boolean   // the DATASET has Dimensions enabled (`datasets.taxonomy_enabled`) — org capability alone no longer shows the tab (owner decision 2026-09-03)
   taxonomySuppressed?: boolean // AI detected non-food-service → hide Dimensions even for google_reviews (overrides only the source proxy, not an explicit enable)
   anaLibrary?:       string | null
   initialOpenEditor?: boolean

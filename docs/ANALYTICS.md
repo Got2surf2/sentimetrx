@@ -1339,10 +1339,11 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
 - **Where it lives.** The **"Dimensions"** peer section **inside TextMine** (`TextMineModule` renders
   `<TaxonomyModule>` for the section's Overview view — `subTab==='dimensions' && activeView==='overview'`; the
   section also carries Clouds=`DimensionCloud`, Compare=`DimensionCompareTab`, and the unified Comments), shown when **`taxonomyEnabled`** is true — which the
-  analyze pages compute as `datasetSource==='google_reviews' || orgTaxonomyEnabled(org) || dataset.taxonomy_enabled`:
-  (a) Google Reviews datasets; (b) **org capability** — `orgTaxonomyEnabled` (`lib/resolveOrg`) = the explicit
-  per-org `ModuleFeatures.taxonomy` toggle **OR** the org's `primaryIndustries` includes a restaurant type
-  (`casual_dining`/`fine_dining`/`fast_food`, auto-enabled); (c) **per-dataset** — `datasets.taxonomy_enabled`
+  analyze pages compute as `datasetSource==='google_reviews' || dataset.taxonomy_enabled` (**owner decision
+  2026-09-03: org capability alone no longer shows Dimensions UI on a dataset that hasn't enabled it** — the
+  `orgTaxonomyEnabled` leg was dropped from the TextMine/Charts/Stats page props; the org capability still
+  picks the FULL restaurant tier server-side in the classify route):
+  (a) Google Reviews datasets (unsuppressed — the tab hosts the one-click Enable screen); (b) **per-dataset** — `datasets.taxonomy_enabled`
   (sql/109), set by an "Apply Dimensions" checkbox at CSV upload or a toggle on the Schema tab — since the
   **universal emotion tier (2026-07-06, TAXONOMY.md §2a.0)** this flag means "Dimensions on" for ANY dataset,
   not restaurant opt-in: the classify route decides the tier server-side (full restaurant ABSA for

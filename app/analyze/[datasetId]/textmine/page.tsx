@@ -5,7 +5,7 @@
 
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
-import { resolveOrg, orgTaxonomyEnabled, outletReportingOn } from '@/lib/resolveOrg'
+import { resolveOrg, outletReportingOn } from '@/lib/resolveOrg'
 import { resolveEntityScope } from '@/lib/entityFilter'
 import TextMineModule from '@/components/analyze/TextMineModule'
 
@@ -89,7 +89,7 @@ export default async function TextMinePage(props: Props) {
         analytics={analytics}
         savedThemeModel={themeModel}
         datasetSource={(dataset?.source as 'upload' | 'study' | 'google_reviews' | 'reddit' | 'townhall' | 'substack' | 'collection') || 'upload'}
-        taxonomyEnabled={orgTaxonomyEnabled(orgData?.features) || !!dataset?.taxonomy_enabled}
+        taxonomyEnabled={!!dataset?.taxonomy_enabled}
         taxonomySuppressed={!!dataset?.taxonomy_suppressed}
         anaLibrary={dataset?.ana_library || null}
         initialOpenEditor={!!searchParams?.editThemes}
