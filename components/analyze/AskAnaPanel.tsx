@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation'
 import { serializeFilters, applyFilters } from '@/lib/filterUtils'
 import type { Filters } from '@/lib/filterUtils'
 import { useRows } from '@/components/analyze/RowsContext'
-import { themeSetForField, type ThemeModel } from '@/lib/themeUtils'
+import { themeSetForField, themeFieldKey, type ThemeModel } from '@/lib/themeUtils'
 import { splitAnaSegments, type AnaChartSpec } from '@/lib/anaChartSpec'
 import { FUN_FACTS } from '@/lib/funFacts'
 import { downloadFile } from '@/lib/browserDownload'
@@ -281,6 +281,20 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
     window.addEventListener('dataset-active-field-changed', onFieldChange)
     return function() { window.removeEventListener('dataset-active-field-changed', onFieldChange) }
   }, [])
+  // TextMine dispatches dataset-active-field-changed on ITS mount — usually
+  // BEFORE this panel exists, so the listener above missed it and Ana was
+  // blind to the selected verbatim column until the user re-toggled it with
+  // the panel open (owner-hit 2026-09-04). Recover the current selection from
+  // TextMine's session state on mount.
+  useEffect(function() {
+    try {
+      var saved = JSON.parse(sessionStorage.getItem('textMine_' + datasetId) || 'null')
+      var flds: string[] = Array.isArray(saved?.activeFields) && saved.activeFields.length
+        ? saved.activeFields.map(String)
+        : (saved?.activeField ? [String(saved.activeField)] : [])
+      if (flds.length) setActiveFieldKey(themeFieldKey(flds))
+    } catch { /* no saved selection — the event listener still catches changes */ }
+  }, [datasetId])
 
   // Fetch collection members on mount if collection
   useEffect(function() {

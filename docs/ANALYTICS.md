@@ -2185,7 +2185,22 @@ client-confirmation-card behavior and end the turn. Two query tools
   filtered view's flat row ids (same set ChartsModule sends), so results scope to
   the user's active filters; the active question's `themeFieldKey` rides into the
   tax_* ops. Results are compacted (top-50 counts / 30 grid rows / 200 buckets) with
-  explicit truncation notes.
+  explicit truncation notes. **Ana-composed subgroups (`where`, 2026-09-04 —
+  owner-hit: "what issues do young black men identify" had no self-filtering
+  path):** `query_data` and `read_comments` take a `where` array
+  (`[{field, values[] | min/max}]`, ≤6 conditions) that `lib/anaSegment` resolves
+  to row ids server-side with the SAME canonical semantics as `applyFilters`
+  (blanks always excluded from a subgroup), then INTERSECTS with the user's
+  active filters — both must hold. Resolution is wire-cost aware: categorical
+  conditions run id-only jsonb-containment queries (string AND numeric storage
+  shapes tried), numeric ranges Node-filter the already-narrowed ids (chunked;
+  range-only walks up to the 50K cap and says `sampled`), and identical `where`s
+  memo per turn. The prompt teaches the pattern (field_counts each demographic
+  field for EXACT values first, then `where`) and every scoped result carries a
+  "subgroup … (N rows) — always report this subgroup" note; unmined values
+  return a check-the-values error instead of silently matching nothing.
+  Verified live on TEST Carrabba's ("dissatisfied dine-in guests" → satisfaction
+  ∈ [Somewhat/Highly Dissatisfied] ∩ visit type, 4,167 rows, stated in the answer).
 - **`find_quotes`** — full-text search (`search_dataset_rows` RPC, textSearch
   fallback, collection fan-out via `resolveScopeMembers`) returning verbatim quotes
   (≤20, internal `_` fields stripped) + an **exact whole-dataset match count**
@@ -2345,6 +2360,13 @@ the 200-row sample for synthesis. Three changes:
   text column (from the TextMine pill's `themeFieldKey`) and instructs Ana to
   target it — read it, quote it, frame text findings on it — unless the
   question clearly points elsewhere.
+- **Active-field recovery (2026-09-04):** TextMine dispatches
+  `dataset-active-field-changed` on ITS mount — usually before the Ask Ana panel
+  exists, so the panel's listener missed it and Ana was blind to the selected
+  verbatim column until the user re-toggled it with the panel open. The panel now
+  also reads TextMine's `textMine_<id>` session state on mount (same source the
+  Data Story header reads), so the ACTIVE VIEW note is present from the first
+  question.
 - **Field-scoped reads:** `read_comments` and `find_quotes` take a `field`
   key; quotes come from that column ONLY — a row whose target column is empty
   is EXCLUDED and counted (`rowsWithoutThisField`), never padded with other

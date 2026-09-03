@@ -13,6 +13,7 @@
 import type { createServiceRoleClient } from '@/lib/supabase/server'
 import { runAggregateOp, TAX_AXES } from '@/lib/aggregateOps'
 import { resolveScopeMembers } from '@/lib/collectionScope'
+import { validateWhere, resolveWhereRowIds } from '@/lib/anaSegment'
 
 type Service = ReturnType<typeof createServiceRoleClient>
 
@@ -33,6 +34,9 @@ export interface AnaQueryContext {
   /** Categorical fields marked section='demographic' in the schema — used to
    *  check a pulled sample's representativeness against the dataset. */
   demoFields?: string[]
+  /** Per-request memo of Ana-composed `where` resolutions (same object rides
+   *  every tool call in a turn, so repeated subgroup queries resolve once). */
+  _whereCache?: Record<string, { ids: number[]; sampled: boolean; label: string }>
 }
 
 // ── Tool definitions (Anthropic schema) ────────────────────────────────────
@@ -54,6 +58,12 @@ export const ANA_QUERY_TOOLS = [
         bucket:      { type: 'string', enum: ['day', 'week', 'month'], description: 'For date_series / tax_date_series: time bucket (default day)' },
         axis:        { type: 'string', enum: TAX_AXES, description: 'For tax_* ops: the dimension axis' },
         limit:       { type: 'number', description: 'Max distinct values returned (default 50, max 100)' },
+        where:       { type: 'array', description: 'Optional subgroup conditions YOU compose for questions about a specific group ("young Black men" → [{field:"age", max:29}, {field:"race", values:["Black"]}, {field:"gender", values:["Male"]}]). Conditions AND together AND with the user\'s active filters. values must be EXACT stored values — run field_counts on each demographic field first to see them. Always report the resulting subgroup size.', items: { type: 'object', properties: {
+          field:  { type: 'string', description: 'Field key' },
+          values: { type: 'array', items: { type: 'string' }, description: 'Categorical include list (exact values)' },
+          min:    { type: 'number', description: 'Numeric lower bound (inclusive)' },
+          max:    { type: 'number', description: 'Numeric upper bound (inclusive)' },
+        }, required: ['field'] } },
         chart:       { type: 'boolean', description: 'Set true ONLY when this query\'s view IS the chart the user would want to open — the one that directly answers their question. The app then offers an "Open in Charts" button for it. Leave unset for intermediate/supporting queries.' },
       },
       required: ['op'],
@@ -68,6 +78,12 @@ export const ANA_QUERY_TOOLS = [
         query: { type: 'string', description: 'Optional topic search (websearch syntax). Omit for a representative sample.' },
         field: { type: 'string', description: 'Field key whose text to read (use the ACTIVE VIEW column by default). Omit to read all text fields.' },
         limit: { type: 'number', description: 'How many VERBATIMS to read (default 100, max 400)' },
+        where: { type: 'array', description: 'Optional subgroup conditions (same shape as query_data.where) — scopes the read to rows matching ALL conditions AND the user\'s active filters. Use for "what do <group> say" questions so the sample comes from THAT group\'s comments.', items: { type: 'object', properties: {
+          field:  { type: 'string', description: 'Field key' },
+          values: { type: 'array', items: { type: 'string' }, description: 'Categorical include list (exact values)' },
+          min:    { type: 'number', description: 'Numeric lower bound (inclusive)' },
+          max:    { type: 'number', description: 'Numeric upper bound (inclusive)' },
+        }, required: ['field'] } },
       },
       required: [],
     },
@@ -216,6 +232,33 @@ export async function executeAnaQueryTool(
   name: string,
   input: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
+  // Ana-composed subgroup (`where`, 2026-09-04): resolve to row ids through
+  // the canonical filter engine, INTERSECT with the user's active filters
+  // (both must hold), and run the rest of the tool with the scoped ids.
+  var whereLabel: string | null = null
+  var whereSampled = false
+  if ((name === 'query_data' || name === 'read_comments') && input.where != null) {
+    var validated = validateWhere(input.where)
+    if ('error' in validated) return { error: validated.error }
+    var cacheKey = JSON.stringify(validated)
+    var cache = (ctx._whereCache = ctx._whereCache || {})
+    var resolved = cache[cacheKey]
+    if (!resolved) {
+      var res = await resolveWhereRowIds(service, { datasetId: ctx.datasetId, rowCount: ctx.rowCount, where: validated })
+      if ('error' in res) return { error: res.error, hint: 'Run field_counts on the demographic field first and use its EXACT values in where.' }
+      cache[cacheKey] = resolved = res
+    }
+    var scoped = resolved.ids
+    if (ctx.rowIds) {
+      var userSet = new Set<number>(ctx.rowIds)
+      scoped = resolved.ids.filter(function(id) { return userSet.has(id) })
+    }
+    if (scoped.length === 0) return { error: 'The subgroup (' + resolved.label + ') has no rows inside the user\'s active filters.' }
+    whereLabel = resolved.label
+    whereSampled = resolved.sampled
+    ctx = { ...ctx, rowIds: scoped }
+  }
+
   if (name === 'query_data') {
     var limit = Math.min(Math.max(1, Number(input.limit) || 50), 100)
     var result = await runAggregateOp(
@@ -242,7 +285,13 @@ export async function executeAnaQueryTool(
       return { error: String(result.body.error || 'query failed'), hint: 'Check the op name and that field keys match the dataset fields listed in your context.' }
     }
     var body = compactResult(result.body)
-    if (ctx.rowIds) body.scope = 'scoped to the user\'s active filters (' + ctx.rowIds.length.toLocaleString() + ' rows)'
+    if (whereLabel) {
+      body.scope = 'scoped to the subgroup ' + whereLabel + ' (' + ctx.rowIds!.length.toLocaleString() + ' rows'
+        + (whereSampled ? ', resolved over the 50K analysis sample' : '') + ')'
+        + ' — always report this subgroup size with your findings'
+    } else if (ctx.rowIds) {
+      body.scope = 'scoped to the user\'s active filters (' + ctx.rowIds.length.toLocaleString() + ' rows)'
+    }
     return body
   }
 
@@ -367,9 +416,13 @@ export async function executeAnaQueryTool(
     }
     if (topic) {
       readResult.totalMatching = matchTotal
-      readResult.scope = 'read ' + kept.length + ' verbatims from the ' + matchTotal.toLocaleString() + ' comments matching "' + topic + '" across the ENTIRE dataset' + (ctx.rowIds ? ' (in-view comments first)' : '')
+      readResult.scope = whereLabel
+        ? 'read ' + kept.length + ' verbatims matching "' + topic + '" from the subgroup ' + whereLabel + ' (' + ctx.rowIds!.length.toLocaleString() + ' rows) — always report this subgroup with your findings'
+        : 'read ' + kept.length + ' verbatims from the ' + matchTotal.toLocaleString() + ' comments matching "' + topic + '" across the ENTIRE dataset' + (ctx.rowIds ? ' (in-view comments first)' : '')
     } else if (ctx.rowIds && ctx.source !== 'collection') {
-      readResult.scope = 'an evenly-spread sample of the user\'s filtered view (' + ctx.rowIds.length.toLocaleString() + ' rows)'
+      readResult.scope = whereLabel
+        ? 'an evenly-spread sample of the subgroup ' + whereLabel + ' (' + ctx.rowIds.length.toLocaleString() + ' rows) — always report this subgroup with your findings'
+        : 'an evenly-spread sample of the user\'s filtered view (' + ctx.rowIds.length.toLocaleString() + ' rows)'
     } else {
       readResult.scope = 'a representative sample of the whole dataset'
     }
