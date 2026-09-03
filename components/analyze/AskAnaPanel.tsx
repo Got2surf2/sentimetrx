@@ -1074,7 +1074,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
             <div key={m.id} style={{
               display: 'flex', flexDirection: 'column', alignItems: isUser ? 'flex-end' : 'flex-start',
             }}>
-              <div style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
+              <div style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start', width: '100%' }}>
                 {!isUser && (
                   <div style={{
                     width: 28, height: 28, borderRadius: '50%', background: HERMES,
@@ -1083,11 +1083,11 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
                   }}>A</div>
                 )}
                 <div style={{
-                  maxWidth: '80%', padding: '9px 14px',
+                  maxWidth: '80%', padding: isUser ? '10px 16px' : '9px 14px',
                   borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
                   background: isUser ? IMSG_BLUE : IMSG_GRAY,
                   color: isUser ? 'white' : '#000',
-                  fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                  fontSize: isUser ? 15 : 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                 }}>
                   {isUser ? m.content : <FormattedResponse text={m.content} streaming={m.streaming} />}
                 </div>
@@ -1224,7 +1224,8 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
               rows={1}
               disabled={loading}
               style={{
-                flex: 1, resize: 'none', fontSize: 16, padding: '10px 14px',
+                // fontSize lives in globals.css (.ask-ana-input): 16px floor on touch, 14px on desktop
+                flex: 1, resize: 'none', padding: '10px 14px',
                 border: '1px solid #d1d5db', borderRadius: 12,
                 background: 'white', color: '#111', lineHeight: 1.4,
                 minHeight: 42, maxHeight: 120, overflow: 'auto',

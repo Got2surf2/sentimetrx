@@ -104,3 +104,10 @@ html, body {
   /* The global top nav is position:fixed — it would repeat on every printed page. */
   nav.fixed { display: none !important; }
 }
+
+/* Ask Ana composer: 16px is the iOS floor (Safari auto-zooms smaller inputs);
+   desktop pointers are exempt, so the smaller font only applies there. */
+.ask-ana-input { font-size: 16px; }
+@media (pointer: fine) {
+  .ask-ana-input { font-size: 14px; }
+}
