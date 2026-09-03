@@ -11,6 +11,7 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { filterCooccurringRows } from '@/lib/collocations'
+import type { Theme } from '@/lib/themeUtils'
 import ContextCloud from './ContextCloud'
 import FrequencyChart, { detectDateField, frequencyBuckets } from './FrequencyChart'
 import TermInsights, { type InsightFilter } from './TermInsights'
@@ -36,7 +37,7 @@ interface Props {
    *  Excluded from Insights candidate detection. */
   hiddenFields?: string[]
   /** Full theme model + entity catalog for the Context tab's Related concepts. */
-  conceptThemes?: import('@/lib/themeUtils').Theme[] | null
+  conceptThemes?: Theme[] | null
   conceptEntities?: { canonical: string; aliases?: string[] }[] | null
   onClose: () => void
 }

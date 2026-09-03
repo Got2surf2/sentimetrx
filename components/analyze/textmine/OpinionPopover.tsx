@@ -11,6 +11,7 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { extractOpinions } from '@/lib/opinionMining'
+import type { Theme } from '@/lib/themeUtils'
 import { filterCooccurringRows } from '@/lib/collocations'
 import ContextCloud from './ContextCloud'
 import FrequencyChart, { detectDateField, frequencyBuckets } from './FrequencyChart'
@@ -40,7 +41,7 @@ interface Props {
    *  number on the theme card, which is the whole point of showing it. */
   themeScope?: { label: string; count: number }
   /** Full theme model + entity catalog for the Context tab's Related concepts. */
-  conceptThemes?: import('@/lib/themeUtils').Theme[] | null
+  conceptThemes?: Theme[] | null
   conceptEntities?: { canonical: string; aliases?: string[] }[] | null
   onClose: () => void
 }

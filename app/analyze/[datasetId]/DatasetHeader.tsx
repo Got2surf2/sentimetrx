@@ -81,6 +81,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
   useEffect(function() {
     try {
       var k = localStorage.getItem('sentimetrx_tm_apikey')
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot mount hydration from localStorage (unreadable during SSR); deps [], cannot cascade
       if (k) setApiKey(k)
     } catch {}
   }, [])

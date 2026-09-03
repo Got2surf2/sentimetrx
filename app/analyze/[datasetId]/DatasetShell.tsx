@@ -126,6 +126,7 @@ function ShellInner({ dataset, userName, orgName, schemaFields, primaryDateField
   // beats a cold recompute.
   useEffect(function() {
     if (rowsLoaded || loadingRows) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- guarded one-shot loading flag before the async fetch below; the rowsLoaded/loadingRows check above prevents any cascade
     setLoadingRows(true)
     void (async function() {
       try {
