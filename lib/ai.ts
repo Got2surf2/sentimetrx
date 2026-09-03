@@ -203,20 +203,31 @@ function resolveProvider(opts: AIRequestOptions): ResolvedProvider {
 
 // ── Request builders ─────────────────────────────────────────────────────────
 
+// House style (owner standing rule, 2026-09-03): ALL LLM-generated text the
+// product shows uses AMERICAN English. Injected centrally in the system-prompt
+// renderers below so every call site — current and future — inherits it
+// without having to remember to ask. Appended AFTER any cache breakpoints, so
+// cached prefixes are unaffected.
+export const AMERICAN_ENGLISH_RULE =
+  'STYLE: Write all output in American English — American spellings (color, analyze, center, gray, meters), punctuation, and conventions. Verbatim quotes from the data stay exactly as written; only your own prose follows this rule.'
+
 // Render a string-or-blocks system prompt for Anthropic (preserves cache markers)
 function anthropicSystem(system: string | SystemBlock[] | undefined) {
-  if (!system) return undefined
-  if (typeof system === 'string') return system
-  return system.map(b => b.cache
-    ? { type: 'text', text: b.text, cache_control: { type: 'ephemeral' } }
-    : { type: 'text', text: b.text })
+  if (!system) return AMERICAN_ENGLISH_RULE
+  if (typeof system === 'string') return system + '\n\n' + AMERICAN_ENGLISH_RULE
+  return [
+    ...system.map(b => b.cache
+      ? { type: 'text', text: b.text, cache_control: { type: 'ephemeral' } }
+      : { type: 'text', text: b.text }),
+    { type: 'text', text: AMERICAN_ENGLISH_RULE },
+  ]
 }
 
 // Flatten string-or-blocks to a single string for providers without prompt caching
 function flattenSystem(system: string | SystemBlock[] | undefined): string | undefined {
-  if (!system) return undefined
-  if (typeof system === 'string') return system
-  return system.map(b => b.text).join('\n\n')
+  if (!system) return AMERICAN_ENGLISH_RULE
+  if (typeof system === 'string') return system + '\n\n' + AMERICAN_ENGLISH_RULE
+  return system.map(b => b.text).join('\n\n') + '\n\n' + AMERICAN_ENGLISH_RULE
 }
 
 function buildAnthropicRequest(resolved: ResolvedProvider, opts: AIRequestOptions) {

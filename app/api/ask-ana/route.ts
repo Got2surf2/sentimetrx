@@ -22,6 +22,7 @@ import { themeSetForField, type ThemeModel as UtilThemeModel } from '@/lib/theme
 import { ANA_QUERY_TOOLS, ANA_QUERY_TOOL_NAMES, executeAnaQueryTool, anaToolStatusLabel, chartConfigForQuery, type AnaQueryContext } from '@/lib/anaQueryTools'
 import { loadAnalystMemories, memoryPromptBlock, REMEMBER_GUIDANCE } from '@/lib/analystMemory'
 import { jsonStringifySafe } from '@/lib/jsonSafe'
+import { AMERICAN_ENGLISH_RULE } from '@/lib/ai'
 
 export const dynamic     = 'force-dynamic'
 // Query-tool rounds are sequential upstream calls. 120s was not enough on
@@ -675,6 +676,9 @@ async function streamAnthropicResponse(
             text: systemPrompt,
             cache_control: { type: 'ephemeral' },
           },
+          // House style (owner standing rule 9/03): American English, always.
+          // After the cache breakpoint so the cached prefix is unaffected.
+          { type: 'text', text: AMERICAN_ENGLISH_RULE },
         ],
         messages,
       }),

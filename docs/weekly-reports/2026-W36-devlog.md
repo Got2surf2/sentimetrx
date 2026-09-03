@@ -775,3 +775,6 @@ same lib/funFacts pool.
 adult non-fiction reading ~238wpm (Brysbaert 2019 meta-analysis), subtitle
 standards 160–180wpm (7–9s for our longest facts), NN/g ~5–7s/frame for short
 rotating text. 8s = one relaxed read + a beat; 7s first-fact delay unchanged.
+
+## 2026-09-03 — Standing rule: American English for all LLM output (owner)
+**Why:** British spellings were leaking into product text (funFacts shipped "centimetres"/"grey"). Enforced structurally, not per-prompt: AMERICAN_ENGLISH_RULE in lib/ai.ts is appended to every system prompt inside the central renderers (after cache breakpoints, so cached prefixes are unaffected); ask-ana's own Anthropic client includes it too. funFacts swept (16 Briticisms fixed). Rule recorded in CLAUDE.md content rules.
