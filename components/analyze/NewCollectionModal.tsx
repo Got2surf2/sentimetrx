@@ -280,15 +280,15 @@ export default function NewCollectionModal({ datasets, onClose, onCreated, addTo
             </div>
           )}
 
-          {error && (
-            <div style={{ fontSize: 12, color: '#ef4444', fontWeight: 600, marginTop: 8 }}>
-              {error}
-            </div>
-          )}
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '16px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+        <div style={{ padding: '16px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10 }}>
+          {/* Same below-the-fold fix as ManageMembersModal: the error must be
+              visible without scrolling a long dataset list. */}
+          {error && (
+            <span style={{ fontSize: 12, color: '#ef4444', fontWeight: 600, marginRight: 'auto' }}>{error}</span>
+          )}
           <button onClick={onClose}
             style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, color: '#6b7280', background: 'white', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit' }}>
             Cancel

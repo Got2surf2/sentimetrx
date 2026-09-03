@@ -37,7 +37,7 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
   const [query,    setQuery]    = useState('')
   const [showCollectionModal, setShowCollectionModal] = useState(false)
   // Add-datasets-to-existing-collection modal state (null = closed).
-  const [manageCollection, setManageCollection] = useState<{ datasetId: string; name: string } | null>(null)
+  const [manageCollection, setManageCollection] = useState<{ datasetId: string; name: string; orgId: string } | null>(null)
   // Tracked as a ref, not state: the modal calls onChanged() then onClose()
   // synchronously in one save(), and onClose must read the just-set value.
   // A useState round-trip wouldn't have flushed yet, so onClose would read a
@@ -149,7 +149,12 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
   // first so they're excluded from the picker.
   function handleManageMembers(collectionDatasetId: string, name: string) {
     manageDirtyRef.current = false
-    setManageCollection({ datasetId: collectionDatasetId, name: name })
+    // Carry the collection's org so the picker only offers SAME-ORG datasets —
+    // in the all-orgs admin view the unfiltered list offered other orgs'
+    // datasets, and the add then 400'd on the same-org tenancy rule with the
+    // error buried below the fold (owner-hit 2026-09-04, local admin view).
+    const ds = datasets.find(function(d) { return d.id === collectionDatasetId })
+    setManageCollection({ datasetId: collectionDatasetId, name: name, orgId: ds?.org_id || '' })
   }
 
   async function handleRename(id: string, name: string) {
@@ -332,7 +337,9 @@ export default function AnalyzeClient({ initialDatasets, isAdmin = false, allOrg
         <ManageMembersModal
           collectionDatasetId={manageCollection.datasetId}
           collectionName={manageCollection.name}
-          eligibleDatasets={eligibleForCollection}
+          eligibleDatasets={manageCollection.orgId
+            ? eligibleForCollection.filter(function(d) { return d.org_id === manageCollection.orgId })
+            : eligibleForCollection}
           onChanged={function() { manageDirtyRef.current = true }}
           onClose={function() { const dirty = manageDirtyRef.current; setManageCollection(null); if (dirty) window.location.reload() }}
         />

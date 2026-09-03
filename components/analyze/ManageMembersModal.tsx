@@ -112,11 +112,15 @@ export default function ManageMembersModal({ collectionDatasetId, collectionName
               )
             })}
           </div>
-          {error && <div style={{ fontSize: 12, color: '#ef4444', fontWeight: 600, marginTop: 10 }}>{error}</div>}
         </div>
 
         <div style={{ padding: '16px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-          <span style={{ fontSize: 12, color: '#6b7280' }}>{dirty ? `${toAdd.length} to add · ${toRemove.length} to remove` : 'No changes'}</span>
+          {/* Error lives in the FOOTER, always visible — rendered at the tail
+              of the scroll list it sat below the fold on long dataset lists,
+              so a rejected save looked like a silent no-op. */}
+          {error
+            ? <span style={{ fontSize: 12, color: '#ef4444', fontWeight: 600 }}>{error}</span>
+            : <span style={{ fontSize: 12, color: '#6b7280' }}>{dirty ? `${toAdd.length} to add · ${toRemove.length} to remove` : 'No changes'}</span>}
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={onClose} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, color: '#6b7280', background: 'white', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
             <button onClick={function() { void save() }} disabled={busy || !dirty}
