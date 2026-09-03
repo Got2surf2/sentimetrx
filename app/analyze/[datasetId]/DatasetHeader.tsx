@@ -151,14 +151,16 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             '<p style="font-size:12.5px;color:#5C6B64;margin:0">Recounting themes and writing the narrative — usually under a minute. This page will load the story automatically.</p>' +
             '</div>' +
             '<div style="flex:1;display:grid;place-items:center;padding:0 24px">' +
-            '<div style="text-align:center;max-width:820px">' +
+            '<div id="fwrap" style="text-align:center;max-width:820px;transition:opacity .5s;opacity:0">' +
             '<p style="font-size:12px;letter-spacing:.14em;color:#8FA3AE;margin:0 0 18px;text-transform:uppercase">Did you know?</p>' +
-            '<p id="fct" style="font-size:clamp(22px,3.2vw,30px);line-height:1.4;font-weight:600;color:#1A2421;margin:0;transition:opacity .5s;opacity:1">' + facts[0] + '</p>' +
+            '<p id="fct" style="font-size:clamp(22px,3.2vw,30px);line-height:1.4;font-weight:600;color:#1A2421;margin:0;transition:opacity .5s;opacity:1"></p>' +
             '</div></div>' +
-            // Random rotation every 15s (pre-shuffled start offset above +
-            // random non-repeating pick here), soft cross-fade.
-            '<script>(function(){var f=' + JSON.stringify(facts) + ',i=0,el=document.getElementById("fct");' +
-            'setInterval(function(){el.style.opacity=0;setTimeout(function(){var j=i;while(j===i){j=Math.floor(Math.random()*f.length)}i=j;el.textContent=f[i];el.style.opacity=1},500)},15000)})()<' + '/script>' +
+            // Same rhythm as Ask Ana's wait-state (components/analyze/
+            // AskAnaPanel): first fact only AFTER 7s (a fast build never
+            // flashes trivia), then a new random fact every 12s, soft fade.
+            '<script>(function(){var f=' + JSON.stringify(facts) + ',i=0,el=document.getElementById("fct"),w=document.getElementById("fwrap");' +
+            'setTimeout(function(){el.textContent=f[0];w.style.opacity=1;' +
+            'setInterval(function(){el.style.opacity=0;setTimeout(function(){var j=i;while(j===i){j=Math.floor(Math.random()*f.length)}i=j;el.textContent=f[i];el.style.opacity=1},500)},12000)},7000)})()<' + '/script>' +
             '</body>')
           storyTab.document.close()
         } catch { /* cross-origin guard — cosmetic only */ }

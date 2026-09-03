@@ -764,3 +764,8 @@ one-liner shape, no markup, and the myth exclusions.
 centerpiece — clamp(22px,3.2vw,30px) bold, dead center of the viewport under
 the "Did you know?" kicker — with the build status compacted into a strip at
 the top. Verified visually.
+
+**Consistency (owner)**: the building screen adopts Ask Ana's wait-state
+rhythm exactly — first fact only after 7s (a fast build never flashes trivia),
+then a new random fact every 12s with a soft fade. Both surfaces draw from the
+same lib/funFacts pool.
