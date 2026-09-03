@@ -2195,10 +2195,19 @@ client-confirmation-card behavior and end the turn. Two query tools
   conditions run id-only jsonb-containment queries (string AND numeric storage
   shapes tried), numeric ranges Node-filter the already-narrowed ids (chunked;
   range-only walks up to the 50K cap and says `sampled`), and identical `where`s
-  memo per turn. The prompt teaches the pattern (field_counts each demographic
-  field for EXACT values first, then `where`) and every scoped result carries a
-  "subgroup … (N rows) — always report this subgroup" note; unmined values
-  return a check-the-values error instead of silently matching nothing.
+  memo per turn. **Fuzzy value matching (owner ask, 2026-09-04):** requested
+  values resolve against the field's ACTUAL stored values (count_field_values,
+  limit 500) — exact, then case-insensitive, then normalized-substring either
+  way ("black" finds "Black or African American"); a value with NO lexical
+  match errors WITH the stored values listed so Ana bridges true synonyms
+  (African American ≈ Black) and retries in the same turn — that retry is a
+  logged tool step, so the semantic mapping is auditable. Every LEXICAL
+  mapping used is recorded on the resolution (`mappings`) and spelled out in
+  the result's scope note ('value mapping: "black" matched stored "Black or
+  African American" — surface this mapping to the user'), which the
+  provenance/logic trail captures; the subgroup label itself reports the
+  stored values that actually ran, not the requested phrasing. Every scoped
+  result carries a "subgroup … (N rows) — always report this subgroup" note.
   Verified live on TEST Carrabba's ("dissatisfied dine-in guests" → satisfaction
   ∈ [Somewhat/Highly Dissatisfied] ∩ visit type, 4,167 rows, stated in the answer).
 - **`find_quotes`** — full-text search (`search_dataset_rows` RPC, textSearch

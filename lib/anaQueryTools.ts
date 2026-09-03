@@ -36,7 +36,7 @@ export interface AnaQueryContext {
   demoFields?: string[]
   /** Per-request memo of Ana-composed `where` resolutions (same object rides
    *  every tool call in a turn, so repeated subgroup queries resolve once). */
-  _whereCache?: Record<string, { ids: number[]; sampled: boolean; label: string }>
+  _whereCache?: Record<string, { ids: number[]; sampled: boolean; label: string; mappings: { requested: string; matched: string[] }[] }>
 }
 
 // ── Tool definitions (Anthropic schema) ────────────────────────────────────
@@ -58,7 +58,7 @@ export const ANA_QUERY_TOOLS = [
         bucket:      { type: 'string', enum: ['day', 'week', 'month'], description: 'For date_series / tax_date_series: time bucket (default day)' },
         axis:        { type: 'string', enum: TAX_AXES, description: 'For tax_* ops: the dimension axis' },
         limit:       { type: 'number', description: 'Max distinct values returned (default 50, max 100)' },
-        where:       { type: 'array', description: 'Optional subgroup conditions YOU compose for questions about a specific group ("young Black men" → [{field:"age", max:29}, {field:"race", values:["Black"]}, {field:"gender", values:["Male"]}]). Conditions AND together AND with the user\'s active filters. values must be EXACT stored values — run field_counts on each demographic field first to see them. Always report the resulting subgroup size.', items: { type: 'object', properties: {
+        where:       { type: 'array', description: 'Optional subgroup conditions YOU compose for questions about a specific group ("young Black men" → [{field:"age", max:29}, {field:"race", values:["Black"]}, {field:"gender", values:["Male"]}]). Conditions AND together AND with the user\'s active filters. values match fuzzily: case-insensitive, and partial labels match compound stored values ("black" finds "Black or African American"). A value with NO match fails with the field\'s ACTUAL values listed — map synonyms (African American ≈ Black) to the right stored value and call again. Any fuzzy mapping used is reported in the result scope — repeat it to the user. Always report the resulting subgroup size.', items: { type: 'object', properties: {
           field:  { type: 'string', description: 'Field key' },
           values: { type: 'array', items: { type: 'string' }, description: 'Categorical include list (exact values)' },
           min:    { type: 'number', description: 'Numeric lower bound (inclusive)' },
@@ -237,6 +237,7 @@ export async function executeAnaQueryTool(
   // (both must hold), and run the rest of the tool with the scoped ids.
   var whereLabel: string | null = null
   var whereSampled = false
+  var whereMappingNote: string | null = null
   if ((name === 'query_data' || name === 'read_comments') && input.where != null) {
     var validated = validateWhere(input.where)
     if ('error' in validated) return { error: validated.error }
@@ -256,6 +257,12 @@ export async function executeAnaQueryTool(
     if (scoped.length === 0) return { error: 'The subgroup (' + resolved.label + ') has no rows inside the user\'s active filters.' }
     whereLabel = resolved.label
     whereSampled = resolved.sampled
+    // The provenance trail must show what the fuzzy matcher did (owner,
+    // 2026-09-04): every requested value that resolved to different stored
+    // value(s) is spelled out on the result the trail logs.
+    whereMappingNote = resolved.mappings.length
+      ? 'value mapping: ' + resolved.mappings.map(function(m) { return '"' + m.requested + '" matched stored ' + m.matched.map(function(x) { return '"' + x + '"' }).join(' + ') }).join('; ')
+      : null
     ctx = { ...ctx, rowIds: scoped }
   }
 
@@ -288,6 +295,7 @@ export async function executeAnaQueryTool(
     if (whereLabel) {
       body.scope = 'scoped to the subgroup ' + whereLabel + ' (' + ctx.rowIds!.length.toLocaleString() + ' rows'
         + (whereSampled ? ', resolved over the 50K analysis sample' : '') + ')'
+        + (whereMappingNote ? '; ' + whereMappingNote + ' — surface this mapping to the user' : '')
         + ' — always report this subgroup size with your findings'
     } else if (ctx.rowIds) {
       body.scope = 'scoped to the user\'s active filters (' + ctx.rowIds.length.toLocaleString() + ' rows)'
@@ -417,11 +425,11 @@ export async function executeAnaQueryTool(
     if (topic) {
       readResult.totalMatching = matchTotal
       readResult.scope = whereLabel
-        ? 'read ' + kept.length + ' verbatims matching "' + topic + '" from the subgroup ' + whereLabel + ' (' + ctx.rowIds!.length.toLocaleString() + ' rows) — always report this subgroup with your findings'
+        ? 'read ' + kept.length + ' verbatims matching "' + topic + '" from the subgroup ' + whereLabel + ' (' + ctx.rowIds!.length.toLocaleString() + ' rows)' + (whereMappingNote ? '; ' + whereMappingNote : '') + ' — always report this subgroup with your findings'
         : 'read ' + kept.length + ' verbatims from the ' + matchTotal.toLocaleString() + ' comments matching "' + topic + '" across the ENTIRE dataset' + (ctx.rowIds ? ' (in-view comments first)' : '')
     } else if (ctx.rowIds && ctx.source !== 'collection') {
       readResult.scope = whereLabel
-        ? 'an evenly-spread sample of the subgroup ' + whereLabel + ' (' + ctx.rowIds.length.toLocaleString() + ' rows) — always report this subgroup with your findings'
+        ? 'an evenly-spread sample of the subgroup ' + whereLabel + ' (' + ctx.rowIds.length.toLocaleString() + ' rows)' + (whereMappingNote ? '; ' + whereMappingNote : '') + ' — always report this subgroup with your findings'
         : 'an evenly-spread sample of the user\'s filtered view (' + ctx.rowIds.length.toLocaleString() + ' rows)'
     } else {
       readResult.scope = 'a representative sample of the whole dataset'

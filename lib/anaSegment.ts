@@ -36,6 +36,9 @@ export interface WhereResolution {
   sampled: boolean
   /** Human description for the tool result's scope note. */
   label: string
+  /** Fuzzy value resolutions (requested → stored), for the provenance trail —
+   *  only values that did NOT match byte-for-byte are listed. */
+  mappings: { requested: string; matched: string[] }[]
 }
 
 const RANGE_SENTINEL = 1e15
@@ -91,7 +94,36 @@ export function validateWhere(where: unknown): WhereCondition[] | { error: strin
   return out
 }
 
+// ── Fuzzy value resolution (owner ask 2026-09-04: "African American" should
+// find the "Black" respondents). Two layers, split by what each can know:
+//   1. LEXICAL (here, deterministic): case/whitespace-insensitive equality,
+//      then normalized substring either way — "black" finds "Black or
+//      African American", "African American" finds "Black/African American".
+//   2. SEMANTIC (Ana's job): zero-overlap synonyms can't be bridged safely in
+//      code, so an unmatched value returns the field's ACTUAL stored values
+//      and Ana re-issues the call with the right ones in the same turn.
+
+function normalizeValue(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+/** Stored values that lexically match a requested value. */
+export function matchStoredValues(requested: string, stored: string[]): string[] {
+  const reqRaw = requested.trim()
+  const exact = stored.filter(v => v === reqRaw)
+  if (exact.length) return exact
+  const ci = stored.filter(v => v.trim().toLowerCase() === reqRaw.toLowerCase())
+  if (ci.length) return ci
+  const reqNorm = normalizeValue(reqRaw)
+  if (!reqNorm) return []
+  return stored.filter(v => {
+    const sv = normalizeValue(v)
+    return sv.includes(reqNorm) || reqNorm.includes(sv)
+  })
+}
+
 type Service = {
+  rpc: (name: string, args: Record<string, unknown>) => PromiseLike<{ data: { value: string; count: number }[] | null; error: { message: string } | null }>
   from: (t: string) => {
     select: (s: string) => {
       eq: (c: string, v: unknown) => {
@@ -133,19 +165,45 @@ export async function resolveWhereRowIds(
   const svc = service as Service
   const catConds = opts.where.filter(w => w.values?.length)
   const rangeConds = opts.where.filter(w => !w.values?.length && (w.min != null || w.max != null))
-  const label = describeWhere(opts.where)
+  const mappings: { requested: string; matched: string[] }[] = []
 
   let ids: Set<number> | null = null
 
   for (const cond of catConds) {
-    const condSet = new Set<number>()
+    // Resolve requested values against the field's ACTUAL stored values —
+    // case/whitespace-insensitive, partial labels match compound values. A
+    // value with no lexical match fails WITH the stored values listed, so Ana
+    // can bridge synonyms (African American ≈ Black) and retry immediately.
+    const { data: fc, error: fcErr } = await svc.rpc('count_field_values', {
+      p_dataset_id: opts.datasetId, p_field_key: cond.field, p_limit: 500,
+    })
+    if (fcErr) return { error: 'could not read values of "' + cond.field + '": ' + fcErr.message }
+    const stored = (fc || []).map(r => String(r.value))
+    const resolvedValues = new Set<string>()
     for (const v of cond.values!) {
+      const hits = matchStoredValues(String(v), stored)
+      if (hits.length === 0) {
+        return {
+          error: 'No stored value of "' + cond.field + '" matches "' + v + '". Actual values: '
+            + stored.slice(0, 30).join(' | ') + (stored.length > 30 ? ' | …' : '')
+            + '. Pick the semantically matching value(s) and call again.',
+        }
+      }
+      hits.forEach(h => resolvedValues.add(h))
+      if (hits.length !== 1 || hits[0] !== String(v)) {
+        mappings.push({ requested: String(v), matched: hits })
+      }
+    }
+    cond.values = [...resolvedValues]   // the label reports what actually ran
+
+    const condSet = new Set<number>()
+    for (const v of resolvedValues) {
       const r = await idsForCatValue(svc, opts.datasetId, cond.field, v)
       if ('error' in r) return r
       r.forEach(id => condSet.add(id))
     }
     if (condSet.size === 0) {
-      return { error: 'No rows match ' + cond.field + ' ∈ [' + cond.values!.join(', ') + '] — check the exact values with a field_counts query first.' }
+      return { error: 'No rows match ' + cond.field + ' ∈ [' + [...resolvedValues].join(', ') + '].' }
     }
     if (ids === null) {
       ids = condSet
@@ -153,11 +211,15 @@ export async function resolveWhereRowIds(
       const prev: number[] = [...ids]
       ids = new Set(prev.filter(id => condSet.has(id)))
     }
-    if (ids.size === 0) return { error: 'No rows match all conditions (' + label + ').' }
+    if (ids.size === 0) return { error: 'No rows match all conditions (' + describeWhere(opts.where) + ').' }
   }
 
+  // Built AFTER categorical resolution — cond.values were rewritten to the
+  // stored values that actually ran, so the label reports the real subgroup.
+  const label = describeWhere(opts.where)
+
   if (rangeConds.length === 0) {
-    return { ids: [...ids!].sort((a, b) => a - b), sampled: false, label }
+    return { ids: [...ids!].sort((a, b) => a - b), sampled: false, label, mappings }
   }
 
   const rangeFilters = whereToFilters(rangeConds)
@@ -198,5 +260,5 @@ export async function resolveWhereRowIds(
   }
 
   if (matched.length === 0) return { error: 'No rows match all conditions (' + label + ').' }
-  return { ids: matched.sort((a, b) => a - b), sampled, label }
+  return { ids: matched.sort((a, b) => a - b), sampled, label, mappings }
 }

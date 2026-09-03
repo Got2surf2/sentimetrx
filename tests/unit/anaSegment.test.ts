@@ -7,7 +7,7 @@
 // ranges over the narrowed set, both string and numeric storage shapes).
 
 import { describe, it, expect } from 'vitest'
-import { whereToFilters, validateWhere, resolveWhereRowIds, describeWhere } from '@/lib/anaSegment'
+import { whereToFilters, validateWhere, resolveWhereRowIds, describeWhere, matchStoredValues } from '@/lib/anaSegment'
 import { applyFilters } from '@/lib/filterUtils'
 
 describe('whereToFilters', () => {
@@ -51,6 +51,12 @@ describe('validateWhere', () => {
 type Row = { id: number; data: Record<string, unknown> }
 
 function fakeService(rows: Row[]) {
+  const rpc = (_name: string, args: Record<string, unknown>) => {
+    const field = String(args.p_field_key)
+    const counts = new Map<string, number>()
+    rows.forEach(r => { const v = r.data[field]; if (v != null && String(v).trim() !== '') counts.set(String(v), (counts.get(String(v)) || 0) + 1) })
+    return Promise.resolve({ data: [...counts.entries()].map(([value, count]) => ({ value, count })), error: null })
+  }
   function builder() {
     const state = { contains: null as Record<string, unknown> | null, ids: null as number[] | null, range: null as [number, number] | null }
     const match = () => {
@@ -74,7 +80,7 @@ function fakeService(rows: Row[]) {
     }
     return chain
   }
-  return { from: () => builder() }
+  return { from: () => builder(), rpc }
 }
 
 const ROWS: Row[] = [
@@ -110,14 +116,45 @@ describe('resolveWhereRowIds', () => {
     expect(r.ids).toEqual([2])
   })
 
-  it('an unmatched categorical value returns a check-the-values error', async () => {
+  it('a value with NO lexical match errors WITH the stored values listed (Ana bridges synonyms and retries)', async () => {
     const r = await resolveWhereRowIds(fakeService(ROWS), { datasetId: 'd1', rowCount: ROWS.length, where: [{ field: 'race', values: ['African American'] }] })
     expect(r).toHaveProperty('error')
-    expect(String((r as { error: string }).error)).toContain('field_counts')
+    const msg = String((r as { error: string }).error)
+    expect(msg).toContain('Black')   // the actual values are in the error
+    expect(msg).toContain('White')
+  })
+
+  it('fuzzy: case-insensitive and partial labels resolve to stored values, recorded as mappings', async () => {
+    const rows: Row[] = [
+      { id: 1, data: { race: 'Black or African American' } },
+      { id: 2, data: { race: 'White' } },
+      { id: 3, data: { race: 'Black or African American' } },
+    ]
+    const r = await resolveWhereRowIds(fakeService(rows), { datasetId: 'd1', rowCount: 3, where: [{ field: 'race', values: ['black'] }] })
+    if ('error' in r) throw new Error(r.error)
+    expect(r.ids).toEqual([1, 3])
+    expect(r.mappings).toEqual([{ requested: 'black', matched: ['Black or African American'] }])
+    expect(r.label).toContain('Black or African American')   // the label reports what ran
+  })
+
+  it('fuzzy: an exact match records no mapping', async () => {
+    const r = await resolveWhereRowIds(fakeService(ROWS), { datasetId: 'd1', rowCount: ROWS.length, where: [{ field: 'race', values: ['Black'] }] })
+    if ('error' in r) throw new Error(r.error)
+    expect(r.mappings).toEqual([])
   })
 
   it('describeWhere renders a human label', () => {
     expect(describeWhere([{ field: 'age', max: 29 }, { field: 'race', values: ['Black'] }]))
       .toBe('age ≤ 29 AND race ∈ [Black]')
+  })
+})
+
+describe('matchStoredValues', () => {
+  it('prefers exact, then case-insensitive, then normalized substring either way', () => {
+    const stored = ['Black or African American', 'White', 'black']
+    expect(matchStoredValues('black', stored)).toEqual(['black'])                       // ci-exact beats substring
+    expect(matchStoredValues('Black', stored)).toEqual(['black'])                       // ci
+    expect(matchStoredValues('African American', stored)).toEqual(['Black or African American'])
+    expect(matchStoredValues('Hispanic', stored)).toEqual([])
   })
 })
