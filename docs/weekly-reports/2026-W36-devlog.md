@@ -769,3 +769,9 @@ the top. Verified visually.
 rhythm exactly — first fact only after 7s (a fast build never flashes trivia),
 then a new random fact every 12s with a soft fade. Both surfaces draw from the
 same lib/funFacts pool.
+
+**Pacing (owner: "12s seems long — industry standards?")**: rotation drops to
+**8s** on BOTH fact surfaces (story build screen + Ask Ana wait-state). Basis:
+adult non-fiction reading ~238wpm (Brysbaert 2019 meta-analysis), subtitle
+standards 160–180wpm (7–9s for our longest facts), NN/g ~5–7s/frame for short
+rotating text. 8s = one relaxed read + a beat; 7s first-fact delay unchanged.

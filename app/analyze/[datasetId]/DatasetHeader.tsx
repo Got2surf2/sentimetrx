@@ -160,7 +160,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             // flashes trivia), then a new random fact every 12s, soft fade.
             '<script>(function(){var f=' + JSON.stringify(facts) + ',i=0,el=document.getElementById("fct"),w=document.getElementById("fwrap");' +
             'setTimeout(function(){el.textContent=f[0];w.style.opacity=1;' +
-            'setInterval(function(){el.style.opacity=0;setTimeout(function(){var j=i;while(j===i){j=Math.floor(Math.random()*f.length)}i=j;el.textContent=f[i];el.style.opacity=1},500)},12000)},7000)})()<' + '/script>' +
+            'setInterval(function(){el.style.opacity=0;setTimeout(function(){var j=i;while(j===i){j=Math.floor(Math.random()*f.length)}i=j;el.textContent=f[i];el.style.opacity=1},500)},8000)},7000)})()<' + '/script>' +
             '</body>')
           storyTab.document.close()
         } catch { /* cross-origin guard — cosmetic only */ }

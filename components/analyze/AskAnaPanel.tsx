@@ -1666,7 +1666,10 @@ function WorkingFactoid() {
         setFact(pick())
         setFaded(false)
       }, 400)
-    }, 12000)
+      // 8s: one relaxed read + a beat (adult non-fiction ~238wpm; subtitle
+      // standards 160-180wpm price our longest facts at 7-9s; NN/g advises
+      // ~5-7s/frame for short rotating text). Matches the story build screen.
+    }, 8000)
     return function() { alive = false; clearTimeout(showTimer); clearInterval(rotate) }
   }, [])
   if (!fact) return null
