@@ -1483,7 +1483,7 @@ Defined in `CHART_TYPE_DEFS` (`components/analyze/ChartsModule.tsx`). Slots are 
 | Distribution | field (req numeric), splitBy | Histogram or box plot |
 | Scatter | x (req numeric), y (req numeric), colorBy | Two-variable relationship |
 | Crosstab | rows (req cat), cols (req cat) | Heatmap of two categorical fields |
-| Time Series | date (req), metric, colorBy | Metric over time with breakdown |
+| Time Series | date (req), metric, colorBy | Metric over time with breakdown; **Compare periods** (2026-09-03, `lib/periodCompare`): a control on the single-line chart overlaying the current period against the **previous period** (the filled bucket span split into equal halves) or the **same period last year** (trailing ≤1-year window vs the same calendar window a year back), plus a delta summary line (count totals, or count-weighted metric averages, with % change). Bucket alignment is calendar-exact — the observed buckets are filled into a complete sequence first, so a month with no rows is a real 0 (count) / honest gap (metric) and sparse data can't shift the window. Falls back to a "not enough history" note below the controls when a side would have <4 buckets (or yoy lacks a year of earlier data); hidden for hour/year buckets and breakdowns; smoothing is suspended while comparing. |
 | Treemap | category (req), size | Hierarchical rectangles |
 | Packed Bubbles (`bubbles`) | (numeric measures) | Circles sized by numeric measures |
 | Waterfall | category (req) | Running total contribution |

@@ -12,6 +12,7 @@ import { axisOfDimField, isDimField, dimVirtualFields, DIM_AXIS_LABEL_LONG } fro
 import { readSession, writeSession } from '@/lib/useSessionState'
 import type { TimeBucket} from '@/lib/timeBucket';
 import { BUCKET_OPTIONS, autoBucket, bucketKey } from '@/lib/timeBucket'
+import { buildPeriodComparison, type PeriodComparison } from '@/lib/periodCompare'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { injectSignalTier } from '@/lib/signalTier'
 import { useRows } from '@/components/analyze/RowsContext'
@@ -1801,6 +1802,7 @@ function CrosstabInner({ analytics, schema, datasetId, rowField, colField }: { a
 function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField, colorByField, colors }: { analytics: Analytics; schema: SchemaField[]; datasetId: string; dateField: string; metricField: string; colorByField?: string; colors?: string[] }) {
   var [bucketOverride, setBucketOverride] = useState<TimeBucket | 'auto'>('auto')
   var [splitMode, setSplitMode] = useState(false)
+  var [compareMode, setCompareMode] = useState<'off' | 'prev' | 'yoy'>('off')
   var pal = colors || CHART_COLORS
 
   // Determine smart bucket from field summary date counts
@@ -1849,6 +1851,10 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
 
   // ── Build traces — with optional categorical breakdown ──────────────
   var traces: Record<string, unknown>[] = []
+  // Period comparison only makes sense on the single-line chart with a
+  // calendar-grid bucket (hour/year buckets have no honest prior window).
+  var compareActive = compareMode !== 'off' && !hasBreakdown && effectiveBucket !== 'hour' && effectiveBucket !== 'year'
+  var periodCmp: PeriodComparison | null = null
 
   // Pre-compute breakdown groups (used by both combined and split modes)
   var catGroups: Record<string, Record<string, number[]>> = {}
@@ -1898,33 +1904,66 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
     // Single line — original behavior
     var dates: string[] = []
     var yVals: number[] = []
+    var bucketCounts: number[] = []
+    var bucketSums: (number | null)[] = []
     if (aggData && aggData.series && aggData.series.length > 0) {
       // Metric mode: skip buckets with no numeric value (a null avg) so the line
       // connects across the gap instead of dropping to a false 0.
-      aggData.series.forEach(function(s: { date: string; avg: number | null; count: number }) { if (metricField && s.avg == null) return; dates.push(s.date); yVals.push(metricField ? (s.avg as number) : s.count) })
+      aggData.series.forEach(function(s: { date: string; avg: number | null; count: number }) {
+        if (metricField && s.avg == null) return
+        dates.push(s.date); yVals.push(metricField ? (s.avg as number) : s.count)
+        bucketCounts.push(s.count); bucketSums.push(metricField && s.avg != null ? s.avg * s.count : null)
+      })
     } else {
       var grouped: Record<string, number[]> = {}
       rows.forEach(function(r) { var raw = String(r[dateField] || ''); if (!raw) return; var d = bucketKey(raw, effectiveBucket); if (metricField) { var v = toNumericOrNull(r[metricField]); if (v === null) return; (grouped[d] || (grouped[d] = [])).push(v) } else { (grouped[d] || (grouped[d] = [])).push(1) } })
       dates = Object.keys(grouped).sort()
       yVals = dates.map(function(d) { var arr = grouped[d]; return metricField ? arr.reduce(function(a, b) { return a + b }, 0) / arr.length : arr.length })
+      bucketCounts = dates.map(function(d) { return grouped[d].length })
+      bucketSums = dates.map(function(d) { return metricField ? grouped[d].reduce(function(a, b) { return a + b }, 0) : null })
     }
 
-    // Moving average smoothing
-    var smoothed = yVals
-    if (smooth && yVals.length > window) {
-      smoothed = yVals.map(function(_, i) {
-        var start = Math.max(0, i - Math.floor(window / 2))
-        var end = Math.min(yVals.length, i + Math.ceil(window / 2))
-        var slice = yVals.slice(start, end)
-        return slice.reduce(function(a, b) { return a + b }, 0) / slice.length
+    // Period-over-period overlay (owner ask: "vs last month", "same quarter
+    // last year"). Calendar-exact alignment lives in lib/periodCompare; when
+    // the data can't honestly support the comparison it returns null and the
+    // chart falls back to the plain line with a note.
+    if (compareActive) {
+      periodCmp = buildPeriodComparison({
+        dates: dates, counts: bucketCounts, sums: metricField ? bucketSums : undefined,
+        unit: effectiveBucket as 'day' | 'week' | 'month' | 'quarter',
+        mode: compareMode as 'prev' | 'yoy', metric: !!metricField,
       })
     }
 
-    if (smooth) {
-      traces.push({ x: dates, y: yVals, type: 'scatter', mode: 'markers', marker: { color: T.blue, size: 4, opacity: 0.3 }, name: 'Raw', showlegend: true })
-      traces.push({ x: dates, y: smoothed, type: 'scatter', mode: 'lines', line: { color: T.accent, width: 3, shape: 'spline' }, name: window + '-day avg', showlegend: true })
+    if (periodCmp) {
+      traces.push({
+        x: periodCmp.x, y: periodCmp.comparison, customdata: periodCmp.comparisonKeys,
+        type: 'scatter', mode: 'lines+markers', line: { color: '#9ca3af', width: 2, dash: 'dash' },
+        marker: { size: 4 }, name: compareMode === 'yoy' ? 'Same period last year' : 'Previous period',
+        showlegend: true, hovertemplate: '%{customdata}: %{y}<extra></extra>',
+      })
+      traces.push({
+        x: periodCmp.x, y: periodCmp.current, type: 'scatter', mode: 'lines+markers',
+        line: { color: T.accent, width: 2.5 }, marker: { size: 5 }, name: 'Current period', showlegend: true,
+      })
     } else {
-      traces.push({ x: dates, y: yVals, type: 'scatter', mode: 'lines+markers', line: { color: T.blue, width: 2 }, marker: { size: 5 } })
+      // Moving average smoothing
+      var smoothed = yVals
+      if (smooth && yVals.length > window) {
+        smoothed = yVals.map(function(_, i) {
+          var start = Math.max(0, i - Math.floor(window / 2))
+          var end = Math.min(yVals.length, i + Math.ceil(window / 2))
+          var slice = yVals.slice(start, end)
+          return slice.reduce(function(a, b) { return a + b }, 0) / slice.length
+        })
+      }
+
+      if (smooth) {
+        traces.push({ x: dates, y: yVals, type: 'scatter', mode: 'markers', marker: { color: T.blue, size: 4, opacity: 0.3 }, name: 'Raw', showlegend: true })
+        traces.push({ x: dates, y: smoothed, type: 'scatter', mode: 'lines', line: { color: T.accent, width: 3, shape: 'spline' }, name: window + '-day avg', showlegend: true })
+      } else {
+        traces.push({ x: dates, y: yVals, type: 'scatter', mode: 'lines+markers', line: { color: T.blue, width: 2 }, marker: { size: 5 } })
+      }
     }
   }
 
@@ -1968,13 +2007,24 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
             })}
           </div>
         )}
-        {!hasBreakdown && (
+        {!hasBreakdown && effectiveBucket !== 'hour' && effectiveBucket !== 'year' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 10, color: T.textFaint }}>Compare:</span>
+            <select value={compareMode} onChange={function(e) { setCompareMode(e.target.value as 'off' | 'prev' | 'yoy') }}
+              style={{ fontSize: 10, color: T.textMid, border: '1px solid ' + T.border, borderRadius: 8, padding: '2px 6px', background: 'transparent', cursor: 'pointer' }}>
+              <option value="off">Off</option>
+              <option value="prev">Previous period</option>
+              <option value="yoy">Same period last year</option>
+            </select>
+          </div>
+        )}
+        {!hasBreakdown && !compareActive && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMute, cursor: 'pointer' }}>
             <input type="checkbox" checked={smooth} onChange={function() { setSmooth(function(v) { return !v }) }} style={{ accentColor: T.accent }} />
             Smooth curve
           </label>
         )}
-        {!hasBreakdown && smooth && (
+        {!hasBreakdown && !compareActive && smooth && (
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
             <span style={{ fontSize: 10, color: T.textFaint }}>Window:</span>
             {[3, 7, 14, 30].map(function(w) {
@@ -1986,6 +2036,28 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
           </div>
         )}
       </div>
+      {compareActive && periodCmp && (function() {
+        var d = periodCmp.delta
+        var fmt = function(v: number) { return metricField ? (Math.round(v * 100) / 100).toString() : Math.round(v).toLocaleString() }
+        var pct = d.pctChange
+        return (
+          <div style={{ fontSize: 11, color: T.textMid, marginBottom: 6 }}>
+            <strong style={{ color: T.text }}>{fmt(d.currentTotal)}</strong>
+            {' vs '}{fmt(d.priorTotal)}{metricField ? ' avg' : ''}
+            {pct != null && (
+              <span style={{ fontWeight: 700, marginLeft: 6, color: pct >= 0 ? '#0d9488' : '#e11d48' }}>
+                {pct >= 0 ? '▲' : '▼'} {Math.abs(Math.round(pct * 10) / 10)}%
+              </span>
+            )}
+            <span style={{ marginLeft: 6 }}>{periodCmp.label}</span>
+          </div>
+        )
+      })()}
+      {compareActive && !periodCmp && (
+        <div style={{ fontSize: 11, color: T.textMute, marginBottom: 6 }}>
+          Not enough history for this comparison — it needs at least 4 {effectiveBucket} buckets per period{compareMode === 'yoy' ? ' and a full year of earlier data' : ''}.
+        </div>
+      )}
       {hasBreakdown && splitMode && splitCharts.length > 0 ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
           {splitCharts.map(function(sc) {
