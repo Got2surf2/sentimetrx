@@ -12,6 +12,7 @@ import type { Filters } from '@/lib/filterUtils'
 import { useRows } from '@/components/analyze/RowsContext'
 import { themeSetForField, type ThemeModel } from '@/lib/themeUtils'
 import { splitAnaSegments, type AnaChartSpec } from '@/lib/anaChartSpec'
+import { FUN_FACTS } from '@/lib/funFacts'
 import { downloadFile } from '@/lib/browserDownload'
 import { viewSpecFilters, ANA_VIEW_TABS, type AnaViewFilterSpec } from '@/lib/anaViewSpec'
 
@@ -1096,6 +1097,7 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
                   {m.statusText}
                 </div>
               )}
+              {!isUser && m.streaming && !m.content && <WorkingFactoid />}
               {!isUser && !m.streaming && m.logic && m.logic.length > 0 && (
                 <div style={{ marginLeft: 36, marginTop: 6, alignSelf: 'flex-start', maxWidth: '85%' }}>
                   <button
@@ -1638,6 +1640,46 @@ function CopyButton({ text }: { text: string }) {
 }
 
 // Handle inline formatting: **bold**, *italic*, "quotes"
+// Rotating "Did you know?" factoid for long analysis waits (owner 9/03: the
+// Data Story building screen's lib/funFacts pool, reused so a many-round
+// question never feels like an infinite wait). Appears only after the first
+// 7 seconds — quick answers never see it — then rotates every 12s with a
+// soft fade. Muted styling keeps the status line as THE current thought.
+function WorkingFactoid() {
+  var [fact, setFact] = useState<string | null>(null)
+  var [faded, setFaded] = useState(false)
+  useEffect(function() {
+    var alive = true
+    var current = -1
+    function pick() {
+      var j = current
+      while (j === current) j = Math.floor(Math.random() * FUN_FACTS.length)
+      current = j
+      return FUN_FACTS[j]
+    }
+    var showTimer = setTimeout(function() { if (alive) setFact(pick()) }, 7000)
+    var rotate = setInterval(function() {
+      if (!alive) return
+      setFaded(true)
+      setTimeout(function() {
+        if (!alive) return
+        setFact(pick())
+        setFaded(false)
+      }, 400)
+    }, 12000)
+    return function() { alive = false; clearTimeout(showTimer); clearInterval(rotate) }
+  }, [])
+  if (!fact) return null
+  return (
+    <div style={{ marginLeft: 36, marginTop: 8, maxWidth: '85%', opacity: faded ? 0 : 1, transition: 'opacity .4s' }}>
+      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: '#9ca3af' }}>
+        Did you know?
+      </div>
+      <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.5, marginTop: 2 }}>{fact}</div>
+    </div>
+  )
+}
+
 function formatInline(text: string): React.ReactNode {
   if (text.indexOf('*') === -1) return text
   var out: React.ReactNode[] = []

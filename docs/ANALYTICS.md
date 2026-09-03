@@ -2054,7 +2054,10 @@ once. Runtime budget: `maxDuration = 300` (raised from 120 on 2026-09-02 —
 a 19-step ANES question was killed by Vercel at 120s mid-loop, leaving a
 provenance trail with an empty answer; the panel now also renders an honest
 "ran out of time" message when a stream ends with no text instead of an empty
-bubble). Browser-verified on Rubio's (9,905 rows, TEST): star-rating breakdown exactly
+bubble). Long waits also rotate a muted "Did you know?" factoid under the
+status line (2026-09-03, owner — same `lib/funFacts` pool as the Data Story
+building screen): appears only after 7 seconds so quick answers never see it,
+rotates every 12s, clears the moment answer text streams. Browser-verified on Rubio's (9,905 rows, TEST): star-rating breakdown exactly
 matched the dispatcher reference (463/223/296/1197/7726 = 9,905); with a location
 filter excluded, scoped counts summed to exactly the header's 9,774 and the
 per-rating complement to the 131 excluded rows. Unit coverage:

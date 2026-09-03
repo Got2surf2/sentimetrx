@@ -756,3 +756,6 @@ one-liner shape, no markup, and the myth exclusions.
 
 ## 2026-09-03 — Ask Ana: 120s Vercel timeout killed long ANES questions
 **Why:** Owner's prod question (theme × time × party on 125K-row ANES) ran 19 tool steps and Vercel killed the function at the route's 120s maxDuration before the synthesis turn — the panel showed a provenance trail with an empty bubble and no error (confirmed in Vercel runtime logs: "Task timed out after 120 seconds"). Fix: maxDuration 120→300 (same ceiling as project-report) + the panel renders an honest "ran out of time" message when a stream ends with no text and no actions. The unpushed round-caching commit also shortens these runs materially.
+
+## 2026-09-03 — Ask Ana waits rotate fun facts (owner: reuse the story factoids)
+**Why:** Multi-round questions on big datasets can take a minute+; the owner asked for the Data Story building screen's factoid treatment so it "doesn't feel like an infinite wait". New WorkingFactoid in AskAnaPanel: lib/funFacts pool, first fact at 7s (quick answers never see it), 12s rotation with fade, muted styling below the one-at-a-time status line, cleared when answer text streams. Browser-verified on TEST.
