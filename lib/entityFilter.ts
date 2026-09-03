@@ -309,7 +309,10 @@ async function computeEntityCounts(
   // allocator the bulk-row path already uses for collections), and each
   // member's counts scale by ITS own row total before summing, so a big member
   // can't dominate a small one's contribution.
-  if (total > ENTITY_SAMPLE_CAP) {
+  // Sampled per-member counting, shared by the over-cap branch and the
+  // exact-path timeout fallback below.
+  async function sampledScopeCounts(): Promise<Map<string, number>> {
+    const out = new Map<string, number>()
     const { data: memberRows } = await service
       .from('datasets').select('id, row_count').in('id', scope.memberDatasetIds)
     const perMember = new Map<string, number>(
@@ -325,9 +328,13 @@ async function computeEntityCounts(
         service, dsId, terms, themeQuery, textFields[dsId] || [], memberTotal,
         share > 0 ? share : ENTITY_SAMPLE_CAP,
       )
-      for (const [term, n] of scaled) countByTerm.set(term, (countByTerm.get(term) || 0) + n)
+      for (const [term, n] of scaled) out.set(term, (out.get(term) || 0) + n)
     }
-    return { countByTerm, sampled: true, failed: false }
+    return out
+  }
+
+  if (total > ENTITY_SAMPLE_CAP) {
+    return { countByTerm: await sampledScopeCounts(), sampled: true, failed: false }
   }
 
   const { data: counts, error: countsErr } = await service.rpc('count_entity_terms', {
@@ -339,11 +346,30 @@ async function computeEntityCounts(
   // A failed count is NOT a measured zero. When the RPC errors (57014 statement
   // timeout is the observed case) `counts` is null, the loop below is a no-op,
   // and an empty countByTerm is indistinguishable from "every term has zero
-  // mentions" — which callers then PERSIST, zeroing the catalog. Report the
-  // failure so they can decline to write.
+  // mentions" — which callers then PERSIST, zeroing the catalog.
+  //
+  // Sentry kept collecting 57014s from scopes UNDER the cap (2026-09-03 digest:
+  // 23 events — many terms over slow text fields can blow the statement budget
+  // at any row count), so an exact-path failure now FALLS BACK to the sampled
+  // twins (keyset-paged, timeout-immune by construction) instead of reporting
+  // failure. failed=true remains only when the fallback itself throws — the
+  // refusing-to-persist-zeros guard stays as the last line of defense.
   if (countsErr) {
     void logError('entityFilter.computeEntityCounts', countsErr)
-    return { countByTerm, sampled: false, failed: true }
+    try {
+      const fb = await sampledScopeCounts()
+      // An all-zero fallback after an exact-path failure is indistinguishable
+      // from a sampled scan that never ran (RPC missing, empty pages) — and
+      // persisting it would zero the catalog, the exact disease the failed
+      // flag exists to prevent. Only a fallback with at least one real count
+      // is trusted; otherwise report failure and let callers decline to write.
+      const anyCount = Array.from(fb.values()).some(n => n > 0)
+      if (!anyCount && total > 0) return { countByTerm, sampled: false, failed: true }
+      return { countByTerm: fb, sampled: true, failed: false }
+    } catch (fallbackErr) {
+      void logError('entityFilter.computeEntityCounts.sampledFallback', fallbackErr)
+      return { countByTerm, sampled: false, failed: true }
+    }
   }
   for (const c of (counts || []) as Array<{ term: string; row_count: number }>) {
     countByTerm.set(c.term, Number(c.row_count) || 0)

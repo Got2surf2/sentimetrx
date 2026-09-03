@@ -52,6 +52,19 @@ async function embedVerdicts(
     lastErr = error.message
     const transient = error.code === '57014' || /statement timeout|timeout|connection|ECONNRESET|fetch failed/i.test(error.message)
     if (!transient || attempt === 2) break
+    // A statement timeout on a FIXED-size batch tends to repeat — the same
+    // 500-row UPDATE is the same statement (Sentry 2026-09-03: ANES classify,
+    // 125K rows × very wide blobs, timed out through all three same-size
+    // retries). Halve the batch and recurse: two ~4s statements where one
+    // ~8s statement died. Idempotent upsert per (row, fieldKey) → safe.
+    if (error.code === '57014' || /statement timeout/i.test(error.message)) {
+      if (items.length >= 50) {
+        const mid = Math.ceil(items.length / 2)
+        await embedVerdicts(service, datasetId, fieldKey, items.slice(0, mid))
+        await embedVerdicts(service, datasetId, fieldKey, items.slice(mid))
+        return
+      }
+    }
     await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)))
   }
   throw new Error(`apply_taxonomy_verdicts failed: ${lastErr}`)

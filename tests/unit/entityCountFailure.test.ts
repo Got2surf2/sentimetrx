@@ -20,8 +20,9 @@ const SCOPE_ROWS = [
   { slug: 'pasta', canonical: 'Pasta', aliases: [], hidden: false, category: 'dish', source: 'discovered', mention_count: null, mention_count_sampled: null, mention_count_row_total: null },
 ]
 
-/** Minimal chained-query stand-in. `countError` drives the count RPC outcome. */
-function makeService(opts: { countError?: { message: string }; rpcCalls: string[] }) {
+/** Minimal chained-query stand-in. `countError` drives the count RPC outcome;
+ *  `sampledCounts` makes the sampled fallback succeed with real counts. */
+function makeService(opts: { countError?: { message: string }; rpcCalls: string[]; sampledCounts?: [string, number][]; _sampledServed?: boolean }) {
   const table = (rows: unknown[]) => {
     const q: Record<string, unknown> = {}
     const self = () => q
@@ -42,6 +43,17 @@ function makeService(opts: { countError?: { message: string }; rpcCalls: string[
       opts.rpcCalls.push(fn)
       if (fn === 'count_entity_terms') {
         return Promise.resolve({ data: null, error: opts.countError ?? null })
+      }
+      if (fn === 'sampled_count_entity_terms_blocks' && opts.sampledCounts) {
+        // One page carrying real counts, then exhaustion.
+        const first = !opts._sampledServed
+        opts._sampledServed = true
+        return Promise.resolve({
+          data: first
+            ? { n_scanned: 100, counts: opts.sampledCounts, last_row_index: null }
+            : { n_scanned: 0, counts: [], last_row_index: null },
+          error: null,
+        })
       }
       return Promise.resolve({ data: null, error: null })
     },
@@ -92,5 +104,34 @@ describe('entity counts — a failed count must not read as a measured zero', ()
     if ('notFound' in res) throw new Error('scope should resolve')
 
     expect(res.counts_failed).toBeFalsy()
+  })
+})
+
+describe('entity counts — exact-path timeout falls back to the sampled twins', () => {
+  it('persists sampled counts (not zeros, not failure) when the fallback finds real mentions', async () => {
+    const rpcCalls: string[] = []
+    const svc = makeService({
+      countError: { message: 'canceling statement due to statement timeout' },
+      sampledCounts: [['"Chicken"', 12]],
+      rpcCalls,
+    })
+
+    await storeEntityMentionCounts(svc, 'd1')
+
+    expect(rpcCalls).toContain('sampled_count_entity_terms_blocks')
+    expect(rpcCalls).toContain('apply_entity_mention_counts')   // real counts DO persist
+  })
+
+  it('an all-zero fallback still refuses to persist (indistinguishable from a scan that never ran)', async () => {
+    const rpcCalls: string[] = []
+    const svc = makeService({
+      countError: { message: 'canceling statement due to statement timeout' },
+      sampledCounts: [],
+      rpcCalls,
+    })
+
+    await storeEntityMentionCounts(svc, 'd1')
+
+    expect(rpcCalls).not.toContain('apply_entity_mention_counts')
   })
 })
