@@ -113,6 +113,17 @@ TextMine is **four peer sections** in a persistent **two-row bar** — the share
 - `lib/collocations.ts` runs two passes shaped by the 50K client-side row cap: pass 1 tokenizes only rows that mention a target; pass 2 scans every row for just the ~150 candidate words pass 1 surfaced, so it never tokenizes the whole corpus. Measured ~310ms per target over 18.6K comments; the tab defers compute one tick past mount and shows the Lottie loader rather than freezing mid-switch.
 - **Tokenization is Context-specific** (`contextTokens`, 2026-08-13). `trendingWords.tokenize` keeps contractions whole while its stop list carries only the uncontracted forms, so `we're`/`it's`/`they're`/`that's` topped the cloud on spoken corpora; the enclitic is now stripped and the base re-tested, which also folds possessives (`sarah's` → `sarah`). The extra function-word stop set is **deliberately narrower than WordCloud's** — the cloud drops *good/great/new/time/day*, but those are the ANSWER for a collocate ("what is food talked about with?" → good/great/delicious). Both passes and `filterCooccurringRows` share the helper, so the chip count and its drill-down can't diverge on normalization.
 - Supersedes the unwired `trendingWords.contextTermsFor` (whole-comment scoped, token-counted, no drill-down).
+- **Related concepts (2026-09-03, `lib/contextConcepts`).** The tab now LEADS with the
+  structures the platform already computed for the target's comment set — **themes**
+  (whole-comment membership via `commentMatchesTheme`), **dimensions** (read from the
+  per-row `_tx` verdicts stamped at classify time — never recomputed), and **entities**
+  (catalog terms matched over the subset text) — with the raw word cloud demoted below.
+  Everything runs over the target's subset only (the never-re-tokenize-the-corpus perf
+  rule); counts are whole-comment with a floor of 3 (the G² floor's spirit — 1-2
+  comments is an anecdote); chips are informational with explanatory tooltips, no drill,
+  so the chip-count == drill-count invariant cannot be violated. The theme modal's own
+  theme is excluded from its concepts. Threaded as `conceptThemes`/`conceptEntities`
+  through both popovers from TextMineModule's model + entity catalog.
 
 **Theme counts are substantive-only on BOTH sides (2026-08-18).** `recountThemes`
 (`lib/themeUtils.ts`), the client recount that runs once the rows land, used to

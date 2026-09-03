@@ -16,6 +16,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { computeCollocates, type CollocationResult } from '@/lib/collocations'
+import { relatedConcepts, type RelatedConcepts, type ConceptChip } from '@/lib/contextConcepts'
+import type { Theme } from '@/lib/themeUtils'
 
 interface Props {
   rows: Record<string, unknown>[]
@@ -26,6 +28,12 @@ interface Props {
   termLabel: string
   /** Click-through to the comments carrying both terms. */
   onSelect?: (word: string) => void
+  /** Theme model for the "Related concepts" section (optional). */
+  themes?: Theme[] | null
+  /** In the theme modal, the theme being viewed — never its own concept. */
+  excludeThemeName?: string
+  /** Entity catalog for the "Related concepts" section (optional). */
+  entities?: { canonical: string; aliases?: string[] }[] | null
 }
 
 const MAX_SHOWN = 20
@@ -37,27 +45,34 @@ function fontSizeFor(count: number, max: number): number {
   return Math.round(13 + ratio * 13)
 }
 
-export default function ContextCloud({ rows, fields, targets, termLabel, onSelect }: Props) {
+export default function ContextCloud({ rows, fields, targets, termLabel, onSelect, themes, excludeThemeName, entities }: Props) {
   const [sortBy, setSortBy] = useState<'count' | 'score'>('count')
 
   // Collocation is synchronous and can run a few hundred ms on a 50K-row
   // corpus, so it's deferred a tick past mount — the tab paints with the
-  // loader instead of freezing mid-switch.
+  // loader instead of freezing mid-switch. The concepts pass rides the same
+  // tick (it only scans the target's comment subset).
   const [computed, setComputed] = useState<{
-    rows: unknown; fields: unknown; targets: unknown; result: CollocationResult
+    rows: unknown; fields: unknown; targets: unknown; result: CollocationResult; concepts: RelatedConcepts
   } | null>(null)
   useEffect(() => {
     const id = setTimeout(
-      () => setComputed({ rows, fields, targets, result: computeCollocates(rows, fields, targets) }),
+      () => setComputed({
+        rows, fields, targets,
+        result: computeCollocates(rows, fields, targets),
+        concepts: relatedConcepts({ rows, fields, targets, themes, excludeThemeName, entities }),
+      }),
       0,
     )
     return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- themes/entities are stable per popover open; keying the recompute on rows/fields/targets matches the staleness tag below
   }, [rows, fields, targets])
   // Tagged with the inputs it was computed from, so a prop change shows the
   // loader again rather than a stale cloud.
   const result = computed && computed.rows === rows && computed.fields === fields && computed.targets === targets
     ? computed.result
     : null
+  const concepts = result ? computed!.concepts : null
 
   // Both rankings arrive pre-sorted from the lib, so the toggle is a swap.
   const shown = useMemo(
@@ -88,8 +103,44 @@ export default function ContextCloud({ rows, fields, targets, termLabel, onSelec
     )
   }
 
+  const conceptGroups: { kind: string; chips: ConceptChip[]; noun: string }[] = concepts
+    ? [
+        { kind: 'Themes', chips: concepts.themes, noun: 'match the theme' },
+        { kind: 'Dimensions', chips: concepts.dimensions, noun: 'are tagged' },
+        { kind: 'Mentions', chips: concepts.entities, noun: 'also mention' },
+      ].filter(g => g.chips.length > 0)
+    : []
+
   return (
     <div>
+      {conceptGroups.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '.06em', marginBottom: 8 }}>
+            Related concepts
+          </div>
+          {conceptGroups.map(g => (
+            <div key={g.kind} style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, width: 74, flexShrink: 0, textAlign: 'right' }}>{g.kind}</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1, minWidth: 0 }}>
+                {g.chips.map(c => (
+                  <span key={c.label}
+                    title={c.count.toLocaleString() + ' of the ' + concepts!.matchedRows.toLocaleString() + ' comments mentioning "' + termLabel + '" ' + g.noun + ' ' + c.label + (c.detail ? ' (' + c.detail + ')' : '')}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600,
+                      color: '#374151', background: '#f9fafb', border: '1px solid #e5e7eb',
+                      borderRadius: 14, padding: '2px 9px', cursor: 'help',
+                    }}>
+                    {c.label}
+                    {c.detail && <span style={{ fontSize: 9, color: '#9ca3af', fontWeight: 500 }}>{c.detail}</span>}
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#6b7280' }}>{c.count.toLocaleString()}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>
           Appears alongside

@@ -35,6 +35,9 @@ interface Props {
   /** Field names hidden by the schema (type='ignore'|'id' or hidden=true).
    *  Excluded from Insights candidate detection. */
   hiddenFields?: string[]
+  /** Full theme model + entity catalog for the Context tab's Related concepts. */
+  conceptThemes?: import('@/lib/themeUtils').Theme[] | null
+  conceptEntities?: { canonical: string; aliases?: string[] }[] | null
   onClose: () => void
 }
 
@@ -60,7 +63,7 @@ function highlightKeywords(text: string, keywords: string[], contextWord?: strin
   })
 }
 
-export default function ThemePopover({ theme, rows, fields, color, ratingField, hiddenFields, onClose }: Props) {
+export default function ThemePopover({ theme, rows, fields, color, ratingField, hiddenFields, conceptThemes, conceptEntities, onClose }: Props) {
   // Memoized: it feeds the Context tab's corpus-wide tokenization, which is far
   // too expensive to redo on every render.
   const fieldArr = useMemo(() => (Array.isArray(fields) ? fields : [fields]), [fields])
@@ -232,6 +235,9 @@ export default function ThemePopover({ theme, rows, fields, color, ratingField, 
               targets={keywords}
               termLabel={theme.name}
               onSelect={w => { setContextWord(w); setView('overview') }}
+              themes={conceptThemes}
+              excludeThemeName={theme.name}
+              entities={conceptEntities}
             />
           ) : (
             <>

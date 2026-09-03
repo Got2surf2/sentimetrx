@@ -280,6 +280,8 @@ _Route-behavior example: `tests/integration/aggregate-route-ops.test.ts` (added 
 
 _Route-gate example: `tests/integration/dataset-bot-aux-routes-gate.test.ts` (added 2026-09-01) closes the W36 audit's "no systematic audit of unauthenticated routes" gap for the aux routes that had no route tests — datasets search / filter-options / taxonomy-rows and bots crawl-job / batches / workbook / probes. Each gets 401 / cross-org 404-or-403 / admin-bypass, plus one cheap post-gate status proving the gate was passed; batches also asserts the service-role read stays org-paired via recorded `eq` calls._
 
+_Pure-logic example: `tests/unit/contextConcepts.test.ts` (added 2026-09-03) pins the Context tab's Related-concepts layer (`lib/contextConcepts`): concepts computed over the target's comment subset only, dimension tags READ from per-row `_tx` (never recomputed), the 3-comment floor, entity matching scoped to the subset, and the theme modal excluding its own theme._
+
 _Pure-logic example: `tests/unit/periodCompare.test.ts` (added 2026-09-03) pins the Charts Compare-periods math (`lib/periodCompare`): bucket shifting across year boundaries on the month/quarter/week grids, gap-filled sequences (a missing month is a real 0 that cannot shift alignment), prev-mode equal halves and yoy-mode trailing-year windows with their insufficient-history nulls, and the delta summary's count totals vs count-weighted metric averages._
 
 _Pure-logic example: `tests/unit/funFacts.test.ts` (added 2026-09-02) guards the building-screen fact pool: ≥100 unique well-formed one-liners, no markup, and the deliberately-excluded famous myths stay excluded._

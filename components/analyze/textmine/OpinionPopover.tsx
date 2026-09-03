@@ -39,6 +39,9 @@ interface Props {
    *  comment number (`theme.count`), or the percentage stops reconciling with the
    *  number on the theme card, which is the whole point of showing it. */
   themeScope?: { label: string; count: number }
+  /** Full theme model + entity catalog for the Context tab's Related concepts. */
+  conceptThemes?: import('@/lib/themeUtils').Theme[] | null
+  conceptEntities?: { canonical: string; aliases?: string[] }[] | null
   onClose: () => void
 }
 
@@ -64,7 +67,7 @@ function highlightWords(text: string, words: string[]): React.ReactNode[] {
   })
 }
 
-export default function OpinionPopover({ word, rows, fields, ratingField, hiddenFields, themeScope, onClose }: Props) {
+export default function OpinionPopover({ word, rows, fields, ratingField, hiddenFields, themeScope, conceptThemes, conceptEntities, onClose }: Props) {
   const [view, setView] = useState<'opinions' | 'context' | 'comments' | 'insights'>('opinions')
   const [insightFilter, setInsightFilter] = useState<InsightFilter | null>(null)
   // Context word drilled in from the Context tab — narrows the comments list
@@ -185,6 +188,8 @@ export default function OpinionPopover({ word, rows, fields, ratingField, hidden
         targets={contextTargets}
         termLabel={word}
         onSelect={function(w) { setContextWord(w); setView('comments') }}
+        themes={conceptThemes}
+        entities={conceptEntities}
       />
     )
   } else if (view === 'comments') {

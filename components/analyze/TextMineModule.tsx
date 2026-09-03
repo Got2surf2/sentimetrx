@@ -3273,6 +3273,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                       ratingField={ratingField}
                                       hiddenFields={hiddenFields}
                                       themeScope={opinionThemeScope}
+                                      conceptThemes={(displayThemes || themes)?.themes || null}
+                                      conceptEntities={entityCatalogRows}
                                       onClose={function() { setOpinionWord(null); setOpinionThemeId(null) }}
                                     />
                                   </div>
@@ -3584,6 +3586,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         // selection, normally empty here — so every word fell back to
                         // "% of comments", the very thing this was meant to fix.
                         themeScope={opinionThemeScope}
+                        conceptThemes={(displayThemes || themes)?.themes || null}
+                        conceptEntities={entityCatalogRows}
                         onClose={function() { setOpinionWord(null); setOpinionThemeId(null) }}
                       />
                     </div>
@@ -3596,6 +3600,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       color={themeColors[themePopoverIdx]?.text}
                       ratingField={ratingField}
                       hiddenFields={hiddenFields}
+                      conceptThemes={(displayThemes || themes)?.themes || null}
+                      conceptEntities={entityCatalogRows}
                       onClose={function() { setThemePopoverIdx(null) }}
                     />
                   )}
