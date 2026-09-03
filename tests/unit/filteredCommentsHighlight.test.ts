@@ -42,4 +42,25 @@ describe('highlightTerms', () => {
   it('returns plain text when nothing to highlight', () => {
     expect(highlightTerms('hello world', [], [])).toBe('hello world')
   })
+
+  it('a keyword with a palette marks in its theme colors; others keep the amber default', () => {
+    const pal = { bg: '#eff6ff', border: '#2563eb', text: '#1d4ed8', light: '#dbeafe' }
+    const nodes = highlightTerms('Slow service but great food', ['service', 'food'], [], { service: pal })
+    if (!Array.isArray(nodes)) throw new Error('expected nodes')
+    const markEls = nodes.filter((n): n is React.ReactElement<{ children: string; style: Record<string, string> }> =>
+      typeof n === 'object' && n !== null && 'props' in n)
+    expect(markEls.map(m => m.props.children)).toEqual(['service', 'food'])
+    expect(markEls[0].props.style.color).toBe('#1d4ed8')            // theme palette
+    expect(markEls[0].props.style.borderBottom).toContain('#2563eb')
+    expect(markEls[1].props.style.color).toBe('#854d0e')            // amber default
+  })
+
+  it('palette lookup is case-insensitive against the matched text', () => {
+    const pal = { bg: '#f0fdf4', border: '#16a34a', text: '#15803d' }
+    const nodes = highlightTerms('SERVICE was fine', ['service'], [], { service: pal })
+    if (!Array.isArray(nodes)) throw new Error('expected nodes')
+    const markEl = nodes.find((n): n is React.ReactElement<{ style: Record<string, string> }> =>
+      typeof n === 'object' && n !== null && 'props' in n)
+    expect(markEl!.props.style.color).toBe('#15803d')
+  })
 })

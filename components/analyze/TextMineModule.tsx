@@ -3817,6 +3817,19 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         openFields={openFields}
                         schema={schema.fields}
                         datasetId={datasetId}
+                        // Per-theme colored highlights (CommentsPanel parity): each
+                        // selected theme's keywords mark in that theme's palette.
+                        kwPalettes={selectedThemes.reduce<Record<string, { light?: string; bg: string; text: string; border: string }>>(function(map, st) {
+                          var idx = themes ? themes.themes.findIndex(function(t) { return t.id === st.id }) : -1
+                          var pal = (idx >= 0 && themeColors[idx]) || THEME_PALETTE[0]
+                          ;(st.keywords || []).forEach(function(kw) { map[kw.toLowerCase()] = pal })
+                          return map
+                        }, {})}
+                        aiEnabled={aiEnabled}
+                        summaryTopic={selectedThemes.map(function(t) { return t.name })
+                          .concat(filterEntities.map(function(e) { return e.canonical }))
+                          .concat(filterDims.map(function(d) { return dimSubLabel(d.sub) }))
+                          .join(' + ')}
                       />
                     ) : (
                     <CommentsPanel

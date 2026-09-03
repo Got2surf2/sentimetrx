@@ -30,7 +30,10 @@ function fieldColorFor(val: unknown, f: SchemaFieldConfig): string | null {
 }
 function escapeRE(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
 
-export function highlightTerms(text: string, terms: string[], phrases: string[] = []) {
+/** Theme palette entry for a highlighted keyword (from THEME_PALETTE). */
+export interface KwPalette { light?: string; bg: string; text: string; border: string }
+
+export function highlightTerms(text: string, terms: string[], phrases: string[] = [], kwPalettes?: Record<string, KwPalette>) {
   const base = terms.map(t => t.trim()).filter(t => t.length >= 2)
   const cleaned = expandEntityTerms(base).sort((a, b) => b.length - a.length)
   // Phrases (dimension evidence, sql/196) match WITHOUT word boundaries: the
@@ -48,7 +51,18 @@ export function highlightTerms(text: string, terms: string[], phrases: string[] 
   let last = 0; let m: RegExpExecArray | null
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) out.push(text.slice(last, m.index))
-    out.push(<mark key={m.index} style={{ background: '#fff1c2', color: '#854d0e', borderRadius: 3, padding: '0 2px', fontWeight: 600 }}>{m[0]}</mark>)
+    // Per-theme coloring (ported from the rich CommentsPanel): a keyword that
+    // belongs to a selected theme marks in that theme's palette; everything
+    // else (entity terms, dimension evidence) keeps the amber default. The
+    // singular/plural fallback covers expandEntityTerms variants — "bugs" in
+    // the model matches "bug" in the text, which must keep the theme's color.
+    const lower = m[0].toLowerCase()
+    const pal = kwPalettes
+      ? kwPalettes[lower] ?? kwPalettes[lower + 's'] ?? (lower.endsWith('s') ? kwPalettes[lower.slice(0, -1)] : undefined)
+      : undefined
+    out.push(pal
+      ? <mark key={m.index} style={{ background: pal.light || pal.bg, color: pal.text, borderRadius: 3, padding: '1px 3px', borderBottom: '2px solid ' + pal.border, fontWeight: 600 }}>{m[0]}</mark>
+      : <mark key={m.index} style={{ background: '#fff1c2', color: '#854d0e', borderRadius: 3, padding: '0 2px', fontWeight: 600 }}>{m[0]}</mark>)
     last = m.index + m[0].length
     if (m.index === re.lastIndex) re.lastIndex++
   }
@@ -58,8 +72,8 @@ export function highlightTerms(text: string, terms: string[], phrases: string[] 
 
 interface FilterRow { id: number; dataset_id: string; row_index: number; data: Record<string, unknown>; dimEvidence?: string[] }
 
-function FilterCard({ row, hlTerms, openFields, schema }: {
-  row: FilterRow; hlTerms: string[]; openFields: SchemaFieldConfig[]; schema: SchemaFieldConfig[]
+function FilterCard({ row, hlTerms, openFields, schema, kwPalettes }: {
+  row: FilterRow; hlTerms: string[]; openFields: SchemaFieldConfig[]; schema: SchemaFieldConfig[]; kwPalettes?: Record<string, KwPalette>
 }) {
   var dimEvidence = row.dimEvidence || []
   var texts = openFields
@@ -102,7 +116,7 @@ function FilterCard({ row, hlTerms, openFields, schema }: {
             return (
               <div key={t.field} style={{ marginBottom: i < texts.length - 1 ? 6 : 0 }}>
                 {openFields.length > 1 && (<div style={{ fontSize: 9, fontWeight: 700, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>{t.label}</div>)}
-                <div>{highlightTerms(t.value, hlTerms, dimEvidence)}</div>
+                <div>{highlightTerms(t.value, hlTerms, dimEvidence, kwPalettes)}</div>
               </div>
             )
           })}
@@ -150,9 +164,15 @@ interface Props {
   openFields: SchemaFieldConfig[]
   schema: SchemaFieldConfig[]
   datasetId: string
+  /** Lowercased theme keyword → its theme's palette (per-theme colored marks). */
+  kwPalettes?: Record<string, KwPalette>
+  /** Enables the AI Summary button (mirrors the header AI toggle). */
+  aiEnabled?: boolean
+  /** What the active filters describe — names the summary request. */
+  summaryTopic?: string
 }
 
-export default function FilteredCommentsPanel({ rows, total, loading, error, hlTerms, chips, openFields, schema, datasetId }: Props) {
+export default function FilteredCommentsPanel({ rows, total, loading, error, hlTerms, chips, openFields, schema, datasetId, kwPalettes, aiEnabled, summaryTopic }: Props) {
   var _key = 'filtered_comments_' + datasetId
   var [gridCols, setGridCols] = useState(2)
   var [restored, setRestored] = useState(false)
@@ -164,6 +184,43 @@ export default function FilteredCommentsPanel({ rows, total, loading, error, hlT
   useEffect(function() { if (restored) writeSession(_key, { gridCols }) }, [restored, gridCols, _key])
 
   var [visibleCount, setVisibleCount] = useState(50)
+
+  // ── AI summary (ported from the rich CommentsPanel, platform-key era: no
+  // BYO key needed — the mine route falls back to the server key and logs
+  // per-org usage). Summarizes an even sample of the FILTERED rows.
+  var [aiSummary, setAiSummary] = useState<string | null>(null)
+  var [summaryLoading, setSummaryLoading] = useState(false)
+  var [summaryError, setSummaryError] = useState<string | null>(null)
+  useEffect(function() { setAiSummary(null); setSummaryError(null) }, [rows])
+  async function generateSummary() {
+    if (!rows.length || summaryLoading) return
+    setSummaryLoading(true)
+    setSummaryError(null)
+    setAiSummary(null)
+    try {
+      var texts: string[] = []
+      var step = Math.max(1, rows.length / Math.min(60, rows.length))
+      for (var i = 0; texts.length < 60 && Math.floor(i * step) < rows.length; i++) {
+        var r = rows[Math.floor(i * step)]
+        var t = openFields.map(function(f) { return String(r.data[f.field] ?? '') }).join(' ').trim()
+        if (t) texts.push((texts.length + 1) + '. ' + t)
+      }
+      if (!texts.length) throw new Error('No text to summarize')
+      var topic = summaryTopic || 'the filtered comments'
+      var res = await fetch('/api/datasets/' + datasetId + '/mine-themes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texts: texts, fieldName: 'summary', schemaCtx: 'summary request for the comments matching: ' + topic }),
+      })
+      var data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Summary failed')
+      setAiSummary(data.summary || 'Summary generated.')
+    } catch (e) {
+      setSummaryError(e instanceof Error ? e.message : 'Summary failed')
+    }
+    setSummaryLoading(false)
+  }
+
   type SortClause = { field: string; dir: 'asc' | 'desc' }
   var [sortClauses, setSortClauses] = useState<SortClause[]>([])
   var [showSortModal, setShowSortModal] = useState(false)
@@ -225,6 +282,13 @@ export default function FilteredCommentsPanel({ rows, total, loading, error, hlT
           <span style={{ fontSize: 12, color: T.textMute }}>{rows.length.toLocaleString()} of {total.toLocaleString()} comment{total !== 1 ? 's' : ''}</span>
         )}
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {aiEnabled && !loading && rows.length > 0 && !aiSummary && (
+            <button onClick={function() { void generateSummary() }} disabled={summaryLoading}
+              title={'Summarize the ' + rows.length.toLocaleString() + ' filtered comments with AI'}
+              style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, cursor: summaryLoading ? 'default' : 'pointer', border: '1px solid ' + T.accentMid, background: T.accentBg, color: T.accent, fontWeight: 700, opacity: summaryLoading ? 0.6 : 1 }}>
+              {summaryLoading ? 'Summarizing…' : '⧡ AI Summary'}
+            </button>
+          )}
           <button onClick={openSortModal} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid ' + (sortClauses.length > 0 ? T.accent : T.border), background: sortClauses.length > 0 ? T.accentBg : T.bg, color: sortClauses.length > 0 ? T.accent : T.textMid, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
             <span style={{ fontSize: 12 }}>{'⇅'}</span> Sort
             {sortClauses.length > 0 && (<span style={{ fontSize: 10, background: T.accent, color: '#fff', borderRadius: 10, padding: '0 5px', lineHeight: '16px' }}>{sortClauses.length}</span>)}
@@ -237,6 +301,27 @@ export default function FilteredCommentsPanel({ rows, total, loading, error, hlT
           </div>
         </span>
       </div>
+
+      {/* AI summary strip */}
+      {(aiSummary || summaryError) && (
+        <div style={{ padding: '10px 20px', borderBottom: '1px solid ' + T.border, flexShrink: 0 }}>
+          {summaryError && (
+            <div style={{ fontSize: 11, color: '#dc2626' }}>{summaryError}</div>
+          )}
+          {aiSummary && (
+            <div style={{ background: T.accentBg, border: '1px solid ' + T.accentMid, borderRadius: 10, padding: '10px 14px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.accent, marginBottom: 4, textTransform: 'uppercase' as const, letterSpacing: '.05em' }}>
+                {'⧡'} AI summary{summaryTopic ? ' — ' + summaryTopic : ''}
+              </div>
+              <div style={{ fontSize: 12, color: T.textMid, lineHeight: 1.6 }}>{aiSummary}</div>
+              <button onClick={function() { setAiSummary(null) }}
+                style={{ marginTop: 6, fontSize: 11, color: T.textFaint, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}>
+                Dismiss
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Sort modal */}
       {showSortModal && (
@@ -284,7 +369,7 @@ export default function FilteredCommentsPanel({ rows, total, loading, error, hlT
         {!loading && !error && rows.length === 0 && (<div style={{ textAlign: 'center', padding: 40, color: T.textFaint, fontSize: 13 }}>No comments match all selected filters.</div>)}
         {!loading && !error && rows.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)', gap: 10, alignItems: 'stretch' }}>
-            {visible.map(function(row) { return <FilterCard key={row.dataset_id + ':' + row.row_index} row={row} hlTerms={hlTerms} openFields={openFields} schema={schema} /> })}
+            {visible.map(function(row) { return <FilterCard key={row.dataset_id + ':' + row.row_index} row={row} hlTerms={hlTerms} openFields={openFields} schema={schema} kwPalettes={kwPalettes} /> })}
           </div>
         )}
         {hasMore && (<div ref={sentinelRef} style={{ padding: '10px 0', textAlign: 'center' }}><span style={{ fontSize: 11, color: T.textFaint }}>Loading more… ({sorted.length - visibleCount} remaining)</span></div>)}
