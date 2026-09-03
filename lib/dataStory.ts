@@ -1172,6 +1172,23 @@ render();
 </section>`
 }
 
+/** Static print form of a stored story for the PDF export (owner 9/03: the
+ *  interactive machinery — what-if modeler, explorer, sticky nav — stays out
+ *  of the PDF; sections and the data table are forced open so nothing a
+ *  reader collapsed goes missing). String-level so it also covers stories
+ *  generated before this shipped. */
+export function storyPdfHtml(html: string): string {
+  const strip = `<style>
+.snav,.whatif,section[data-nav="Browse responses"],.pdfdl{display:none !important}
+section[data-nav].collapsed > *:not(h2){display:block !important}
+section[data-nav] h2{padding-right:0}
+section[data-nav] h2::after{display:none !important}
+body{background:#FFFFFF}
+section,.fig,.q,.tile,.method{break-inside:avoid}
+</style>`
+  return html.replace(/<details>/g, '<details open>').replace('</head>', strip + '</head>')
+}
+
 /** Page title from the dataset name. Datasets are often named "<Brand> Reviews"
  *  (upload filenames, review syncs), which read awkwardly with the suffix —
  *  and the h1 must not stutter ("… Reviews Reviews"). Collapse an immediately

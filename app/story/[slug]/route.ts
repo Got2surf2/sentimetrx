@@ -35,7 +35,14 @@ export async function GET(_req: Request, props: { params: Promise<{ slug: string
   const { data: file, error } = await service.storage.from(BUCKET).download(story.storage_path)
   if (error || !file) return gone('This story is no longer available.', 404)
 
-  return new NextResponse(file.stream(), {
+  // Floating "Download PDF" (owner 9/03) — injected by the viewer because the
+  // stored HTML doesn't know its own slug. Hidden in print (the PDF route
+  // strips it too).
+  let html = await file.text()
+  html = html.replace('</body>',
+    `<a class="pdfdl" href="/story/${slug}/pdf" style="position:fixed;right:22px;bottom:22px;background:#1A2421;color:#FCFCFB;font:600 13px system-ui;padding:10px 16px;border-radius:999px;text-decoration:none;box-shadow:0 4px 14px rgba(26,36,33,.25)">Download PDF</a><style>@media print{.pdfdl{display:none}}</style></body>`)
+
+  return new NextResponse(html, {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',

@@ -16,6 +16,18 @@ import SearchPanel from '@/components/analyze/textmine/SearchPanel'
 import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
 import ReportsMenu from '@/components/analyze/ReportsMenu'
 import { FUN_FACTS } from '@/lib/funFacts'
+
+// Module-level so the react-hooks purity pass can see this never runs during
+// render (Math.random in component scope trips 'impure function during
+// render' even inside an event handler — CI ratchet 9/03).
+function sampleFunFacts(n: number): string[] {
+  const out: string[] = []
+  const pool = FUN_FACTS.slice()
+  for (let i = 0; i < n && pool.length; i++) {
+    out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0])
+  }
+  return out
+}
 import { downloadFile } from '@/lib/browserDownload'
 import AdHocReportModal from '@/components/analyze/AdHocReportModal'
 import { availableReports, type ReportContext, type ReportType, type ReportFormat } from '@/lib/reportCatalog'
@@ -134,10 +146,7 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           // sciencefocus.com spirit, random, every 15s). Pool lives in
           // lib/funFacts (~130 well-documented facts in our own words); a
           // random 40-fact slice keeps the written document small.
-          var facts: string[] = []
-          for (var pool = FUN_FACTS.slice(), fi = 0; fi < 40 && pool.length; fi++) {
-            facts.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0])
-          }
+          var facts = sampleFunFacts(40)
           // Layout (owner, 2026-09-02): the FACT is the centerpiece — big
           // type, dead center of the viewport; the build status is a compact
           // strip at the top.

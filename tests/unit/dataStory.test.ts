@@ -3,7 +3,7 @@
 // section gating. Pure functions, no mocks.
 import { describe, it, expect } from 'vitest'
 import {
-  buildStoryPayload, deterministicNarrative, parseNarrative, renderDataStory,
+  buildStoryPayload, deterministicNarrative, parseNarrative, renderDataStory, storyPdfHtml,
   pickRatingField, pickSegmentField, pickDateField, buildTimeline, buildBands,
   computeDrift, buildDrivers, storyTitle, type StoryData,
 } from '@/lib/dataStory'
@@ -210,6 +210,19 @@ describe('renderDataStory', () => {
 })
 
 // ── New deterministic analytics ─────────────────────────────────────────
+
+describe('storyPdfHtml', () => {
+  it('strips the interactive machinery and forces everything open', () => {
+    const p = payload()
+    const html = renderDataStory({ ...p, narrative: deterministicNarrative(p) })
+    const pdf = storyPdfHtml(html)
+    expect(pdf).toContain('.snav,.whatif,section[data-nav="Browse responses"],.pdfdl{display:none !important}')
+    expect(pdf).toContain('<details open>')
+    expect(pdf).not.toContain('<details>')
+    // the source page keeps its interactive parts — only the PDF form strips
+    expect(html).toContain('Read the responses yourselves')
+  })
+})
 
 describe('pickDateField / buildTimeline', () => {
   const dateFields = [...fields, { field: 'posted_at', label: 'Posted At', type: 'categorical' }] as unknown as SchemaFieldConfig[]

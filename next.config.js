@@ -91,6 +91,7 @@ const nextConfig = {
     '/api/collections/[id]/project-report/pdf': ['./node_modules/@sparticuz/chromium/bin/**'],
     '/api/datasets/[datasetId]/ad-hoc-report':  ['./node_modules/@sparticuz/chromium/bin/**'],
     '/api/ana/export-pdf':                      ['./node_modules/@sparticuz/chromium/bin/**'],
+    '/story/[slug]/pdf':                        ['./node_modules/@sparticuz/chromium/bin/**'],
     '/api/datasets/[datasetId]/outlet-report-pdf': ['./node_modules/@sparticuz/chromium/bin/**'],
     '/api/datasets/[datasetId]/outlet-leaderboard-pdf': ['./node_modules/@sparticuz/chromium/bin/**'],
     '/api/datasets/[datasetId]/hierarchy-report-pdf':  ['./node_modules/@sparticuz/chromium/bin/**'],

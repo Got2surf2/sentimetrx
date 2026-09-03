@@ -2007,7 +2007,15 @@ OUR domain — Supabase Storage deliberately serves text/html as text/plain on
 also affects the pre-existing `export/html/share` links — see the route
 comment). The signed-URL token stays the sole capability (signature + expiry
 verified by Supabase; the viewer route adds no bypass); deleting the storage
-object kills every copy of the link instantly. Links are SHORT (sql/198): generation mints a crypto-random slug into
+object kills every copy of the link instantly. **PDF export (2026-09-03, owner):** `GET /story/[slug]/pdf` renders the
+stored HTML through the shared headless-chromium pipeline (brandedPdfChrome,
+letter format; route registered in outputFileTracingIncludes — mandatory).
+`storyPdfHtml` (lib/dataStory, string-level so pre-existing stories work)
+strips the INTERACTIVE machinery — what-if modeler, verbatim explorer,
+sticky nav — per owner decision, and forces sections + the data table open.
+The viewer injects a floating "Download PDF" button (hidden in print). Same
+capability model as the viewer: slug is the credential, revoked/expired = 410.
+Links are SHORT (sql/198): generation mints a crypto-random slug into
 `data_stories` and returns `sentimetrx.ai/story/<slug>`; the public
 `/story/[slug]` viewer checks `revoked_at`/`expires_at` on every request and
 streams the HTML from the bucket — so expiry is EDITABLE after a link is sent
