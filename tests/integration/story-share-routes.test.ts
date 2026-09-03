@@ -147,6 +147,24 @@ describe('POST /datasets/[id]/story — short-link minting', () => {
     const j = await (await generate()).json()
     expect(j.url).toMatch(/^\/api\/story\/reports\/d_1\/story-.*\?token=tok123$/)
   })
+
+  it('body.fields focuses the story on the UI-selected verbatim when its theme set exists', async () => {
+    const res = await generateStory(
+      new Request('http://t/x', { method: 'POST', body: JSON.stringify({ fields: ['comment'] }) }),
+      { params: Promise.resolve({ datasetId: 'd_1' }) },
+    )
+    expect(res.status).toBe(200)
+    expect((await res.json()).url).toMatch(/^\/story\//)
+  })
+
+  it('400s honestly when the selected verbatim was never mined (no story about a different question)', async () => {
+    const res = await generateStory(
+      new Request('http://t/x', { method: 'POST', body: JSON.stringify({ fields: ['some_other_question'] }) }),
+      { params: Promise.resolve({ datasetId: 'd_1' }) },
+    )
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/mine themes/i)
+  })
 })
 
 // ── Share-tab management (GET list · PATCH revoke/extend) ───────────────────

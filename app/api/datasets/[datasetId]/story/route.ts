@@ -19,7 +19,7 @@ import {
   buildStoryPayload, deterministicNarrative, narrativePrompt, parseNarrative,
   renderDataStory, STORY_ROW_CAP,
 } from '@/lib/dataStory'
-import type { ThemeModel } from '@/lib/themeUtils'
+import { themeSetForField, type ThemeModel } from '@/lib/themeUtils'
 import type { SchemaFieldConfig, DatasetAnalytics } from '@/lib/analyzeTypes'
 
 const BUCKET = 'report-exports'
@@ -30,11 +30,20 @@ export const maxDuration = 120
 
 interface Params { params: Promise<{ datasetId: string }> }
 
-export async function POST(_req: Request, props: Params) {
+export async function POST(req: Request, props: Params) {
   const params = await props.params
   const supabase = await createClient()
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
   if (!userId || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Optional body: { fields } — the verbatim selection active in the UI.
+  // The story is then told about THAT question's theme set (owner, 2026-09-04),
+  // not whatever selection happened to be persisted as the model's top level.
+  let requestedFields: string[] = []
+  try {
+    const body = await req.json()
+    if (Array.isArray(body?.fields)) requestedFields = body.fields.map(String).filter(Boolean)
+  } catch { /* body is optional — old callers send none */ }
 
   const service = createServiceRoleClient()
   const { data: dataset } = await service
@@ -47,7 +56,20 @@ export async function POST(_req: Request, props: Params) {
   const { data: stateRow } = await service
     .from('dataset_state').select('theme_model, schema_config, analytics')
     .eq('dataset_id', params.datasetId).maybeSingle()
-  const themeModel = (stateRow?.theme_model ?? null) as ThemeModel | null
+  const storedModel = (stateRow?.theme_model ?? null) as ThemeModel | null
+  let themeModel = storedModel
+  if (requestedFields.length && storedModel) {
+    // Resolve the UI selection's own theme set (per-field map, 2026-07-11).
+    // A selection that was never mined gets an honest 400, not a story told
+    // about a different question's themes.
+    const focused = themeSetForField(storedModel, requestedFields)
+    if (!focused?.themes?.length) {
+      return NextResponse.json({
+        error: 'No themes have been mined for the selected question yet — mine themes on it first, then build the story.',
+      }, { status: 400 })
+    }
+    themeModel = focused
+  }
   if (!themeModel?.themes?.length) {
     return NextResponse.json({ error: 'Mine themes first — a Data Story is built from the theme model.' }, { status: 400 })
   }

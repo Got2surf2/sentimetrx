@@ -2109,6 +2109,13 @@ strips the INTERACTIVE machinery — what-if modeler, verbatim explorer,
 sticky nav — per owner decision, and forces sections + the data table open.
 The viewer injects a floating "Download PDF" button (hidden in print). Same
 capability model as the viewer: slug is the credential, revoked/expired = 410.
+**The story is told about the verbatim selected in the UI (owner, 2026-09-04):**
+the header reads TextMine's session selection (`textMine_<id>` sessionStorage,
+`activeFields`/`activeField`) and POSTs it as `{ fields }`; the route resolves
+that selection's own theme set via `themeSetForField` (the per-field map) and
+400s honestly when the selection was never mined ("mine themes on it first")
+instead of telling a story about a different question's themes. No body / no
+saved selection → the stored top-level model's binding (the old behavior).
 Links are SHORT (sql/198): generation mints a crypto-random slug into
 `data_stories` and returns `sentimetrx.ai/story/<slug>`; the public
 `/story/[slug]` viewer checks `revoked_at`/`expires_at` on every request and

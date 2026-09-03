@@ -184,7 +184,21 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
       setReportBusy(true)
       try {
         var storyReq = type.launch(dataset.id, format)
-        var storyRes = await fetch(storyReq.url, { method: 'POST' })
+        // Focus the story on the verbatim currently selected in TextMine
+        // (owner, 2026-09-04): the UI selection lives in sessionStorage
+        // (textMine_<id>); without it the route falls back to the stored
+        // top-level theme model's binding (the last selection persisted).
+        var storyFields: string[] = []
+        try {
+          var tmSaved = JSON.parse(sessionStorage.getItem('textMine_' + dataset.id) || 'null')
+          if (Array.isArray(tmSaved?.activeFields) && tmSaved.activeFields.length) storyFields = tmSaved.activeFields.map(String)
+          else if (tmSaved?.activeField) storyFields = [String(tmSaved.activeField)]
+        } catch { /* no saved selection — route falls back */ }
+        var storyRes = await fetch(storyReq.url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(storyFields.length ? { fields: storyFields } : {}),
+        })
         var storyData = await storyRes.json()
         if (!storyRes.ok || !storyData.url) throw new Error(storyData.error || 'Could not build the story')
         var storyUrl = new URL(storyData.url, window.location.origin).toString()
