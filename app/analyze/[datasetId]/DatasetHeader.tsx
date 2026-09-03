@@ -138,21 +138,28 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
           for (var pool = FUN_FACTS.slice(), fi = 0; fi < 40 && pool.length; fi++) {
             facts.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0])
           }
+          // Layout (owner, 2026-09-02): the FACT is the centerpiece — big
+          // type, dead center of the viewport; the build status is a compact
+          // strip at the top.
           storyTab.document.write(
             '<meta charset="utf-8"><title>Building your Data Story…</title>' +
-            '<body style="margin:0;display:grid;place-items:center;height:100vh;font-family:system-ui;background:#FCFCFB;color:#1A2421">' +
-            '<div style="text-align:center;max-width:620px;padding:0 24px"><div style="font-weight:800;font-style:italic;font-size:15px">' +
+            '<body style="margin:0;display:flex;flex-direction:column;height:100vh;font-family:system-ui;background:#FCFCFB;color:#1A2421">' +
+            '<div style="text-align:center;padding:34px 24px 0">' +
+            '<div style="font-weight:800;font-style:italic;font-size:15px">' +
             '<span style="color:#0E7476">data</span><span style="color:#E85A1A">nautix</span></div>' +
-            '<p style="font-size:17px;margin:14px 0 6px">Building your Data Story…</p>' +
-            '<p style="font-size:13.5px;color:#5C6B64">Recounting themes and writing the narrative — usually under a minute.<br>' +
-            'This page will load the story automatically when it is ready.</p>' +
-            '<p style="font-size:11px;letter-spacing:.08em;color:#8FA3AE;margin:26px 0 4px;text-transform:uppercase">Did you know?</p>' +
-            '<p id="fct" style="font-size:14px;color:#1A2421;min-height:3.2em;margin:0;transition:opacity .5s;opacity:1">' + facts[0] + '</p>' +
+            '<p style="font-size:15px;margin:12px 0 4px;font-weight:600">Building your Data Story…</p>' +
+            '<p style="font-size:12.5px;color:#5C6B64;margin:0">Recounting themes and writing the narrative — usually under a minute. This page will load the story automatically.</p>' +
+            '</div>' +
+            '<div style="flex:1;display:grid;place-items:center;padding:0 24px">' +
+            '<div style="text-align:center;max-width:820px">' +
+            '<p style="font-size:12px;letter-spacing:.14em;color:#8FA3AE;margin:0 0 18px;text-transform:uppercase">Did you know?</p>' +
+            '<p id="fct" style="font-size:clamp(22px,3.2vw,30px);line-height:1.4;font-weight:600;color:#1A2421;margin:0;transition:opacity .5s;opacity:1">' + facts[0] + '</p>' +
+            '</div></div>' +
             // Random rotation every 15s (pre-shuffled start offset above +
             // random non-repeating pick here), soft cross-fade.
             '<script>(function(){var f=' + JSON.stringify(facts) + ',i=0,el=document.getElementById("fct");' +
             'setInterval(function(){el.style.opacity=0;setTimeout(function(){var j=i;while(j===i){j=Math.floor(Math.random()*f.length)}i=j;el.textContent=f[i];el.style.opacity=1},500)},15000)})()<' + '/script>' +
-            '</div></body>')
+            '</body>')
           storyTab.document.close()
         } catch { /* cross-origin guard — cosmetic only */ }
       }

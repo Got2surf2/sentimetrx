@@ -759,3 +759,8 @@ one-liner shape, no markup, and the myth exclusions.
 
 ## 2026-09-03 — Ask Ana waits rotate fun facts (owner: reuse the story factoids)
 **Why:** Multi-round questions on big datasets can take a minute+; the owner asked for the Data Story building screen's factoid treatment so it "doesn't feel like an infinite wait". New WorkingFactoid in AskAnaPanel: lib/funFacts pool, first fact at 7s (quick answers never see it), 12s rotation with fade, muted styling below the one-at-a-time status line, cleared when answer text streams. Browser-verified on TEST.
+
+**Layout tweak (owner)**: the fun fact is now the building screen's
+centerpiece — clamp(22px,3.2vw,30px) bold, dead center of the viewport under
+the "Did you know?" kicker — with the build status compacted into a strip at
+the top. Verified visually.
