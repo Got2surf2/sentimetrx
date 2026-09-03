@@ -1954,7 +1954,29 @@ head has a deterministic numbered fallback in `deterministicNarrative`):
   first 60 matches with a count line. Labeled raw browsing, NOT curated
   evidence — the curated quotes keep the verbatim guard.
 Narrative register (owner 9/03): muted, consultant-memo tone — findings with
-figures, no drama verbs or news-headline framing. Output-side American-English
+figures, no drama verbs or news-headline framing. The themes intro must
+INTERPRET the mix (concentration, spread, implications), never recite the
+chart's own percentages.
+**Score drivers + what-if modeler (2026-09-03, owner-directed).** When a
+usable score exists, the story fits the outcome on theme indicators through
+`lib/statsUtils.logisticRegression` — the SAME ridge-guarded engine behind the
+Statistics driver panel — via `buildDrivers` in lib/dataStory: binary outcome
+= above scale midpoint (derived % recommended, or top-box rating), estimation
+sample = substantive rows with a valid score (≥300 required; each theme needs
+≥50 rows on AND off), ≤8 non-neutral themes; suppressed entirely on
+non-convergence or separation — no section beats a shaky one. Reported ONLY
+in plain English (owner): average marginal effects as "reviews that mention X
+are N points less likely to …, with the other themes held equal" — the words
+logit/regression/coefficient/odds never appear on the page (test-pinned ban
+list); diverging bar figure (orange = pulls down, teal = lifts) with baseline
+and n; footnote names the Statistics tab as the recreation path and labels
+the numbers associations, not causation. **What-if scenario modeler**: sliders
+over the top-5 drivers' mention rates, live modeled likelihood = baseline +
+Σ effect × Δprevalence (linear-in-AME planning aid, labeled "directional, not
+a forecast"), reset-to-today. Robustness the owner hit live: the rating pick
+now validates VALUES not the declared type (retyping "recommended" to numeric
+in Schema silently blanked every score section — a text-valued "numeric" is
+dropped and the recommend-derivation runs regardless of field type). Output-side American-English
 backstop: `lib/americanize.ts` (explicit pairs, case-preserving) converts the
 narrative prose at render; quotes/explorer stay verbatim.
 Verified in-browser on TEST against ea_football_reviews (12,174 rows): thesis

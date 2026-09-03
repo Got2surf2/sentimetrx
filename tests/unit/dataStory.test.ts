@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildStoryPayload, deterministicNarrative, parseNarrative, renderDataStory,
   pickRatingField, pickSegmentField, pickDateField, buildTimeline, buildBands,
-  computeDrift, storyTitle, type StoryData,
+  computeDrift, buildDrivers, storyTitle, type StoryData,
 } from '@/lib/dataStory'
 import { recountThemes, type ThemeModel } from '@/lib/themeUtils'
 import type { SchemaFieldConfig, DatasetAnalytics } from '@/lib/analyzeTypes'
@@ -258,6 +258,73 @@ describe('pickDateField / buildTimeline', () => {
 
   it('returns null on too few dated rows or too few buckets', () => {
     expect(buildTimeline(datedRows().slice(0, 50), 'posted_at', 'rating', [], ['comment'])).toBeNull()
+  })
+})
+
+describe('buildDrivers', () => {
+  function driverRows(n: number): Record<string, unknown>[] {
+    const rs: Record<string, unknown>[] = []
+    for (let i = 0; i < n; i++) {
+      const service = i % 2 === 0            // half mention service
+      const food = i % 3 === 0               // a third mention food
+      // service mentions depress the outcome (20% good vs 80%), with enough
+      // overlap in both directions that the fit is clean (no separation)
+      const good = ((i * 7) % 10) < (service ? 2 : 8)
+      rs.push({
+        comment: (service ? 'The service was terrible and the waiter was rude tonight to us. ' : '') +
+                 (food ? 'The food and tacos were absolutely delicious and fresh today. ' : '') +
+                 'A visit with plenty of detail to count as substantive text overall.',
+        rating: good ? 5 : 1,
+      })
+    }
+    return rs
+  }
+
+  it('reports plain-English point effects with the right signs', () => {
+    const rs = driverRows(600)
+    const themes = recountThemes(THEMES, rs, ['comment'], 'rating')
+    const dm = buildDrivers(rs, themes, ['comment'], 'rating', 'giving a high rating')!
+    expect(dm).not.toBeNull()
+    expect(dm.n).toBe(600)
+    const service = dm.drivers.find(d => d.name === 'Service')!
+    expect(service.amePp).toBeLessThan(-20)   // service mentions crush the outcome
+    // baseline equals the observed share of high ratings
+    const observed = rs.filter(r => r.rating === 5).length / rs.length * 100
+    expect(Math.abs(dm.baselinePct - observed)).toBeLessThan(0.2)
+    // most-negative driver sorts first
+    expect(dm.drivers[0].amePp).toBeLessThanOrEqual(dm.drivers[dm.drivers.length - 1].amePp)
+  })
+
+  it('suppresses on small samples instead of shipping a shaky fit', () => {
+    const rs = driverRows(200)
+    const themes = recountThemes(THEMES, rs, ['comment'], 'rating')
+    expect(buildDrivers(rs, themes, ['comment'], 'rating', 'x')).toBeNull()
+  })
+
+  it('deterministic narrative states the finding in plain English, no stats vocabulary', () => {
+    const rs = driverRows(600)
+    const themes = recountThemes(THEMES, rs, ['comment'], 'rating')
+    const dm = buildDrivers(rs, themes, ['comment'], 'rating', 'giving a high rating')!
+    const base = payload()
+    const n = deterministicNarrative({ ...base, driversModel: dm })
+    expect(n.driversHead).toMatch(/points less likely/)
+    expect(n.driversIntro).toMatch(/held equal/)
+    for (const banned of ['logit', 'logistic', 'regression', 'coefficient', 'odds', 'marginal']) {
+      expect((n.driversHead + ' ' + n.driversIntro).toLowerCase()).not.toContain(banned)
+    }
+  })
+
+  it('renders the drivers section with the what-if modeler and honesty note', () => {
+    const rs = driverRows(600)
+    const themes = recountThemes(THEMES, rs, ['comment'], 'rating')
+    const dm = buildDrivers(rs, themes, ['comment'], 'rating', 'giving a high rating')!
+    const base = payload()
+    const sd: StoryData = { ...base, driversModel: dm, narrative: deterministicNarrative({ ...base, driversModel: dm }) }
+    const html = renderDataStory(sd)
+    expect(html).toContain('What if the mix changed?')
+    expect(html).toContain('associations in the reviews, not guarantees of cause')
+    expect(html).toContain('the same driver analysis the Statistics tab runs')
+    expect(html).toContain('id="wPred"')
   })
 })
 

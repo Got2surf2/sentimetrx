@@ -20,6 +20,7 @@
 import { recountThemes, evenSample, buildKwRegex, type Theme, type ThemeModel, themeSetForField } from '@/lib/themeUtils'
 import { isSubstantiveText } from '@/lib/datasetUtils'
 import { verbatimSupports, type VerbatimPremise } from '@/lib/verbatimGuard'
+import { logisticRegression } from '@/lib/statsUtils'
 import { americanize } from '@/lib/americanize'
 import type { SchemaFieldConfig, DatasetAnalytics, NumericSummary } from '@/lib/analyzeTypes'
 
@@ -57,6 +58,20 @@ export interface StoryBands {
   bands: StoryBand[]
   lowest: { label: string; avgRating: number } | null
 }
+export interface StoryDriver {
+  name: string
+  amePp: number          // average marginal effect, percentage points on P(outcome)
+  p: number              // Wald p-value on the underlying coefficient
+  prevalencePct: number  // share of estimation rows mentioning the theme
+  count: number
+}
+export interface StoryDrivers {
+  outcomeLabel: string   // e.g. "recommending" / "a top-box rating"
+  n: number
+  baselinePct: number    // observed P(outcome) in the estimation sample, %
+  pseudoR2: number
+  drivers: StoryDriver[] // sorted most-negative first
+}
 export interface StoryDrift {
   theme: string; minSeg: string; minPct: number; maxSeg: string; maxPct: number
 }
@@ -77,6 +92,8 @@ export interface StoryNarrative {
   ratingIntro: string | null
   segmentHead: string | null
   segmentIntro: string | null
+  driversHead: string | null
+  driversIntro: string | null
   timelineHead: string | null
   timelineIntro: string | null
   bandsHead: string | null
@@ -95,6 +112,7 @@ export interface StoryData {
   themes: StoryThemeRow[]
   segments: StorySegment[]
   drift: StoryDrift | null
+  driversModel: StoryDrivers | null
   timeline: StoryTimeline | null
   bands: StoryBands | null
   quotes: StoryQuote[]
@@ -122,7 +140,11 @@ const NEG_TOKENS = /^(no|n|false|0|not recommended|negative|would not recommend)
 export function deriveScoreField(
   fields: SchemaFieldConfig[], rows: Record<string, unknown>[],
 ): { field: string; label: string; map: (v: unknown) => number | null } | null {
-  const cand = fields.find(f => f.type === 'categorical' && /recommend/i.test(f.field + ' ' + (f.label || '')))
+  // Any recommend-named field qualifies regardless of its DECLARED type — the
+  // values decide (owner 9/03 hit this: retyping "recommended" to numeric in
+  // the Schema tab silently killed every score section because the text
+  // values never parse). The boolean-ish value gate below is the real check.
+  const cand = fields.find(f => /recommend/i.test(f.field + ' ' + (f.label || '')))
   if (!cand) return null
   const sample = evenSample(rows, 300)
   let pos = 0, neg = 0, other = 0
@@ -414,6 +436,90 @@ export function computeDrift(segments: StorySegment[]): StoryDrift | null {
   return best && best.maxPct - best.minPct >= 5 ? best : null
 }
 
+// ── Score drivers (logistic) ────────────────────────────────────────────
+
+/** Which themes actually move the outcome — the same logistic engine the
+ *  Statistics driver panel uses (lib/statsUtils.logisticRegression, ridge-
+ *  guarded), reported ONLY in plain English: average marginal effects in
+ *  percentage points ("mentioning X is associated with an N-point lower
+ *  likelihood of recommending"), never log-odds or coefficients. Suppressed
+ *  entirely (null) when the fit is unstable — no section beats a shaky one. */
+export function buildDrivers(
+  rows: Record<string, unknown>[], themes: Theme[], fieldNames: string[],
+  ratingField: string, outcomeLabel: string,
+): StoryDrivers | null {
+  // Estimation sample: substantive text + a valid outcome value.
+  const sample: { flags: number[]; y: number }[] = []
+  const cand = themes.filter(t => t.sentiment !== 'neutral' && t.keywords?.length)
+    .sort((a, b) => b.count - a.count).slice(0, 8)
+  if (cand.length < 2) return null
+  const regexes = cand.map(t => t.keywords.map(buildKwRegex))
+
+  // Outcome binarization: > midpoint of the observed scale (0/100 derived
+  // scores land as >50 → recommended; a 1–5 rating lands as top-box).
+  const vals: number[] = []
+  for (const r of rows) { const v = parseFloat(String(r[ratingField] ?? '')); if (!isNaN(v)) vals.push(v) }
+  if (vals.length < 300) return null
+  const mid = (Math.min(...vals) + Math.max(...vals)) / 2
+
+  for (const r of rows) {
+    if (!fieldNames.some(f => isSubstantiveText(String(r[f] ?? '')))) continue
+    const v = parseFloat(String(r[ratingField] ?? ''))
+    if (isNaN(v)) continue
+    const text = fieldNames.map(f => String(r[f] ?? '')).join(' ')
+    sample.push({ flags: regexes.map(res => res.some(re => re.test(text)) ? 1 : 0), y: v > mid ? 1 : 0 })
+  }
+  if (sample.length < 300) return null
+
+  // Keep themes with enough presence AND absence to estimate on.
+  const keep: number[] = []
+  cand.forEach((_, j) => {
+    const nOn = sample.reduce((a, s2) => a + s2.flags[j], 0)
+    if (nOn >= 50 && sample.length - nOn >= 50) keep.push(j)
+  })
+  if (keep.length < 2) return null
+
+  const y = sample.map(s2 => s2.y)
+  const X = sample.map(s2 => keep.map(j => s2.flags[j]))
+  const names = keep.map(j => cand[j].name)
+  const fit = logisticRegression(y, X, names)
+  if (!fit || !fit.converged || fit.separation) return null
+
+  const sigmoid = (z: number) => (z >= 0 ? 1 / (1 + Math.exp(-z)) : Math.exp(z) / (1 + Math.exp(z)))
+  const beta = fit.coefs.map(c => c.beta) // intercept first, then keep-order
+  const baseline = y.reduce((a, b) => a + b, 0) / y.length * 100
+
+  const drivers: StoryDriver[] = names.map((name, jj) => {
+    // AME: flip this theme on/off for every row, average the probability change.
+    let acc = 0
+    for (const row of X) {
+      let eta0 = beta[0], eta1 = beta[0]
+      for (let k = 0; k < names.length; k++) {
+        const x = k === jj ? 0 : row[k]
+        eta0 += beta[k + 1] * x
+        eta1 += beta[k + 1] * (k === jj ? 1 : x)
+      }
+      acc += sigmoid(eta1) - sigmoid(eta0)
+    }
+    const nOn = X.reduce((a, row) => a + row[jj], 0)
+    return {
+      name,
+      amePp: Math.round(acc / X.length * 1000) / 10,
+      p: fit.coefs[jj + 1].p,
+      prevalencePct: Math.round(nOn / X.length * 1000) / 10,
+      count: nOn,
+    }
+  }).sort((a, b) => a.amePp - b.amePp)
+
+  return {
+    outcomeLabel,
+    n: sample.length,
+    baselinePct: Math.round(baseline * 10) / 10,
+    pseudoR2: Math.round(fit.pseudoR2 * 1000) / 1000,
+    drivers,
+  }
+}
+
 // ── Explorer ────────────────────────────────────────────────────────────
 
 /** Bounded raw-browse corpus for the reader: evenly-sampled substantive
@@ -466,6 +572,20 @@ export function buildStoryPayload(opts: BuildStoryOpts): Omit<StoryData, 'narrat
   let ratingLabel: string | null = ratingField
   let rows = opts.rows.length > STORY_ROW_CAP ? evenSample(opts.rows, STORY_ROW_CAP) : opts.rows
   let scoreSourceField: string | null = null
+  // Trust values over the declared type: a "numeric" rating whose values
+  // don't parse (schema retype, text booleans) must not silently blank every
+  // score section — drop it and let the derive path have a look instead.
+  if (ratingField) {
+    const probe = evenSample(rows, 200)
+    let parsed = 0, seen = 0
+    for (const r of probe) {
+      const v = String(r[ratingField] ?? '').trim()
+      if (!v) continue
+      seen++
+      if (!isNaN(parseFloat(v))) parsed++
+    }
+    if (seen >= 20 && parsed / seen < 0.5) { ratingField = null; ratingLabel = null }
+  }
   if (!ratingField) {
     const derived = deriveScoreField(fields, rows)
     if (derived) {
@@ -513,6 +633,10 @@ export function buildStoryPayload(opts: BuildStoryOpts): Omit<StoryData, 'narrat
   const bandPick = pickBandField(fields, analytics, totalRows, ratingField)
   const bands = bandPick ? buildBands(rows, bandPick.field, bandPick.summary, ratingField, themed, fieldNames) : null
 
+  // Outcome phrasing for the drivers section, in plain English.
+  const outcomeLabel = scoreSourceField ? 'recommending' : 'giving a high rating'
+  const driversModel = ratingField ? buildDrivers(rows, themed, fieldNames, ratingField, outcomeLabel) : null
+
   const quotesRatingField = scoreSourceField ? null : ratingField
   const quotes = pickQuotes(themed, substantive, fieldNames, segmentField, quotesRatingField)
   const explorer = buildExplorer(substantive, fieldNames, themed, keptSegments.length ? segmentField : null,
@@ -536,6 +660,7 @@ export function buildStoryPayload(opts: BuildStoryOpts): Omit<StoryData, 'narrat
     })),
     segments: keptSegments,
     drift: computeDrift(keptSegments),
+    driversModel,
     timeline,
     bands,
     quotes,
@@ -601,6 +726,16 @@ export function deterministicNarrative(d: Omit<StoryData, 'narrative'>): StoryNa
           : `The pattern holds steady across ${tl.points.length} ${tl.unit}s`)
     : null
   const spread = d.bands ? bandThemeSpread(d.bands) : null
+  const dm = d.driversModel
+  const worstDriver = dm && dm.drivers.length && dm.drivers[0].amePp < 0 ? dm.drivers[0] : null
+  const driversHead = worstDriver
+    ? `Reviews that mention \u201C${worstDriver.name}\u201D are ${Math.abs(worstDriver.amePp)} points less likely to end in ${dm!.outcomeLabel}`
+    : dm ? `What separates the responses that end in ${dm.outcomeLabel} from those that don't` : null
+  const driversIntro = dm
+    ? `Comparing responses that mention each theme with those that don't \u2014 with the other themes held equal \u2014 ${
+        worstDriver ? `\u201C${worstDriver.name}\u201D carries the largest penalty: ${Math.abs(worstDriver.amePp)} points off the ${dm.baselinePct}% baseline chance of ${dm.outcomeLabel}.` : `no single theme dominates the ${dm.baselinePct}% baseline.`
+      } Based on ${dm.n.toLocaleString('en-US')} responses with both text and a score.`
+    : null
   const bandsHead = d.bands?.lowest && d.overallAvgRating != null
     ? `The ${d.bands.lowest.label} ${d.bands.fieldLabel} band rates lowest — ${d.bands.lowest.avgRating} vs ${d.overallAvgRating} overall`
     : spread
@@ -625,6 +760,8 @@ export function deterministicNarrative(d: Omit<StoryData, 'narrative'>): StoryNa
           ? `The widest gap is “${d.drift.theme}” — ${d.drift.maxPct}% of ${d.drift.maxSeg}'s substantive responses versus ${d.drift.minPct}% at ${d.drift.minSeg}.`
           : `The mix shifts by ${d.segmentFieldLabel}: each segment leads with its own dominant theme.`)
       : null,
+    driversHead,
+    driversIntro,
     timelineHead,
     timelineIntro: tl
       ? (themeShift
@@ -653,6 +790,11 @@ export function narrativePrompt(d: Omit<StoryData, 'narrative'>): { system: stri
     themes: d.themes.map(t => ({ name: t.name, pct: t.pct, count: t.count, sentiment: t.sentiment, avgRating: t.avgRating, ratingDelta: t.ratingDelta })),
     segments: d.segments,
     drift: d.drift,
+    scoreDrivers: d.driversModel ? {
+      outcomeLabel: d.driversModel.outcomeLabel, n: d.driversModel.n,
+      baselinePct: d.driversModel.baselinePct,
+      perTheme: d.driversModel.drivers.map(dr => ({ name: dr.name, pointsOnLikelihood: dr.amePp, mentionSharePct: dr.prevalencePct })),
+    } : null,
     timeline: d.timeline ? {
       unit: d.timeline.unit, tracked: d.timeline.tracked,
       ratingFrom: d.timeline.ratingFrom, ratingTo: d.timeline.ratingTo,
@@ -669,7 +811,7 @@ export function narrativePrompt(d: Omit<StoryData, 'narrative'>): { system: stri
       'verbs (crash, plunge, collapse, failing), no alarm framing, no wordplay. State what the data shows and let the ' +
       'number carry the weight. Respond with ONLY raw JSON: ' +
       '{"headline":"...","lede":"...","themesHead":"...","themesIntro":"...","ratingHead":...,"ratingIntro":...,' +
-      '"segmentHead":...,"segmentIntro":...,"timelineHead":...,"timelineIntro":...,"bandsHead":...,"bandsIntro":...} ' +
+      '"segmentHead":...,"segmentIntro":...,"driversHead":...,"driversIntro":...,"timelineHead":...,"timelineIntro":...,"bandsHead":...,"bandsIntro":...} ' +
       '— fields marked null in the instructions must be null; heads are one sentence, no terminal period; intros 2–3 sentences. ' +
       'HARD RULES: "headline" is the page H1 — the single most important pattern in the data, stated plainly with its ' +
       'figure (like "Satisfaction is declining across three releases, led by technical complaints"), ≤ 90 characters, ' +
@@ -678,10 +820,11 @@ export function narrativePrompt(d: Omit<StoryData, 'narrative'>): { system: stri
       'Never mention data you were not given. No exclamation marks. Plain confident prose, no headline-speak clichés.',
     user: 'Facts:\n' + JSON.stringify(facts, null, 1) +
       '\n\nWrite: headline (thesis H1), lede (what this corpus is and the single most important pattern), ' +
-      'themesHead + themesIntro (what dominates the conversation), ' +
+      'themesHead + themesIntro (interpret the theme mix \u2014 concentration, spread, what it implies; the chart below already shows every percentage, so do NOT recite the per-theme numbers \u2014 say what the chart cannot), ' +
       (d.overallAvgRating != null ? 'ratingHead + ratingIntro (which themes sit above/below the overall average and what that implies), ' : 'ratingHead and ratingIntro must be null, ') +
       (d.segments.length >= 2 ? 'segmentHead + segmentIntro (the widest segment gap and what it means), ' : 'segmentHead and segmentIntro must be null, ') +
-      (d.timeline ? 'timelineHead + timelineIntro (what moved over time — lead with the biggest shift), ' : 'timelineHead and timelineIntro must be null, ') +
+      (d.driversModel ? 'driversHead + driversIntro (which themes actually move the score \u2014 PLAIN ENGLISH ONLY: "reviews that mention X are N points less likely to \u2026" \u2014 never statistical vocabulary like logit, regression, coefficient, odds, marginal effect, or R-squared; use pointsOnLikelihood verbatim as the points figures), ' : 'driversHead and driversIntro must be null, ') +
+      (d.timeline ? 'timelineHead + timelineIntro (what moved over time \u2014 lead with the biggest shift), ' : 'timelineHead and timelineIntro must be null, ') +
       (d.bands ? `bandsHead + bandsIntro (how ${d.bands.fieldLabel} bands differ — is the pattern what a reader would expect?).` : 'bandsHead and bandsIntro must be null.'),
   }
 }
@@ -701,6 +844,8 @@ export function parseNarrative(text: string, fallback: StoryNarrative): StoryNar
       ratingIntro: s(j.ratingIntro) ?? fallback.ratingIntro,
       segmentHead: s(j.segmentHead) ?? fallback.segmentHead,
       segmentIntro: s(j.segmentIntro) ?? fallback.segmentIntro,
+      driversHead: s(j.driversHead) ?? fallback.driversHead,
+      driversIntro: s(j.driversIntro) ?? fallback.driversIntro,
       timelineHead: s(j.timelineHead) ?? fallback.timelineHead,
       timelineIntro: s(j.timelineIntro) ?? fallback.timelineIntro,
       bandsHead: s(j.bandsHead) ?? fallback.bandsHead,
@@ -818,6 +963,68 @@ function segmentGrid(d: StoryData): string {
   }).join('')
 }
 
+/** Diverging bars for the score drivers — one zero axis, orange = pulls the
+ *  likelihood down, teal = lifts it. Values are plain "points" only. */
+function driversSvg(dm: StoryDrivers): string {
+  const rows = dm.drivers
+  const labW = 300, zero = 560, span = 240, rowH = 40
+  const maxAbs = Math.max(5, ...rows.map(d => Math.abs(d.amePp)))
+  const H = rows.length * rowH + 26
+  let out = `<svg viewBox="0 0 860 ${H}" role="img" aria-label="Score drivers">` +
+    `<line x1="${zero}" y1="4" x2="${zero}" y2="${H - 20}" stroke="#9AA7A1" stroke-width="1.5"/>` +
+    `<text x="${zero}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#5C6B64">no effect</text>`
+  rows.forEach((d, i) => {
+    const y = 8 + i * rowH
+    const w = Math.abs(d.amePp) / maxAbs * span
+    const neg = d.amePp < 0
+    const x = neg ? zero - w : zero
+    out += `<text x="${labW - 10}" y="${y + 15}" text-anchor="end" font-size="13" fill="#1A2421">${esc(d.name)}</text>` +
+      `<rect x="${x}" y="${y}" width="${Math.max(2, w)}" height="22" rx="4" fill="${neg ? '#E85A1A' : '#089A9E'}">` +
+      `<title>Mentioning \u201C${esc(d.name)}\u201D: ${d.amePp > 0 ? '+' : ''}${d.amePp} points on the likelihood of ${esc(dm.outcomeLabel)} (mentioned by ${d.prevalencePct}% of these responses)</title></rect>` +
+      `<text x="${neg ? x - 8 : x + w + 8}" y="${y + 15}" text-anchor="${neg ? 'end' : 'start'}" font-size="12.5" fill="#1A2421">${d.amePp > 0 ? '+' : ''}${d.amePp} pts</text>`
+  })
+  return out + '</svg>'
+}
+
+/** What-if scenario modeler: sliders over theme mention-rates, predicted
+ *  likelihood updating live. Linear approximation over the per-theme point
+ *  effects — labeled as a planning aid, not a forecast. */
+function whatIfHtml(dm: StoryDrivers): string {
+  const top = [...dm.drivers].sort((a, b) => Math.abs(b.amePp) - Math.abs(a.amePp)).slice(0, 5)
+  const model = { base: dm.baselinePct, items: top.map(d => ({ name: d.name, ame: d.amePp, prev: d.prevalencePct })) }
+  const json = JSON.stringify(model).replace(/</g, '\\u003c')
+  const sliders = top.map((d, i) =>
+    `<div class="wrow"><div class="wlbl">${esc(d.name)}<span class="wnow" id="wv${i}">${d.prevalencePct}%</span></div>` +
+    `<input type="range" id="ws${i}" min="0" max="${Math.min(100, Math.round(d.prevalencePct * 1.5) + 5)}" step="1" value="${Math.round(d.prevalencePct)}" /></div>`
+  ).join('')
+  return `<div class="whatif">
+<div class="wtitle">What if the mix changed?</div>
+<p class="sub" style="margin-bottom:14px">Drag a theme's mention rate to see the modeled effect on ${esc(dm.outcomeLabel)}. A planning aid built on the associations above \u2014 directional, not a forecast.</p>
+<div class="wgrid">
+<div>${sliders}</div>
+<div class="wout"><div class="wnum" id="wPred">${dm.baselinePct}%</div><div class="wsub">modeled likelihood of ${esc(dm.outcomeLabel)}</div><div class="wdelta" id="wDelta">at today's mix (${dm.baselinePct}% observed)</div><button id="wReset" type="button">Reset to today</button></div>
+</div>
+<script>
+(function(){
+var M=${json};
+function el(id){return document.getElementById(id)}
+function recalc(){
+var pred=M.base, changed=false;
+M.items.forEach(function(it,i){var v=parseFloat(el('ws'+i).value);el('wv'+i).textContent=v+'%';pred+=it.ame*(v-it.prev)/100;if(Math.round(v)!==Math.round(it.prev))changed=true});
+pred=Math.max(0,Math.min(100,pred));
+el('wPred').textContent=(Math.round(pred*10)/10)+'%';
+var d=Math.round((pred-M.base)*10)/10;
+el('wDelta').textContent=changed?((d>0?'+':'')+d+' points vs today'):('at today\\u2019s mix ('+M.base+'% observed)');
+el('wPred').style.color=d<0?'#E85A1A':d>0?'#0E7476':'#1A2421';
+}
+M.items.forEach(function(_,i){el('ws'+i).addEventListener('input',recalc)});
+el('wReset').addEventListener('click',function(){M.items.forEach(function(it,i){el('ws'+i).value=Math.round(it.prev)});recalc()});
+recalc();
+})();
+</script>
+</div>`
+}
+
 /** Reader-driven verbatim explorer: filter chips + search over the embedded
  *  excerpt sample. Vanilla JS, self-contained, no external requests. */
 function explorerHtml(d: StoryData): string {
@@ -887,6 +1094,7 @@ export function renderDataStory(d: StoryData): string {
     themesHead: americanize(raw.themesHead), themesIntro: americanize(raw.themesIntro),
     ratingHead: am(raw.ratingHead), ratingIntro: am(raw.ratingIntro),
     segmentHead: am(raw.segmentHead), segmentIntro: am(raw.segmentIntro),
+    driversHead: am(raw.driversHead), driversIntro: am(raw.driversIntro),
     timelineHead: am(raw.timelineHead), timelineIntro: am(raw.timelineIntro),
     bandsHead: am(raw.bandsHead), bandsIntro: am(raw.bandsIntro),
   }
@@ -914,6 +1122,15 @@ export function renderDataStory(d: StoryData): string {
 ${ratingFig}${shareFig}
 </section>`
   })() : ''
+
+  const dm = d.driversModel
+  const driversSection = dm && n.driversHead ? `<section><h2>${esc(n.driversHead)}</h2>
+<p class="sub">Each bar compares responses that mention a theme with those that don't, with the other themes held equal. Points are on the chance of ${esc(dm.outcomeLabel)} (baseline ${dm.baselinePct}%).</p>
+<p>${esc(n.driversIntro || '')}</p>
+<div class="fig">${driversSvg(dm)}
+<div class="figcap">Based on the ${fmt(dm.n)} responses with both written text and a score \u2014 the same driver analysis the Statistics tab runs. These are associations in the reviews, not guarantees of cause.</div></div>
+${whatIfHtml(dm)}
+</section>` : ''
 
   const bandsSection = d.bands && n.bandsHead ? `<section><h2>${esc(n.bandsHead)}</h2>
 <p class="sub">Responses split into ${esc(d.bands.fieldLabel)} quartiles — same engine recount within each band.</p>
@@ -950,6 +1167,19 @@ h2{font-size:clamp(21px,2.7vw,29px);font-weight:720;letter-spacing:-.015em;margi
 .bandavg{font-size:30px;font-weight:750;line-height:1.1}
 .q{background:var(--card);border-left:4px solid var(--orange);border-radius:0 12px 12px 0;padding:13px 18px;margin:0 0 12px}
 .q p{margin:0;font-size:16px}.qm{font-size:12.5px;color:var(--dim);margin-top:6px}
+.whatif{background:var(--card);border-radius:12px;padding:20px 22px;margin:18px 0 8px}
+.wtitle{font-weight:720;font-size:17px;margin-bottom:4px}
+.wgrid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(220px,1fr);gap:26px;align-items:center}
+@media(max-width:640px){.wgrid{grid-template-columns:1fr}}
+.wrow{margin-bottom:12px}
+.wlbl{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px}
+.wnow{color:var(--dim);font-variant-numeric:tabular-nums}
+.wrow input[type=range]{width:100%;accent-color:var(--teal)}
+.wout{text-align:center;background:var(--paper);border:1px solid var(--hair);border-radius:12px;padding:18px 14px}
+.wnum{font-size:44px;font-weight:750;line-height:1.05}
+.wsub{font-size:12.5px;color:var(--dim);margin-top:4px}
+.wdelta{font-size:13px;margin-top:8px;font-variant-numeric:tabular-nums}
+.wout button{margin-top:12px;font:inherit;font-size:12.5px;padding:6px 14px;border:1px solid var(--hair);border-radius:999px;background:var(--paper);color:var(--dim);cursor:pointer}
 .xctl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--card);border-radius:12px;padding:14px 16px;margin:0 0 14px}
 .xctl select,.xctl input{font:inherit;font-size:14px;padding:7px 10px;border:1px solid var(--hair);border-radius:8px;background:var(--paper);color:var(--ink)}
 .xctl input{flex:1;min-width:180px}
@@ -989,6 +1219,7 @@ ${d.overallAvgRating != null && n.ratingIntro && n.ratingHead ? `<section><h2>${
 <div class="fig">${ratingDotsSvg(d.themes, d.overallAvgRating)}
 <div class="figcap">Themes with ≥30 rated mentions. Orange = below the overall average, teal = at or above.</div></div>
 </section>` : ''}
+${driversSection}
 ${timelineSection}
 ${d.segments.length >= 2 && n.segmentIntro ? `<section><h2>${esc(n.segmentHead || `How it differs by ${d.segmentFieldLabel}`)}</h2>
 <p class="sub">Top themes within each segment's own substantive responses.</p>

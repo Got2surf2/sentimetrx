@@ -77,7 +77,7 @@ export async function POST(_req: Request, props: Params) {
     try {
       const prompt = narrativePrompt(payload)
       const res = await callAI({
-        tier: 'standard', maxTokens: 1200, timeoutMs: 60000,
+        tier: 'standard', maxTokens: 2000, timeoutMs: 60000,
         system: prompt.system, messages: [{ role: 'user', content: prompt.user }],
       })
       logUsage({ org_id: dataset.org_id, resource_type: 'dataset', resource_id: dataset.id, event_type: 'data_story' }, res.usage)

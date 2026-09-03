@@ -1643,7 +1643,7 @@ function CopyButton({ text }: { text: string }) {
 // Rotating "Did you know?" factoid for long analysis waits (owner 9/03: the
 // Data Story building screen's lib/funFacts pool, reused so a many-round
 // question never feels like an infinite wait). Appears only after the first
-// 7 seconds — quick answers never see it — then rotates every 12s with a
+// 3 seconds (owner 9/03) — quick answers never see it — then rotates with a
 // soft fade. Muted styling keeps the status line as THE current thought.
 function WorkingFactoid() {
   var [fact, setFact] = useState<string | null>(null)
@@ -1657,7 +1657,7 @@ function WorkingFactoid() {
       current = j
       return FUN_FACTS[j]
     }
-    var showTimer = setTimeout(function() { if (alive) setFact(pick()) }, 7000)
+    var showTimer = setTimeout(function() { if (alive) setFact(pick()) }, 3000)
     var rotate = setInterval(function() {
       if (!alive) return
       setFaded(true)

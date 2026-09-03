@@ -156,11 +156,11 @@ export default function DatasetHeader({ dataset, userName, orgName, filterCount 
             '<p id="fct" style="font-size:clamp(22px,3.2vw,30px);line-height:1.4;font-weight:600;color:#1A2421;margin:0;transition:opacity .5s;opacity:1"></p>' +
             '</div></div>' +
             // Same rhythm as Ask Ana's wait-state (components/analyze/
-            // AskAnaPanel): first fact only AFTER 7s (a fast build never
+            // AskAnaPanel): first fact only AFTER 3s (owner 9/03; a fast build never
             // flashes trivia), then a new random fact every 12s, soft fade.
             '<script>(function(){var f=' + JSON.stringify(facts) + ',i=0,el=document.getElementById("fct"),w=document.getElementById("fwrap");' +
             'setTimeout(function(){el.textContent=f[0];w.style.opacity=1;' +
-            'setInterval(function(){el.style.opacity=0;setTimeout(function(){var j=i;while(j===i){j=Math.floor(Math.random()*f.length)}i=j;el.textContent=f[i];el.style.opacity=1},500)},8000)},7000)})()<' + '/script>' +
+            'setInterval(function(){el.style.opacity=0;setTimeout(function(){var j=i;while(j===i){j=Math.floor(Math.random()*f.length)}i=j;el.textContent=f[i];el.style.opacity=1},500)},8000)},3000)})()<' + '/script>' +
             '</body>')
           storyTab.document.close()
         } catch { /* cross-origin guard — cosmetic only */ }
