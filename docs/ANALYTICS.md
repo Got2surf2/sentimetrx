@@ -1985,7 +1985,12 @@ its target). KPI tiles are centered and carry the **score denominator
 ladder** (owner 9/03): score over all responses → among written responses →
 among responses whose text carries ≥1 theme signal, plus theme signals per
 written response (with the share carrying at least one) — so every rate
-quoted later reconciles to a visible base. Score values are passed to the
+quoted later reconciles to a visible base. **The signal tile is COMPLAINT
+signals only (owner decision 9/03):** matches against negative/mixed themes'
+keywords, never positive — a re-mine that adds or drops a positive theme
+must not move the figure (it swung 27%↔37% on identical data when the theme
+set's polarity mix changed). No negative themes in the model → the tile
+hides. Label: "recommend — with a complaint signal". Score values are passed to the
 narrative AI PRE-FORMATTED ("49%") and quoted verbatim, so the % sign
 always renders; the drivers chart reserves label headroom on both flanks
 (outside value labels can never bleed past the box).

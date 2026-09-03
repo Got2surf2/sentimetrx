@@ -211,6 +211,27 @@ describe('renderDataStory', () => {
 
 // ── New deterministic analytics ─────────────────────────────────────────
 
+describe('complaint-signal figures', () => {
+  it('a positive-only theme model yields NO complaint figures (tile hides)', () => {
+    const posOnly: ThemeModel = {
+      themes: [{ id: 'p1', name: 'Food', description: 'the food', keywords: ['food', 'tacos'], sentiment: 'positive', count: 0, percentage: 0, relatedThemes: [] }],
+      summary: '', fieldName: 'comment',
+    }
+    const p = buildStoryPayload({ rows: rows(), themeModel: posOnly, datasetName: 'X', totalRows: 120, fields, analytics })
+    expect(p.signaledAvgRating).toBeNull()
+    expect(p.signaledSharePct).toBeNull()
+    expect(p.writtenAvgRating).not.toBeNull()  // written figure is model-independent
+  })
+
+  it('only negative/mixed keyword matches count as complaint signals', () => {
+    const p = payload()  // Service (negative) + Food (positive), 60 rows each
+    // exactly the service-mentioning half carries a complaint signal
+    expect(p.signaledSharePct).toBe(50)
+    // and that half is the 1-star half
+    expect(p.signaledAvgRating).toBe(1)
+  })
+})
+
 describe('storyPdfHtml', () => {
   it('strips the interactive machinery and forces everything open', () => {
     const p = payload()

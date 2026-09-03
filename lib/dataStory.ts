@@ -108,9 +108,9 @@ export interface StoryData {
   fieldLabel: string
   overallAvgRating: number | null
   writtenAvgRating: number | null    // score among substantive-text responses
-  signaledAvgRating: number | null   // score among responses carrying >=1 theme signal
+  signaledAvgRating: number | null   // score among responses carrying >=1 COMPLAINT signal (neg/mixed themes)
   signalsPerComment: number | null   // theme keyword hits per substantive response
-  signaledSharePct: number | null    // share of substantive responses with >=1 signal
+  signaledSharePct: number | null    // share of substantive responses voicing a recognized complaint
   ratingFieldLabel: string | null
   scorePercent: boolean      // true when the score is a 0-100 %-recommended: render whole percents
   segmentFieldLabel: string | null
@@ -629,11 +629,19 @@ export function buildStoryPayload(opts: BuildStoryOpts): Omit<StoryData, 'narrat
   let signaledAvgRating: number | null = null
   let signaledSharePct: number | null = null
   {
-    const allRegexes = themed.filter(t => t.keywords?.length).map(t => t.keywords.map(buildKwRegex))
+    // COMPLAINT signals only (owner 9/03): the tile's meaning must not drift
+    // with the theme model's polarity mix — a re-mine that drops or adds a
+    // positive theme changed this figure 27%↔37% on the same data. Matching
+    // only negative/mixed themes pins the definition: "articulated a
+    // complaint the model recognizes". No negative themes → figures null and
+    // the tile hides rather than showing a meaningless number.
+    const complaintRegexes = themed
+      .filter(t => (t.sentiment === 'negative' || t.sentiment === 'mixed') && t.keywords?.length)
+      .map(t => t.keywords.map(buildKwRegex))
     let wSum = 0, wN = 0, sgSum = 0, sgN = 0, sgCount = 0
     for (const r of substantive) {
       const text = fieldNames.map(f => String(r[f] ?? '')).join(' ')
-      const signaled = allRegexes.some(res => res.some(re => re.test(text)))
+      const signaled = complaintRegexes.length > 0 && complaintRegexes.some(res => res.some(re => re.test(text)))
       if (signaled) sgCount++
       if (!ratingField) continue
       const v = parseFloat(String(r[ratingField] ?? ''))
@@ -643,8 +651,8 @@ export function buildStoryPayload(opts: BuildStoryOpts): Omit<StoryData, 'narrat
     }
     const rnd = (x: number) => scoreSourceField ? Math.round(x) : Math.round(x * 100) / 100
     if (wN >= 30) writtenAvgRating = rnd(wSum / wN)
-    if (sgN >= 30) signaledAvgRating = rnd(sgSum / sgN)
-    if (substantive.length) signaledSharePct = Math.round(sgCount / substantive.length * 100)
+    if (complaintRegexes.length && sgN >= 30) signaledAvgRating = rnd(sgSum / sgN)
+    if (complaintRegexes.length && substantive.length) signaledSharePct = Math.round(sgCount / substantive.length * 100)
   }
   const totalSignals = themed.reduce((a, t) => a + (t.snippetCount || 0), 0)
   const signalsPerComment = substantive.length && totalSignals
@@ -860,7 +868,8 @@ export function narrativePrompt(d: Omit<StoryData, 'narrative'>): { system: stri
     datasetName: d.datasetName, totalRows: d.totalRows, substantiveBase: d.substantiveBase,
     overallScore: fs(d.overallAvgRating),
     scoreAmongWrittenResponses: fs(d.writtenAvgRating),
-    scoreWhenTextCarriesAThemeSignal: fs(d.signaledAvgRating),
+    scoreWhenTextCarriesAComplaintSignal: fs(d.signaledAvgRating),
+    shareVoicingARecognizedComplaintPct: d.signaledSharePct,
     themeSignalsPerWrittenResponse: d.signalsPerComment,
     themes: d.themes.map(t => ({ name: t.name, pct: t.pct, count: t.count, sentiment: t.sentiment, avgScore: fs(t.avgRating), scoreDeltaPoints: t.ratingDelta })),
     segments: d.segments,
@@ -872,6 +881,7 @@ export function narrativePrompt(d: Omit<StoryData, 'narrative'>): { system: stri
     } : null,
     timeline: d.timeline ? {
       unit: d.timeline.unit, tracked: d.timeline.tracked,
+      scoreMetric: d.ratingFieldLabel,
       scoreFrom: fs(d.timeline.ratingFrom), scoreTo: fs(d.timeline.ratingTo),
       shiftTheme: d.timeline.shiftTheme,
       points: d.timeline.points,
@@ -1343,7 +1353,7 @@ ${n.headline ? `<p class="kicker">${esc(storyTitle(d.datasetName))}</p>` : ''}
 <div class="tile"><b>${d.themes.length}</b><span>themes mined</span></div>
 ${d.overallAvgRating != null ? `<div class="tile"><b>${fmtScoreValue(d.overallAvgRating, d.scorePercent)}</b><span>${d.scorePercent ? 'recommend' : 'average ' + esc(d.ratingFieldLabel || 'rating')} \u2014 all responses</span></div>` : ''}
 ${d.writtenAvgRating != null ? `<div class="tile"><b>${fmtScoreValue(d.writtenAvgRating, d.scorePercent)}</b><span>${d.scorePercent ? 'recommend' : 'average'} — written responses</span></div>` : ''}
-${d.signaledAvgRating != null ? `<div class="tile"><b>${fmtScoreValue(d.signaledAvgRating, d.scorePercent)}</b><span>${d.scorePercent ? 'recommend' : 'average'} — with a theme signal</span></div>` : ''}
+${d.signaledAvgRating != null ? `<div class="tile"><b>${fmtScoreValue(d.signaledAvgRating, d.scorePercent)}</b><span>${d.scorePercent ? 'recommend' : 'average'} — with a complaint signal</span></div>` : ''}
 ${d.signalsPerComment != null ? `<div class="tile"><b>${d.signalsPerComment}</b><span>signals per written response${d.signaledSharePct != null ? ` (${d.signaledSharePct}% have one)` : ''}</span></div>` : ''}
 </div>
 <nav class="snav" id="snav"></nav>
