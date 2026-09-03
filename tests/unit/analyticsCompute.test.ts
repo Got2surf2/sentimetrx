@@ -201,6 +201,51 @@ describe('computeAnalyticsSQL', () => {
     expect(a.fieldSummaries.x).toMatchObject({ type: 'numeric', nonNull: 0, min: 0, max: 0, histogram: [] })
   })
 
+  it('routes >50K datasets through the sampled block twins and scales counts', async () => {
+    // The exact per-field RPCs are O(N) scans that hit the DB statement
+    // timeout on large datasets — the 126K ANES compute stored nonNull=0 for
+    // every numeric field (2026-09-03). Above the 50K cap the compute must
+    // use the sampled twins, like the /aggregate route.
+    const service = fakeService({
+      totalRows: 100000,
+      rpc: (name, args) => {
+        if (name === 'count_field_values' || name === 'numeric_field_stats') {
+          throw new Error('exact RPC called on a >50K dataset: ' + name)
+        }
+        if (name === 'sampled_numeric_field_values_blocks') {
+          return { data: { n_scanned: 4, vals: [1, 2, 3, 4], last_row_index: null }, error: null }
+        }
+        if (name === 'sampled_count_field_values_blocks') {
+          const groups = args.p_field_key === 'score'
+            ? [['1', 1], ['2', 1], ['3', 1], ['4', 1]]
+            : [['red', 3], ['blue', 1]]
+          return { data: { n_scanned: 4, groups, last_row_index: null }, error: null }
+        }
+        return { data: [], error: null }
+      },
+    })
+    const a = await computeAnalyticsSQL(service, 'd1', schema([
+      { field: 'color', type: 'categorical' },
+      { field: 'score', type: 'numeric' },
+    ]))
+    const color = a.fieldSummaries.color as CategoricalSummary
+    expect(color.counts).toEqual({ red: 75000, blue: 25000 }) // scaled ×25000
+    const score = a.fieldSummaries.score as NumericSummary
+    // Counts scale; value-space stats are direct sample estimates, incl. real quartiles
+    expect(score).toMatchObject({ nonNull: 100000, min: 1, max: 4, avg: 2.5, median: 2.5, p25: 1.75, p75: 3.25 })
+  })
+
+  it('fails loudly when an exact RPC errors — never persists a fake all-zero summary', async () => {
+    const service = fakeService({
+      totalRows: 1000,
+      rpc: (name) => name === 'numeric_field_stats'
+        ? { data: null, error: { message: 'canceling statement due to statement timeout' } }
+        : { data: [], error: null },
+    })
+    await expect(computeAnalyticsSQL(service, 'd1', schema([{ field: 'x', type: 'numeric' }])))
+      .rejects.toThrow(/statement timeout/)
+  })
+
   it('prefers the comma-safe SQL non-empty count for open-ended fields, sampling only the word stats', async () => {
     countNonEmptyRowsMock.mockResolvedValue(842)
     const service = fakeService({

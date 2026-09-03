@@ -3,6 +3,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { countNonEmptyRows } from './nonEmptyCount'
+import { sampledCountFieldValues, sampledNumericFieldStats, AGG_SAMPLE_CAP, type NumericStatsRow } from './sampledAggregate'
 import type {
   SchemaConfig,
   SchemaFieldConfig,
@@ -336,6 +337,14 @@ export async function computeAnalyticsSQL(
   var countRes = await service.from('dataset_rows_flat').select('id', { count: 'exact', head: true }).eq('dataset_id', datasetId)
   var totalRows = countRes.count || 0
 
+  // Above the 50K cap use the deterministic sampled twins (sql/169/191) and
+  // scale, exactly like the /aggregate route — the per-field exact RPCs are
+  // O(N) scans that hit the DB statement timeout on large datasets (the 126K
+  // ANES compute stored nonNull=0 for all 25 numeric fields, 2026-09-03).
+  // The Charts UI already labels >50K datasets "≈ estimated from a
+  // 50,000-row sample", so these summaries carry the same semantics.
+  var useSampled = totalRows > AGG_SAMPLE_CAP
+
   var activeFields = schema.fields.filter(function(f) { return f.type !== 'ignore' && f.type !== 'id' })
   var fieldSummaries: Record<string, FieldSummary> = {}
 
@@ -354,10 +363,19 @@ export async function computeAnalyticsSQL(
     }
 
     if (f.type === 'categorical') {
-      var catRes = await service.rpc('count_field_values', { p_dataset_id: datasetId, p_field_key: f.field, p_limit: 500 })
       var counts: Record<string, number> = {}
       var nonNull = 0
-      ;(catRes.data || []).forEach(function(r: FieldValueCountRow) { counts[r.value] = Number(r.count); nonNull += Number(r.count) })
+      if (useSampled) {
+        var sCat = await sampledCountFieldValues(service, datasetId, f.field, 500, totalRows, null)
+        sCat.rows.forEach(function(r) { counts[r.value] = Number(r.count); nonNull += Number(r.count) })
+      } else {
+        var catRes = await service.rpc('count_field_values', { p_dataset_id: datasetId, p_field_key: f.field, p_limit: 500 })
+        // An RPC error (statement timeout on a large scan, missing function)
+        // must FAIL the compute — the old silent fallthrough persisted a fake
+        // all-zero summary that poisoned the snapshot until the next compute.
+        if (catRes.error) throw new Error('count_field_values(' + f.field + '): ' + catRes.error.message)
+        ;(catRes.data || []).forEach(function(r: FieldValueCountRow) { counts[r.value] = Number(r.count); nonNull += Number(r.count) })
+      }
       var sorted = Object.entries(counts).sort(function(a, b) { return b[1] - a[1] })
       return {
         type: 'categorical', nonNull: nonNull,
@@ -370,15 +388,27 @@ export async function computeAnalyticsSQL(
     }
 
     if (f.type === 'numeric') {
-      var numRes = await service.rpc('numeric_field_stats', { p_dataset_id: datasetId, p_field_key: f.field })
-      var nr = (numRes.data || [])[0]
+      var nr: NumericStatsRow | null
+      if (useSampled) {
+        nr = (await sampledNumericFieldStats(service, datasetId, f.field, totalRows, null)).rows
+      } else {
+        var numRes = await service.rpc('numeric_field_stats', { p_dataset_id: datasetId, p_field_key: f.field })
+        if (numRes.error) throw new Error('numeric_field_stats(' + f.field + '): ' + numRes.error.message)
+        nr = ((numRes.data || [])[0] as NumericStatsRow | undefined) || null
+      }
       if (!nr || !nr.n) {
         return { type: 'numeric', nonNull: 0, min: 0, max: 0, avg: 0, median: 0, stddev: 0, p25: 0, p75: 0, histogram: [], uniqueCount: 0, isDiscrete: false } as NumericSummary
       }
       // Get value counts for discrete detection + histogram
-      var vcRes = await service.rpc('count_field_values', { p_dataset_id: datasetId, p_field_key: f.field, p_limit: 50 })
       var valCounts: Record<string, number> = {}
-      ;(vcRes.data || []).forEach(function(r: FieldValueCountRow) { valCounts[r.value] = Number(r.count) })
+      if (useSampled) {
+        var sVc = await sampledCountFieldValues(service, datasetId, f.field, 50, totalRows, null)
+        sVc.rows.forEach(function(r) { valCounts[r.value] = Number(r.count) })
+      } else {
+        var vcRes = await service.rpc('count_field_values', { p_dataset_id: datasetId, p_field_key: f.field, p_limit: 50 })
+        if (vcRes.error) throw new Error('count_field_values(' + f.field + '): ' + vcRes.error.message)
+        ;(vcRes.data || []).forEach(function(r: FieldValueCountRow) { valCounts[r.value] = Number(r.count) })
+      }
       var uniqueNumCount = Object.keys(valCounts).length
       var isDiscrete = uniqueNumCount <= 20
       // Build histogram from value counts if discrete, else approximate from stats
@@ -447,9 +477,16 @@ export async function computeAnalyticsSQL(
     if (f.type === 'date') {
       var dateCounts: Record<string, number> = {}
       var dateMin = '', dateMax = ''
-      var dcRes = await service.rpc('count_field_values', { p_dataset_id: datasetId, p_field_key: f.field, p_limit: 500 })
       var dateNonNull = 0
-      ;(dcRes.data || []).forEach(function(r: FieldValueCountRow) {
+      var dateRows: FieldValueCountRow[]
+      if (useSampled) {
+        dateRows = (await sampledCountFieldValues(service, datasetId, f.field, 500, totalRows, null)).rows
+      } else {
+        var dcRes = await service.rpc('count_field_values', { p_dataset_id: datasetId, p_field_key: f.field, p_limit: 500 })
+        if (dcRes.error) throw new Error('count_field_values(' + f.field + '): ' + dcRes.error.message)
+        dateRows = (dcRes.data || []) as FieldValueCountRow[]
+      }
+      dateRows.forEach(function(r: FieldValueCountRow) {
         dateCounts[r.value] = Number(r.count)
         dateNonNull += Number(r.count)
         if (!dateMin || r.value < dateMin) dateMin = r.value

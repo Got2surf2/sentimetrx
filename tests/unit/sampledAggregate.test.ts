@@ -99,6 +99,10 @@ describe('sampledNumericFieldStats (aggregate op — raw values)', () => {
     expect(r.rows!.median_val).toBe(2.5) // (2+3)/2
     expect(r.rows!.min_val).toBe(1)
     expect(r.rows!.max_val).toBe(4)
+    // Real interpolated quartiles (percentile_cont parity) — feed the
+    // >50K compute snapshot's p25/p75
+    expect(r.rows!.p25_val).toBe(1.75)
+    expect(r.rows!.p75_val).toBe(3.25)
   })
 
   it('returns null rows when no numeric values in the sample', async () => {

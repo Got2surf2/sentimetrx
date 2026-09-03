@@ -658,6 +658,18 @@ over every chart type — the findings and their fixes:
   via `toNumericOrNull` — a silent blank chart. The slot is numeric-only, an empty result now says
   so, and the bars use the selected palette instead of hard-coded colors.
 
+**Compute follows the 50K sampling doctrine + fails loudly (2026-09-03, ANES).** `computeAnalyticsSQL`
+ran the exact per-field RPCs (`count_field_values`, `numeric_field_stats`) at ANY size; on the 126K
+ANES dataset every numeric scan hit the DB statement timeout and the silent `!nr.n` fallthrough
+persisted `nonNull=0` for all 25 numeric fields — a poisoned snapshot that looked computed. Above
+`AGG_SAMPLE_CAP` (50K) the compute now uses the deterministic sampled block twins
+(`sampledCountFieldValues` / `sampledNumericFieldStats`, sql/169/191) and scales counts — the same
+path and semantics as `/aggregate`, matching the Charts UI's "≈ estimated from a 50,000-row sample"
+banner; `sampledNumericFieldStats` gained real interpolated `p25_val`/`p75_val` (percentile_cont
+parity) so sampled snapshots keep true quartiles. On the exact path (≤50K), an RPC **error** now
+throws — failing the compute request — instead of writing fake zeros; a genuinely empty field still
+summarizes to zero.
+
 **Charts "never computed" recovery + last matcher copy (2026-09-03, follow-up).** The prod ANES
 dataset (script-uploaded, 125K rows) sat unplottable: its analytics blob carried only TextMine caches
 (no `totalRows`/`fieldSummaries` — the compute route is only triggered by the Analyze-button/wizard/

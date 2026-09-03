@@ -114,7 +114,7 @@ export interface CrosstabRow { row_val: string; col_val: string | null; cnt: num
 export interface GroupStatsRow { group_val: string; n: number; avg_val: number; median_val: number; min_val: number; max_val: number; stddev_val: number | null }
 export interface DateSeriesRow { bucket_date: string; n: number; avg_val: number | null }
 export interface FieldCountRow { value: string; count: number }
-export interface NumericStatsRow { n: number; min_val: number | null; max_val: number | null; avg_val: number | null; median_val: number | null; stddev_val: number | null }
+export interface NumericStatsRow { n: number; min_val: number | null; max_val: number | null; avg_val: number | null; median_val: number | null; stddev_val: number | null; p25_val?: number | null; p75_val?: number | null }
 
 export interface Sampled<T> { rows: T; scanned: number }
 
@@ -235,6 +235,11 @@ export async function sampledNumericFieldStats(
       avg_val: vals.reduce((a, b) => a + b, 0) / vals.length,
       median_val: median(sorted),
       stddev_val: stddevSamp(vals),
+      // Real quartiles (percentile_cont parity) — the exact RPC carries them
+      // since sql/199, and computeAnalyticsSQL's sampled path reads them for
+      // the snapshot's p25/p75.
+      p25_val: percentileCont(sorted, 0.25),
+      p75_val: percentileCont(sorted, 0.75),
     },
     scanned,
   }
