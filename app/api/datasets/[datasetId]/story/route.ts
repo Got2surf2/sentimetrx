@@ -132,14 +132,14 @@ export async function POST(_req: Request, props: Params) {
 // data_stories query pairs dataset_id with the gated dataset's org_id
 // (multi-tenancy invariant — service-role queries never filter by id alone).
 
-async function gateStoryDataset(supabase: Awaited<ReturnType<typeof createClient>>, datasetId: string) {
+async function gateStoryDataset(supabase: Awaited<ReturnType<typeof createClient>>, datasetId: string): Promise<NextResponse | { service: ReturnType<typeof createServiceRoleClient>; dataset: { id: string; org_id: string }; orgId: string }> {
   const { userId, orgId, isAdmin } = await getCallerOrgContext(supabase)
-  if (!userId || !orgId) return { fail: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  if (!userId || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const service = createServiceRoleClient()
   const { data: dataset } = await service
     .from('datasets').select('id, org_id').eq('id', datasetId).single()
   if (!dataset || (!isAdmin && dataset.org_id !== orgId)) {
-    return { fail: NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 }) }
+    return NextResponse.json({ error: "This resource isn't available to your account." }, { status: 404 })
   }
   return { service, dataset: dataset as { id: string; org_id: string }, orgId }
 }
@@ -148,7 +148,7 @@ export async function GET(_req: Request, props: Params) {
   const params = await props.params
   const supabase = await createClient()
   const gate = await gateStoryDataset(supabase, params.datasetId)
-  if ('fail' in gate) return gate.fail
+  if (gate instanceof NextResponse) return gate
   const { data, error } = await gate.service
     .from('data_stories')
     .select('id, slug, title, created_at, expires_at, revoked_at')
@@ -162,7 +162,7 @@ export async function PATCH(req: Request, props: Params) {
   const params = await props.params
   const supabase = await createClient()
   const gate = await gateStoryDataset(supabase, params.datasetId)
-  if ('fail' in gate) return gate.fail
+  if (gate instanceof NextResponse) return gate
 
   let body: { storyId?: string; action?: string; days?: number }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }) }
