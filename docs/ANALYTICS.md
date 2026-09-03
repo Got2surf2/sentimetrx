@@ -1979,7 +1979,16 @@ modeler reconciles its written-reviews baseline against the all-reviews
 overall on-page; timeline trend figures are POOLED over rated rows (never a
 mean of monthly means); sliders carry "today" ticks; the drivers chart uses a
 dynamic zero axis with in-bar value labels. Sections get a sticky jump-nav
-(scroll narrative kept over tabs — deliberate).
+(scroll narrative kept over tabs — deliberate), and every section COLLAPSES
+on its heading (starts expanded; print always expands; nav click re-expands
+its target). KPI tiles are centered and carry the **score denominator
+ladder** (owner 9/03): score over all responses → among written responses →
+among responses whose text carries ≥1 theme signal, plus theme signals per
+written response (with the share carrying at least one) — so every rate
+quoted later reconciles to a visible base. Score values are passed to the
+narrative AI PRE-FORMATTED ("49%") and quoted verbatim, so the % sign
+always renders; the drivers chart reserves label headroom on both flanks
+(outside value labels can never bleed past the box).
 Robustness the owner hit live: the rating pick
 now validates VALUES not the declared type (retyping "recommended" to numeric
 in Schema silently blanked every score section — a text-valued "numeric" is

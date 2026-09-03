@@ -107,6 +107,10 @@ export interface StoryData {
   substantiveBase: number
   fieldLabel: string
   overallAvgRating: number | null
+  writtenAvgRating: number | null    // score among substantive-text responses
+  signaledAvgRating: number | null   // score among responses carrying >=1 theme signal
+  signalsPerComment: number | null   // theme keyword hits per substantive response
+  signaledSharePct: number | null    // share of substantive responses with >=1 signal
   ratingFieldLabel: string | null
   scorePercent: boolean      // true when the score is a 0-100 %-recommended: render whole percents
   segmentFieldLabel: string | null
@@ -617,6 +621,35 @@ export function buildStoryPayload(opts: BuildStoryOpts): Omit<StoryData, 'narrat
     overallAvgRating = n ? (scoreSourceField ? Math.round(sum / n) : Math.round((sum / n) * 100) / 100) : null
   }
 
+  // The denominator ladder (owner 9/03): the same score over three honest
+  // bases — everyone, responses with written text, and responses whose text
+  // carries at least one theme signal — plus signals-per-comment, so the
+  // reader sees WHY different sections quote different rates.
+  let writtenAvgRating: number | null = null
+  let signaledAvgRating: number | null = null
+  let signaledSharePct: number | null = null
+  {
+    const allRegexes = themed.filter(t => t.keywords?.length).map(t => t.keywords.map(buildKwRegex))
+    let wSum = 0, wN = 0, sgSum = 0, sgN = 0, sgCount = 0
+    for (const r of substantive) {
+      const text = fieldNames.map(f => String(r[f] ?? '')).join(' ')
+      const signaled = allRegexes.some(res => res.some(re => re.test(text)))
+      if (signaled) sgCount++
+      if (!ratingField) continue
+      const v = parseFloat(String(r[ratingField] ?? ''))
+      if (isNaN(v)) continue
+      wSum += v; wN++
+      if (signaled) { sgSum += v; sgN++ }
+    }
+    const rnd = (x: number) => scoreSourceField ? Math.round(x) : Math.round(x * 100) / 100
+    if (wN >= 30) writtenAvgRating = rnd(wSum / wN)
+    if (sgN >= 30) signaledAvgRating = rnd(sgSum / sgN)
+    if (substantive.length) signaledSharePct = Math.round(sgCount / substantive.length * 100)
+  }
+  const totalSignals = themed.reduce((a, t) => a + (t.snippetCount || 0), 0)
+  const signalsPerComment = substantive.length && totalSignals
+    ? Math.round(totalSignals / substantive.length * 10) / 10 : null
+
   // Per-segment theme profiles through the SAME recount.
   const segments: StorySegment[] = []
   if (segmentField) {
@@ -675,6 +708,10 @@ export function buildStoryPayload(opts: BuildStoryOpts): Omit<StoryData, 'narrat
     substantiveBase: substantive.length,
     fieldLabel: fieldNames.join(' + '),
     overallAvgRating,
+    writtenAvgRating,
+    signaledAvgRating,
+    signalsPerComment,
+    signaledSharePct,
     ratingFieldLabel: ratingField ? ratingLabel : null,
     scorePercent: !!scoreSourceField,
     segmentFieldLabel: keptSegments.length ? segmentField : null,
@@ -818,10 +855,14 @@ export function deterministicNarrative(d: Omit<StoryData, 'narrative'>): StoryNa
  *  (CLAUDE.md: no fabricated data) enforced by instruction + the fact that
  *  every chart renders from the payload regardless of what the prose says. */
 export function narrativePrompt(d: Omit<StoryData, 'narrative'>): { system: string; user: string } {
+  const fs = (v: number | null | undefined) => (v == null ? null : fmtScoreValue(v, d.scorePercent))
   const facts = {
     datasetName: d.datasetName, totalRows: d.totalRows, substantiveBase: d.substantiveBase,
-    overallAvgRating: d.overallAvgRating,
-    themes: d.themes.map(t => ({ name: t.name, pct: t.pct, count: t.count, sentiment: t.sentiment, avgRating: t.avgRating, ratingDelta: t.ratingDelta })),
+    overallScore: fs(d.overallAvgRating),
+    scoreAmongWrittenResponses: fs(d.writtenAvgRating),
+    scoreWhenTextCarriesAThemeSignal: fs(d.signaledAvgRating),
+    themeSignalsPerWrittenResponse: d.signalsPerComment,
+    themes: d.themes.map(t => ({ name: t.name, pct: t.pct, count: t.count, sentiment: t.sentiment, avgScore: fs(t.avgRating), scoreDeltaPoints: t.ratingDelta })),
     segments: d.segments,
     drift: d.drift,
     scoreDrivers: d.driversModel ? {
@@ -831,11 +872,15 @@ export function narrativePrompt(d: Omit<StoryData, 'narrative'>): { system: stri
     } : null,
     timeline: d.timeline ? {
       unit: d.timeline.unit, tracked: d.timeline.tracked,
-      ratingFrom: d.timeline.ratingFrom, ratingTo: d.timeline.ratingTo,
+      scoreFrom: fs(d.timeline.ratingFrom), scoreTo: fs(d.timeline.ratingTo),
       shiftTheme: d.timeline.shiftTheme,
       points: d.timeline.points,
     } : null,
-    bands: d.bands,
+    bands: d.bands ? {
+      ...d.bands,
+      bands: d.bands.bands.map(b => ({ ...b, avgScore: fs(b.avgRating), avgRating: undefined })),
+      lowest: d.bands.lowest ? { label: d.bands.lowest.label, avgScore: fs(d.bands.lowest.avgRating) } : null,
+    } : null,
   }
   return {
     system:
@@ -851,6 +896,7 @@ export function narrativePrompt(d: Omit<StoryData, 'narrative'>): { system: stri
       'figure (like "Satisfaction is declining across three releases, led by technical complaints"), ≤ 90 characters, ' +
       'no dataset-name repetition, muted consultant tone. ' +
       'Use ONLY numbers that appear verbatim in the provided facts — never compute, extrapolate, or invent a figure. ' +
+      'Score values arrive pre-formatted (e.g. "49%"): quote them EXACTLY as given, % sign included. ' +
       'Never mention data you were not given. No exclamation marks. Plain confident prose, no headline-speak clichés.',
     user: 'Facts:\n' + JSON.stringify(facts, null, 1) +
       '\n\nWrite: headline (thesis H1), lede (what this corpus is and the single most important pattern), ' +
@@ -1005,7 +1051,9 @@ function driversSvg(dm: StoryDrivers): string {
   // plot hugged the middle): the zero axis sits where the data puts it —
   // the negative and positive ranges split the full plot width — and a value
   // label moves INSIDE its bar when the bar is long enough to hold it.
-  const labW = 300, plotL = labW + 14, plotR = 848, plotW = plotR - plotL, rowH = 40
+  // 64px reserved on each flank so an OUTSIDE value label (short bars) can
+  // never bleed past the viewBox (owner 9/03: '+2 pts' ran off the box).
+  const labW = 300, plotL = labW + 14 + 64, plotR = 848 - 64, plotW = plotR - plotL, rowH = 40
   const maxNeg = Math.max(0, ...rows.map(d => -d.amePp))
   const maxPos = Math.max(0, ...rows.map(d => d.amePp))
   const total = (maxNeg + maxPos) || 1
@@ -1212,7 +1260,7 @@ h2{font-size:clamp(21px,2.7vw,29px);font-weight:720;letter-spacing:-.015em;margi
 .fig svg{width:100%;height:auto;min-width:640px}
 .figcap{font-size:13px;color:var(--dim);margin-top:8px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:20px 0 4px}
-.tile{background:var(--card);border-radius:12px;padding:16px 18px}.tile b{display:block;font-size:28px;font-weight:750}.tile span{font-size:13px;color:var(--dim)}
+.tile{background:var(--card);border-radius:12px;padding:16px 18px;text-align:center}.tile b{display:block;font-size:28px;font-weight:750}.tile span{font-size:13px;color:var(--dim)}
 .sgwrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:20px}
 .sgcard{background:var(--card);border-radius:12px;padding:16px}
 .sgname{font-weight:700;font-size:14px}.sgsub{font-size:11.5px;color:var(--dim);margin-bottom:8px}
@@ -1228,6 +1276,12 @@ html{scroll-behavior:smooth}
 .snav a{font-size:12.5px;color:var(--dim);text-decoration:none;border:1px solid var(--hair);border-radius:999px;padding:4px 12px;white-space:nowrap}
 .snav a:hover{color:var(--ink);border-color:var(--dim)}
 section[data-nav]{scroll-margin-top:56px}
+section[data-nav] h2{cursor:pointer;user-select:none;position:relative;padding-right:34px}
+section[data-nav] h2::after{content:'';position:absolute;right:8px;top:50%;width:10px;height:10px;border-right:2.5px solid var(--dim);border-bottom:2.5px solid var(--dim);transform:translateY(-70%) rotate(45deg);transition:transform .2s}
+section[data-nav].collapsed h2::after{transform:translateY(-40%) rotate(-45deg)}
+section[data-nav].collapsed > *:not(h2){display:none}
+section[data-nav] h2:focus-visible{outline:2px solid var(--teal);outline-offset:4px;border-radius:4px}
+@media print{section[data-nav].collapsed > *:not(h2){display:block}section[data-nav] h2::after{display:none}}
 .whatif{background:var(--card);border-radius:12px;padding:20px 22px;margin:18px 0 8px}
 .wtitle{font-weight:720;font-size:17px;margin-bottom:4px}
 .wgrid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(220px,1fr);gap:26px;align-items:center}
@@ -1269,7 +1323,10 @@ ${n.headline ? `<p class="kicker">${esc(storyTitle(d.datasetName))}</p>` : ''}
 <div class="tile"><b>${fmt(d.totalRows)}</b><span>responses in the dataset</span></div>
 <div class="tile"><b>${fmt(d.substantiveBase)}</b><span>substantive written responses (the base for every theme figure)</span></div>
 <div class="tile"><b>${d.themes.length}</b><span>themes mined from “${esc(d.fieldLabel)}”</span></div>
-${d.overallAvgRating != null ? `<div class="tile"><b>${d.overallAvgRating}</b><span>overall average ${esc(d.ratingFieldLabel || 'rating')}</span></div>` : ''}
+${d.overallAvgRating != null ? `<div class="tile"><b>${fmtScoreValue(d.overallAvgRating, d.scorePercent)}</b><span>${d.scorePercent ? 'recommend' : 'average ' + esc(d.ratingFieldLabel || 'rating')} \u2014 all responses</span></div>` : ''}
+${d.writtenAvgRating != null ? `<div class="tile"><b>${fmtScoreValue(d.writtenAvgRating, d.scorePercent)}</b><span>${d.scorePercent ? 'recommend' : 'average'} among written responses</span></div>` : ''}
+${d.signaledAvgRating != null ? `<div class="tile"><b>${fmtScoreValue(d.signaledAvgRating, d.scorePercent)}</b><span>${d.scorePercent ? 'recommend' : 'average'} when the text carries a theme signal</span></div>` : ''}
+${d.signalsPerComment != null ? `<div class="tile"><b>${d.signalsPerComment}</b><span>theme signals per written response${d.signaledSharePct != null ? ` (${d.signaledSharePct}% carry at least one)` : ''}</span></div>` : ''}
 </div>
 <nav class="snav" id="snav"></nav>
 <section data-nav="Themes"><h2>${esc(n.themesHead)}</h2>
@@ -1301,10 +1358,24 @@ ${explorerHtml(d)}
 <div class="foot"><span class="brand"><span class="d">data</span><span class="n">nautix</span></span> · datanautix.com · This link is time-limited and can be revoked by the publisher at any time.</div>
 <script>
 (function(){
-var nav=document.getElementById('snav');if(!nav)return;
 var secs=Array.prototype.slice.call(document.querySelectorAll('section[data-nav]'));
+// Collapsible sections (owner 9/03): every section starts EXPANDED — the
+// narrative reads and prints whole — but its heading toggles the body.
+secs.forEach(function(sc){
+var h=sc.querySelector('h2');if(!h)return;
+h.setAttribute('role','button');h.setAttribute('tabindex','0');h.setAttribute('aria-expanded','true');
+function toggle(){var c=sc.classList.toggle('collapsed');h.setAttribute('aria-expanded',c?'false':'true')}
+h.addEventListener('click',toggle);
+h.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle()}});
+});
+var nav=document.getElementById('snav');if(!nav)return;
 if(secs.length<3){nav.style.display='none';return}
 nav.innerHTML=secs.map(function(sc,i){sc.id='sec'+i;return '<a href="#sec'+i+'">'+sc.getAttribute('data-nav')+'</a>'}).join('');
+nav.addEventListener('click',function(e){
+var a=e.target.closest('a');if(!a)return;
+var sc=document.querySelector(a.getAttribute('href'));
+if(sc){sc.classList.remove('collapsed');var h=sc.querySelector('h2');if(h)h.setAttribute('aria-expanded','true')}
+});
 })();
 </script>
 </div></body></html>`
