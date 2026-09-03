@@ -1973,7 +1973,14 @@ and n; footnote names the Statistics tab as the recreation path and labels
 the numbers associations, not causation. **What-if scenario modeler**: sliders
 over the top-5 drivers' mention rates, live modeled likelihood = baseline +
 Σ effect × Δprevalence (linear-in-AME planning aid, labeled "directional, not
-a forecast"), reset-to-today. Robustness the owner hit live: the rating pick
+a forecast"), reset-to-today. Number credibility (owner 9/03, live round): percent scores render as WHOLE
+percents everywhere (fmtScoreValue; percent payloads rounded at build); the
+modeler reconciles its written-reviews baseline against the all-reviews
+overall on-page; timeline trend figures are POOLED over rated rows (never a
+mean of monthly means); sliders carry "today" ticks; the drivers chart uses a
+dynamic zero axis with in-bar value labels. Sections get a sticky jump-nav
+(scroll narrative kept over tabs — deliberate).
+Robustness the owner hit live: the rating pick
 now validates VALUES not the declared type (retyping "recommended" to numeric
 in Schema silently blanked every score section — a text-valued "numeric" is
 dropped and the recommend-derivation runs regardless of field type). Output-side American-English

@@ -108,6 +108,7 @@ export interface StoryData {
   fieldLabel: string
   overallAvgRating: number | null
   ratingFieldLabel: string | null
+  scorePercent: boolean      // true when the score is a 0-100 %-recommended: render whole percents
   segmentFieldLabel: string | null
   themes: StoryThemeRow[]
   segments: StorySegment[]
@@ -286,24 +287,30 @@ export function buildTimeline(
   }
 
   const keys = [...buckets.keys()].sort((a, b) => a - b)
-  const points: StoryTimelinePoint[] = keys.map(k => {
-    const b = buckets.get(k)!
+  const kept = keys.map(k => buckets.get(k)!).filter(b => b.count >= 20)
+  const points: StoryTimelinePoint[] = kept.map(b => {
     const shares: Record<string, number> = {}
     for (const t of tracked) shares[t.name] = b.sub ? Math.round((b.hits.get(t.name) || 0) / b.sub * 1000) / 10 : 0
     return { label: b.label, count: b.count, avgRating: b.rN ? Math.round(b.rSum / b.rN * 100) / 100 : null, shares }
-  }).filter(p => p.count >= 20)
+  })
   if (points.length < 4) return null
 
-  // Rating trend: first third vs last third (weighted by rated counts is
-  // overkill for a story — simple means over the point averages).
+  // Rating trend: first third vs last third, POOLED over the underlying
+  // rated rows (owner 9/03: a mean of monthly means is yet another
+  // denominator that won't reconcile with the overall figure).
   const third = Math.max(1, Math.floor(points.length / 3))
+  const pooled = (bs: typeof kept) => {
+    let rSum = 0, rN = 0
+    for (const b of bs) { rSum += b.rSum; rN += b.rN }
+    return rN ? Math.round(rSum / rN * 100) / 100 : null
+  }
+  const ratingFrom = pooled(kept.slice(0, third))
+  const ratingTo = pooled(kept.slice(-third))
   const mean = (ps: StoryTimelinePoint[], f: (p: StoryTimelinePoint) => number | null) => {
     const vs = ps.map(f).filter((v): v is number => v != null)
     return vs.length ? Math.round(vs.reduce((a, b) => a + b, 0) / vs.length * 100) / 100 : null
   }
   const first = points.slice(0, third), last = points.slice(-third)
-  const ratingFrom = mean(first, p => p.avgRating)
-  const ratingTo = mean(last, p => p.avgRating)
 
   let shiftTheme: StoryTimeline['shiftTheme'] = null
   for (const t of tracked) {
@@ -605,7 +612,9 @@ export function buildStoryPayload(opts: BuildStoryOpts): Omit<StoryData, 'narrat
   if (ratingField) {
     let sum = 0, n = 0
     for (const r of rows) { const v = parseFloat(String(r[ratingField] ?? '')); if (!isNaN(v)) { sum += v; n++ } }
-    overallAvgRating = n ? Math.round((sum / n) * 100) / 100 : null
+    // % scores read as whole percents; 1-5 scales keep meaningful decimals
+    // (owner 9/03: "we don't really need two decimal places").
+    overallAvgRating = n ? (scoreSourceField ? Math.round(sum / n) : Math.round((sum / n) * 100) / 100) : null
   }
 
   // Per-segment theme profiles through the SAME recount.
@@ -635,7 +644,23 @@ export function buildStoryPayload(opts: BuildStoryOpts): Omit<StoryData, 'narrat
 
   // Outcome phrasing for the drivers section, in plain English.
   const outcomeLabel = scoreSourceField ? 'recommending' : 'giving a high rating'
-  const driversModel = ratingField ? buildDrivers(rows, themed, fieldNames, ratingField, outcomeLabel) : null
+  let driversModel = ratingField ? buildDrivers(rows, themed, fieldNames, ratingField, outcomeLabel) : null
+  if (driversModel && scoreSourceField) {
+    driversModel = {
+      ...driversModel,
+      baselinePct: Math.round(driversModel.baselinePct),
+      drivers: driversModel.drivers.map(dr => ({ ...dr, amePp: Math.round(dr.amePp), prevalencePct: Math.round(dr.prevalencePct) })),
+    }
+  }
+  if (timeline && scoreSourceField) {
+    timeline.ratingFrom = timeline.ratingFrom != null ? Math.round(timeline.ratingFrom) : null
+    timeline.ratingTo = timeline.ratingTo != null ? Math.round(timeline.ratingTo) : null
+    for (const pt of timeline.points) if (pt.avgRating != null) pt.avgRating = Math.round(pt.avgRating)
+  }
+  if (bands && scoreSourceField) {
+    for (const b of bands.bands) if (b.avgRating != null) b.avgRating = Math.round(b.avgRating)
+    if (bands.lowest) bands.lowest.avgRating = Math.round(bands.lowest.avgRating)
+  }
 
   const quotesRatingField = scoreSourceField ? null : ratingField
   const quotes = pickQuotes(themed, substantive, fieldNames, segmentField, quotesRatingField)
@@ -651,12 +676,15 @@ export function buildStoryPayload(opts: BuildStoryOpts): Omit<StoryData, 'narrat
     fieldLabel: fieldNames.join(' + '),
     overallAvgRating,
     ratingFieldLabel: ratingField ? ratingLabel : null,
+    scorePercent: !!scoreSourceField,
     segmentFieldLabel: keptSegments.length ? segmentField : null,
     themes: themed.map(t => ({
       id: t.id, name: t.name, description: t.description, sentiment: t.sentiment,
       keywords: (t.keywords || []).slice(0, 8),
       count: t.count, pct: t.percentage, ciLow: t.ciLow, ciHigh: t.ciHigh,
-      avgRating: t.avgRating, ratingDelta: t.ratingDelta, ratingCount: t.ratingCount,
+      avgRating: scoreSourceField && t.avgRating != null ? Math.round(t.avgRating) : t.avgRating,
+      ratingDelta: scoreSourceField && t.ratingDelta != null ? Math.round(t.ratingDelta) : t.ratingDelta,
+      ratingCount: t.ratingCount,
     })),
     segments: keptSegments,
     drift: computeDrift(keptSegments),
@@ -707,6 +735,12 @@ function pickQuotes(
 
 // ── Narrative ───────────────────────────────────────────────────────────
 
+/** Format a score for display: whole percents for %-recommended scales,
+ *  one decimal for rating scales (owner 9/03: no two-decimal noise). */
+export function fmtScoreValue(v: number, percent: boolean): string {
+  return percent ? Math.round(v) + '%' : String(Math.round(v * 10) / 10)
+}
+
 /** Deterministic narrative + FINDINGS-LED section heads — used when the AI
  *  call fails, and the baseline the AI version replaces. Every headline is a
  *  claim with its number; states only payload facts. */
@@ -722,7 +756,7 @@ export function deterministicNarrative(d: Omit<StoryData, 'narrative'>): StoryNa
     ? (themeShift
         ? `“${themeShift.name}” moved from ${themeShift.fromPct}% to ${themeShift.toPct}% of the conversation`
         : ratingMoved
-          ? `The average ${d.ratingFieldLabel || 'score'} moved ${tl.ratingFrom} → ${tl.ratingTo} over the period`
+          ? `The average ${d.ratingFieldLabel || 'score'} moved ${fmtScoreValue(tl.ratingFrom as number, d.scorePercent)} → ${fmtScoreValue(tl.ratingTo as number, d.scorePercent)} over the period`
           : `The pattern holds steady across ${tl.points.length} ${tl.unit}s`)
     : null
   const spread = d.bands ? bandThemeSpread(d.bands) : null
@@ -747,10 +781,10 @@ export function deterministicNarrative(d: Omit<StoryData, 'narrative'>): StoryNa
     themesHead: top ? `“${top.name}” dominates — ${top.pct}% of substantive responses` : 'What the responses talk about',
     themesIntro: top ? `“${top.name}” leads the conversation, appearing in ${top.pct}% of substantive responses (${top.count.toLocaleString('en-US')} mentions).` : '',
     ratingHead: worst && worst.ratingDelta != null
-      ? `“${worst.name}” drags the score hardest: ${worst.avgRating} vs ${d.overallAvgRating} overall`
+      ? `“${worst.name}” drags the score hardest: ${fmtScoreValue(worst.avgRating as number, d.scorePercent)} vs ${fmtScoreValue(d.overallAvgRating as number, d.scorePercent)} overall`
       : null,
     ratingIntro: worst && worst.ratingDelta != null
-      ? `Responses mentioning “${worst.name}” average ${worst.avgRating} — ${Math.abs(worst.ratingDelta).toFixed(2)} below the ${d.overallAvgRating} overall average.`
+      ? `Responses mentioning “${worst.name}” average ${fmtScoreValue(worst.avgRating as number, d.scorePercent)} — ${d.scorePercent ? Math.abs(Math.round(worst.ratingDelta)) + ' points' : Math.abs(worst.ratingDelta).toFixed(1)} below the ${fmtScoreValue(d.overallAvgRating as number, d.scorePercent)} overall average.`
       : null,
     segmentHead: d.drift
       ? `“${d.drift.theme}” splits the ${d.segmentFieldLabel}s: ${d.drift.minPct}% at ${d.drift.minSeg}, ${d.drift.maxPct}% at ${d.drift.maxSeg}`
@@ -767,7 +801,7 @@ export function deterministicNarrative(d: Omit<StoryData, 'narrative'>): StoryNa
       ? (themeShift
           ? `Between the start and end of the period, “${themeShift.name}” went from ${themeShift.fromPct}% to ${themeShift.toPct}% of substantive responses.`
           : ratingMoved
-            ? `Averaging the first and last stretches of the period, the ${d.ratingFieldLabel || 'score'} moved from ${tl.ratingFrom} to ${tl.ratingTo}.`
+            ? `Averaging the first and last stretches of the period, the ${d.ratingFieldLabel || 'score'} moved from ${fmtScoreValue(tl.ratingFrom as number, d.scorePercent)} to ${fmtScoreValue(tl.ratingTo as number, d.scorePercent)}.`
             : `Volume and sentiment stay broadly stable across the ${tl.points.length} ${tl.unit}s observed.`)
       : null,
     bandsHead,
@@ -967,21 +1001,33 @@ function segmentGrid(d: StoryData): string {
  *  likelihood down, teal = lifts it. Values are plain "points" only. */
 function driversSvg(dm: StoryDrivers): string {
   const rows = dm.drivers
-  const labW = 300, zero = 560, span = 240, rowH = 40
-  const maxAbs = Math.max(5, ...rows.map(d => Math.abs(d.amePp)))
+  // Dynamic geometry (owner 9/03: values overlapped the theme labels and the
+  // plot hugged the middle): the zero axis sits where the data puts it —
+  // the negative and positive ranges split the full plot width — and a value
+  // label moves INSIDE its bar when the bar is long enough to hold it.
+  const labW = 300, plotL = labW + 14, plotR = 848, plotW = plotR - plotL, rowH = 40
+  const maxNeg = Math.max(0, ...rows.map(d => -d.amePp))
+  const maxPos = Math.max(0, ...rows.map(d => d.amePp))
+  const total = (maxNeg + maxPos) || 1
+  const zero = plotL + (maxNeg / total) * plotW
+  const scale = plotW / total
   const H = rows.length * rowH + 26
   let out = `<svg viewBox="0 0 860 ${H}" role="img" aria-label="Score drivers">` +
-    `<line x1="${zero}" y1="4" x2="${zero}" y2="${H - 20}" stroke="#9AA7A1" stroke-width="1.5"/>` +
-    `<text x="${zero}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#5C6B64">no effect</text>`
+    `<line x1="${zero.toFixed(1)}" y1="4" x2="${zero.toFixed(1)}" y2="${H - 20}" stroke="#9AA7A1" stroke-width="1.5"/>` +
+    `<text x="${zero.toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#5C6B64">no effect</text>`
   rows.forEach((d, i) => {
     const y = 8 + i * rowH
-    const w = Math.abs(d.amePp) / maxAbs * span
+    const w = Math.max(2, Math.abs(d.amePp) * scale)
     const neg = d.amePp < 0
     const x = neg ? zero - w : zero
-    out += `<text x="${labW - 10}" y="${y + 15}" text-anchor="end" font-size="13" fill="#1A2421">${esc(d.name)}</text>` +
-      `<rect x="${x}" y="${y}" width="${Math.max(2, w)}" height="22" rx="4" fill="${neg ? '#E85A1A' : '#089A9E'}">` +
+    const label = (d.amePp > 0 ? '+' : d.amePp < 0 ? '\u2212' : '') + Math.abs(d.amePp) + ' pts'
+    const inside = w > 78
+    const lx = inside ? (neg ? x + 10 : x + w - 10) : (neg ? x - 8 : x + w + 8)
+    const anchor = inside ? (neg ? 'start' : 'end') : (neg ? 'end' : 'start')
+    out += `<text x="${labW}" y="${y + 15}" text-anchor="end" font-size="13" fill="#1A2421">${esc(d.name)}</text>` +
+      `<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="22" rx="4" fill="${neg ? '#E85A1A' : '#089A9E'}">` +
       `<title>Mentioning \u201C${esc(d.name)}\u201D: ${d.amePp > 0 ? '+' : ''}${d.amePp} points on the likelihood of ${esc(dm.outcomeLabel)} (mentioned by ${d.prevalencePct}% of these responses)</title></rect>` +
-      `<text x="${neg ? x - 8 : x + w + 8}" y="${y + 15}" text-anchor="${neg ? 'end' : 'start'}" font-size="12.5" fill="#1A2421">${d.amePp > 0 ? '+' : ''}${d.amePp} pts</text>`
+      `<text x="${lx.toFixed(1)}" y="${y + 15}" text-anchor="${anchor}" font-size="12.5" fill="${inside ? '#FFFFFF' : '#1A2421'}" font-weight="600">${label}</text>`
   })
   return out + '</svg>'
 }
@@ -989,21 +1035,28 @@ function driversSvg(dm: StoryDrivers): string {
 /** What-if scenario modeler: sliders over theme mention-rates, predicted
  *  likelihood updating live. Linear approximation over the per-theme point
  *  effects — labeled as a planning aid, not a forecast. */
-function whatIfHtml(dm: StoryDrivers): string {
+function whatIfHtml(dm: StoryDrivers, overallDisplay: string | null, baseNote: string | null): string {
   const top = [...dm.drivers].sort((a, b) => Math.abs(b.amePp) - Math.abs(a.amePp)).slice(0, 5)
   const model = { base: dm.baselinePct, items: top.map(d => ({ name: d.name, ame: d.amePp, prev: d.prevalencePct })) }
   const json = JSON.stringify(model).replace(/</g, '\\u003c')
-  const sliders = top.map((d, i) =>
-    `<div class="wrow"><div class="wlbl">${esc(d.name)}<span class="wnow" id="wv${i}">${d.prevalencePct}%</span></div>` +
-    `<input type="range" id="ws${i}" min="0" max="${Math.min(100, Math.round(d.prevalencePct * 1.5) + 5)}" step="1" value="${Math.round(d.prevalencePct)}" /></div>`
-  ).join('')
+  const sliders = top.map((d, i) => {
+    const max = Math.min(100, Math.round(d.prevalencePct * 1.5) + 5)
+    const frac = Math.max(0, Math.min(1, d.prevalencePct / max))
+    // "today" tick: a fixed marker at the current mention rate so the reader
+    // always sees the distance from today's mix (owner 9/03). Thumb travel is
+    // inset ~8px per side, so the tick tracks the thumb's actual geometry.
+    return `<div class="wrow"><div class="wlbl">${esc(d.name)}<span class="wnow" id="wv${i}">${d.prevalencePct}%</span></div>` +
+      `<div class="wtrack"><span class="wtick" style="left:calc(8px + (100% - 16px)*${frac.toFixed(4)})" title="today: ${d.prevalencePct}%"></span>` +
+      `<input type="range" id="ws${i}" min="0" max="${max}" step="1" value="${Math.round(d.prevalencePct)}" /></div></div>`
+  }).join('')
   return `<div class="whatif">
 <div class="wtitle">What if the mix changed?</div>
-<p class="sub" style="margin-bottom:14px">Drag a theme's mention rate to see the modeled effect on ${esc(dm.outcomeLabel)}. A planning aid built on the associations above \u2014 directional, not a forecast.</p>
+<p class="sub" style="margin-bottom:14px">Drag a theme's mention rate to see the modeled effect on ${esc(dm.outcomeLabel)}. The gray tick marks today's rate. A planning aid built on the associations above \u2014 directional, not a forecast.</p>
 <div class="wgrid">
 <div>${sliders}</div>
-<div class="wout"><div class="wnum" id="wPred">${dm.baselinePct}%</div><div class="wsub">modeled likelihood of ${esc(dm.outcomeLabel)}</div><div class="wdelta" id="wDelta">at today's mix (${dm.baselinePct}% observed)</div><button id="wReset" type="button">Reset to today</button></div>
+<div class="wout"><div class="wnum" id="wPred">${dm.baselinePct}%</div><div class="wsub">modeled likelihood of ${esc(dm.outcomeLabel)} among written reviews</div><div class="wdelta" id="wDelta">at today's mix (${dm.baselinePct}% observed)</div><button id="wReset" type="button">Reset to today</button></div>
 </div>
+${baseNote ? `<p class="wbase">${baseNote}</p>` : ''}
 <script>
 (function(){
 var M=${json};
@@ -1033,7 +1086,7 @@ function explorerHtml(d: StoryData): string {
   const segs = [...new Set(d.explorer.map(e => e.s).filter((s): s is string => !!s))].sort()
   const json = JSON.stringify(d.explorer).replace(/</g, '\\u003c')
   const opt = (v: string) => `<option value="${esc(v)}">${esc(v)}</option>`
-  return `<section><h2>Read the responses yourselves</h2>
+  return `<section data-nav="Browse responses"><h2>Read the responses yourselves</h2>
 <p class="sub">An evenly-drawn sample of ${fmt(d.explorer.length)} substantive responses from the ${fmt(d.substantiveBase)}-response base — filter and search them directly. Raw browsing, not curated evidence.</p>
 <div class="xctl">
 <select id="xTheme"><option value="">All themes</option>${themes.map(opt).join('')}</select>
@@ -1108,15 +1161,15 @@ export function renderDataStory(d: StoryData): string {
   const tl = d.timeline
   const timelineSection = tl && n.timelineHead ? (() => {
     const ratingFig = d.ratingFieldLabel && tl.points.some(p => p.avgRating != null)
-      ? `<div class="fig">${timelineLinesSvg(tl.points, [{ name: 'avg ' + (d.ratingFieldLabel || 'rating'), color: '#0E7476', get: p => p.avgRating }], tl.unit, false)}
-<div class="figcap">Average ${esc(d.ratingFieldLabel || 'rating')} per ${tl.unit}; ${tl.unit}s with fewer than 20 responses are dropped.</div></div>` : ''
+      ? `<div class="fig">${timelineLinesSvg(tl.points, [{ name: d.scorePercent ? '% recommended' : 'avg ' + (d.ratingFieldLabel || 'rating'), color: '#0E7476', get: p => p.avgRating }], tl.unit, d.scorePercent)}
+<div class="figcap">${d.scorePercent ? '% recommended' : 'Average ' + esc(d.ratingFieldLabel || 'rating')} per ${tl.unit}; ${tl.unit}s with fewer than 20 responses are dropped.${d.scorePercent && d.overallAvgRating != null ? ` Each point covers only that ${tl.unit}'s reviews \u2014 pooled across the whole window they average ${fmtScoreValue(d.overallAvgRating, true)}.` : ''}</div></div>` : ''
     const shareSeries = tl.tracked.slice(0, 3).map((name, i) => ({
       name, color: SEG_COLORS[i % SEG_COLORS.length], get: (p: StoryTimelinePoint) => p.shares[name] ?? null,
     }))
     const shareFig = shareSeries.length
       ? `<div class="fig">${timelineLinesSvg(tl.points, shareSeries, tl.unit, true)}
 <div class="figcap">Share of each ${tl.unit}'s substantive responses mentioning the theme. Hover a point for exact figures.</div></div>` : ''
-    return `<section><h2>${esc(n.timelineHead)}</h2>
+    return `<section data-nav="Over time"><h2>${esc(n.timelineHead)}</h2>
 <p class="sub">By ${tl.unit}, from “${esc(tl.fieldLabel)}”.</p>
 <p>${esc(n.timelineIntro || '')}</p>
 ${ratingFig}${shareFig}
@@ -1124,15 +1177,18 @@ ${ratingFig}${shareFig}
   })() : ''
 
   const dm = d.driversModel
-  const driversSection = dm && n.driversHead ? `<section><h2>${esc(n.driversHead)}</h2>
+  const driversSection = dm && n.driversHead ? `<section data-nav="Drivers"><h2>${esc(n.driversHead)}</h2>
 <p class="sub">Each bar compares responses that mention a theme with those that don't, with the other themes held equal. Points are on the chance of ${esc(dm.outcomeLabel)} (baseline ${dm.baselinePct}%).</p>
 <p>${esc(n.driversIntro || '')}</p>
 <div class="fig">${driversSvg(dm)}
 <div class="figcap">Based on the ${fmt(dm.n)} responses with both written text and a score \u2014 the same driver analysis the Statistics tab runs. These are associations in the reviews, not guarantees of cause.</div></div>
-${whatIfHtml(dm)}
+${whatIfHtml(dm, d.overallAvgRating != null ? fmtScoreValue(d.overallAvgRating, d.scorePercent) : null,
+  d.overallAvgRating != null && d.scorePercent && Math.abs(d.overallAvgRating - dm.baselinePct) >= 3
+    ? `Why ${dm.baselinePct}% here vs ${fmtScoreValue(d.overallAvgRating, true)} overall: the driver analysis can only use reviews with written text (${fmt(dm.n)} of ${fmt(d.totalRows)}), and reviewers who write tend to be more critical than those who only leave a score.`
+    : null)}
 </section>` : ''
 
-  const bandsSection = d.bands && n.bandsHead ? `<section><h2>${esc(n.bandsHead)}</h2>
+  const bandsSection = d.bands && n.bandsHead ? `<section data-nav="Usage bands"><h2>${esc(n.bandsHead)}</h2>
 <p class="sub">Responses split into ${esc(d.bands.fieldLabel)} quartiles — same engine recount within each band.</p>
 <p>${esc(n.bandsIntro || '')}</p>
 <div class="fig"><div class="sgwrap">${bandsGrid(d.bands, d.overallAvgRating, d.ratingFieldLabel)}</div></div>
@@ -1167,6 +1223,11 @@ h2{font-size:clamp(21px,2.7vw,29px);font-weight:720;letter-spacing:-.015em;margi
 .bandavg{font-size:30px;font-weight:750;line-height:1.1}
 .q{background:var(--card);border-left:4px solid var(--orange);border-radius:0 12px 12px 0;padding:13px 18px;margin:0 0 12px}
 .q p{margin:0;font-size:16px}.qm{font-size:12.5px;color:var(--dim);margin-top:6px}
+html{scroll-behavior:smooth}
+.snav{position:sticky;top:0;z-index:5;background:var(--paper);border-bottom:1px solid var(--hair);margin:26px -26px 0;padding:10px 26px;display:flex;flex-wrap:wrap;gap:8px}
+.snav a{font-size:12.5px;color:var(--dim);text-decoration:none;border:1px solid var(--hair);border-radius:999px;padding:4px 12px;white-space:nowrap}
+.snav a:hover{color:var(--ink);border-color:var(--dim)}
+section[data-nav]{scroll-margin-top:56px}
 .whatif{background:var(--card);border-radius:12px;padding:20px 22px;margin:18px 0 8px}
 .wtitle{font-weight:720;font-size:17px;margin-bottom:4px}
 .wgrid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(220px,1fr);gap:26px;align-items:center}
@@ -1174,7 +1235,10 @@ h2{font-size:clamp(21px,2.7vw,29px);font-weight:720;letter-spacing:-.015em;margi
 .wrow{margin-bottom:12px}
 .wlbl{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px}
 .wnow{color:var(--dim);font-variant-numeric:tabular-nums}
-.wrow input[type=range]{width:100%;accent-color:var(--teal)}
+.wtrack{position:relative}
+.wtrack input[type=range]{width:100%;accent-color:var(--teal);position:relative;z-index:1}
+.wtick{position:absolute;top:2px;bottom:2px;width:2px;background:#8FA3AE;border-radius:1px;z-index:0}
+.wbase{font-size:12.5px;color:var(--dim);margin:12px 0 0}
 .wout{text-align:center;background:var(--paper);border:1px solid var(--hair);border-radius:12px;padding:18px 14px}
 .wnum{font-size:44px;font-weight:750;line-height:1.05}
 .wsub{font-size:12.5px;color:var(--dim);margin-top:4px}
@@ -1207,13 +1271,14 @@ ${n.headline ? `<p class="kicker">${esc(storyTitle(d.datasetName))}</p>` : ''}
 <div class="tile"><b>${d.themes.length}</b><span>themes mined from “${esc(d.fieldLabel)}”</span></div>
 ${d.overallAvgRating != null ? `<div class="tile"><b>${d.overallAvgRating}</b><span>overall average ${esc(d.ratingFieldLabel || 'rating')}</span></div>` : ''}
 </div>
-<section><h2>${esc(n.themesHead)}</h2>
+<nav class="snav" id="snav"></nav>
+<section data-nav="Themes"><h2>${esc(n.themesHead)}</h2>
 <p class="sub">Share of the ${fmt(d.substantiveBase)} substantive responses mentioning each theme. A response can carry several.</p>
 <p>${esc(n.themesIntro)}</p>
 <div class="fig">${themeBarsSvg(d.themes, d.substantiveBase)}
 <div class="figcap">Counts and shares from the engine's recount over ${fmt(d.analyzedRows)} rows; hover a bar for the exact figures.</div></div>
 </section>
-${d.overallAvgRating != null && n.ratingIntro && n.ratingHead ? `<section><h2>${esc(n.ratingHead)}</h2>
+${d.overallAvgRating != null && n.ratingIntro && n.ratingHead ? `<section data-nav="Score impact"><h2>${esc(n.ratingHead)}</h2>
 <p class="sub">Average ${esc(d.ratingFieldLabel || 'rating')} of responses mentioning each theme, against the ${d.overallAvgRating} overall.</p>
 <p>${esc(n.ratingIntro)}</p>
 <div class="fig">${ratingDotsSvg(d.themes, d.overallAvgRating)}
@@ -1221,18 +1286,26 @@ ${d.overallAvgRating != null && n.ratingIntro && n.ratingHead ? `<section><h2>${
 </section>` : ''}
 ${driversSection}
 ${timelineSection}
-${d.segments.length >= 2 && n.segmentIntro ? `<section><h2>${esc(n.segmentHead || `How it differs by ${d.segmentFieldLabel}`)}</h2>
+${d.segments.length >= 2 && n.segmentIntro ? `<section data-nav="Segments"><h2>${esc(n.segmentHead || `How it differs by ${d.segmentFieldLabel}`)}</h2>
 <p class="sub">Top themes within each segment's own substantive responses.</p>
 <p>${esc(n.segmentIntro)}</p>
 <div class="fig"><div class="sgwrap">${segmentGrid(d)}</div></div>
 </section>` : ''}
 ${bandsSection}
-${d.quotes.length ? `<section><h2>In their words</h2>
+${d.quotes.length ? `<section data-nav="In their words"><h2>In their words</h2>
 <p class="sub">Verbatim sentences, each verified to carry the sentiment of the theme it illustrates.</p>
 ${quotes}</section>` : ''}
 ${explorerHtml(d)}
 <div class="method"><b>Method.</b> ${fmt(d.totalRows)} responses; themes are AI-mined keyword models recounted over every analyzed row — the ${fmt(d.substantiveBase)} responses with substantive text form the denominator for every share shown.${sampledNote} Time and band figures use the same recount within each bucket. Quotes pass an automated check that the displayed sentence supports the point it illustrates; the explorer is an uncurated even sample.</div>
 <details><summary>Data table — themes</summary><table><tr><th>Theme</th><th>Responses</th><th>% of base</th><th>Avg ${esc(d.ratingFieldLabel || 'rating')}</th></tr>${tableRows}</table></details>
 <div class="foot"><span class="brand"><span class="d">data</span><span class="n">nautix</span></span> · datanautix.com · This link is time-limited and can be revoked by the publisher at any time.</div>
+<script>
+(function(){
+var nav=document.getElementById('snav');if(!nav)return;
+var secs=Array.prototype.slice.call(document.querySelectorAll('section[data-nav]'));
+if(secs.length<3){nav.style.display='none';return}
+nav.innerHTML=secs.map(function(sc,i){sc.id='sec'+i;return '<a href="#sec'+i+'">'+sc.getAttribute('data-nav')+'</a>'}).join('');
+})();
+</script>
 </div></body></html>`
 }
