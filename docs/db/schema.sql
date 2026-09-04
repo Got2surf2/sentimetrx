@@ -1028,25 +1028,9 @@ COMMENT ON FUNCTION "public"."get_rows_by_entity"("p_dataset_ids" "uuid"[], "p_q
 
 
 
-CREATE OR REPLACE FUNCTION "public"."get_rows_by_filters"(
-  p_dataset_ids     uuid[],
-  p_text_fields     jsonb,
-  p_theme_query     text     DEFAULT NULL,
-  p_entity_query    text     DEFAULT NULL,
-  p_sub_touchpoint  text[]   DEFAULT NULL,
-  p_sub_attribute   text[]   DEFAULT NULL,
-  p_sub_product     text[]   DEFAULT NULL,
-  p_sub_beverage    text[]   DEFAULT NULL,
-  p_sub_ambiance    text[]   DEFAULT NULL,
-  p_sub_context     text[]   DEFAULT NULL,
-  p_sub_outcome     text[]   DEFAULT NULL,
-  p_sub_emotion     text[]   DEFAULT NULL,
-  p_has_dim         boolean  DEFAULT false,
-  p_limit           integer  DEFAULT 200,
-  p_offset          integer  DEFAULT 0
-) RETURNS TABLE(id bigint, dataset_id uuid, row_index integer, data jsonb, dim_evidence text[], total_count bigint)
-    LANGUAGE plpgsql STABLE SECURITY DEFINER
-    SET search_path TO 'public', 'pg_temp'
+CREATE OR REPLACE FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "p_text_fields" "jsonb", "p_theme_query" "text" DEFAULT NULL::"text", "p_entity_query" "text" DEFAULT NULL::"text", "p_sub_touchpoint" "text"[] DEFAULT NULL::"text"[], "p_sub_attribute" "text"[] DEFAULT NULL::"text"[], "p_sub_product" "text"[] DEFAULT NULL::"text"[], "p_sub_beverage" "text"[] DEFAULT NULL::"text"[], "p_sub_ambiance" "text"[] DEFAULT NULL::"text"[], "p_sub_context" "text"[] DEFAULT NULL::"text"[], "p_sub_outcome" "text"[] DEFAULT NULL::"text"[], "p_sub_emotion" "text"[] DEFAULT NULL::"text"[], "p_has_dim" boolean DEFAULT false, "p_limit" integer DEFAULT 200, "p_offset" integer DEFAULT 0) RETURNS TABLE("id" bigint, "dataset_id" "uuid", "row_index" integer, "data" "jsonb", "dim_evidence" "text"[], "total_count" bigint)
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
     AS $$
 DECLARE
   v_fields jsonb := '{}'::jsonb;  -- dataset_id -> primary field key
@@ -1140,7 +1124,7 @@ $$;
 ALTER FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "p_text_fields" "jsonb", "p_theme_query" "text", "p_entity_query" "text", "p_sub_touchpoint" "text"[], "p_sub_attribute" "text"[], "p_sub_product" "text"[], "p_sub_beverage" "text"[], "p_sub_ambiance" "text"[], "p_sub_context" "text"[], "p_sub_outcome" "text"[], "p_sub_emotion" "text"[], "p_has_dim" boolean, "p_limit" integer, "p_offset" integer) OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "p_text_fields" "jsonb", "p_theme_query" "text", "p_entity_query" "text", "p_sub_touchpoint" "text"[], "p_sub_attribute" "text"[], "p_sub_product" "text"[], "p_sub_beverage" "text"[], "p_sub_ambiance" "text"[], "p_sub_context" "text"[], "p_sub_outcome" "text"[], "p_sub_emotion" "text"[], "p_has_dim" boolean, "p_limit" integer, "p_offset" integer) IS 'Comments matching ALL active facets (theme keywords AND entity terms AND dimension tags), OR within each facet. Dimension facet reads embedded data._tx axes (sql/151, emotion axis sql/158). total_count is the window count for pagination.';
+COMMENT ON FUNCTION "public"."get_rows_by_filters"("p_dataset_ids" "uuid"[], "p_text_fields" "jsonb", "p_theme_query" "text", "p_entity_query" "text", "p_sub_touchpoint" "text"[], "p_sub_attribute" "text"[], "p_sub_product" "text"[], "p_sub_beverage" "text"[], "p_sub_ambiance" "text"[], "p_sub_context" "text"[], "p_sub_outcome" "text"[], "p_sub_emotion" "text"[], "p_has_dim" boolean, "p_limit" integer, "p_offset" integer) IS 'Unified Comments filter (sql/113, evidence added sql/196): rows matching themes AND entities AND dimension tags. dim_evidence = the matched assertions'' distinct evidence strings from the primary-field _tx block (NULL when no dimension filter), so the client can highlight what the tag hooked. _tx itself stays stripped from data.';
 
 
 
@@ -3986,6 +3970,79 @@ CREATE OR REPLACE FUNCTION "public"."search_knowledge_semantic"("p_bot_id" "uuid
 ALTER FUNCTION "public"."search_knowledge_semantic"("p_bot_id" "uuid", "p_query" "text", "p_embedding" "public"."vector", "p_limit" integer) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."segment_match_ids"("p_dataset_id" "uuid", "p_conds" "jsonb", "p_after_row_index" bigint DEFAULT '-1'::integer, "p_limit" integer DEFAULT 20000) RETURNS "jsonb"
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $_$
+DECLARE
+  cond     jsonb;
+  preds    text := 'true';
+  vals     text[];
+  scanned  bigint;
+  last_ri  bigint;
+  out_ids  jsonb;
+BEGIN
+  FOR cond IN SELECT * FROM jsonb_array_elements(COALESCE(p_conds, '[]'::jsonb)) LOOP
+    IF cond ? 'values' THEN
+      SELECT array_agg(x) INTO vals FROM jsonb_array_elements_text(cond->'values') AS t(x);
+      preds := preds || format(' AND (data ->> %L) = ANY (%L::text[])', cond->>'field', vals);
+    ELSE
+      preds := preds || format(' AND drf_numeric_ok(data ->> %L)', cond->>'field');
+      IF cond ? 'min' THEN
+        preds := preds || format(' AND drf_to_numeric(data ->> %L) >= %L::numeric', cond->>'field', cond->>'min');
+      END IF;
+      IF cond ? 'max' THEN
+        preds := preds || format(' AND drf_to_numeric(data ->> %L) <= %L::numeric', cond->>'field', cond->>'max');
+      END IF;
+    END IF;
+  END LOOP;
+
+  EXECUTE format(
+    'WITH page AS (
+       SELECT id, row_index, (%s) AS ok
+       FROM dataset_rows_flat
+       WHERE dataset_id = $1 AND row_index > $2
+       ORDER BY row_index
+       LIMIT $3
+     )
+     SELECT count(*),
+            max(row_index),
+            COALESCE(jsonb_agg(id ORDER BY id) FILTER (WHERE ok), ''[]''::jsonb)
+     FROM page', preds)
+  INTO scanned, last_ri, out_ids
+  USING p_dataset_id, p_after_row_index, p_limit;
+
+  RETURN jsonb_build_object('n_scanned', scanned, 'last_row_index', last_ri, 'ids', out_ids);
+END
+$_$;
+
+
+ALTER FUNCTION "public"."segment_match_ids"("p_dataset_id" "uuid", "p_conds" "jsonb", "p_after_row_index" bigint, "p_limit" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."segment_row_matches"("p_data" "jsonb", "p_conds" "jsonb") RETURNS boolean
+    LANGUAGE "sql" IMMUTABLE PARALLEL SAFE
+    SET "search_path" TO 'public'
+    AS $$
+  SELECT COALESCE(bool_and(
+    CASE
+      WHEN c ? 'values' THEN
+        (p_data ->> (c->>'field')) = ANY (
+          ARRAY(SELECT jsonb_array_elements_text(c->'values'))
+        )
+      ELSE
+        drf_numeric_ok(p_data ->> (c->>'field'))
+        AND (NOT c ? 'min' OR drf_to_numeric(p_data ->> (c->>'field')) >= (c->>'min')::numeric)
+        AND (NOT c ? 'max' OR drf_to_numeric(p_data ->> (c->>'field')) <= (c->>'max')::numeric)
+    END
+  ), false)
+  FROM jsonb_array_elements(p_conds) AS c;
+$$;
+
+
+ALTER FUNCTION "public"."segment_row_matches"("p_data" "jsonb", "p_conds" "jsonb") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."set_brand_collection_id"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
@@ -4952,8 +5009,6 @@ CREATE TABLE IF NOT EXISTS "public"."ai_consent_audit" (
 ALTER TABLE "public"."ai_consent_audit" OWNER TO "postgres";
 
 
--- sql/197 (applied to TEST 2026-09-02; prod apply pending — full regenerated
--- snapshot lands when `npm run migrate sql/197_analyst_memories.sql` runs)
 CREATE TABLE IF NOT EXISTS "public"."analyst_memories" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "org_id" "uuid" NOT NULL,
@@ -4965,11 +5020,13 @@ CREATE TABLE IF NOT EXISTS "public"."analyst_memories" (
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     CONSTRAINT "analyst_memories_source_check" CHECK (("source" = ANY (ARRAY['interview'::"text", 'correction'::"text", 'observed'::"text"]))),
-    CONSTRAINT "analyst_memories_status_check" CHECK (("status" = ANY (ARRAY['active'::"text", 'pending'::"text", 'archived'::"text"]))),
-    CONSTRAINT "analyst_memories_statement_check" CHECK ((("char_length"("statement") >= 1) AND ("char_length"("statement") <= 500)))
+    CONSTRAINT "analyst_memories_statement_check" CHECK ((("char_length"("statement") >= 1) AND ("char_length"("statement") <= 500))),
+    CONSTRAINT "analyst_memories_status_check" CHECK (("status" = ANY (ARRAY['active'::"text", 'pending'::"text", 'archived'::"text"])))
 );
--- idx_analyst_memories_user (user_id, org_id, status); RLS enabled;
--- policy analyst_memories_org_read: SELECT USING org_id = caller's users.org_id.
+
+
+ALTER TABLE "public"."analyst_memories" OWNER TO "postgres";
+
 
 CREATE TABLE IF NOT EXISTS "public"."archived_dataset_rows" (
     "id" bigint NOT NULL,
@@ -5422,6 +5479,24 @@ COMMENT ON COLUMN "public"."conversations"."participant_id" IS 'Town-hall partic
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."data_stories" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "org_id" "uuid" NOT NULL,
+    "dataset_id" "uuid" NOT NULL,
+    "slug" "text" NOT NULL,
+    "title" "text" DEFAULT ''::"text" NOT NULL,
+    "storage_path" "text" NOT NULL,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "expires_at" timestamp with time zone NOT NULL,
+    "revoked_at" timestamp with time zone,
+    CONSTRAINT "data_stories_slug_check" CHECK ((("char_length"("slug") >= 8) AND ("char_length"("slug") <= 32)))
+);
+
+
+ALTER TABLE "public"."data_stories" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."dataset_rows" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "dataset_id" "uuid" NOT NULL,
@@ -5501,6 +5576,7 @@ COMMENT ON COLUMN "public"."dataset_state"."outlet_action_plans" IS 'Cache of pe
 
 
 COMMENT ON COLUMN "public"."dataset_state"."filter_options" IS 'Cache of the filter-options route''s computed per-field options: {fingerprint, computedAt, fields}. Fingerprint = row count + schema fields signature + last_synced_at; the route recomputes when it no longer matches (sql/194).';
+
 
 
 COMMENT ON COLUMN "public"."dataset_state"."outlet_scan_cache" IS 'Persisted outlet-report scan (lib/outletScanCache PersistedScan v1): per-outlet aggregates + per-row digest, keyed by {fingerprint}. Written compute-on-miss by lib/outletReport.loadScan; safe to NULL at any time (next view recomputes).';
@@ -6899,6 +6975,11 @@ ALTER TABLE ONLY "public"."ai_consent_audit"
 
 
 
+ALTER TABLE ONLY "public"."analyst_memories"
+    ADD CONSTRAINT "analyst_memories_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."archived_dataset_rows_flat"
     ADD CONSTRAINT "archived_dataset_rows_flat_pkey" PRIMARY KEY ("id");
 
@@ -7011,6 +7092,16 @@ ALTER TABLE ONLY "public"."conversation_turns"
 
 ALTER TABLE ONLY "public"."conversations"
     ADD CONSTRAINT "conversations_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."data_stories"
+    ADD CONSTRAINT "data_stories_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."data_stories"
+    ADD CONSTRAINT "data_stories_slug_key" UNIQUE ("slug");
 
 
 
@@ -7475,6 +7566,10 @@ CREATE INDEX "idx_akph_agent" ON "public"."agent_kb_page_hashes" USING "btree" (
 
 
 
+CREATE INDEX "idx_analyst_memories_user" ON "public"."analyst_memories" USING "btree" ("user_id", "org_id", "status");
+
+
+
 CREATE INDEX "idx_apr_analytics" ON "public"."agent_probe_responses" USING "btree" ("org_id", "agent_id", "probe_id", "probe_version", "outcome");
 
 
@@ -7540,6 +7635,10 @@ CREATE INDEX "idx_collections_org" ON "public"."collections" USING "btree" ("org
 
 
 CREATE INDEX "idx_conversation_turns_town_hall" ON "public"."conversation_turns" USING "btree" ("town_hall_id", "created_at") WHERE ("town_hall_id" IS NOT NULL);
+
+
+
+CREATE INDEX "idx_data_stories_org" ON "public"."data_stories" USING "btree" ("org_id", "dataset_id", "created_at" DESC);
 
 
 
@@ -8852,6 +8951,15 @@ CREATE POLICY "akph_org_read" ON "public"."agent_kb_page_hashes" FOR SELECT USIN
 
 
 
+ALTER TABLE "public"."analyst_memories" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "analyst_memories_org_read" ON "public"."analyst_memories" FOR SELECT USING (("org_id" = ( SELECT "users"."org_id"
+   FROM "public"."users"
+  WHERE ("users"."id" = "auth"."uid"()))));
+
+
+
 CREATE POLICY "apq_org_read" ON "public"."agent_probe_quota" FOR SELECT USING (("agent_id" IN ( SELECT "agents"."id"
    FROM "public"."agents"
   WHERE ("agents"."org_id" = ( SELECT "users"."org_id"
@@ -9024,6 +9132,15 @@ CREATE POLICY "creator can update datasets" ON "public"."datasets" FOR UPDATE US
 CREATE POLICY "creator can upsert dataset_state" ON "public"."dataset_state" USING ((("dataset_id" IN ( SELECT "datasets"."id"
    FROM "public"."datasets"
   WHERE ("datasets"."created_by" = "auth"."uid"()))) OR "public"."is_platform_admin"()));
+
+
+
+ALTER TABLE "public"."data_stories" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "data_stories_org_read" ON "public"."data_stories" FOR SELECT USING (("org_id" = ( SELECT "users"."org_id"
+   FROM "public"."users"
+  WHERE ("users"."id" = "auth"."uid"()))));
 
 
 
@@ -10125,6 +10242,16 @@ GRANT ALL ON FUNCTION "public"."search_knowledge_semantic"("p_bot_id" "uuid", "p
 
 
 
+REVOKE ALL ON FUNCTION "public"."segment_match_ids"("p_dataset_id" "uuid", "p_conds" "jsonb", "p_after_row_index" bigint, "p_limit" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."segment_match_ids"("p_dataset_id" "uuid", "p_conds" "jsonb", "p_after_row_index" bigint, "p_limit" integer) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."segment_row_matches"("p_data" "jsonb", "p_conds" "jsonb") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."segment_row_matches"("p_data" "jsonb", "p_conds" "jsonb") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."set_brand_collection_id"() TO "anon";
 GRANT ALL ON FUNCTION "public"."set_brand_collection_id"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."set_brand_collection_id"() TO "service_role";
@@ -10331,6 +10458,12 @@ GRANT ALL ON TABLE "public"."ai_consent_audit" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."analyst_memories" TO "anon";
+GRANT ALL ON TABLE "public"."analyst_memories" TO "authenticated";
+GRANT ALL ON TABLE "public"."analyst_memories" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."archived_dataset_rows" TO "anon";
 GRANT ALL ON TABLE "public"."archived_dataset_rows" TO "authenticated";
 GRANT ALL ON TABLE "public"."archived_dataset_rows" TO "service_role";
@@ -10454,6 +10587,12 @@ GRANT ALL ON TABLE "public"."conversation_turns" TO "service_role";
 GRANT ALL ON TABLE "public"."conversations" TO "anon";
 GRANT ALL ON TABLE "public"."conversations" TO "authenticated";
 GRANT ALL ON TABLE "public"."conversations" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."data_stories" TO "anon";
+GRANT ALL ON TABLE "public"."data_stories" TO "authenticated";
+GRANT ALL ON TABLE "public"."data_stories" TO "service_role";
 
 
 
@@ -10835,20 +10974,3 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 
 
 
-
--- ── sql/198 data_stories (manual note — applied to TEST; prod apply pending
---    owner-run Management API; this snapshot regenerates at that `npm run
---    migrate`) ──────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS data_stories (
-  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id       uuid NOT NULL,
-  dataset_id   uuid NOT NULL,
-  slug         text NOT NULL UNIQUE CHECK (char_length(slug) BETWEEN 8 AND 32),
-  title        text NOT NULL DEFAULT '',
-  storage_path text NOT NULL,
-  created_by   uuid,
-  created_at   timestamptz NOT NULL DEFAULT now(),
-  expires_at   timestamptz NOT NULL,
-  revoked_at   timestamptz
-);
--- RLS enabled; org-scoped SELECT policy data_stories_org_read; index idx_data_stories_org.

@@ -251,6 +251,20 @@ the old behavior. Stored snapshots refresh per dataset on its next
 compute/sync. sql/190 REVOKE block re-applied (mandatory on every
 SECURITY DEFINER re-CREATE).
 
+sql/200 + sql/201 (2026-09-04, applied together via the management-API
+template) added `segment_match_ids(p_dataset_id, p_conds jsonb, p_after_row_index,
+p_limit)` — Ana's subgroup (`where`) filter evaluated INSIDE Postgres as one
+keyset-paged pass — plus `segment_row_matches(data, conds)`, the executable
+spec of the condition semantics (values → text equality on `data->>field`;
+min/max → the canonical `drf_numeric_ok`/`drf_to_numeric` range with blanks
+excluded; conditions AND). sql/200's first cut called the helper per row over
+a materialized blob CTE (measured 6s/20K page on ANES — wide-row detoast);
+sql/201 rewrote the pager to COMPILE the conditions into a native predicate
+with format-%L literal quoting (injection-safe) — 1-2s/page, 9s end-to-end
+on a 3-condition 126K-row subgroup. Both SECURITY DEFINER with the sql/190
+REVOKE block; service_role-only. Caller: `lib/anaSegment.resolveWhereRowIds`
+(falls back to the JS scan path on PGRST202).
+
 sql/169 (2026-07-13, perf review §7 Brief C) reworked the five scalar
 `/aggregate` RPCs — `crosstab_counts`, `group_numeric_stats`,
 `date_series_stats`, `count_field_values`, `numeric_field_stats`. Each

@@ -124,7 +124,7 @@ export function matchStoredValues(requested: string, stored: string[]): string[]
 }
 
 type Service = {
-  rpc: (name: string, args: Record<string, unknown>) => PromiseLike<{ data: { value: string; count: number }[] | null; error: { message: string } | null }>
+  rpc: (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string; code?: string } | null }>
   from: (t: string) => {
     select: (s: string) => {
       eq: (c: string, v: unknown) => {
@@ -173,6 +173,40 @@ async function idsForCatValue(service: Service, scope: string[], field: string, 
   return out
 }
 
+// One-pass SQL matching (sql/200): page segment_match_ids over each scope
+// member — the whole condition set evaluates INSIDE Postgres, so a 126K-row
+// dataset resolves in a handful of ~0.5s pages instead of client-side id
+// enumeration. Returns null when the function isn't deployed yet (PGRST202 —
+// the caller falls back to the JS scan path; deploy-order safe).
+async function sqlSegmentIds(
+  svc: Service, scope: string[], conds: WhereCondition[],
+): Promise<number[] | { error: string } | null> {
+  const conj = conds.map(c => c.values?.length
+    ? { field: c.field, values: c.values.map(String) }
+    : { field: c.field, ...(c.min != null ? { min: c.min } : {}), ...(c.max != null ? { max: c.max } : {}) })
+  const out: number[] = []
+  const PAGE = 20000
+  const MAX_PAGES = 100 // 2M-row backstop
+  for (const dsId of scope) {
+    let after = -1
+    for (let g = 0; g < MAX_PAGES; g++) {
+      const { data, error } = await svc.rpc('segment_match_ids', {
+        p_dataset_id: dsId, p_conds: conj, p_after_row_index: after, p_limit: PAGE,
+      })
+      if (error) {
+        if (error.code === 'PGRST202' || /function .*segment_match_ids/i.test(error.message)) return null
+        return { error: 'segment match failed: ' + error.message }
+      }
+      const body = data as { n_scanned?: number; last_row_index?: number | null; ids?: number[] } | null
+      for (const id of body?.ids || []) out.push(Number(id))
+      const scanned = Number(body?.n_scanned || 0)
+      if (scanned < PAGE || body?.last_row_index == null) break
+      after = Number(body.last_row_index)
+    }
+  }
+  return out.sort((a, b) => a - b)
+}
+
 export async function resolveWhereRowIds(
   service: unknown,
   opts: { datasetId: string; rowCount: number; where: WhereCondition[]; scope?: string[] },
@@ -213,7 +247,7 @@ export async function resolveWhereRowIds(
           p_dataset_id: dsId, p_field_key: cond.field, p_limit: 500,
         })
         if (fcErr) return { error: 'could not read values of "' + cond.field + '": ' + fcErr.message }
-        rows = (fc || []) as { value: string; count: number }[]
+        rows = (fc || []) as unknown as { value: string; count: number }[]
       }
       for (const r of rows) {
         const v = String(r.value)
@@ -237,15 +271,28 @@ export async function resolveWhereRowIds(
       }
     }
     cond.values = [...resolvedValues]   // the label reports what actually ran
+  }
 
+  // FAST PATH (sql/200): the whole resolved condition set — categorical AND
+  // range — evaluates inside Postgres in keyset pages. Falls through to the
+  // JS scan path only when the function isn't deployed (PGRST202).
+  const sqlIds = await sqlSegmentIds(svc, scope, opts.where)
+  if (sqlIds && !Array.isArray(sqlIds)) return sqlIds // real error
+  if (Array.isArray(sqlIds)) {
+    const label0 = describeWhere(opts.where)
+    if (sqlIds.length === 0) return { error: 'No rows match all conditions (' + label0 + ').' }
+    return { ids: sqlIds, sampled: false, label: label0, mappings }
+  }
+
+  for (const cond of catConds) {
     const condSet = new Set<number>()
-    for (const v of resolvedValues) {
+    for (const v of cond.values!) {
       const r = await idsForCatValue(svc, scope, cond.field, v)
       if ('error' in r) return r
       r.forEach(id => condSet.add(id))
     }
     if (condSet.size === 0) {
-      return { error: 'No rows match ' + cond.field + ' ∈ [' + [...resolvedValues].join(', ') + '].' }
+      return { error: 'No rows match ' + cond.field + ' ∈ [' + cond.values!.join(', ') + '].' }
     }
     if (ids === null) {
       ids = condSet

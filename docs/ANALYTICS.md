@@ -2555,8 +2555,21 @@ the 50K sampled twin above the cap (the exact RPC statement-times-out at
 ANES scale); `NARROWED_RANGE_CAP` raised 60K→150K (a 64K-row party slice
 must range-filter, not refuse); and resolutions memoize ACROSS turns in a
 10-minute module-level LRU, so a rephrased question re-uses the resolved id
-set instantly. Measured on the owner's exact scenario (Republicans ≤39,
-≥2012 on 126K rows): fail@minutes → 33s cold, ~0s warm.
+set instantly. **Then sql/200+201 moved the whole filter into Postgres:**
+`segment_match_ids(dataset, conds, after, limit)` compiles the resolved
+conditions (values → text equality, min/max → drf numeric range) into a
+native predicate via format-%L dynamic SQL and evaluates it during the
+keyset scan — one paged call sequence replaces all client-side id
+enumeration; `segment_row_matches` remains as the executable spec of the
+semantics (whereToFilters ≡ applyFilters) and the unit fakes mirror it.
+The JS scan path stays as the PGRST202 fallback (deploy-order safe) and
+value RESOLUTION stays client-side (fuzzy matching + mappings + the
+stored-values error are product surface). Measured on the owner's exact
+scenario (Republicans ≤39, ≥2012 on 126K rows): fail@minutes → 33s (JS
+parallel pass) → **9s end-to-end cold, ~0s warm** (sql/201; the residual
+is intrinsic detoast cost of wide survey rows). sql/200's first cut
+evaluated a per-row SQL function over materialized blobs — 36s — before
+201's compiled predicate; both applied to prod via the management API.
 
 **Ana works the CURRENT VIEW (2026-09-02, owner-hit).** Ana answered from the
 default verbatim column while the analyst had another selected, and leaned on

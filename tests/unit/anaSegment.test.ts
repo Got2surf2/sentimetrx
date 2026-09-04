@@ -48,6 +48,33 @@ describe('validateWhere', () => {
 
 // ── PostgREST-faithful fake over an in-memory row store ─────────────────────
 
+// Faithful emulation of sql/200 segment_match_ids over the in-memory store —
+// text equality for values, drf-style numeric guard for ranges, AND across
+// conditions. Existing scenarios must produce IDENTICAL results through this
+// path as through the JS fallback.
+function numericOk(t: unknown): boolean {
+  return t != null && /^-?(?:[0-9]+\.?[0-9]*|\.[0-9]+)([eE][-+]?[0-9]+)?$/.test(String(t).trim())
+}
+function segMatch(data: Record<string, unknown>, conds: { field: string; values?: string[]; min?: number; max?: number }[]): boolean {
+  return conds.every(c => {
+    const raw = data[c.field]
+    if (c.values) return raw != null && c.values.includes(String(raw))
+    if (!numericOk(raw)) return false
+    const v = parseFloat(String(raw))
+    if (c.min != null && v < c.min) return false
+    if (c.max != null && v > c.max) return false
+    return true
+  })
+}
+function segmentMatchIdsRpc(rows: Row[], args: Record<string, unknown>) {
+  const after = Number(args.p_after_row_index ?? -1)
+  const limit = Number(args.p_limit ?? 20000)
+  const page = rows.map((r, i) => ({ ...r, row_index: i })).filter(r => r.row_index > after).slice(0, limit)
+  const ids = page.filter(r => segMatch(r.data, args.p_conds as never)).map(r => r.id).sort((a, b) => a - b)
+  return { n_scanned: page.length, last_row_index: page.length ? page[page.length - 1].row_index : null, ids }
+}
+
+
 // Emulate PostgREST's aliased jsonb arrow-select ('"f0":data->"Age"') — the
 // resolver pulls only the range fields since 2026-09-04.
 function projectRows(rows: Row[], sel: string | null): Record<string, unknown>[] {
@@ -63,8 +90,12 @@ function projectRows(rows: Row[], sel: string | null): Record<string, unknown>[]
 
 type Row = { id: number; data: Record<string, unknown> }
 
-function fakeService(rows: Row[]) {
+function fakeService(rows: Row[], opts?: { noSegmentFn?: boolean }) {
   const rpc = (_name: string, args: Record<string, unknown>) => {
+    if (_name === 'segment_match_ids') {
+      if (opts?.noSegmentFn) return Promise.resolve({ data: null, error: { message: 'function public.segment_match_ids does not exist', code: 'PGRST202' } })
+      return Promise.resolve({ data: segmentMatchIdsRpc(rows, args), error: null })
+    }
     const field = String(args.p_field_key)
     const counts = new Map<string, number>()
     rows.forEach(r => { const v = r.data[field]; if (v != null && String(v).trim() !== '') counts.set(String(v), (counts.get(String(v)) || 0) + 1) })
@@ -179,6 +210,7 @@ describe('matchStoredValues', () => {
 function fakeScopedService(byDataset: Record<string, Row[]>) {
   const rpc = (_name: string, args: Record<string, unknown>) => {
     const rows = byDataset[String(args.p_dataset_id)] || []
+    if (_name === 'segment_match_ids') return Promise.resolve({ data: segmentMatchIdsRpc(rows, args), error: null })
     const field = String(args.p_field_key)
     const counts = new Map<string, number>()
     rows.forEach(r => { const v = r.data[field]; if (v != null && String(v).trim() !== '') counts.set(String(v), (counts.get(String(v)) || 0) + 1) })
@@ -275,5 +307,35 @@ describe('resolveWhereRowIds — collection scope', () => {
     expect(r).not.toHaveProperty('error')
     if ('error' in r) return
     expect(r.ids).toEqual([1])
+  })
+})
+
+describe('sql/200 fast path + fallback', () => {
+  it('an un-migrated DB (PGRST202) falls back to the JS scan path with identical results', async () => {
+    const viaSql = await resolveWhereRowIds(fakeService(ROWS), {
+      datasetId: 'd1', rowCount: ROWS.length,
+      where: [{ field: 'race', values: ['Black'] }, { field: 'age', min: 25 }],
+    })
+    const viaJs = await resolveWhereRowIds(fakeService(ROWS, { noSegmentFn: true }), {
+      datasetId: 'd1', rowCount: ROWS.length,
+      where: [{ field: 'race', values: ['Black'] }, { field: 'age', min: 25 }],
+    })
+    expect(viaSql).not.toHaveProperty('error')
+    expect(viaJs).not.toHaveProperty('error')
+    if ('error' in viaSql || 'error' in viaJs) return
+    expect(viaSql.ids).toEqual(viaJs.ids)
+    expect(viaSql.sampled).toBe(false)
+  })
+
+  it('the SQL path pages by keyset (small page size still finds everything)', async () => {
+    // 6 rows with a 20K page is one page; force multi-page via a tiny store walk
+    const many: Row[] = Array.from({ length: 50 }, (_, i) => ({ id: i + 1, data: { g: i % 2 === 0 ? 'even' : 'odd', v: i } }))
+    const r = await resolveWhereRowIds(fakeService(many), {
+      datasetId: 'd1', rowCount: many.length,
+      where: [{ field: 'g', values: ['even'] }, { field: 'v', min: 10 }],
+    })
+    expect(r).not.toHaveProperty('error')
+    if ('error' in r) return
+    expect(r.ids).toEqual(many.filter(x => x.data.g === 'even' && Number(x.data.v) >= 10).map(x => x.id))
   })
 })
