@@ -2331,6 +2331,23 @@ client-confirmation-card behavior and end the turn. Two query tools
   result carries a "subgroup … (N rows) — always report this subgroup" note.
   Verified live on TEST Carrabba's ("dissatisfied dine-in guests" → satisfaction
   ∈ [Somewhat/Highly Dissatisfied] ∩ visit type, 4,167 rows, stated in the answer).
+  **Two-subgroup comparison (`vs`, 2026-09-04):** `query_data` additionally
+  takes `vs` (same condition shape; requires `where`) — `where` = group A,
+  `vs` = group B, ONE call. Both groups resolve through the same
+  `resolveScope` path (per-turn cache + cross-turn memo + fuzzy matching) and
+  both intersect the user's active filters; an emptied side errors naming
+  WHICH group. The op runs once per group via the same `buildAggParams`
+  mapping as a single-group call (numbers can't diverge between paths), and
+  the result returns `groupA`/`groupB` (label + row count + op body) plus a
+  **code-computed** `comparison` — counts ops get per-group shares and
+  percentage-point deltas sorted by |Δ| (top 12; raw counts mislead across
+  different group sizes), `numeric_stats` gets avg/median deltas — so the
+  arithmetic is platform-recreatable, never left to the model. Overlapping
+  groups carry an `overlapNote` (row count in both). The system prompt routes
+  every "X vs Y" question here instead of two separate calls; the logic trail
+  logs "Compared A (n) vs B (m)…", and compare calls never map to a canvas
+  chart (`chartConfigForQuery` returns null — a single-scope chart would
+  contradict the two-group answer).
 - **`find_quotes`** — full-text search (`search_dataset_rows` RPC, textSearch
   fallback, collection fan-out via `resolveScopeMembers`) returning verbatim quotes
   (≤20, internal `_` fields stripped) + an **exact whole-dataset match count**

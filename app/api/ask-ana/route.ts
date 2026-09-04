@@ -507,6 +507,7 @@ QUERY TOOLS — YOUR NUMBERS COME FROM THESE, NOT THE SAMPLE:
 - For questions that need READING rather than counting — "what are people saying about X", characterizing complaints, summarizing suggestions — use read_comments to pull a targeted sample (with a topic query) or a representative one (without). Every returned comment is a real verbatim. State your reading base honestly ("based on 120 of the 283 comments mentioning..."), and when the result reports representativenessDrift, ALERT the user in your answer (e.g. "note: this pull skews older than the dataset — 34% are 65+ vs 21% overall").
 - find_quotes totals cover the entire dataset and ignore active filters; for filtered counts use query_data.
 - SUBGROUP QUESTIONS ("what do young Black men say", "issues among detractors under 30"): compose the subgroup YOURSELF with the \`where\` parameter on query_data and read_comments — [{field:"age", max:29}, {field:"race", values:["Black"]}, {field:"gender", values:["Male"]}]. Values match fuzzily (case-insensitive; partial labels match compound stored values), and a value with no match returns the field's ACTUAL values — map synonyms (African American ≈ Black) to the right stored value and retry in the same batch of turns. Conditions AND with the user's active filters. ALWAYS state the subgroup size ("142 respondents match"), repeat any value mapping the result reports ("counting 'Black or African American' responses for 'Black'"), and never silently substitute the whole dataset when a subgroup was asked for.
+- COMPARISON QUESTIONS ("men vs women", "2020 vs 2024", "promoters vs detractors"): ONE query_data call with \`where\` (group A) AND \`vs\` (group B) — never two separate calls. The result computes the comparison for you (share deltas in percentage points for counts, avg/median deltas for numeric stats) — lead with those deltas, report BOTH group sizes, and mention the overlap note if the result carries one.
 - When a tool result says sampled:true, the figures are computed over the app's deterministic 50K analysis sample — say "in the analyzed sample" when reporting them.
 - BATCH your queries: request ALL the tools you need in ONE turn (multiple tool calls together) — never one query per turn. You have a hard budget of tool turns; when it runs out you must answer with what you have.
 - DO NOT narrate process. At most ONE short lead-in line (e.g. "Let me pull the numbers.") before your FIRST batch — after that, no step-by-step commentary, no tool names, no "let me also...". When the data is in, write the ANSWER.
@@ -602,6 +603,12 @@ function logicLine(name: string, input: Record<string, unknown>, result: Record<
   }
   if (name === 'query_data') {
     const op = f('op')
+    const cmpA = result.groupA as { label?: string; rows?: number } | undefined
+    const cmpB = result.groupB as { label?: string; rows?: number } | undefined
+    if (cmpA && cmpB) {
+      const tgt = f('field') || [f('rowField'), f('colField')].filter(Boolean).join(' × ') || [f('groupField'), f('valueField')].filter(Boolean).join(' by ') || f('axis') || f('dateField')
+      return 'Compared ' + (cmpA.label || 'group A') + ' (' + Number(cmpA.rows || 0).toLocaleString() + ' rows) vs ' + (cmpB.label || 'group B') + ' (' + Number(cmpB.rows || 0).toLocaleString() + ' rows) — ran ' + op + ' on ' + tgt + ' for each group · recreate in the Charts tab with each subgroup as filters'
+    }
     const target = f('field') || [f('rowField'), f('colField')].filter(Boolean).join(' × ') || [f('groupField'), f('valueField')].filter(Boolean).join(' by ') || f('axis') || f('dateField')
     let got = ''
     if (result.counts) got = Object.keys(result.counts as object).length + ' values'

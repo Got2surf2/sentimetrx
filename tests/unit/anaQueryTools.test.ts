@@ -15,6 +15,13 @@ vi.mock('@/lib/aggregateOps', async (importOriginal) => {
 
 const mockedAgg = vi.mocked(runAggregateOp)
 
+vi.mock('@/lib/anaSegment', async (importOriginal) => {
+  const orig = (await importOriginal()) as Record<string, unknown>
+  return { ...orig, resolveWhereRowIds: vi.fn() }
+})
+import { resolveWhereRowIds } from '@/lib/anaSegment'
+const mockedResolve = vi.mocked(resolveWhereRowIds)
+
 type ServiceArg = Parameters<typeof executeAnaQueryTool>[0]
 
 function searchService(opts: { rpcRows?: { id: number; data: Record<string, unknown> }[]; count?: number }) {
@@ -301,5 +308,123 @@ describe('query_data respects the Dimensions gate', () => {
   it('status labels name the Dimensions feature with the axis', () => {
     expect(anaToolStatusLabel('query_data', { op: 'tax_counts', axis: 'emotion' })).toBe('Counting Dimensions (emotion) tags…')
     expect(anaToolStatusLabel('query_data', { op: 'tax_date_series', axis: 'touchpoint' })).toBe('Trending Dimensions (touchpoint) over time…')
+  })
+})
+
+describe('query_data vs — two-subgroup comparison in one call', () => {
+  // Cross-turn _whereMemo persists across tests → every test uses a fresh
+  // datasetId so a prior test's resolution can never satisfy this one.
+  let dsN = 0
+  const freshCtx = (over: Partial<AnaQueryContext> = {}): AnaQueryContext =>
+    ({ ...baseCtx, datasetId: 'cmp-' + ++dsN + '-' + Math.random().toString(36).slice(2), ...over })
+
+  const resolveByGender = () => {
+    mockedResolve.mockImplementation(async (_svc, args) => {
+      const w = (args as { where: { field: string; values?: string[] }[] }).where
+      const isMale = w.some(c => c.values?.includes('Male'))
+      return isMale
+        ? { ids: [1, 2, 3, 4], sampled: false, label: 'gender ∈ [Male]', mappings: [] }
+        : { ids: [5, 6, 7, 8, 9], sampled: false, label: 'gender ∈ [Female]', mappings: [] }
+    })
+  }
+
+  beforeEach(() => { mockedResolve.mockReset() })
+
+  it('vs without where → error explaining the A/B contract, no queries run', async () => {
+    const out = await executeAnaQueryTool(searchService({}), freshCtx(), 'query_data', {
+      op: 'field_counts', field: 'satisfaction', vs: [{ field: 'gender', values: ['Female'] }],
+    })
+    expect(String(out.error)).toContain('requires `where`')
+    expect(mockedAgg).not.toHaveBeenCalled()
+  })
+
+  it('runs the op once per group with each group\'s row ids and returns labeled sides + pp deltas', async () => {
+    resolveByGender()
+    mockedAgg
+      .mockResolvedValueOnce({ status: 200, body: { counts: { Yes: 3, No: 1 }, sampled: false } })
+      .mockResolvedValueOnce({ status: 200, body: { counts: { Yes: 2, No: 2 }, sampled: false } })
+    const out = await executeAnaQueryTool(searchService({}), freshCtx(), 'query_data', {
+      op: 'field_counts', field: 'satisfaction',
+      where: [{ field: 'gender', values: ['Male'] }],
+      vs: [{ field: 'gender', values: ['Female'] }],
+    })
+    expect(mockedAgg).toHaveBeenCalledTimes(2)
+    expect(mockedAgg.mock.calls[0][3].rowIds).toEqual([1, 2, 3, 4])
+    expect(mockedAgg.mock.calls[1][3].rowIds).toEqual([5, 6, 7, 8, 9])
+    const ga = out.groupA as Record<string, unknown>
+    const gb = out.groupB as Record<string, unknown>
+    expect(ga.label).toBe('gender ∈ [Male]')
+    expect(ga.rows).toBe(4)
+    expect(gb.rows).toBe(5)
+    // Hand-computed: A = 75/25, B = 50/50 → Yes +25pp, No −25pp
+    const cmp = out.comparison as { value: string; groupAPct: number; groupBPct: number; deltaPp: number }[]
+    expect(cmp).toEqual([
+      { value: 'Yes', groupAPct: 75, groupBPct: 50, deltaPp: 25 },
+      { value: 'No', groupAPct: 25, groupBPct: 50, deltaPp: -25 },
+    ])
+    expect(String(out.scope)).toContain('4 rows')
+    expect(String(out.scope)).toContain('5 rows')
+    expect(out.overlapNote).toBeUndefined()
+  })
+
+  it('overlapping groups get an overlap note', async () => {
+    mockedResolve.mockImplementation(async (_svc, args) => {
+      const w = (args as { where: { field: string; max?: number }[] }).where
+      return w.some(c => c.max != null)
+        ? { ids: [1, 2, 3], sampled: false, label: 'age ≤ 29', mappings: [] }
+        : { ids: [3, 4], sampled: false, label: 'gender ∈ [Male]', mappings: [] }
+    })
+    mockedAgg
+      .mockResolvedValueOnce({ status: 200, body: { counts: { A: 1 }, sampled: false } })
+      .mockResolvedValueOnce({ status: 200, body: { counts: { A: 1 }, sampled: false } })
+    const out = await executeAnaQueryTool(searchService({}), freshCtx(), 'query_data', {
+      op: 'field_counts', field: 'F',
+      where: [{ field: 'age', max: 29 }],
+      vs: [{ field: 'gender', values: ['Male'] }],
+    })
+    expect(String(out.overlapNote)).toContain('1 row is in BOTH groups')
+  })
+
+  it('both groups intersect the user\'s active filters; an emptied side errors naming WHICH side', async () => {
+    resolveByGender()
+    const out = await executeAnaQueryTool(searchService({}), freshCtx({ rowIds: [1, 2] }), 'query_data', {
+      op: 'field_counts', field: 'F',
+      where: [{ field: 'gender', values: ['Male'] }],
+      vs: [{ field: 'gender', values: ['Female'] }],
+    })
+    expect(String(out.error)).toContain('Group B (gender ∈ [Female]) has no rows inside the user')
+    expect(mockedAgg).not.toHaveBeenCalled()
+  })
+
+  it('numeric_stats compare computes avg/median deltas', async () => {
+    resolveByGender()
+    mockedAgg
+      .mockResolvedValueOnce({ status: 200, body: { n: 4, avg: 4.2, median: 4, min: 1, max: 5, stddev: 1, sampled: false } })
+      .mockResolvedValueOnce({ status: 200, body: { n: 5, avg: 3.7, median: 3, min: 1, max: 5, stddev: 1, sampled: false } })
+    const out = await executeAnaQueryTool(searchService({}), freshCtx(), 'query_data', {
+      op: 'numeric_stats', field: 'rating',
+      where: [{ field: 'gender', values: ['Male'] }],
+      vs: [{ field: 'gender', values: ['Female'] }],
+    })
+    expect(out.comparison).toEqual({ avgDelta: 0.5, medianDelta: 1 })
+    expect(String(out.comparisonNote)).toContain('group A minus group B')
+  })
+
+  it('tax_* compare still refuses when Dimensions is off — before any resolution', async () => {
+    const out = await executeAnaQueryTool(searchService({}), freshCtx({ hasDimensions: false }), 'query_data', {
+      op: 'tax_counts', axis: 'emotion',
+      where: [{ field: 'gender', values: ['Male'] }],
+      vs: [{ field: 'gender', values: ['Female'] }],
+    })
+    expect(String(out.error)).toContain('Dimensions is turned off')
+    expect(mockedResolve).not.toHaveBeenCalled()
+  })
+
+  it('compare calls never map to a canvas chart (a single-scope chart would contradict the answer)', () => {
+    expect(chartConfigForQuery({ op: 'field_counts', field: 'F', where: [{ field: 'g', values: ['M'] }], vs: [{ field: 'g', values: ['F'] }] })).toBeNull()
+  })
+
+  it('status label names the comparison', () => {
+    expect(anaToolStatusLabel('query_data', { op: 'field_counts', vs: [] })).toBe('Comparing two subgroups…')
   })
 })

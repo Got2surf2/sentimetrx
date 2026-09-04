@@ -69,6 +69,12 @@ export const ANA_QUERY_TOOLS = [
           min:    { type: 'number', description: 'Numeric lower bound (inclusive)' },
           max:    { type: 'number', description: 'Numeric upper bound (inclusive)' },
         }, required: ['field'] } },
+        vs:          { type: 'array', description: 'Compare TWO subgroups in ONE call: `where` defines group A, `vs` defines group B (same condition shape). Use for every "X vs Y" question ("men vs women", "2020 vs 2024", "promoters vs detractors") — never two separate query_data calls. The result returns each group\'s numbers plus a computed comparison (share deltas in percentage points for counts, mean/median deltas for numeric stats). Requires `where`.', items: { type: 'object', properties: {
+          field:  { type: 'string', description: 'Field key' },
+          values: { type: 'array', items: { type: 'string' }, description: 'Categorical include list (exact values)' },
+          min:    { type: 'number', description: 'Numeric lower bound (inclusive)' },
+          max:    { type: 'number', description: 'Numeric upper bound (inclusive)' },
+        }, required: ['field'] } },
         chart:       { type: 'boolean', description: 'Set true ONLY when this query\'s view IS the chart the user would want to open — the one that directly answers their question. The app then offers an "Open in Charts" button for it. Leave unset for intermediate/supporting queries.' },
       },
       required: ['op'],
@@ -123,6 +129,7 @@ const WHERE_MEMO_MAX = 40
 export function anaToolStatusLabel(name: string, input: Record<string, unknown>): string {
   if (name === 'find_quotes') return 'Searching for "' + String(input.query || '').slice(0, 60) + '"…'
   if (name === 'read_comments') return input.query ? 'Reading comments about "' + String(input.query).slice(0, 50) + '"…' : 'Reading a sample of comments…'
+  if (name === 'query_data' && input.vs != null) return 'Comparing two subgroups…'
   var op = String(input.op || '')
   // tax_* labels name the PRODUCT FEATURE ("Dimensions" + the axis) — a bare
   // "counting dimension mentions" read as generic analysis-speak and confused
@@ -218,6 +225,9 @@ function compactResult(body: Record<string, unknown>): Record<string, unknown> {
 export interface AnaCanvasTarget { chartType: string; config: Record<string, string>; label: string }
 
 export function chartConfigForQuery(input: Record<string, unknown>, fieldTypes?: Record<string, string>): AnaCanvasTarget | null {
+  // A two-subgroup comparison has no single-chart equivalent — the Charts tab
+  // would render the op UNSCOPED, contradicting the answer's numbers.
+  if (input.vs != null) return null
   const op = String(input.op || '')
   const f = (k: string) => (typeof input[k] === 'string' ? String(input[k]) : '')
   const dim = f('axis') ? '__dim_' + f('axis') + '__' : ''
@@ -244,6 +254,158 @@ export function chartConfigForQuery(input: Record<string, unknown>, fieldTypes?:
   return null
 }
 
+// Resolve one Ana-composed `where` array (validate → per-turn cache →
+// cross-turn memo → segment scan) to flat row ids. Does NOT intersect with
+// the user's active filters — callers do, so the compare path can name which
+// side came up empty.
+type ScopeResolution = { ids: number[]; label: string; sampled: boolean; mappingNote: string | null }
+async function resolveScope(
+  service: Service,
+  ctx: AnaQueryContext,
+  whereRaw: unknown,
+): Promise<ScopeResolution | { error: string; hint?: string }> {
+  var validated = validateWhere(whereRaw)
+  if ('error' in validated) return { error: validated.error }
+  var cacheKey = JSON.stringify(validated)
+  var cache = (ctx._whereCache = ctx._whereCache || {})
+  var resolved = cache[cacheKey]
+  if (!resolved) {
+    var memoKey = ctx.datasetId + '\u0001' + cacheKey
+    var memoHit = _whereMemo.get(memoKey)
+    if (memoHit && Date.now() - memoHit.at < WHERE_MEMO_TTL) {
+      cache[cacheKey] = resolved = memoHit.res
+    }
+  }
+  if (!resolved) {
+    // A collection holds no rows under its own id — hand the member ids to
+    // the segment resolver so its scans walk them (memoized per turn).
+    if (ctx.source === 'collection' && !ctx._memberScope) {
+      ctx._memberScope = (await resolveScopeMembers(service, ctx.datasetId)).map(function(m) { return m.datasetId })
+    }
+    var res = await resolveWhereRowIds(service, { datasetId: ctx.datasetId, rowCount: ctx.rowCount, where: validated, scope: ctx._memberScope || undefined })
+    if ('error' in res) return { error: res.error, hint: 'Run field_counts on the demographic field first and use its EXACT values in where.' }
+    cache[cacheKey] = resolved = res
+    _whereMemo.set(ctx.datasetId + '\u0001' + cacheKey, { at: Date.now(), res })
+    if (_whereMemo.size > WHERE_MEMO_MAX) {
+      var oldest = [..._whereMemo.entries()].sort(function(a, b) { return a[1].at - b[1].at })[0]
+      if (oldest) _whereMemo.delete(oldest[0])
+    }
+  }
+  // The provenance trail must show what the fuzzy matcher did (owner,
+  // 2026-09-04): every requested value that resolved to different stored
+  // value(s) is spelled out on the result the trail logs.
+  var mappingNote = resolved.mappings.length
+    ? 'value mapping: ' + resolved.mappings.map(function(m) { return '"' + m.requested + '" matched stored ' + m.matched.map(function(x) { return '"' + x + '"' }).join(' + ') }).join('; ')
+    : null
+  return { ids: resolved.ids, label: resolved.label, sampled: resolved.sampled, mappingNote }
+}
+
+// One place that maps a query_data tool input onto the shared dispatcher's
+// params — the compare path runs the SAME mapping per group, so a compared
+// number and a single-group number can never diverge.
+function buildAggParams(input: Record<string, unknown>, ctx: AnaQueryContext) {
+  return {
+    op: typeof input.op === 'string' ? input.op : undefined,
+    field: typeof input.field === 'string' ? input.field : undefined,
+    rowField: typeof input.rowField === 'string' ? input.rowField : undefined,
+    colField: typeof input.colField === 'string' ? input.colField : undefined,
+    groupField: typeof input.groupField === 'string' ? input.groupField : undefined,
+    valueField: typeof input.valueField === 'string' ? input.valueField : undefined,
+    dateField: typeof input.dateField === 'string' ? input.dateField : undefined,
+    metricField: typeof input.metricField === 'string' ? input.metricField : undefined,
+    bucket: typeof input.bucket === 'string' ? input.bucket : undefined,
+    axis: typeof input.axis === 'string' ? input.axis : undefined,
+    limit: Math.min(Math.max(1, Number(input.limit) || 50), 100),
+    rowIds: ctx.rowIds || undefined,
+    fieldKey: ctx.fieldKey || undefined,
+  }
+}
+
+// ── Two-subgroup comparison (`vs`) ─────────────────────────────────────────
+// Runs one op over group A (`where`) and group B (`vs`) and computes the
+// comparison IN CODE — shares and deltas are platform arithmetic, never left
+// to the model. Both groups intersect the user's active filters.
+async function runCompare(service: Service, ctx: AnaQueryContext, input: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (input.where == null) return { error: '`vs` requires `where` too — where defines group A, vs defines group B.' }
+  var op = String(input.op || '')
+  if (op.startsWith('tax_') && ctx.hasDimensions === false) {
+    return { error: 'Dimensions is turned off for this dataset, so taxonomy (tax_*) queries are unavailable. Use field_counts / crosstab / group_stats / date_series on regular fields instead.' }
+  }
+  var a = await resolveScope(service, ctx, input.where)
+  if ('error' in a) return a
+  var b = await resolveScope(service, ctx, input.vs)
+  if ('error' in b) return b
+  var idsA = a.ids
+  var idsB = b.ids
+  if (ctx.rowIds) {
+    var userSet = new Set<number>(ctx.rowIds)
+    idsA = idsA.filter(function(id) { return userSet.has(id) })
+    idsB = idsB.filter(function(id) { return userSet.has(id) })
+  }
+  var inFilters = ctx.rowIds ? " inside the user's active filters" : ''
+  if (idsA.length === 0) return { error: 'Group A (' + a.label + ') has no rows' + inFilters + '.' }
+  if (idsB.length === 0) return { error: 'Group B (' + b.label + ') has no rows' + inFilters + '.' }
+  var setB = new Set<number>(idsB)
+  var overlap = 0
+  for (var oid of idsA) { if (setB.has(oid)) overlap++ }
+
+  var meta = { rowCount: ctx.rowCount, source: ctx.source }
+  var [ra, rb] = await Promise.all([
+    runAggregateOp(service, ctx.datasetId, meta, buildAggParams(input, { ...ctx, rowIds: idsA })),
+    runAggregateOp(service, ctx.datasetId, meta, buildAggParams(input, { ...ctx, rowIds: idsB })),
+  ])
+  if (ra.status !== 200) return { error: String(ra.body.error || 'group A query failed'), hint: 'Check the op name and that field keys match the dataset fields listed in your context.' }
+  if (rb.status !== 200) return { error: String(rb.body.error || 'group B query failed'), hint: 'Check the op name and that field keys match the dataset fields listed in your context.' }
+  var bodyA = compactResult(ra.body)
+  var bodyB = compactResult(rb.body)
+
+  var out: Record<string, unknown> = {
+    groupA: { label: a.label, rows: idsA.length, ...bodyA },
+    groupB: { label: b.label, rows: idsB.length, ...bodyB },
+  }
+  if (overlap > 0) out.overlapNote = overlap.toLocaleString() + (overlap === 1 ? ' row is' : ' rows are') + ' in BOTH groups — they are not mutually exclusive; say so when comparing them.'
+
+  // Counts ops → per-group shares + percentage-point deltas, biggest movers
+  // first (raw counts mislead when the groups differ in size).
+  var cA = bodyA.counts as Record<string, number> | undefined
+  var cB = bodyB.counts as Record<string, number> | undefined
+  if (cA && cB) {
+    var totA = 0
+    for (var ka in cA) totA += cA[ka]
+    var totB = 0
+    for (var kb in cB) totB += cB[kb]
+    if (totA > 0 && totB > 0) {
+      var values = new Set([...Object.keys(cA), ...Object.keys(cB)])
+      var deltas = [...values].map(function(v) {
+        var shareA = ((cA![v] || 0) / totA) * 100
+        var shareB = ((cB![v] || 0) / totB) * 100
+        return { value: v, groupAPct: Math.round(shareA * 10) / 10, groupBPct: Math.round(shareB * 10) / 10, deltaPp: Math.round((shareA - shareB) * 10) / 10 }
+      }).sort(function(x, y) { return Math.abs(y.deltaPp) - Math.abs(x.deltaPp) })
+      out.comparison = deltas.slice(0, 12)
+      out.comparisonNote = "shares are % of each group's counted responses; deltaPp = group A minus group B in percentage points"
+        + (deltas.length > 12 ? ' (top 12 movers of ' + deltas.length + ' values)' : '')
+    }
+  }
+  // numeric_stats → mean/median deltas.
+  if (typeof bodyA.avg === 'number' && typeof bodyB.avg === 'number') {
+    var numCmp: Record<string, unknown> = { avgDelta: Math.round(((bodyA.avg as number) - (bodyB.avg as number)) * 100) / 100 }
+    if (typeof bodyA.median === 'number' && typeof bodyB.median === 'number') {
+      numCmp.medianDelta = Math.round(((bodyA.median as number) - (bodyB.median as number)) * 100) / 100
+    }
+    out.comparison = numCmp
+    out.comparisonNote = 'deltas = group A minus group B'
+  }
+
+  var mappingBits = [a.mappingNote, b.mappingNote].filter(Boolean)
+  out.scope = 'compared ' + a.label + ' (' + idsA.length.toLocaleString() + ' rows) vs ' + b.label + ' (' + idsB.length.toLocaleString() + ' rows)'
+    + (ctx.rowIds ? ", both inside the user's active filters" : '')
+    + ((a.sampled || b.sampled) ? ', resolved over the 50K analysis sample' : '')
+    + (mappingBits.length ? '; ' + mappingBits.join('; ') + ' — surface this mapping to the user' : '')
+    + ' — always report BOTH group sizes with your findings'
+  return out
+}
+
+
 // ── Executor ───────────────────────────────────────────────────────────────
 export async function executeAnaQueryTool(
   service: Service,
@@ -251,6 +413,12 @@ export async function executeAnaQueryTool(
   name: string,
   input: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
+  // Two-subgroup comparison (`vs`, 2026-09-04): where = group A, vs = group B,
+  // one call — before this Ana burned two round-trips and diffed by hand.
+  if (name === 'query_data' && input.vs != null) {
+    return runCompare(service, ctx, input)
+  }
+
   // Ana-composed subgroup (`where`, 2026-09-04): resolve to row ids through
   // the canonical filter engine, INTERSECT with the user's active filters
   // (both must hold), and run the rest of the tool with the scoped ids.
@@ -258,47 +426,17 @@ export async function executeAnaQueryTool(
   var whereSampled = false
   var whereMappingNote: string | null = null
   if ((name === 'query_data' || name === 'read_comments') && input.where != null) {
-    var validated = validateWhere(input.where)
-    if ('error' in validated) return { error: validated.error }
-    var cacheKey = JSON.stringify(validated)
-    var cache = (ctx._whereCache = ctx._whereCache || {})
-    var resolved = cache[cacheKey]
-    if (!resolved) {
-      var memoKey = ctx.datasetId + '\u0001' + cacheKey
-      var memoHit = _whereMemo.get(memoKey)
-      if (memoHit && Date.now() - memoHit.at < WHERE_MEMO_TTL) {
-        cache[cacheKey] = resolved = memoHit.res
-      }
-    }
-    if (!resolved) {
-      // A collection holds no rows under its own id — hand the member ids to
-      // the segment resolver so its scans walk them (memoized per turn).
-      if (ctx.source === 'collection' && !ctx._memberScope) {
-        ctx._memberScope = (await resolveScopeMembers(service, ctx.datasetId)).map(function(m) { return m.datasetId })
-      }
-      var res = await resolveWhereRowIds(service, { datasetId: ctx.datasetId, rowCount: ctx.rowCount, where: validated, scope: ctx._memberScope || undefined })
-      if ('error' in res) return { error: res.error, hint: 'Run field_counts on the demographic field first and use its EXACT values in where.' }
-      cache[cacheKey] = resolved = res
-      _whereMemo.set(ctx.datasetId + '\u0001' + cacheKey, { at: Date.now(), res })
-      if (_whereMemo.size > WHERE_MEMO_MAX) {
-        var oldest = [..._whereMemo.entries()].sort(function(a, b) { return a[1].at - b[1].at })[0]
-        if (oldest) _whereMemo.delete(oldest[0])
-      }
-    }
-    var scoped = resolved.ids
+    var scopeRes = await resolveScope(service, ctx, input.where)
+    if ('error' in scopeRes) return scopeRes
+    var scoped = scopeRes.ids
     if (ctx.rowIds) {
       var userSet = new Set<number>(ctx.rowIds)
-      scoped = resolved.ids.filter(function(id) { return userSet.has(id) })
+      scoped = scopeRes.ids.filter(function(id) { return userSet.has(id) })
     }
-    if (scoped.length === 0) return { error: 'The subgroup (' + resolved.label + ') has no rows inside the user\'s active filters.' }
-    whereLabel = resolved.label
-    whereSampled = resolved.sampled
-    // The provenance trail must show what the fuzzy matcher did (owner,
-    // 2026-09-04): every requested value that resolved to different stored
-    // value(s) is spelled out on the result the trail logs.
-    whereMappingNote = resolved.mappings.length
-      ? 'value mapping: ' + resolved.mappings.map(function(m) { return '"' + m.requested + '" matched stored ' + m.matched.map(function(x) { return '"' + x + '"' }).join(' + ') }).join('; ')
-      : null
+    if (scoped.length === 0) return { error: 'The subgroup (' + scopeRes.label + ') has no rows inside the user\'s active filters.' }
+    whereLabel = scopeRes.label
+    whereSampled = scopeRes.sampled
+    whereMappingNote = scopeRes.mappingNote
     ctx = { ...ctx, rowIds: scoped }
   }
 
@@ -306,27 +444,7 @@ export async function executeAnaQueryTool(
     if (String(input.op || '').startsWith('tax_') && ctx.hasDimensions === false) {
       return { error: 'Dimensions is turned off for this dataset, so taxonomy (tax_*) queries are unavailable. Use field_counts / crosstab / group_stats / date_series on regular fields instead.' }
     }
-    var limit = Math.min(Math.max(1, Number(input.limit) || 50), 100)
-    var result = await runAggregateOp(
-      service,
-      ctx.datasetId,
-      { rowCount: ctx.rowCount, source: ctx.source },
-      {
-        op: typeof input.op === 'string' ? input.op : undefined,
-        field: typeof input.field === 'string' ? input.field : undefined,
-        rowField: typeof input.rowField === 'string' ? input.rowField : undefined,
-        colField: typeof input.colField === 'string' ? input.colField : undefined,
-        groupField: typeof input.groupField === 'string' ? input.groupField : undefined,
-        valueField: typeof input.valueField === 'string' ? input.valueField : undefined,
-        dateField: typeof input.dateField === 'string' ? input.dateField : undefined,
-        metricField: typeof input.metricField === 'string' ? input.metricField : undefined,
-        bucket: typeof input.bucket === 'string' ? input.bucket : undefined,
-        axis: typeof input.axis === 'string' ? input.axis : undefined,
-        limit: limit,
-        rowIds: ctx.rowIds || undefined,
-        fieldKey: ctx.fieldKey || undefined,
-      },
-    )
+    var result = await runAggregateOp(service, ctx.datasetId, { rowCount: ctx.rowCount, source: ctx.source }, buildAggParams(input, ctx))
     if (result.status !== 200) {
       return { error: String(result.body.error || 'query failed'), hint: 'Check the op name and that field keys match the dataset fields listed in your context.' }
     }
