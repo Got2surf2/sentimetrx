@@ -77,12 +77,58 @@ away" in the same sample.
 <p class="vb"><b>2024</b> — "Prices of groceries n fuel n housing" · "cost of living is insane with inflation" · "immigration is number one, legal and especially illegal" · "national debt and inflation… foreign wars and entering them unnecessarily" · "Abortion rights, the increase in restrictive laws."</p>
 </section>
 
+<section>
+<h2>Which problems travel with actually voting</h2>
+<p class="sub" style="margin-bottom:6px">Turnout rates among young men who mentioned each theme vs those who did not
+(self-reported, registered-and-voted). Base turnout: 83% in 2020 (n = 2,999), 79% in 2024 (n = 1,661).</p>
+<table>
+  <tr><th>Theme</th><th style="text-align:right">2020 gap*</th><th style="text-align:right">2024 gap*</th><th style="text-align:right">Survives breadth control?</th></tr>
+  <tr><td><b>Education, Environment &amp; Moral Decline</b></td><td class="num up">+9.5 pts</td><td class="num up">+11.7 pts</td><td class="num up">Yes (+4.6 / +9.1)</td></tr>
+  <tr><td>Political Dysfunction &amp; National Division</td><td class="num">+1.8</td><td class="num up">+9.2 pts</td><td class="num up">2024 only (+7.0)</td></tr>
+  <tr><td>Military, Foreign Policy &amp; Security</td><td class="num">+7.6</td><td class="num">+2.5</td><td class="num">No (+1.9 / −2.4)</td></tr>
+  <tr><td>Economic Anxiety &amp; Fiscal Crisis</td><td class="num">+5.3</td><td class="num">+2.8</td><td class="num">No (−0.6 / −0.2)</td></tr>
+  <tr><td>Social Inequality, Poverty &amp; Healthcare</td><td class="num">+5.4</td><td class="num">+0.2</td><td class="num">No (−0.4 / −3.4)</td></tr>
+  <tr><td>Immigration &amp; Border Security</td><td class="num">+5.1</td><td class="num">+0.2</td><td class="num">No (−0.2 / −3.4)</td></tr>
+  <tr><td><b>Crime, Drugs &amp; Public Safety</b></td><td class="num">+2.4</td><td class="num down">−1.8</td><td class="num down">Negative (−3.8 / −6.0)</td></tr>
+</table>
+<p class="sub" style="font-size:10px;margin-top:2px">*Gaps adjusted for answer length (word-count bands) — wordier
+respondents both vote more and match more themes, so raw gaps overstate every theme.</p>
+</section>
+
+<section>
+<h2>The real engine: how MANY problems they name</h2>
+<table>
+  <tr><th># themes mentioned</th><th style="text-align:right">2020 turnout</th><th style="text-align:right">2024 turnout</th></tr>
+  <tr><td>0</td><td class="num">73%</td><td class="num">74%</td></tr>
+  <tr><td>1</td><td class="num">81%</td><td class="num">74%</td></tr>
+  <tr><td>2</td><td class="num"><b>91%</b></td><td class="num">79%</td></tr>
+  <tr><td>3 or more</td><td class="num">90%</td><td class="num"><b>85%</b></td></tr>
+</table>
+<div class="card">
+<b>Issue breadth beats issue choice.</b> Holding answer length constant, naming more distinct problems still predicts
+voting — young men writing 16&ndash;40 words in 2020 turned out at 78% with zero themes vs <b>95%</b> with two. And once
+respondents are compared at the SAME breadth, almost every specific theme's turnout advantage disappears: economy,
+immigration, inequality, and foreign policy carry no independent signal. A young man focused on immigration votes like
+any other young man naming the same number of issues.
+<br/><br/>
+<b>Two genuine exceptions.</b> The climate/education cluster keeps an independent turnout association in both years
+(and it grows), and naming <i>division itself</i> emerges as a strong voter marker in 2024 (+7 points at equal breadth).
+<br/><br/>
+<b>The sleeper finding: crime concern skews non-voting.</b> Controlled for breadth, young men centered on crime, drugs,
+and public safety vote 4&ndash;6 points BELOW their peers — the only consistently negative theme. A "concerned but
+disconnected" segment.
+</div>
+</section>
+
 <p class="note"><b>Method.</b> Subgroups resolved in-database (Sex = male, Age &le; 39, Year = 2020 / 2024); theme shares
 counted exactly over every substantive response with the dataset's own theme model and matcher — the same engines the
 platform's TextMine and Charts tabs use, so every figure is recreatable in the app via Filters + TextMine. A response
 naming several problems counts in each matching theme, so columns do not sum to 100%. Shares are within-year, so the
-different sample sizes do not distort the comparison. All young male respondents; not additionally filtered to validated
-voters. Quotes verbatim as written. Source: ANES 1984–2024 dataset (125,897 responses), analyzed 2026-09-04.</p>
+different sample sizes do not distort the comparison. All young male respondents. Turnout is the study's
+self-report ("Voted (registered)" vs registered-or-unregistered non-voters), which skews high. Turnout gaps are
+associations, not causes: answer length is controlled (word-count bands) and issue breadth is controlled where stated
+(within same-count strata, Mantel-Haenszel-weighted), but education and political interest are not — either could
+account for part of the remaining climate/education effect. Quotes verbatim as written. Source: ANES 1984–2024 dataset (125,897 responses), analyzed 2026-09-04.</p>
 
 </body></html>`
 
