@@ -811,7 +811,9 @@ async function streamAnthropicResponse(
           // it's flushed into the bubble. Structural fix — prompt bans alone
           // did not stop the play-by-play (owner transcript, 9/02).
           const liveText = round === 0
+          const roundStart = Date.now()
           const blocks = await pumpRound(res, liveText)
+          const roundSecs = ((Date.now() - roundStart) / 1000).toFixed(1)
           res = null
           if (liveText) streamedAnyText = streamedAnyText || blocks.some(function(b) { return b.type === 'text' && b.text.trim().length > 0 })
           // (reset below if round 0's text gets demoted out of the bubble)
@@ -845,7 +847,7 @@ async function streamAnthropicResponse(
           // move it into the status slot so the bubble only ever holds the
           // final answer.
           if (liveText && roundText) { emit({ demote: true }); streamedAnyText = false }
-          if (!liveText && roundText) { emit({ status: roundText.slice(0, 160) }); emit({ logic: roundText.slice(0, 200) }) }
+          if (!liveText && roundText) { emit({ status: roundText.slice(0, 160) }); emit({ logic: roundText.slice(0, 200) + ' · thought for ' + roundSecs + 's' }) }
 
           // Second-to-last round: answer these calls, then force a synthesis
           // turn — the owner hit an answer that was ALL process narration and
@@ -855,6 +857,7 @@ async function streamAnthropicResponse(
           const toolResults: MessageContent[] = []
           for (const call of queryCalls) {
             emit({ status: anaToolStatusLabel(call.name, call.input) })
+            const stepT0 = Date.now()
             let result: Record<string, unknown>
             try {
               result = await executeAnaQueryTool(queryExec.service, queryExec.ctx, call.name, call.input)
@@ -862,7 +865,9 @@ async function streamAnthropicResponse(
               result = { error: 'Query failed: ' + (e instanceof Error ? e.message : 'unknown error') }
             }
             toolResults.push({ type: 'tool_result', tool_use_id: call.id, content: JSON.stringify(result) })
-            emit({ logic: logicLine(call.name, call.input, result) })
+            // Every provenance step carries its wall-clock cost (owner ask
+            // 2026-09-04): slow turns become diagnosable at a glance.
+            emit({ logic: logicLine(call.name, call.input, result) + ' · ' + ((Date.now() - stepT0) / 1000).toFixed(1) + 's' })
             // Canvas handoff — ANA's call, not automatic: she sets chart:true
             // on the one query whose view IS the answer. "Last query wins"
             // produced non-sequitur charts (owner: a rating × city heatmap

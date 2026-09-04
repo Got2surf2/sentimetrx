@@ -2645,8 +2645,11 @@ owner-directed).** Three UX layers on the tool loop:
   target, and what came back ("Searched the full dataset for 'service slow' —
   68 matching reviews", "Ran date_series on review_date → 77 time buckets,
   exact"), plus Ana's interim reasoning (including dead ends and pivots).
-  Collapsed behind a toggle under the answer; footer states the engine
-  guarantee. **Recreatability principle (owner, 9/02): every finding must be
+  Every query line ends with its wall-clock duration (`· 4.2s`) and every
+  interim reasoning line with its model-round time (`· thought for 8.1s`) —
+  owner ask 2026-09-04, so a slow turn decomposes into query time vs
+  thinking time at a glance. Collapsed behind a toggle under the answer;
+  footer states the engine guarantee. **Recreatability principle (owner, 9/02): every finding must be
   reproducible by a human inside the platform** — each logic line names the
   surface to redo it in (Charts / Statistics / Search tab), and the prompt
   forbids Ana applying modeling/scoring logic the platform's own tabs can't
