@@ -2743,6 +2743,30 @@ numbers (7,462/2,166/248/29); the navigate-and-mount path was exercised by the
 earlier rating-counts chip. Mapping unit tests in
 `tests/unit/anaQueryTools.test.ts`.
 
+**The dataset digest — "since you last looked" leads the briefing (2026-09-04,
+owner surface decision: start in the briefing).** A heads-up DELTA report, not
+a summary (summaries are Data Story's job). On every briefing turn the route
+reads this analyst's stored visit snapshot (`dataset_visit_snapshots`, sql/202
+— one row per user×dataset: `{rowCount, themeCounts, themeFieldKey}`), diffs it
+against current state IN CODE (`lib/anaDigest.buildDigest`), injects the delta
+block into the system prompt with orders to LEAD with it and never recompute
+it, then upserts the fresh snapshot — so "last visit" means "last briefing",
+deliberately. Lines: row growth/shrink/unchanged with an ago label; theme
+match-count moves (the stored model's own cached counts — the numbers Ana's
+briefing table already shows; deliberately NOT shares, whose displayed base is
+substantive comments and isn't in the snapshot), sorted by |Δ|, capped at 4
+with an overflow line; new/removed themes. Theme comparison is skipped
+entirely when the framework's field changed between visits. First visit stores
+a snapshot and shows nothing; a pre-202 DB errors the read and the briefing
+proceeds digest-less (deploy-order safe — supabase-js returns `{error}`, it
+doesn't throw). Converges with the future shoulder tap (scheduled vs
+threshold-triggered modes of one system). Browser-verified on TEST
+(Carrabba's): briefing #1 stored the snapshot; after backdating it 3 days and
+mutating it in SQL, briefing #2 opened "Since your last visit (3 days ago):
++1,220 new responses" and flagged the +29 theme move, the new theme, and the
+removed theme — then re-upserted current state. Unit coverage:
+`tests/unit/anaDigest.test.ts`.
+
 - **API**: `POST /api/datasets/[datasetId]/export/pptx`
 - **Rendering (2026-06-25 — the cream flip)**: the route no longer builds slides with its own
   bespoke navy/gold helpers. Its compute phase (auth + cross-org gate, row fetch under the

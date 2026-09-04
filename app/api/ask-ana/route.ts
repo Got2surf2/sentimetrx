@@ -21,6 +21,7 @@ import type { SchemaConfig, SchemaFieldConfig } from '@/lib/analyzeTypes'
 import { themeSetForField, type ThemeModel as UtilThemeModel } from '@/lib/themeUtils'
 import { ANA_QUERY_TOOLS, ANA_QUERY_TOOL_NAMES, executeAnaQueryTool, anaToolStatusLabel, chartConfigForQuery, type AnaQueryContext } from '@/lib/anaQueryTools'
 import { loadAnalystMemories, memoryPromptBlock, REMEMBER_GUIDANCE } from '@/lib/analystMemory'
+import { buildVisitSnapshot, buildDigest, type VisitSnapshot } from '@/lib/anaDigest'
 import { jsonStringifySafe } from '@/lib/jsonSafe'
 import { AMERICAN_ENGLISH_RULE } from '@/lib/ai'
 
@@ -460,6 +461,36 @@ Ask the user 1-2 brief questions about what they're looking to learn, then make 
       }).join('\n')
     : '\n\nNo themes have been created yet for this dataset.'
 
+  // Dataset digest (briefing turns only): diff this analyst's stored visit
+  // snapshot against current state IN CODE and lead the briefing with the
+  // deltas; then store the fresh snapshot. supabase-js returns {error}
+  // instead of throwing — a pre-202 DB (table missing) errors the read and
+  // the briefing simply proceeds without a digest (deploy-order safe).
+  let digestContext = ''
+  if (body.briefing === true) {
+    const digestRowCount = dataset.source === 'collection'
+      ? collectionMembers.reduce(function(s, m) { return s + m.row_count }, 0)
+      : (dataset.row_count || 0)
+    const currSnapshot = buildVisitSnapshot(digestRowCount, existingThemes, themeSetFields.join('+'))
+    const { data: prevRow, error: prevErr } = await service
+      .from('dataset_visit_snapshots')
+      .select('snapshot, visited_at')
+      .eq('user_id', user.id)
+      .eq('dataset_id', datasetId)
+      .eq('org_id', dataset.org_id)
+      .maybeSingle()
+    if (!prevErr) {
+      if (prevRow?.snapshot) {
+        digestContext = buildDigest(prevRow.snapshot as VisitSnapshot, currSnapshot, prevRow.visited_at) || ''
+      }
+      await service.from('dataset_visit_snapshots').upsert({
+        org_id: dataset.org_id, user_id: user.id, dataset_id: datasetId,
+        snapshot: currSnapshot as unknown as Record<string, unknown>,
+        visited_at: new Date().toISOString(),
+      }, { onConflict: 'user_id,dataset_id' })
+    }
+  }
+
   // Field KEYS ride along with the labels — query_data / the aggregate SQL
   // address rows by the data key (e.g. "rating"), not the display label
   // ("Star Rating"); without the key Ana's queries silently match nothing.
@@ -541,7 +572,7 @@ When the user asks to download their analysis as slides or a deck, call generate
 
 PRODUCT HOW-TO QUESTIONS: You analyze DATA, not the product. If the user asks how to USE Sentimetrx or navigate the app (e.g. "how do I export this?", "where's the Schema tab?", "how do I create an agent?") — a question about the software rather than about their data — do NOT try to answer it from the dataset. Briefly tell them that's what the Help assistant is for and to click the compass (🧭) Help button in the bottom-right corner of the page, where Sherpa can walk them through it.
 
-Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${memoryPromptBlock(analystMemories, datasetId)}${REMEMBER_GUIDANCE}${body.briefing === true ? '\n\nBRIEFING MODE: The analyst just opened this dataset — this turn is your unprompted opening read, not an answer to a question. Build it THEIR way per ANALYST MEMORY: run the 1\u20133 query_data calls you need, lead with what they care about, keep it under ~150 words plus at most one compact table, briefly note anything you are de-emphasizing per their preferences, and END with 2\u20133 concrete next steps phrased as short questions they could ask you.' : ''}${themeContext}${schemaContext}${entityContext}${filterNote}${signalNote}${sampleNote}${collectionContext}${redditContext}
+Keep your responses concise but thorough. Use markdown formatting for readability (bullet points, bold, etc).${memoryPromptBlock(analystMemories, datasetId)}${REMEMBER_GUIDANCE}${body.briefing === true ? '\n\nBRIEFING MODE: The analyst just opened this dataset — this turn is your unprompted opening read, not an answer to a question. Build it THEIR way per ANALYST MEMORY: run the 1\u20133 query_data calls you need, lead with what they care about, keep it under ~150 words plus at most one compact table, briefly note anything you are de-emphasizing per their preferences, and END with 2\u20133 concrete next steps phrased as short questions they could ask you.' : ''}${digestContext}${themeContext}${schemaContext}${entityContext}${filterNote}${signalNote}${sampleNote}${collectionContext}${redditContext}
 
 Here is the orientation sample:
 ${dataContext}`
