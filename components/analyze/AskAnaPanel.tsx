@@ -1146,10 +1146,10 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
                   color: isUser ? 'white' : '#000',
                   fontSize: isUser ? 15 : 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                 }}>
-                  {isUser ? m.content : <FormattedResponse text={m.content} streaming={m.streaming} />}
+                  {isUser ? m.content : <FormattedResponse text={m.content} streaming={m.streaming} statusText={m.statusText} />}
                 </div>
               </div>
-              {!isUser && m.streaming && m.statusText && (
+              {!isUser && m.streaming && m.statusText && !!m.content && (
                 <div style={{ marginLeft: 36, marginTop: 4, fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>
                   {m.statusText}
                 </div>
@@ -1516,9 +1516,19 @@ function ActionCard({ action, msgId, actionIdx, onApprove, onReject }: {
 }
 
 // Simple markdown-like formatting for Ana's responses
-function FormattedResponse({ text, streaming }: { text: string; streaming?: boolean }) {
+function FormattedResponse({ text, streaming, statusText }: { text: string; streaming?: boolean; statusText?: string }) {
   if (!text && streaming) {
-    return <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Thinking...</span>
+    // Tool-status step ("Reading comments about…") lives INSIDE the Thinking
+    // bubble while there's no answer text yet (owner 9/04 — it used to float
+    // loose below the bubble).
+    return (
+      <div>
+        <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Thinking...</span>
+        {statusText && (
+          <div style={{ marginTop: 4, fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>{statusText}</div>
+        )}
+      </div>
+    )
   }
 
   // Inline charts: ```chart fenced specs render as real charts between the
@@ -1702,10 +1712,11 @@ function CopyButton({ text }: { text: string }) {
 // Data Story building screen's lib/funFacts pool, reused so a many-round
 // question never feels like an infinite wait). Appears only after the first
 // 3 seconds (owner 9/03) — quick answers never see it — then rotates with a
-// soft fade. Muted styling keeps the status line as THE current thought.
+// soft fade. Brand-colored (owner 9/04): orange label, teal fact.
 function WorkingFactoid() {
   var [fact, setFact] = useState<string | null>(null)
   var [faded, setFaded] = useState(false)
+  var rootRef = useRef<HTMLDivElement>(null)
   useEffect(function() {
     var alive = true
     // No-repeat rotation (owner 9/03: saw the same fact twice): walk the
@@ -1731,13 +1742,20 @@ function WorkingFactoid() {
     }, 8000)
     return function() { alive = false; clearTimeout(showTimer); clearInterval(rotate) }
   }, [])
+  // Keep the fact on-screen (owner 9/04: it rendered clipped under the
+  // composer): it mounts 3s in and rotates through varying lengths via its
+  // OWN state, so the messages-keyed auto-scroll never fires for it — nudge
+  // it into view whenever it appears or changes.
+  useEffect(function() {
+    rootRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [fact])
   if (!fact) return null
   return (
-    <div style={{ marginLeft: 36, marginTop: 8, maxWidth: '85%', opacity: faded ? 0 : 1, transition: 'opacity .4s' }}>
-      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: '#9ca3af' }}>
+    <div ref={rootRef} style={{ marginLeft: 36, marginTop: 8, maxWidth: '85%', opacity: faded ? 0 : 1, transition: 'opacity .4s' }}>
+      <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: HERMES }}>
         Did you know?
       </div>
-      <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.5, marginTop: 2 }}>{fact}</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: ANA_TEAL, lineHeight: 1.5, marginTop: 2 }}>{fact}</div>
     </div>
   )
 }
