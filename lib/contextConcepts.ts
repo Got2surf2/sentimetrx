@@ -30,8 +30,11 @@ export interface ConceptChip {
 export interface RelatedConcepts {
   matchedRows: number
   themes: ConceptChip[]
+  /** Filled ASYNC by ContextCloud from server tax_counts — client rows never carry _tx. */
   dimensions: ConceptChip[]
   entities: ConceptChip[]
+  /** Flat _rowId set of the target's comment subset — the scope for the server fetch. */
+  subsetRowIds: number[]
 }
 
 function escapeRe(s: string): string {
@@ -50,9 +53,6 @@ function termRegexes(terms: string[]): RegExp[] {
   return out
 }
 
-interface TxField { a?: Record<string, string[]> }
-interface TxBlob { f?: Record<string, TxField> }
-
 export function relatedConcepts(opts: {
   rows: Record<string, unknown>[]
   fields: string | string[]
@@ -64,7 +64,7 @@ export function relatedConcepts(opts: {
 }): RelatedConcepts {
   const fieldArr = Array.isArray(opts.fields) ? opts.fields : [opts.fields]
   const regexes = termRegexes(opts.targets)
-  const empty: RelatedConcepts = { matchedRows: 0, themes: [], dimensions: [], entities: [] }
+  const empty: RelatedConcepts = { matchedRows: 0, themes: [], dimensions: [], entities: [], subsetRowIds: [] }
   if (!regexes.length || !opts.rows.length) return empty
 
   // The target's comment set: rows where any field mentions any target term.
@@ -90,30 +90,18 @@ export function relatedConcepts(opts: {
     if (n >= CONCEPT_FLOOR) themeChips.push({ label: t.name, count: n })
   }
 
-  // Dimensions — read the per-row verdicts stamped at classify time. A row
-  // counts once per (axis, sub) no matter how many fields carried the tag.
-  const dimCounts = new Map<string, number>()
+  // Dimensions are NOT computable from these rows: the rows route strips the
+  // data._tx block from every client row (rows/route.ts projectRow), so the
+  // original client-side read here was dead code that could never populate —
+  // found by the 2026-09-04 never-assume sweep. The chips are now fetched
+  // SERVER-side (ContextCloud → aggregate tax_counts scoped to the subset's
+  // row ids, the same engine every other dimension surface uses); this pass
+  // only reports which rows form the subset.
+  const subsetRowIds: number[] = []
   for (const s of subset) {
-    const tx = (s.row as { _tx?: TxBlob })._tx
-    if (!tx?.f) continue
-    const seen = new Set<string>()
-    for (const field of fieldArr) {
-      const axes = tx.f[field]?.a
-      if (!axes) continue
-      for (const axis of Object.keys(axes)) {
-        // '|' separator - sub names can contain spaces ("churn intent").
-        for (const sub of axes[axis] || []) seen.add(axis + '|' + sub)
-      }
-    }
-    seen.forEach(k => dimCounts.set(k, (dimCounts.get(k) || 0) + 1))
+    const rid = (s.row as { _rowId?: unknown })._rowId
+    if (typeof rid === 'number' && Number.isFinite(rid)) subsetRowIds.push(rid)
   }
-  const dimChips: ConceptChip[] = []
-  dimCounts.forEach((n, k) => {
-    if (n < CONCEPT_FLOOR) return
-    const sep = k.indexOf('|')
-    const axis = k.slice(0, sep), sub = k.slice(sep + 1)
-    dimChips.push({ label: dimSubLabel(sub), count: n, detail: DIM_AXIS_LABEL[axis as Axis] || axis })
-  })
 
   // Entities — catalog terms matched over the subset's text only.
   const entityChips: ConceptChip[] = []
@@ -130,7 +118,25 @@ export function relatedConcepts(opts: {
   return {
     matchedRows: subset.length,
     themes: themeChips.sort(byCount).slice(0, MAX_PER_KIND),
-    dimensions: dimChips.sort(byCount).slice(0, MAX_PER_KIND),
+    dimensions: [], // fetched server-side by ContextCloud (see note above)
     entities: entityChips.sort(byCount).slice(0, MAX_PER_KIND),
+    subsetRowIds,
   }
+}
+
+// Build dimension chips from the aggregate tax_counts responses ContextCloud
+// fetches per axis — same floor and cap as the synchronous chip kinds.
+export function dimensionChipsFromCounts(
+  perAxis: { axis: string; counts: Record<string, number> }[],
+): ConceptChip[] {
+  const chips: ConceptChip[] = []
+  for (const a of perAxis) {
+    for (const [sub, n] of Object.entries(a.counts || {})) {
+      if (n < CONCEPT_FLOOR) continue
+      chips.push({ label: dimSubLabel(sub), count: n, detail: DIM_AXIS_LABEL[a.axis as Axis] || a.axis })
+    }
+  }
+  return chips
+    .sort((x, y) => y.count - x.count || x.label.localeCompare(y.label))
+    .slice(0, MAX_PER_KIND)
 }

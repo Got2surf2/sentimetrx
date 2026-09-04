@@ -39,6 +39,10 @@ interface Props {
   /** Full theme model + entity catalog for the Context tab's Related concepts. */
   conceptThemes?: Theme[] | null
   conceptEntities?: { canonical: string; aliases?: string[] }[] | null
+  /** Server-side dimension chips for the Context tab (rows never carry _tx). */
+  conceptDatasetId?: string
+  conceptDimFieldKey?: string
+  conceptDimensionsEnabled?: boolean
   onClose: () => void
 }
 
@@ -64,7 +68,7 @@ function highlightKeywords(text: string, keywords: string[], contextWord?: strin
   })
 }
 
-export default function ThemePopover({ theme, rows, fields, color, ratingField, hiddenFields, conceptThemes, conceptEntities, onClose }: Props) {
+export default function ThemePopover({ theme, rows, fields, color, ratingField, hiddenFields, conceptThemes, conceptEntities, conceptDatasetId, conceptDimFieldKey, conceptDimensionsEnabled, onClose }: Props) {
   // Memoized: it feeds the Context tab's corpus-wide tokenization, which is far
   // too expensive to redo on every render.
   const fieldArr = useMemo(() => (Array.isArray(fields) ? fields : [fields]), [fields])
@@ -231,6 +235,9 @@ export default function ThemePopover({ theme, rows, fields, color, ratingField, 
             <TermInsights rows={rows} textFields={insightsExclude} targets={keywords} termLabel={theme.name} onDrillDown={handleDrillDown} />
           ) : view === 'context' ? (
             <ContextCloud
+              datasetId={conceptDatasetId}
+              dimFieldKey={conceptDimFieldKey}
+              dimensionsEnabled={conceptDimensionsEnabled}
               rows={rows}
               fields={fieldArr}
               targets={keywords}

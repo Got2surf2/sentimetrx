@@ -43,6 +43,10 @@ interface Props {
   /** Full theme model + entity catalog for the Context tab's Related concepts. */
   conceptThemes?: Theme[] | null
   conceptEntities?: { canonical: string; aliases?: string[] }[] | null
+  /** Server-side dimension chips for the Context tab (rows never carry _tx). */
+  conceptDatasetId?: string
+  conceptDimFieldKey?: string
+  conceptDimensionsEnabled?: boolean
   onClose: () => void
 }
 
@@ -68,7 +72,7 @@ function highlightWords(text: string, words: string[]): React.ReactNode[] {
   })
 }
 
-export default function OpinionPopover({ word, rows, fields, ratingField, hiddenFields, themeScope, conceptThemes, conceptEntities, onClose }: Props) {
+export default function OpinionPopover({ word, rows, fields, ratingField, hiddenFields, themeScope, conceptThemes, conceptEntities, conceptDatasetId, conceptDimFieldKey, conceptDimensionsEnabled, onClose }: Props) {
   const [view, setView] = useState<'opinions' | 'context' | 'comments' | 'insights'>('opinions')
   const [insightFilter, setInsightFilter] = useState<InsightFilter | null>(null)
   // Context word drilled in from the Context tab — narrows the comments list
@@ -184,6 +188,9 @@ export default function OpinionPopover({ word, rows, fields, ratingField, hidden
   } else if (view === 'context') {
     content = (
       <ContextCloud
+              datasetId={conceptDatasetId}
+              dimFieldKey={conceptDimFieldKey}
+              dimensionsEnabled={conceptDimensionsEnabled}
         rows={rows}
         fields={fieldArr}
         targets={contextTargets}

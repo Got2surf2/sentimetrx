@@ -5,7 +5,7 @@
 // filters anecdotes, and the theme modal's own theme never lists itself.
 
 import { describe, it, expect } from 'vitest'
-import { relatedConcepts } from '@/lib/contextConcepts'
+import { relatedConcepts, dimensionChipsFromCounts } from '@/lib/contextConcepts'
 import type { Theme } from '@/lib/themeUtils'
 
 function theme(name: string, keywords: string[]): Theme {
@@ -36,13 +36,27 @@ describe('relatedConcepts', () => {
     expect(r.themes).toEqual([{ label: 'Slow Service', count: 4 }])
   })
 
-  it('reads dimension tags from _tx with the 3-comment floor', () => {
-    const r = relatedConcepts({ rows: ROWS, fields: 'comment', targets: ['server'] })
-    // disappointment on 3 of the 4 server rows; churn intent on 1 (< floor);
-    // blame only outside the subset — never counted.
-    expect(r.dimensions).toHaveLength(1)
-    expect(r.dimensions[0]).toMatchObject({ count: 3 })
-    expect(r.dimensions[0].label.toLowerCase()).toContain('disappoint')
+  it('never computes dimensions client-side — reports the subset row ids for the server fetch', () => {
+    // The rows route strips data._tx from every client row, so a client-side
+    // read can never populate (the original version of this test fed rows
+    // WITH _tx — an input that cannot occur in the app — which is exactly how
+    // the dead code passed review). Dimensions arrive via ContextCloud's
+    // server tax_counts scoped to subsetRowIds.
+    const rows = ROWS.map((r, i) => ({ ...r, _rowId: 100 + i }))
+    const r = relatedConcepts({ rows, fields: 'comment', targets: ['server'] })
+    expect(r.dimensions).toEqual([])
+    expect(r.subsetRowIds).toEqual([100, 101, 102, 103]) // the 4 'server' rows
+  })
+
+  it('dimensionChipsFromCounts applies the 3-count floor, cap, and axis labels', () => {
+    const chips = dimensionChipsFromCounts([
+      { axis: 'emotion', counts: { disappointment: 5, 'churn intent': 2 } },
+      { axis: 'touchpoint', counts: { 'wait time': 3 } },
+    ])
+    expect(chips).toEqual([
+      { label: 'Disappointment', count: 5, detail: 'Emotion Language' },
+      { label: 'Wait Time', count: 3, detail: 'Touchpoint' },
+    ])
   })
 
   it('matches catalog entities over the subset text only', () => {

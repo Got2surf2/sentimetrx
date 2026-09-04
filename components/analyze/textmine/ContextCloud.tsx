@@ -16,7 +16,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { computeCollocates, type CollocationResult } from '@/lib/collocations'
-import { relatedConcepts, type RelatedConcepts, type ConceptChip } from '@/lib/contextConcepts'
+import { relatedConcepts, dimensionChipsFromCounts, type RelatedConcepts, type ConceptChip } from '@/lib/contextConcepts'
+import { DIM_AXES } from '@/lib/dimensionFields'
 import type { Theme } from '@/lib/themeUtils'
 
 interface Props {
@@ -34,6 +35,11 @@ interface Props {
   excludeThemeName?: string
   /** Entity catalog for the "Related concepts" section (optional). */
   entities?: { canonical: string; aliases?: string[] }[] | null
+  /** Server-side dimension chips (client rows never carry _tx): dataset +
+   *  active-question key + the same gate the Dimensions tab uses. */
+  datasetId?: string
+  dimFieldKey?: string
+  dimensionsEnabled?: boolean
 }
 
 const MAX_SHOWN = 20
@@ -45,8 +51,9 @@ function fontSizeFor(count: number, max: number): number {
   return Math.round(13 + ratio * 13)
 }
 
-export default function ContextCloud({ rows, fields, targets, termLabel, onSelect, themes, excludeThemeName, entities }: Props) {
+export default function ContextCloud({ rows, fields, targets, termLabel, onSelect, themes, excludeThemeName, entities, datasetId, dimFieldKey, dimensionsEnabled }: Props) {
   const [sortBy, setSortBy] = useState<'count' | 'score'>('count')
+  const [dimChips, setDimChips] = useState<ConceptChip[] | null>(null)
 
   // Collocation is synchronous and can run a few hundred ms on a 50K-row
   // corpus, so it's deferred a tick past mount — the tab paints with the
@@ -72,7 +79,35 @@ export default function ContextCloud({ rows, fields, targets, termLabel, onSelec
   const result = computed && computed.rows === rows && computed.fields === fields && computed.targets === targets
     ? computed.result
     : null
-  const concepts = result ? computed!.concepts : null
+  const conceptsSync = result ? computed!.concepts : null
+
+  // Dimension chips come from the SERVER: the rows route strips data._tx from
+  // client rows, so the original client-side read could never populate (dead
+  // code caught by the 2026-09-04 sweep). One tax_counts aggregate per axis,
+  // scoped to the subset's flat row ids — the same engine, gate, and active-
+  // question key every other dimension surface uses.
+  const subsetIds = conceptsSync?.subsetRowIds
+  useEffect(() => {
+    setDimChips(null)
+    if (!dimensionsEnabled || !datasetId || !subsetIds || subsetIds.length === 0) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const results = await Promise.all(DIM_AXES.map(async axis => {
+          const r = await fetch('/api/datasets/' + datasetId + '/aggregate', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ op: 'tax_counts', axis, rowIds: subsetIds, ...(dimFieldKey ? { fieldKey: dimFieldKey } : {}) }),
+          })
+          const d = r.ok ? await r.json() : null
+          return { axis, counts: (d?.counts || {}) as Record<string, number> }
+        }))
+        if (!cancelled) setDimChips(dimensionChipsFromCounts(results))
+      } catch { if (!cancelled) setDimChips([]) }
+    })()
+    return () => { cancelled = true }
+  }, [datasetId, dimFieldKey, dimensionsEnabled, subsetIds])
+
+  const concepts = conceptsSync ? { ...conceptsSync, dimensions: dimChips || [] } : null
 
   // Both rankings arrive pre-sorted from the lib, so the toggle is a swap.
   const shown = useMemo(

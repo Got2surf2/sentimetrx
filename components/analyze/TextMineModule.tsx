@@ -3293,6 +3293,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                                       themeScope={opinionThemeScope}
                                       conceptThemes={(displayThemes || themes)?.themes || null}
                                       conceptEntities={entityCatalogRows}
+                                      conceptDatasetId={datasetId}
+                                      conceptDimFieldKey={themeFieldKey(activeFields)}
+                                      conceptDimensionsEnabled={dimensionsEnabled}
                                       onClose={function() { setOpinionWord(null); setOpinionThemeId(null) }}
                                     />
                                   </div>
@@ -3606,6 +3609,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         themeScope={opinionThemeScope}
                         conceptThemes={(displayThemes || themes)?.themes || null}
                         conceptEntities={entityCatalogRows}
+                                      conceptDatasetId={datasetId}
+                                      conceptDimFieldKey={themeFieldKey(activeFields)}
+                                      conceptDimensionsEnabled={dimensionsEnabled}
                         onClose={function() { setOpinionWord(null); setOpinionThemeId(null) }}
                       />
                     </div>
@@ -3620,6 +3626,9 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                       hiddenFields={hiddenFields}
                       conceptThemes={(displayThemes || themes)?.themes || null}
                       conceptEntities={entityCatalogRows}
+                                      conceptDatasetId={datasetId}
+                                      conceptDimFieldKey={themeFieldKey(activeFields)}
+                                      conceptDimensionsEnabled={dimensionsEnabled}
                       onClose={function() { setThemePopoverIdx(null) }}
                     />
                   )}
