@@ -127,6 +127,10 @@ interface Props {
 var IMSG_BLUE = '#007AFF'
 var IMSG_GRAY = '#E9E9EB'
 var HERMES = '#E8632A'
+// The panel header wears Sarina teal (the datanautix "data" teal), NOT the
+// app's Hermes orange — owner 2026-09-04: the docked panel should read as its
+// own window, distinct from the chrome behind it.
+var ANA_TEAL = '#0E7476'
 
 var STARTERS = [
   'What are the main themes people are discussing?',
@@ -139,7 +143,29 @@ var STARTERS = [
 var SAMPLING_THRESHOLD = 200
 
 export default function AskAnaPanel({ datasetId, datasetName, datasetSource, datasetRowCount, filters, onClose, onThemesChanged }: Props) {
-  var [messages, setMessages] = useState<Message[]>([])
+  // The conversation survives closing the panel (owner-hit 2026-09-04: X-ing
+  // out to look at a chart full-screen lost everything). Hydrate from
+  // sessionStorage on mount, persist on every settle; Clear is the reset.
+  // Streaming/status flags are stripped on save — a restored thread must not
+  // resurrect a spinner for a request that died with the unmount.
+  var _persistKey = 'askAna_msgs_' + datasetId
+  var [messages, setMessages] = useState<Message[]>(function() {
+    try {
+      var raw = sessionStorage.getItem('askAna_msgs_' + datasetId)
+      var saved = raw ? JSON.parse(raw) as Message[] : null
+      return Array.isArray(saved) ? saved : []
+    } catch { return [] }
+  })
+  useEffect(function() {
+    try {
+      if (!messages.length) { sessionStorage.removeItem(_persistKey); return }
+      var toSave = messages
+        .filter(function(m) { return !m.streaming })
+        .slice(-40)
+        .map(function(m) { return { ...m, statusText: undefined } })
+      sessionStorage.setItem(_persistKey, JSON.stringify(toSave))
+    } catch { /* quota — the conversation just won't survive a close */ }
+  }, [messages, _persistKey])
   var [input, setInput] = useState('')
   var [loading, setLoading] = useState(false)
   // Shared rows cache — used to send Ana the filtered view's flat row ids so
@@ -853,14 +879,14 @@ export default function AskAnaPanel({ datasetId, datasetName, datasetSource, dat
     }}>
       <style>{`
         @keyframes askAnaSlideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-        .ask-ana-input:focus { outline: none; border-color: ${HERMES} !important; box-shadow: 0 0 0 3px rgba(232,99,42,.15) !important; }
+        .ask-ana-input:focus { outline: none; border-color: ${ANA_TEAL} !important; box-shadow: 0 0 0 3px rgba(14,116,118,.15) !important; }
       `}</style>
 
       {/* Header */}
       <div style={{
         height: 56, padding: '0 16px', borderBottom: 'none',
         display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
-        background: HERMES,
+        background: ANA_TEAL,
       }}>
         <div style={{
           width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,.2)',

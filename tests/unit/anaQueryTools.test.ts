@@ -289,3 +289,17 @@ describe('read_comments — on-demand reading sample', () => {
     expect(String(out.scope)).toContain('representative sample')
   })
 })
+
+// ── Dimensions gate (2026-09-04, owner-hit: tax op ran on a Dimensions-off dataset) ──
+describe('query_data respects the Dimensions gate', () => {
+  it('refuses tax_* ops when ctx.hasDimensions is false', async () => {
+    const ctx = { datasetId: 'd1', rowCount: 100, source: 'upload', rowIds: null, fieldKey: null, hasDimensions: false }
+    const out = await executeAnaQueryTool({} as never, ctx as never, 'query_data', { op: 'tax_counts', axis: 'emotion' })
+    expect(String((out as { error?: string }).error || '')).toMatch(/Dimensions is turned off/)
+  })
+
+  it('status labels name the Dimensions feature with the axis', () => {
+    expect(anaToolStatusLabel('query_data', { op: 'tax_counts', axis: 'emotion' })).toBe('Counting Dimensions (emotion) tags…')
+    expect(anaToolStatusLabel('query_data', { op: 'tax_date_series', axis: 'touchpoint' })).toBe('Trending Dimensions (touchpoint) over time…')
+  })
+})

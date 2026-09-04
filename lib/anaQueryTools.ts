@@ -34,6 +34,9 @@ export interface AnaQueryContext {
   /** Categorical fields marked section='demographic' in the schema — used to
    *  check a pulled sample's representativeness against the dataset. */
   demoFields?: string[]
+  /** Dimensions gate (same as Charts/Stats): when false the tax_* ops refuse —
+   *  stored _tx may exist on a dataset whose owner turned the feature OFF. */
+  hasDimensions?: boolean
   /** Per-request memo of Ana-composed `where` resolutions (same object rides
    *  every tool call in a turn, so repeated subgroup queries resolve once). */
   _whereCache?: Record<string, { ids: number[]; sampled: boolean; label: string; mappings: { requested: string; matched: string[] }[] }>
@@ -107,16 +110,30 @@ export const ANA_QUERY_TOOLS = [
 
 export const ANA_QUERY_TOOL_NAMES = new Set(ANA_QUERY_TOOLS.map(function(t) { return t.name }))
 
+// Cross-turn memo of subgroup resolutions. The per-request ctx cache only
+// helps retries INSIDE one turn — the owner's rephrased follow-up re-paid a
+// minutes-long ANES resolution from zero (2026-09-04). Keyed on dataset +
+// conditions, 10-minute TTL (rows barely move mid-session), capped small.
+type WhereMemo = { at: number; res: { ids: number[]; sampled: boolean; label: string; mappings: { requested: string; matched: string[] }[] } }
+const _whereMemo = new Map<string, WhereMemo>()
+const WHERE_MEMO_TTL = 10 * 60 * 1000
+const WHERE_MEMO_MAX = 40
+
 // Human-readable one-liner streamed to the panel while a tool runs.
 export function anaToolStatusLabel(name: string, input: Record<string, unknown>): string {
   if (name === 'find_quotes') return 'Searching for "' + String(input.query || '').slice(0, 60) + '"…'
   if (name === 'read_comments') return input.query ? 'Reading comments about "' + String(input.query).slice(0, 50) + '"…' : 'Reading a sample of comments…'
   var op = String(input.op || '')
+  // tax_* labels name the PRODUCT FEATURE ("Dimensions" + the axis) — a bare
+  // "counting dimension mentions" read as generic analysis-speak and confused
+  // the owner on a dataset whose Dimensions tab was off (2026-09-04).
+  var ax = typeof input.axis === 'string' && input.axis ? ' (' + input.axis + ')' : ''
   var labels: Record<string, string> = {
     field_counts: 'Counting values', crosstab: 'Running a crosstab', group_stats: 'Computing group stats',
-    numeric_stats: 'Computing stats', date_series: 'Building a time series', tax_counts: 'Counting dimension mentions',
-    tax_crosstab: 'Crossing dimensions', tax_axis_crosstab: 'Crossing dimension axes',
-    tax_group_stats: 'Computing dimension stats', tax_date_series: 'Building a dimension time series',
+    numeric_stats: 'Computing stats', date_series: 'Building a time series',
+    tax_counts: 'Counting Dimensions' + ax + ' tags', tax_crosstab: 'Crossing Dimensions' + ax + ' with a field',
+    tax_axis_crosstab: 'Crossing Dimensions axes', tax_group_stats: 'Computing stats by Dimensions' + ax,
+    tax_date_series: 'Trending Dimensions' + ax + ' over time',
   }
   return (labels[op] || 'Querying the data') + '…'
 }
@@ -247,6 +264,13 @@ export async function executeAnaQueryTool(
     var cache = (ctx._whereCache = ctx._whereCache || {})
     var resolved = cache[cacheKey]
     if (!resolved) {
+      var memoKey = ctx.datasetId + '\u0001' + cacheKey
+      var memoHit = _whereMemo.get(memoKey)
+      if (memoHit && Date.now() - memoHit.at < WHERE_MEMO_TTL) {
+        cache[cacheKey] = resolved = memoHit.res
+      }
+    }
+    if (!resolved) {
       // A collection holds no rows under its own id — hand the member ids to
       // the segment resolver so its scans walk them (memoized per turn).
       if (ctx.source === 'collection' && !ctx._memberScope) {
@@ -255,6 +279,11 @@ export async function executeAnaQueryTool(
       var res = await resolveWhereRowIds(service, { datasetId: ctx.datasetId, rowCount: ctx.rowCount, where: validated, scope: ctx._memberScope || undefined })
       if ('error' in res) return { error: res.error, hint: 'Run field_counts on the demographic field first and use its EXACT values in where.' }
       cache[cacheKey] = resolved = res
+      _whereMemo.set(ctx.datasetId + '\u0001' + cacheKey, { at: Date.now(), res })
+      if (_whereMemo.size > WHERE_MEMO_MAX) {
+        var oldest = [..._whereMemo.entries()].sort(function(a, b) { return a[1].at - b[1].at })[0]
+        if (oldest) _whereMemo.delete(oldest[0])
+      }
     }
     var scoped = resolved.ids
     if (ctx.rowIds) {
@@ -274,6 +303,9 @@ export async function executeAnaQueryTool(
   }
 
   if (name === 'query_data') {
+    if (String(input.op || '').startsWith('tax_') && ctx.hasDimensions === false) {
+      return { error: 'Dimensions is turned off for this dataset, so taxonomy (tax_*) queries are unavailable. Use field_counts / crosstab / group_stats / date_series on regular fields instead.' }
+    }
     var limit = Math.min(Math.max(1, Number(input.limit) || 50), 100)
     var result = await runAggregateOp(
       service,

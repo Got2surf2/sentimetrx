@@ -997,7 +997,7 @@ rows load: the interval is a client-side computation over the loaded rows, and t
 - **Filter-awareness:** each exact RPC gained `p_row_ids bigint[] DEFAULT NULL` (`id = ANY(p_row_ids)`, the same predicate the tax family uses). `ChartsModule.useAggregation` now forwards the view's `filteredRowIds` to **every** spec (the `isTax`-only gate was dropped; `fieldKey` stays tax-only), so scalar charts reflect filters. The route appends `p_row_ids` and drops it on `PGRST202` (deploy-order safe — an un-migrated DB answers without filters, the pre-fix behavior).
 - **Sampling:** each RPC gained a keyset-paged `sampled_*` twin over `idx_drf_sample` (same 50K sample the bulk-rows route serves + the metric strip counts over). The route routes to the twin when `datasets.row_count > 50K`, scales **counts** by `total/scanned`, and reports **means/medians/stddev UNSCALED** (a uniform sample's mean/quantile is a direct population estimate; percentiles ride raw values to Node since they can't merge from partial aggregates). The twins also take `p_row_ids` so a filtered above-cap view narrows the numerators without touching the sample-walk denominator. Twin failure (incl. pre-migration `PGRST202`) falls back to the exact RPC. Charts carry a dataset-level "≈ Estimated from a 50,000-row sample" affordance (same "~" doctrine as the strip) when `totalRows > 50K`. Verified sampled-vs-exact within ±2% on proportions (56K/128K) and no-57014 on the 1M PERF TEST (`scripts/_verify_aggregate_sampled.mts`). StatsModule's scalar tests already compute client-side over the loaded sample (filter-applied); only its **dimension** tests hit `/aggregate` and were made filter-aware in Brief F. **Collections don't reach this route** — the client renders their charts from raw rows.
 
-**Dimensions (taxonomy) charts are sampled at scale too (2026-07-13, perf review §7 Brief C Part 3, `sql/171` + `lib/sampledTaxonomy.ts`).** The five `tax_*` aggregates (`taxonomy_sub_counts`/`group_stats`/`crosstab`/`date_series`/`axis_crosstab`, sql/164) unnest `data._tx` over every row and 57014 at ~1M **once a taxonomy rollup is registered** so `taxonomy_field_or_primary` resolves a field (`taxonomy_sub_counts` measured 8.1s at 1M). Each gained a keyset-paged `sampled_taxonomy_*` twin over the same 50K `idx_drf_sample`; the route routes to the twin when `row_count > 50K`, scaling **counts** by `total/scanned` and reporting **means/medians/quartiles/stddev UNSCALED** — identical doctrine to the scalar twins above. Per-question resolution (`p_field_key` → `taxonomy_field_or_primary`) rides into each twin so the source-field picker keeps driving dimensions; `p_row_ids` narrows numerators for a filtered above-cap view. Twin failure falls back to the exact RPC (`PGRST202` deploy-order safe). The dataset-level "≈ Estimated from a 50,000-row sample" affordance already covers dimension charts (it's keyed on `totalRows > 50K`, op-agnostic). Verified sampled-vs-exact within ±2% on the 128K Outback and no-57014 on the 1M PERF TEST (`scripts/_verify_taxonomy_sampled.mts`, which temporarily injects a rollup so the resolver fires, then reverts).
+**Dimensions (taxonomy) charts are sampled at scale too (2026-07-13, perf review §7 Brief C Part 3, `sql/171` + `lib/sampledTaxonomy.ts`).** **Since 2026-09-04 the tax_* ops go EXACT up to 200K rows** (`TAX_EXACT_CAP` in aggregateOps): the 57014 that justified sampling was measured at ~1M, and the deterministic block sample systematically under-covers small strata on row-order-correlated fields — on ANES (year-ordered rows) 1998 got 1 of an expected ~10 flagged rows into the sample and charted as "100% threat" where the truth was 19% of 26. Exact-when-affordable beats a biased estimate; the twins remain for >200K. The five `tax_*` aggregates (`taxonomy_sub_counts`/`group_stats`/`crosstab`/`date_series`/`axis_crosstab`, sql/164) unnest `data._tx` over every row and 57014 at ~1M **once a taxonomy rollup is registered** so `taxonomy_field_or_primary` resolves a field (`taxonomy_sub_counts` measured 8.1s at 1M). Each gained a keyset-paged `sampled_taxonomy_*` twin over the same 50K `idx_drf_sample`; the route routes to the twin when `row_count > 50K`, scaling **counts** by `total/scanned` and reporting **means/medians/quartiles/stddev UNSCALED** — identical doctrine to the scalar twins above. Per-question resolution (`p_field_key` → `taxonomy_field_or_primary`) rides into each twin so the source-field picker keeps driving dimensions; `p_row_ids` narrows numerators for a filtered above-cap view. Twin failure falls back to the exact RPC (`PGRST202` deploy-order safe). The dataset-level "≈ Estimated from a 50,000-row sample" affordance already covers dimension charts (it's keyed on `totalRows > 50K`, op-agnostic). Verified sampled-vs-exact within ±2% on the 128K Outback and no-57014 on the 1M PERF TEST (`scripts/_verify_taxonomy_sampled.mts`, which temporarily injects a rollup so the resolver fires, then reverts).
 
 **Theme-prevalence bars are filter-aware too (2026-07-13, Brief F escalation #2, `sql/170`).** The Charts `liveThemeCounts` → `/theme-counts` bars showed dataset-wide % under a filtered UI because the numerator (`count_theme_matches`) and denominator (`count_nonempty_rows`) took no filter param. Both gained `p_row_ids`; ChartsModule forwards the view's `filteredRowIds` in the POST (in the cache key + a stable id-signature in the effect deps so it re-fetches on filter change, incl. the async null→ids transition). The route skips its sampling path when filters are active (the id set is bounded ≤ sample → exact) and drops `p_row_ids` on `PGRST202`. Verified filtered numerator/denominator parity vs an independent JS count.
 
@@ -2475,6 +2475,13 @@ anywhere` so the table compresses to the panel instead of clipping. Verified
 in-browser on TEST against a live Ana answer in both the docked (~360px) and
 expanded (940px) panel.
 
+**The panel reads as its own window and keeps its thread (2026-09-04).** The
+header wears Sarina teal (`#0E7476`, the datanautix "data" teal — deliberate
+contrast with the app's Hermes orange chrome), and the conversation persists
+in sessionStorage per dataset across panel close/reopen (owner-hit: X-ing out
+to view a chart full-screen lost everything). Streaming messages and
+transient status lines are stripped on save; the Clear button is the reset.
+
 **The panel coexists with the rest of the chrome (2026-09-04, owner-hit:
 "sherpa disappears when Ask Ana is invoked" + clipped header items).** Three
 rules, all verified in-browser on TEST:
@@ -2523,6 +2530,33 @@ sets stay valid; the range-only walk shares one SCAN_CAP budget across
 members). Verified against TEST on the exact owner-reported collection:
 all ops answer and Σ per-member n reconciles to 42,224
 (`scripts/_verify_collection_agg.ts`, untracked KEEP).
+
+**Ana honors the Dimensions toggle (2026-09-04, owner-hit).** The ask-ana
+route computes the same `hasDimensions` gate as Charts/Stats/TextMine and (a)
+tells the model in the system prompt when Dimensions is OFF, (b) hard-refuses
+`tax_*` ops at execution with a redirect to regular-field ops. Stored `_tx`
+data may exist on a dataset whose owner disabled the feature AFTER
+classification — answering from it would surface a switched-off feature
+through a side door. Status labels for tax ops name the product feature with
+the axis ("Counting Dimensions (emotion) tags…") — a bare "counting dimension
+mentions" read as generic analysis-speak. Companion guard in TextMine: the
+mining-time auto-enable paths (`autoEnableDimensions` / `autoTagEmotion`)
+treat existing-classification + toggle-off as a STANDING HUMAN OPT-OUT and
+skip entirely (no notice, no classify, no flag flip); first-time discovery
+still auto-enables. The backfill script only flips flags on datasets with no
+pre-existing emotion data (re-run safe).
+
+**Ana subgroup (`where`) resolution is minutes→seconds (2026-09-04,
+owner-hit: a 3-condition ANES subgroup took 5+ minutes and timed out).**
+Containment scans and range narrows run in concurrent waves of 8 pages;
+range checks pull ONLY the range fields via quoted jsonb arrow-select (the
+full-blob pull dominated the walk on wide survey rows); value discovery uses
+the 50K sampled twin above the cap (the exact RPC statement-times-out at
+ANES scale); `NARROWED_RANGE_CAP` raised 60K→150K (a 64K-row party slice
+must range-filter, not refuse); and resolutions memoize ACROSS turns in a
+10-minute module-level LRU, so a rephrased question re-uses the resolved id
+set instantly. Measured on the owner's exact scenario (Republicans ≤39,
+≥2012 on 126K rows): fail@minutes → 33s cold, ~0s warm.
 
 **Ana works the CURRENT VIEW (2026-09-02, owner-hit).** Ana answered from the
 default verbatim column while the analyst had another selected, and leaned on

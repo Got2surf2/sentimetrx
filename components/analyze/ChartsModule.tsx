@@ -1038,6 +1038,20 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
   }
   var isH = orient === 'h'
   if (isH) cats.reverse()
+  // Percentage mode: a category whose TOTAL is tiny renders a confident-looking
+  // share bar from almost no data (owner-hit 2026-09-04: a year with ONE
+  // sampled row charted as "100%"). Below the floor the category is dropped
+  // and disclosed in a note under the chart instead of silently plotted.
+  var PCT_FLOOR = 10
+  var pctSuppressed: string[] = []
+  if (barMode === 'percent') {
+    cats = cats.filter(function(cat) {
+      var t = Object.values(grid[cat] || {}).reduce(function(s, v) { return s + v }, 0)
+      if (t >= PCT_FLOOR) return true
+      pctSuppressed.push(resolveAlias(catField, cat, schema) + ' (n=' + t + ')')
+      return false
+    })
+  }
   var catLabels = wrapLabels(cats.map(function(c) { return resolveAlias(catField, c, schema) }), isH ? 28 : 18)
   // Order color (stack/group) values — signal tiers use canonical order, others by frequency
   var colorArr = Array.from(colorVals)
@@ -1049,7 +1063,8 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
 
   var isBarPercent = barMode === 'percent'
   var traces = colorArr.map(function(col, i) {
-    var ys = cats.map(function(cat) { return grid[cat] ? (grid[cat][col] || 0) : 0 })
+    var rawCounts = cats.map(function(cat) { return grid[cat] ? (grid[cat][col] || 0) : 0 })
+    var ys: number[] = rawCounts
     if (isBarPercent) {
       ys = cats.map(function(cat) {
         var total = Object.values(grid[cat] || {}).reduce(function(s, v) { return s + v }, 0)
@@ -1058,10 +1073,13 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
     }
     var colPct = colorGrandTotal > 0 ? Math.round((colorTotals[col] || 0) / colorGrandTotal * 100) : 0
     var colLabel = resolveAlias(colorByField, col, schema)
+    // Percent hovers disclose the raw n behind the share — a % with no
+    // denominator is exactly how the tiny-cell trap slipped past review.
     var stackHoverTpl = isH
-      ? (isBarPercent ? '%{x:.0f}%<br>' + flByName(colorByField, schema) + ': ' + colLabel + '<extra></extra>' : '%{x}<br>' + flByName(colorByField, schema) + ': ' + colLabel + '<extra></extra>')
-      : (isBarPercent ? '%{y:.0f}%<br>' + flByName(colorByField, schema) + ': ' + colLabel + '<extra></extra>' : '%{y}<br>' + flByName(colorByField, schema) + ': ' + colLabel + '<extra></extra>')
+      ? (isBarPercent ? '%{x:.0f}% (n=%{customdata})<br>' + flByName(colorByField, schema) + ': ' + colLabel + '<extra></extra>' : '%{x}<br>' + flByName(colorByField, schema) + ': ' + colLabel + '<extra></extra>')
+      : (isBarPercent ? '%{y:.0f}% (n=%{customdata})<br>' + flByName(colorByField, schema) + ': ' + colLabel + '<extra></extra>' : '%{y}<br>' + flByName(colorByField, schema) + ': ' + colLabel + '<extra></extra>')
     var trace: Record<string, unknown> = { type: 'bar', name: colLabel + ' (' + colPct + '%)', marker: { color: pal[i % pal.length], line: { color: pal[i % pal.length] + '40', width: 1 } }, hovertemplate: stackHoverTpl }
+    if (isBarPercent) trace.customdata = rawCounts
     if (isH) { trace.y = catLabels; trace.x = ys; trace.orientation = 'h' }
     else { trace.x = catLabels; trace.y = ys }
     return trace
@@ -1070,7 +1088,23 @@ function BarStackedInner({ analytics, schema, datasetId, catField, colorByField,
   var catLabel = flByName(catField, schema)
   var valLabel = barMode === 'percent' ? 'Percentage' : 'Count'
   var isStackedCount = barMode !== 'percent'
-  return <PlotlyChart traces={traces} layout={{ title: catLabel + ' by ' + flByName(colorByField, schema) + clipBadge(30, totalCats), barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : '', ...(!isH ? catXAxis(catLabels) : {}), ...(isH && isStackedCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? '' : valLabel, ...(!isH && isStackedCount ? { tickformat: ',d' } : {}) }, legend: { orientation: 'h' as const, y: -0.2, traceorder: 'normal' as const, title: { text: flByName(colorByField, schema) } }, barcornerradius: 4 }} />
+  // Long category labels rotate below a vertical chart and swallow the strip
+  // where an `orientation:'h', y:-0.2` legend sits (owner-hit 2026-09-04:
+  // legend buried behind the theme labels). Same cure as the box plot above:
+  // vertical right-side legend whenever the labels are in catXAxis's dense
+  // territory; short labels keep the roomier bottom legend.
+  var longCatLabels = !isH && cats.length >= 5 && cats.reduce(function(mx, c) { return Math.max(mx, String(resolveAlias(catField, c, schema)).length) }, 0) > 10
+  var stackLegend = longCatLabels
+    ? { orientation: 'v' as const, x: 1.02, y: 1, xanchor: 'left' as const, yanchor: 'top' as const, traceorder: 'normal' as const, title: { text: flByName(colorByField, schema) } }
+    : { orientation: 'h' as const, y: -0.2, traceorder: 'normal' as const, title: { text: flByName(colorByField, schema) } }
+  return <>
+    <PlotlyChart traces={traces} layout={{ title: catLabel + ' by ' + flByName(colorByField, schema) + clipBadge(30, totalCats), barmode: barStack ? 'stack' : 'group', xaxis: { title: isH ? valLabel : '', ...(!isH ? catXAxis(catLabels) : {}), ...(isH && isStackedCount ? { tickformat: ',d' } : {}) }, yaxis: { title: isH ? '' : valLabel, ...(!isH && isStackedCount ? { tickformat: ',d' } : {}) }, legend: stackLegend, ...(longCatLabels ? { margin: { t: 48, r: 220, b: 56, l: 56 } } : {}), barcornerradius: 4 }} />
+    {pctSuppressed.length > 0 && (
+      <div style={{ fontSize: 11, color: T.textFaint, fontStyle: 'italic', padding: '2px 10px 6px' }}>
+        Not shown — too few responses for a reliable percentage: {pctSuppressed.join(' · ')}
+      </div>
+    )}
+  </>
 }
 
 // ─── Bar Aggregated Inner (average/sum of numeric value by category) ─────

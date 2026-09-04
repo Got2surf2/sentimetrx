@@ -274,7 +274,7 @@ export async function POST(req: Request) {
   const service = createServiceRoleClient()
   const { data: dataset } = await service
     .from('datasets')
-    .select('id, name, source, row_count, org_id')
+    .select('id, name, source, row_count, org_id, taxonomy_enabled, taxonomy_suppressed')
     .eq('id', datasetId)
     .single()
 
@@ -557,6 +557,12 @@ ${dataContext}`
     .filter(function(fld) { return fld.section === 'demographic' && fld.type === 'categorical' && fld.status !== 'ignored' })
     .map(function(fld) { return fld.field })
     .slice(0, 3)
+  // Same gate as Charts/Stats/TextMine: Dimensions is a per-dataset opt-in.
+  // When it is OFF, Ana must not run tax_* ops — stored _tx data may still
+  // exist (an owner can disable AFTER classification), and answering from it
+  // would surface a feature the owner explicitly turned off (2026-09-04,
+  // ANES: "Counting dimension mentions…" flashed on a Dimensions-off dataset).
+  const hasDimensions = !!dataset.taxonomy_enabled || (dataset.source === 'google_reviews' && !dataset.taxonomy_suppressed)
   const queryCtx: AnaQueryContext = {
     datasetId,
     rowCount: dataset.row_count || 0,
@@ -565,10 +571,13 @@ ${dataContext}`
     fieldKey: themeFieldKey || null,
     fieldKeyMap,
     demoFields,
+    hasDimensions,
   }
+
   const fieldTypes: Record<string, string> = {}
   schemaFields.forEach(function(fld) { if (fld.field) fieldTypes[fld.field] = fld.type })
-  return streamAnthropicResponse(systemPrompt, question, conversationHistory, [...ANA_TOOLS, REMEMBER_TOOL, SET_VIEW_TOOL, ...ANA_QUERY_TOOLS], dataset.org_id, { service, ctx: queryCtx, fieldTypes })
+  const dimNote = hasDimensions ? '' : '\n\nDIMENSIONS OFF: this dataset has the Dimensions feature disabled — the tax_* ops are unavailable and will error. Use field_counts / crosstab / group_stats / date_series on regular fields instead.'
+  return streamAnthropicResponse(systemPrompt + dimNote, question, conversationHistory, [...ANA_TOOLS, REMEMBER_TOOL, SET_VIEW_TOOL, ...ANA_QUERY_TOOLS], dataset.org_id, { service, ctx: queryCtx, fieldTypes })
 }
 
 // ── Stream Anthropic response (agentic tool loop) ─────────────────────────

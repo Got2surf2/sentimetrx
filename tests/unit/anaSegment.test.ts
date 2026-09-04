@@ -48,6 +48,19 @@ describe('validateWhere', () => {
 
 // ── PostgREST-faithful fake over an in-memory row store ─────────────────────
 
+// Emulate PostgREST's aliased jsonb arrow-select ('"f0":data->"Age"') — the
+// resolver pulls only the range fields since 2026-09-04.
+function projectRows(rows: Row[], sel: string | null): Record<string, unknown>[] {
+  if (!sel || !sel.includes('data->')) return rows as unknown as Record<string, unknown>[]
+  const aliases = [...sel.matchAll(/"(f\d+)":data->"([^"]+)"/g)]
+  return rows.map(r => {
+    const o: Record<string, unknown> = { id: r.id }
+    for (const m of aliases) o[m[1]] = r.data[m[2]]
+    return o
+  })
+}
+
+
 type Row = { id: number; data: Record<string, unknown> }
 
 function fakeService(rows: Row[]) {
@@ -70,13 +83,14 @@ function fakeService(rows: Row[]) {
       if (state.range) out = out.slice(state.range[0], state.range[1] + 1)
       return out
     }
+    let sel: string | null = null
     const chain = {
-      select: () => chain,
+      select: (s: string) => { sel = s; return chain },
       eq: () => chain,
       contains: (_c: string, v: Record<string, unknown>) => { state.contains = v; return chain },
-      in: (_c: string, ids: number[]) => { state.ids = ids; return Promise.resolve({ data: match(), error: null }) },
+      in: (_c: string, ids: number[]) => { state.ids = ids; return Promise.resolve({ data: projectRows(match(), sel), error: null }) },
       order: () => chain,
-      range: (a: number, b: number) => { state.range = [a, b]; return Promise.resolve({ data: match(), error: null }) },
+      range: (a: number, b: number) => { state.range = [a, b]; return Promise.resolve({ data: projectRows(match(), sel), error: null }) },
     }
     return chain
   }
@@ -183,13 +197,14 @@ function fakeScopedService(byDataset: Record<string, Row[]>) {
       if (state.range) out = out.slice(state.range[0], state.range[1] + 1)
       return out
     }
+    let sel: string | null = null
     const chain = {
-      select: () => chain,
+      select: (s: string) => { sel = s; return chain },
       eq: (_c: string, v: unknown) => { state.dsId = String(v); return chain },
       contains: (_c: string, v: Record<string, unknown>) => { state.contains = v; return chain },
-      in: (_c: string, ids: number[]) => { state.ids = ids; return Promise.resolve({ data: match(), error: null }) },
+      in: (_c: string, ids: number[]) => { state.ids = ids; return Promise.resolve({ data: projectRows(match(), sel), error: null }) },
       order: () => chain,
-      range: (a: number, b: number) => { state.range = [a, b]; return Promise.resolve({ data: match(), error: null }) },
+      range: (a: number, b: number) => { state.range = [a, b]; return Promise.resolve({ data: projectRows(match(), sel), error: null }) },
     }
     return chain
   }

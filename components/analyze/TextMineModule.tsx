@@ -1246,6 +1246,22 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     return function () { classifyAlive.current = false }
   }, [])
 
+  // A dataset that ALREADY has stored classification while the toggle is OFF
+  // was turned off by a person — the auto paths below must treat that as a
+  // standing decision, not a discovery to re-make (owner-hit 2026-09-04: ANES
+  // was explicitly disabled, a re-mine's auto-tag PATCHed it back on and
+  // flashed the "Tagging emotion language…" notice). First-time datasets have
+  // no stored axes, so genuine discovery still auto-enables.
+  const userOptedOutOfDimensions = useCallback(async function (fields: string[]): Promise<boolean> {
+    if (taxonomyEnabled) return false
+    try {
+      var qs = fields.map(function (f) { return 'fields=' + encodeURIComponent(f) }).join('&')
+      var r = await fetch('/api/datasets/' + datasetId + '/taxonomy?' + qs)
+      var roll = r.ok ? await r.json() : null
+      return Array.isArray(roll?.axes) && roll.axes.some(function (a: { count?: number }) { return (a.count || 0) > 0 })
+    } catch { return false }
+  }, [datasetId, taxonomyEnabled])
+
   // Restaurant data was detected at theme-generation time (AI food-service flag,
   // or a restaurant theme library was applied) → turn Dimensions on and classify
   // in the background, no clicks: PATCH the flag, loop the keyword classifier over
@@ -1253,6 +1269,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // the Dimensions section appears. Best-effort; failures are silent.
   const autoEnableDimensions = useCallback(async function (fields: string[]) {
     if (!fields.length) return
+    if (await userOptedOutOfDimensions(fields)) return // standing human opt-out
     setDimAutoNotice('Restaurant data detected — classifying Dimensions…')
     try {
       await fetch('/api/datasets/' + datasetId, {
@@ -1276,7 +1293,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     } catch {
       setDimAutoNotice(null)
     }
-  }, [datasetId, router])
+  }, [datasetId, router, userOptedOutOfDimensions])
 
   // NON-restaurant data at theme-generation time → run the universal emotion
   // tier automatically (TAXONOMY.md §2a.0). Order matters vs autoEnableDimensions:
@@ -1286,6 +1303,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // "0% emotion" tab). Best-effort; failures are silent.
   const autoTagEmotion = useCallback(async function (fields: string[]) {
     if (!fields.length) return
+    if (await userOptedOutOfDimensions(fields)) return // standing human opt-out — no notice, no classify, no flag flip
     setDimAutoNotice('Tagging emotion language (disappointment · blame · churn intent · anger · ascribed threat)…')
     try {
       for (var guard = 0; guard < 300; guard++) {
@@ -1320,7 +1338,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     } catch {
       setDimAutoNotice(null)
     }
-  }, [datasetId, router])
+  }, [datasetId, router, userOptedOutOfDimensions])
 
   // sessionStorage key for persisting UI state across reloads. Initial state
   // is the default (NOT the saved value) so server-render and client-first-

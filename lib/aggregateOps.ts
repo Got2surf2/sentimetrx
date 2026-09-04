@@ -86,6 +86,16 @@ export async function runAggregateOp(
   var useSampled = rowCount > AGG_SAMPLE_CAP
   var isCollection = meta.source === 'collection'
 
+  // Dimension (tax_*) ops go EXACT up to a higher bar. The 57014 risk that
+  // justified the 50K sampled twins was measured at ~1M rows (8.1s exact);
+  // at ANES scale (126K) exact answers in well under the timeout, and the
+  // deterministic block sample systematically under-covers small strata on
+  // row-order-correlated fields (owner-hit 2026-09-04: 1998 rendered "100%
+  // threat" from ONE sampled row — the truth was 19% of 26). Exact whenever
+  // affordable beats a biased estimate.
+  var TAX_EXACT_CAP = 200000
+  var useSampledTax = rowCount > TAX_EXACT_CAP
+
   // Optional filtered row-id set (the filtered view). null = whole dataset;
   // else restrict the aggregate to those flat row ids. Sanitized to finite
   // numbers. The client (ChartsModule) sends this whenever filters are active,
@@ -390,7 +400,7 @@ export async function runAggregateOp(
     if (!axis || !TAX_AXES.includes(axis)) return { status: 400, body: { error: 'invalid axis' } }
     var tcRows: FieldCountRow[] | null = null
     var tcSampled = false
-    if (useSampled && !isCollection) {
+    if (useSampledTax && !isCollection) {
       try { var tcs = await sampledTaxonomySubCounts(service, datasetId, axis, taxFieldKey, rowCount, taxRowIds); tcRows = tcs.rows as FieldCountRow[]; tcSampled = true } catch { /* fall through to exact */ }
     }
     if (!tcRows) {
@@ -409,7 +419,7 @@ export async function runAggregateOp(
     if (!valueField) return { status: 400, body: { error: 'valueField required' } }
     var tgRows: TaxGroupStatsRow[] | null = null
     var tgSampled = false
-    if (useSampled && !isCollection) {
+    if (useSampledTax && !isCollection) {
       try { var tgs = await sampledTaxonomyGroupStats(service, datasetId, axis, valueField, taxFieldKey, rowCount, taxRowIds); tgRows = tgs.rows as unknown as TaxGroupStatsRow[]; tgSampled = true } catch { /* fall through */ }
     }
     if (!tgRows && isCollection) {
@@ -449,7 +459,7 @@ export async function runAggregateOp(
     if (!dateField) return { status: 400, body: { error: 'dateField required' } }
     var tdRows: TaxDateSeriesRow[] | null = null
     var tdSampled = false
-    if (useSampled && !isCollection) {
+    if (useSampledTax && !isCollection) {
       try { var tds = await sampledTaxonomyDateSeries(service, datasetId, axis, dateField, metricField || null, bucket || 'day', taxFieldKey, rowCount, taxRowIds); tdRows = tds.rows as TaxDateSeriesRow[]; tdSampled = true } catch { /* fall through */ }
     }
     if (!tdRows && isCollection) {
@@ -490,7 +500,7 @@ export async function runAggregateOp(
     if (!field) return { status: 400, body: { error: 'field required' } }
     var tcxRows: TaxCrosstabRow[] | null = null
     var tcxSampled = false
-    if (useSampled && !isCollection) {
+    if (useSampledTax && !isCollection) {
       try { var tcxs = await sampledTaxonomyCrosstab(service, datasetId, axis, field, taxFieldKey, limit || 50, rowCount, taxRowIds); tcxRows = tcxs.rows as TaxCrosstabRow[]; tcxSampled = true } catch { /* fall through */ }
     }
     if (!tcxRows) {
@@ -523,7 +533,7 @@ export async function runAggregateOp(
     if (!axField) return { status: 400, body: { error: 'field required' } }
     var axRows: AxisCrosstabRow[] | null = null
     var axSampled = false
-    if (useSampled && !isCollection) {
+    if (useSampledTax && !isCollection) {
       try { var axs = await sampledTaxonomyAxisCrosstab(service, datasetId, axField, taxFieldKey, rowCount, taxRowIds); axRows = axs.rows as AxisCrosstabRow[]; axSampled = true } catch { /* fall through */ }
     }
     if (!axRows) {

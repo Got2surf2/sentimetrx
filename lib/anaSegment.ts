@@ -20,6 +20,7 @@
 // "young").
 
 import { applyFilters, type Filters } from './filterUtils'
+import { AGG_SAMPLE_CAP, sampledCountFieldValues } from './sampledAggregate'
 
 export interface WhereCondition {
   field: string
@@ -43,7 +44,7 @@ export interface WhereResolution {
 
 const RANGE_SENTINEL = 1e15
 const SCAN_CAP = 50_000        // matches the app's client-side analysis cap
-const NARROWED_RANGE_CAP = 60_000
+const NARROWED_RANGE_CAP = 150_000  // raised 2026-09-04: the chunked narrow below runs in parallel waves now, and a 64K-row party slice on ANES must range-filter, not refuse
 
 export function describeWhere(where: WhereCondition[]): string {
   return where.map(w => {
@@ -142,18 +143,30 @@ async function idsForCatValue(service: Service, scope: string[], field: string, 
   const shapes: unknown[] = [value]
   const asNum = Number(value)
   if (value.trim() !== '' && !isNaN(asNum)) shapes.push(asNum)
+  // Pages are fired in concurrent WAVES (8 x 1000 rows), not one-by-one — a
+  // 64K-row value used to cost 64 sequential round-trips (owner-hit
+  // 2026-09-04: "Republicans" on ANES took minutes and then timed out).
+  const WAVE = 8
+  const page = (dsId: string, shape: unknown, from: number) => service.from('dataset_rows_flat')
+    .select('id')
+    .eq('dataset_id', dsId)
+    .contains('data', { [field]: shape })
+    .order('id', { ascending: true })
+    .range(from, from + 999)
   for (const dsId of scope) {
     for (const shape of shapes) {
-      for (let from = 0; from < 200_000; from += 1000) {
-        const { data, error } = await service.from('dataset_rows_flat')
-          .select('id')
-          .eq('dataset_id', dsId)
-          .contains('data', { [field]: shape })
-          .order('id', { ascending: true })
-          .range(from, from + 999)
-        if (error) return { error: 'segment scan failed on "' + field + '": ' + error.message }
-        for (const r of data || []) out.add(r.id)
-        if (!data || data.length < 1000) break
+      let from = 0
+      for (; from < 200_000;) {
+        const wave = []
+        for (let w = 0; w < WAVE && from < 200_000; w++, from += 1000) wave.push(page(dsId, shape, from))
+        const results = await Promise.all(wave)
+        let short = false
+        for (const { data, error } of results) {
+          if (error) return { error: 'segment scan failed on "' + field + '": ' + error.message }
+          for (const r of data || []) out.add(r.id)
+          if (!data || data.length < 1000) short = true
+        }
+        if (short) break
       }
     }
   }
@@ -182,11 +195,27 @@ export async function resolveWhereRowIds(
     // can bridge synonyms (African American ≈ Black) and retry immediately.
     const storedCounts = new Map<string, number>()
     for (const dsId of scope) {
-      const { data: fc, error: fcErr } = await svc.rpc('count_field_values', {
-        p_dataset_id: dsId, p_field_key: cond.field, p_limit: 500,
-      })
-      if (fcErr) return { error: 'could not read values of "' + cond.field + '": ' + fcErr.message }
-      for (const r of fc || []) {
+      // Value DISCOVERY only needs the value list — above the cap the exact
+      // RPC is an O(N) jsonb scan that statement-times-out at ANES scale
+      // (measured 2026-09-04: 8.1s > timeout on 126K rows); the 50K sampled
+      // twin answers in ~1s and a value too rare for a 50K sample to see is
+      // also too rare to matter for lexical matching (the no-match error
+      // still lists the values Ana can bridge from).
+      let rows: { value: string; count: number }[] | null = null
+      if (opts.rowCount > AGG_SAMPLE_CAP && scope.length === 1) {
+        try {
+          const s = await sampledCountFieldValues(svc as never, dsId, cond.field, 500, opts.rowCount, null)
+          rows = s.rows
+        } catch { /* fall through to exact */ }
+      }
+      if (!rows) {
+        const { data: fc, error: fcErr } = await svc.rpc('count_field_values', {
+          p_dataset_id: dsId, p_field_key: cond.field, p_limit: 500,
+        })
+        if (fcErr) return { error: 'could not read values of "' + cond.field + '": ' + fcErr.message }
+        rows = (fc || []) as { value: string; count: number }[]
+      }
+      for (const r of rows) {
         const v = String(r.value)
         storedCounts.set(v, (storedCounts.get(v) || 0) + Number(r.count))
       }
@@ -239,21 +268,38 @@ export async function resolveWhereRowIds(
   const matched: number[] = []
   let sampled = false
 
+  // Range checks only need the range FIELDS — pulling the whole data blob for
+  // a 64K-id narrow moved megabytes of unrelated survey columns per page
+  // (measured 2026-09-04 on ANES: the blob pull dominated a 45s resolution).
+  // Quoted arrow-select handles field names with spaces; aliases f0..fn keep
+  // response keys unambiguous.
+  const rangeFieldsSel = 'id, ' + rangeConds.map((c, i) => '"f' + i + '":data->"' + c.field.replace(/"/g, '') + '"').join(', ')
+  const rowFromPartial = (r: Record<string, unknown>): Record<string, unknown> => {
+    const o: Record<string, unknown> = {}
+    rangeConds.forEach((c, i) => { o[c.field] = r['f' + i] })
+    return o
+  }
+
   if (ids !== null) {
     if (ids.size > NARROWED_RANGE_CAP) {
       return { error: 'The categorical part of this segment matches ' + ids.size.toLocaleString() + ' rows — too many to range-filter. Add a narrower categorical condition.' }
     }
     const all = [...ids]
+    // Concurrent waves of 8 chunks x 500 ids — sequential chunks made a 60K
+    // narrow take ~2 minutes on its own.
+    const chunkJobs: (() => PromiseLike<{ data: { id: number; data: Record<string, unknown> }[] | null; error: { message: string } | null }>)[] = []
     for (let i = 0; i < all.length; i += 500) {
       const chunk = all.slice(i, i + 500)
       for (const dsId of scope) {
-        const { data, error } = await svc.from('dataset_rows_flat')
-          .select('id, data')
-          .eq('dataset_id', dsId)
-          .in('id', chunk)
+        chunkJobs.push(() => svc.from('dataset_rows_flat').select(rangeFieldsSel).eq('dataset_id', dsId).in('id', chunk) as never)
+      }
+    }
+    for (let j = 0; j < chunkJobs.length; j += 8) {
+      const results = await Promise.all(chunkJobs.slice(j, j + 8).map(fn => fn()))
+      for (const { data, error } of results) {
         if (error) return { error: 'segment range scan failed: ' + error.message }
-        for (const r of data || []) {
-          if (applyFilters([r.data], rangeFilters).length) matched.push(r.id)
+        for (const r of (data || []) as unknown as Record<string, unknown>[]) {
+          if (applyFilters([rowFromPartial(r)], rangeFilters).length) matched.push(Number(r.id))
         }
       }
     }
@@ -266,14 +312,14 @@ export async function resolveWhereRowIds(
     for (const dsId of scope) {
       if (scanned >= SCAN_CAP) break
       for (let from = 0; scanned < SCAN_CAP; from += 1000) {
-        const { data, error } = await svc.from('dataset_rows_flat')
-          .select('id, data')
+        const { data, error } = await (svc.from('dataset_rows_flat')
+          .select(rangeFieldsSel)
           .eq('dataset_id', dsId)
           .order('id', { ascending: true })
-          .range(from, from + 999)
+          .range(from, from + 999) as never as PromiseLike<{ data: Record<string, unknown>[] | null; error: { message: string } | null }>)
         if (error) return { error: 'segment range scan failed: ' + error.message }
-        for (const r of (data || []) as { id: number; data: Record<string, unknown> }[]) {
-          if (applyFilters([r.data], rangeFilters).length) matched.push(r.id)
+        for (const r of data || []) {
+          if (applyFilters([rowFromPartial(r)], rangeFilters).length) matched.push(Number(r.id))
         }
         if (!data || data.length < 1000) { scanned += (data || []).length; break }
         scanned += data.length

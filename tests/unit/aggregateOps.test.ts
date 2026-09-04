@@ -213,3 +213,22 @@ describe('runAggregateOp — collection fan-out', () => {
     expect(out.body.counts).toEqual({ X: 2 })
   })
 })
+
+describe('tax exact-path threshold (2026-09-04)', () => {
+  it('tax ops at 126K rows go EXACT (the sampled twin under-covers small strata)', async () => {
+    const service = mockService((name) => {
+      expect(name).toBe('taxonomy_sub_counts')  // exact RPC, not the twin
+      return { data: [{ value: 'anger', count: 7 }], error: null }
+    })
+    const out = await runAggregateOp(service, 'd-1', { rowCount: 126000, source: 'upload' }, { op: 'tax_counts', axis: 'emotion' })
+    expect(out.status).toBe(200)
+    expect(out.body.sampled).toBe(false)
+    expect(out.body.counts).toEqual({ anger: 7 })
+  })
+
+  it('scalar ops at 126K still take the sampled path (their cap is unchanged)', async () => {
+    const service = mockService(() => { throw new Error('exact RPC must not run') })
+    const out = await runAggregateOp(service, 'd-1', { rowCount: 126000, source: 'upload' }, { op: 'field_counts', field: 'F' })
+    expect(out.body.sampled).toBe(true)
+  })
+})
