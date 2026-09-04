@@ -48,11 +48,12 @@ import DimensionCompareTab from '@/components/analyze/textmine/DimensionCompareT
 import TextMineNav from '@/components/analyze/TextMineNav'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { useOrgAiMode } from '@/lib/hooks/useOrgAiMode'
+import { buildClientCommentRows, type ClientCommentRow } from '@/lib/commentRows'
 
 // Heaviest tab-specific and modal sub-components — split out of the
 // textmine route bundle so the Themes tab (default landing) ships less JS.
-// CommentsPanel only mounts when the user opens the Comments tab; WordCloud
-// only on the Theme Clouds tab; ThemeEditor only when the modal opens.
+// FilteredCommentsPanel only mounts when the user opens the Comments tab;
+// WordCloud only on the Theme Clouds tab; ThemeEditor only when the modal opens.
 const ThemeEditor = dynamic(
   function() { return import('@/components/analyze/textmine/ThemeEditor') },
   {
@@ -115,19 +116,6 @@ const EntityCompareTab = dynamic(
       return (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
           <LottieLoader size={80} />
-        </div>
-      )
-    },
-  }
-)
-const CommentsPanel = dynamic(
-  function() { return import('@/components/analyze/textmine/CommentsPanel') },
-  {
-    ssr: false,
-    loading: function() {
-      return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, paddingTop: 60, paddingBottom: 60 }}>
-          <LottieLoader size={96} message="Loading comments..." />
         </div>
       )
     },
@@ -1940,7 +1928,8 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
 
   // ── Unified Comments filter ────────────────────────────────────────────────
   // serverMode: any entity or dimension facet selected → results come from the
-  // combined /comments endpoint (themes alone keep the rich client CommentsPanel).
+  // combined /comments endpoint. Themes-only and show-all feed the SAME panel
+  // from client rows (buildClientCommentRows) — one panel, two row sources.
   const commentsServerMode = filterEntities.length > 0 || filterDims.length > 0
 
   // Dimension facet options (axes + their subs), fetched once when the Comments
@@ -2029,6 +2018,15 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   var filteredRows: Record<string, unknown>[] = useMemo(function(): Record<string, unknown>[] {
     return injectSignalTier(_filteredBase, datasetSource || '', { mainstream: cutMainstream, noise: cutNoise })
   }, [_filteredBase, datasetSource, cutMainstream, cutNoise])
+
+  // Themes-only / show-all Comments rows: client rows through the canonical
+  // matcher (buildClientCommentRows) in the server panel's row shape —
+  // FilteredCommentsPanel is the ONE comments panel for every mode since the
+  // CommentsPanel retirement (2026-09-04); only the row source differs.
+  const clientComments = useMemo<{ rows: ClientCommentRow[]; nonEmpty: number }>(function() {
+    if (subTab !== 'comments' || commentsServerMode || !themes) return { rows: [], nonEmpty: 0 }
+    return buildClientCommentRows({ rows: filteredRows, fields: effectiveFields, allThemes: themes.themes, selectedThemes: selectedThemes, datasetId: datasetId })
+  }, [subTab, commentsServerMode, themes, filteredRows, effectiveFields, selectedThemes, datasetId])
 
   // When the opinion modal is scoped to a theme, it must READ that theme's rows —
   // not the whole dataset. Otherwise the mention count (numerator) is drawn from
@@ -3833,48 +3831,73 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
                         </div>
                       )
                     })()}
-                    {commentsServerMode ? (
-                      <FilteredCommentsPanel
-                        rows={filterRows}
-                        total={filterTotal}
-                        loading={filterLoading}
-                        error={filterError}
-                        hlTerms={filterEntities.reduce<string[]>(function(acc, e) { return acc.concat([e.canonical]).concat(e.aliases || []) }, []).concat(selectedThemes.reduce<string[]>(function(acc, t) { return acc.concat(t.keywords || []) }, []))}
-                        chips={<span style={{ fontSize: 11, color: T.textMute }}>{selectedThemes.length + filterEntities.length + filterDims.length} filter{(selectedThemes.length + filterEntities.length + filterDims.length) !== 1 ? 's' : ''} active {'·'} all must match</span>}
-                        openFields={openFields}
-                        schema={schema.fields}
-                        datasetId={datasetId}
-                        // Per-theme colored highlights (CommentsPanel parity): each
-                        // selected theme's keywords mark in that theme's palette.
-                        kwPalettes={selectedThemes.reduce<Record<string, { light?: string; bg: string; text: string; border: string }>>(function(map, st) {
-                          var idx = themes ? themes.themes.findIndex(function(t) { return t.id === st.id }) : -1
-                          var pal = (idx >= 0 && themeColors[idx]) || THEME_PALETTE[0]
-                          ;(st.keywords || []).forEach(function(kw) { map[kw.toLowerCase()] = pal })
-                          return map
-                        }, {})}
-                        aiEnabled={aiEnabled}
-                        summaryTopic={selectedThemes.map(function(t) { return t.name })
-                          .concat(filterEntities.map(function(e) { return e.canonical }))
-                          .concat(filterDims.map(function(d) { return dimSubLabel(d.sub) }))
-                          .join(' + ')}
-                      />
-                    ) : (
-                    <CommentsPanel
-                      theme={drillTheme || { id: '__all__', name: 'All', description: '', keywords: [], sentiment: 'mixed', count: 0, percentage: 0, relatedThemes: [] }}
-                      allThemes={themes.themes}
-                      selectedThemes={selectedThemes}
-                      parsedData={filteredRows}
-                      activeField={effectiveFields[0] || themes!.fieldName}
-                      activeFields={effectiveFields}
-                      catFields={catFields}
-                      themeColors={themeColors}
-                      onBack={handleBackFromComments}
-                      schema={schema.fields}
-                      apiKey={aiEnabled ? (apiKey || undefined) : undefined}
-                      datasetId={datasetId}
-                      showAllMode={selectedThemes.length === 0}
-                    />
-                    )}
+                    {(function() {
+                      // One panel, two row sources. Highlight/palette themes:
+                      // the selection when present, every theme in show-all.
+                      var highlightThemes = (commentsServerMode || selectedThemes.length > 0) ? selectedThemes : themes.themes
+                      var palFor = function(tid: string) {
+                        var idx = themes!.themes.findIndex(function(x) { return x.id === tid })
+                        return (idx >= 0 && themeColors[idx]) || THEME_PALETTE[0]
+                      }
+                      var kwPal = highlightThemes.reduce<Record<string, { light?: string; bg: string; text: string; border: string }>>(function(map, st) {
+                        var pal = palFor(st.id)
+                        ;(st.keywords || []).forEach(function(kw) { map[kw.toLowerCase()] = pal })
+                        return map
+                      }, {})
+                      var hl = filterEntities.reduce<string[]>(function(acc, e) { return acc.concat([e.canonical]).concat(e.aliases || []) }, [])
+                        .concat(highlightThemes.reduce<string[]>(function(acc, t) { return acc.concat(t.keywords || []) }, []))
+                      if (commentsServerMode) {
+                        return (
+                          <FilteredCommentsPanel
+                            rows={filterRows}
+                            total={filterTotal}
+                            loading={filterLoading}
+                            error={filterError}
+                            hlTerms={hl}
+                            chips={<span style={{ fontSize: 11, color: T.textMute }}>{selectedThemes.length + filterEntities.length + filterDims.length} filter{(selectedThemes.length + filterEntities.length + filterDims.length) !== 1 ? 's' : ''} active {'·'} all must match</span>}
+                            openFields={openFields}
+                            schema={schema.fields}
+                            datasetId={datasetId}
+                            kwPalettes={kwPal}
+                            aiEnabled={aiEnabled}
+                            summaryTopic={selectedThemes.map(function(t) { return t.name })
+                              .concat(filterEntities.map(function(e) { return e.canonical }))
+                              .concat(filterDims.map(function(d) { return dimSubLabel(d.sub) }))
+                              .join(' + ')}
+                          />
+                        )
+                      }
+                      // Themes-only / show-all: client rows, canonical matcher —
+                      // count header keeps CommentsPanel's "matched of non-empty (%)".
+                      var matchedN = clientComments.rows.length
+                      var pct = clientComments.nonEmpty > 0 ? Math.round(matchedN / clientComments.nonEmpty * 100) : 0
+                      return (
+                        <FilteredCommentsPanel
+                          rows={clientComments.rows}
+                          total={matchedN}
+                          loading={false}
+                          error=""
+                          hlTerms={hl}
+                          chips={
+                            <>
+                              <button onClick={handleBackFromComments}
+                                style={{ fontSize: 12, fontWeight: 600, color: T.textMute, background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 6px 2px 0', flexShrink: 0 }}>
+                                &larr; Back
+                              </button>
+                              <span style={{ fontSize: 11, color: T.textMute }}>{selectedThemes.length === 0 ? 'All themes' : selectedThemes.map(function(t) { return t.name }).join(' + ')}</span>
+                            </>
+                          }
+                          countLabel={matchedN.toLocaleString() + ' of ' + clientComments.nonEmpty.toLocaleString() + ' responses (' + pct + '%)'}
+                          openFields={openFields}
+                          schema={schema.fields}
+                          datasetId={datasetId}
+                          kwPalettes={kwPal}
+                          badgeThemes={themes.themes.map(function(t, i) { return { name: t.name, keywords: t.keywords || [], pal: themeColors[i] || THEME_PALETTE[0] } })}
+                          aiEnabled={aiEnabled}
+                          summaryTopic={selectedThemes.length > 0 ? selectedThemes.map(function(t) { return t.name }).join(' + ') : 'all themes'}
+                        />
+                      )
+                    })()}
                   </>
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, paddingTop: 60, paddingBottom: 60 }}>

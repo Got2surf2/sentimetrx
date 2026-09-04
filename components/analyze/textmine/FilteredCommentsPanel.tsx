@@ -14,6 +14,7 @@ import LottieLoader from '@/components/ui/LottieLoader'
 import { T } from '@/lib/analyzeTheme'
 import type { SchemaFieldConfig } from '@/lib/analyzeTypes'
 import { expandEntityTerms } from '@/lib/entityVariants'
+import { buildKwRegex } from '@/lib/themeUtils'
 
 function rampColor(pct: number): string {
   if (pct <= 0.5) { var r = 220, g = Math.round(80 + pct * 2 * 120); return 'rgb(' + r + ',' + g + ',40)' }
@@ -72,13 +73,26 @@ export function highlightTerms(text: string, terms: string[], phrases: string[] 
 
 interface FilterRow { id: number; dataset_id: string; row_index: number; data: Record<string, unknown>; dimEvidence?: string[] }
 
-function FilterCard({ row, hlTerms, openFields, schema, kwPalettes }: {
-  row: FilterRow; hlTerms: string[]; openFields: SchemaFieldConfig[]; schema: SchemaFieldConfig[]; kwPalettes?: Record<string, KwPalette>
+/** A theme this panel badges cards with (client modes) — plain data, no Theme coupling. */
+export interface BadgeTheme { name: string; keywords: string[]; pal: KwPalette }
+
+type CompiledBadge = { name: string; pal: KwPalette; res: RegExp[] }
+
+function FilterCard({ row, hlTerms, openFields, schema, kwPalettes, compiledBadges }: {
+  row: FilterRow; hlTerms: string[]; openFields: SchemaFieldConfig[]; schema: SchemaFieldConfig[]; kwPalettes?: Record<string, KwPalette>; compiledBadges?: CompiledBadge[]
 }) {
   var dimEvidence = row.dimEvidence || []
   var texts = openFields
     .map(function(f) { return { field: f.field, label: f.label || f.field, value: String(row.data[f.field] ?? '').trim() } })
     .filter(function(t) { return t.value.length > 0 })
+
+  // Which of the badgeable themes this card's text matches — the regexes are
+  // the canonical buildKwRegex family, compiled ONCE in the parent, so a badge
+  // never appears on a comment its theme's own count wouldn't include.
+  var cardText = texts.map(function(t) { return t.value }).join(' ').toLowerCase()
+  var badges = (compiledBadges || []).filter(function(b) {
+    return b.res.some(function(re) { return re.test(cardText) })
+  })
 
   var metaCols = schema.filter(function(f) {
     return f.type !== 'open-ended' && f.type !== 'id' && f.type !== 'ignore' && f.status !== 'ignored'
@@ -110,6 +124,13 @@ function FilterCard({ row, hlTerms, openFields, schema, kwPalettes }: {
 
   return (
     <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '12px 14px', borderLeft: '4px solid ' + borderColor, boxShadow: '0 1px 4px rgba(0,0,0,.04)', display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {badges.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+          {badges.map(function(b) {
+            return <span key={b.name} style={{ fontSize: 9, fontWeight: 700, padding: '1px 7px', borderRadius: 10, background: b.pal.light || b.pal.bg, color: b.pal.text, border: '1px solid ' + b.pal.border }}>{b.name}</span>
+          })}
+        </div>
+      )}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginBottom: allMeta.length > 0 ? 8 : 0 }}>
         <div ref={textRef} style={{ fontSize: 13, color: T.text, lineHeight: 1.75, ...(textExpanded ? {} : { display: '-webkit-box' as const, WebkitLineClamp: 4, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' }) }}>
           {texts.map(function(t, i) {
@@ -170,9 +191,23 @@ interface Props {
   aiEnabled?: boolean
   /** What the active filters describe — names the summary request. */
   summaryTopic?: string
+  /** Replaces the default "N of M comments" header count (client modes show
+   *  "matched of non-empty (X%)" — a different denominator than the server cap). */
+  countLabel?: string
+  /** Themes to badge each card with (client themes/show-all modes). */
+  badgeThemes?: BadgeTheme[]
 }
 
-export default function FilteredCommentsPanel({ rows, total, loading, error, hlTerms, chips, openFields, schema, datasetId, kwPalettes, aiEnabled, summaryTopic }: Props) {
+export default function FilteredCommentsPanel({ rows, total, loading, error, hlTerms, chips, openFields, schema, datasetId, kwPalettes, aiEnabled, summaryTopic, countLabel, badgeThemes }: Props) {
+  // Lemma-expanded keyword regexes are expensive to build — compile each badge
+  // theme's set once, not per visible card per render.
+  var compiledBadges = useMemo<CompiledBadge[] | undefined>(function() {
+    if (!badgeThemes || badgeThemes.length === 0) return undefined
+    return badgeThemes
+      .map(function(b) { return { name: b.name, pal: b.pal, res: (b.keywords || []).filter(Boolean).map(buildKwRegex) } })
+      .filter(function(b) { return b.res.length > 0 })
+  }, [badgeThemes])
+
   var _key = 'filtered_comments_' + datasetId
   var [gridCols, setGridCols] = useState(2)
   var [restored, setRestored] = useState(false)
@@ -279,7 +314,7 @@ export default function FilteredCommentsPanel({ rows, total, loading, error, hlT
       <div style={{ padding: '14px 20px', borderBottom: '1px solid ' + T.border, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1 }}>{chips}</div>
         {!loading && (
-          <span style={{ fontSize: 12, color: T.textMute }}>{rows.length.toLocaleString()} of {total.toLocaleString()} comment{total !== 1 ? 's' : ''}</span>
+          <span style={{ fontSize: 12, color: T.textMute }}>{countLabel || (rows.length.toLocaleString() + ' of ' + total.toLocaleString() + ' comment' + (total !== 1 ? 's' : ''))}</span>
         )}
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {aiEnabled && !loading && rows.length > 0 && !aiSummary && (
@@ -369,7 +404,7 @@ export default function FilteredCommentsPanel({ rows, total, loading, error, hlT
         {!loading && !error && rows.length === 0 && (<div style={{ textAlign: 'center', padding: 40, color: T.textFaint, fontSize: 13 }}>No comments match all selected filters.</div>)}
         {!loading && !error && rows.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(' + gridCols + ', 1fr)', gap: 10, alignItems: 'stretch' }}>
-            {visible.map(function(row) { return <FilterCard key={row.dataset_id + ':' + row.row_index} row={row} hlTerms={hlTerms} openFields={openFields} schema={schema} kwPalettes={kwPalettes} /> })}
+            {visible.map(function(row) { return <FilterCard key={row.dataset_id + ':' + row.row_index} row={row} hlTerms={hlTerms} openFields={openFields} schema={schema} kwPalettes={kwPalettes} compiledBadges={compiledBadges} /> })}
           </div>
         )}
         {hasMore && (<div ref={sentinelRef} style={{ padding: '10px 0', textAlign: 'center' }}><span style={{ fontSize: 11, color: T.textFaint }}>Loading more… ({sorted.length - visibleCount} remaining)</span></div>)}
