@@ -2743,8 +2743,20 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
     allFields = allFields.concat([{ field: '__mapped_' + f.field + '__', type: 'numeric', label: (f.label || f.field) + ' (score)' } as SchemaField])
   })
 
-  // Inject the 7 virtual "Dimension" categorical fields.
-  if (hasDimensions) allFields = allFields.concat(dimVirtualFields() as SchemaField[])
+  // Inject the virtual "Dimension" categorical fields — but only the axes
+  // that actually fired on this dataset once the rollup counts arrive. An
+  // emotion-tier dataset (ANES-style: emotion axis only, no ABSA
+  // classification) would otherwise offer 7 dead restaurant axes in the
+  // picker. Until counts load, all axes show (the pre-2026-09-03 behavior).
+  if (hasDimensions) {
+    var liveDimFields = dimVirtualFields().filter(function(f) {
+      if (!dimSubCounts) return true
+      var dimAx0 = axisOfDimField(f.field)
+      var axSubs = dimAx0 ? dimSubCounts[dimAx0] : null
+      return !!axSubs && Object.keys(axSubs).length > 0
+    })
+    allFields = allFields.concat(liveDimFields as SchemaField[])
+  }
 
   // Build theme counts for the virtual field
   var enrichedAnalytics = analytics

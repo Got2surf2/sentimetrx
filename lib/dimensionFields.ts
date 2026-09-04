@@ -37,7 +37,7 @@ export const DIM_AXIS_LABEL_LONG: Record<Axis, string> = {
   ambiance:   'Room — ambiance & décor',
   context:    'Occasion — when & why',
   outcome:    'Outcome — will they return',
-  emotion:    'Emotion — disappointment, blame & churn-intent language',
+  emotion:    'Emotion — disappointment, blame, churn-intent, anger & ascribed-threat language',
 }
 
 // Per-axis identity color — the single source of truth for axis dots/chips
