@@ -74,6 +74,45 @@ const CHURN_PATTERNS: RegExp[] = [
   /\bstopped going\b/gi,
 ]
 
+// Anger = expressed anger language, precision-first (ANES validation 8/24:
+// markers held ~90%+; the softer irritation band is left to the LLM tier).
+// Accusations of fear-mongering ("plays on people's fears", "scare tactics")
+// ROUTE HERE, not to threat — the speaker is angry at a tactic, not afraid
+// (owner call, confirmed in the ANES data: -40.7pt vs -34.2 anger gap).
+const ANGER_PATTERNS: RegExp[] = [
+  /\b(?:makes?|made|making) (?:me|us) (?:so |really |absolutely )?(?:angry|mad|furious)\b/gi,
+  /\b(?:i'?m|i am|we'?re|we are|was|still) (?:so |really |absolutely |very )?(?:angry|furious|livid|irate)\b/gi,
+  /\binfuriat(?:ed|ing)\b/gi,
+  /\benrag(?:ed|ing)\b/gi,
+  /\boutrag(?:ed|eous|e)\b/gi,
+  /\bfed up\b/gi,
+  /\bsick (?:and tired )?of\b/gi,
+  /\bpisse[sd](?: me)? off\b/gi,
+  /\bmakes? my blood boil\b/gi,
+  // fear-mongering accusations — anger at a tactic, never a fear flag
+  /\bplay(?:s|ing|ed)? (?:on|to|with) (?:people'?s|our|your|their)? ?fears?\b/gi,
+  /\bfear[- ]?mongering\b/gi,
+  /\bscare tactics?\b/gi,
+]
+
+// Threat ascribed = third-party danger claims ("this is dangerous", "a threat
+// to our community") — the ANES-validated construct: 4x the volume of
+// first-person fear at ~90%+ precision. FIRST-PERSON FEAR AND WORRY STAY
+// DARK deliberately: worry means ambivalence-not-exit (softer than a plain
+// complaint) and the worry lexicon showed unresolved demographic skew — do
+// not add "afraid/worried/scared" here without settling that (ANES memo).
+const THREAT_PATTERNS: RegExp[] = [
+  /\bdangerous\b/gi,
+  /\ba (?:danger|threat|menace) to\b/gi,
+  /\bexistential threat\b/gi,
+  /\bputs? .{0,30}? at risk\b/gi,
+  /\bputting .{0,30}? at risk\b/gi,
+  /\b(?:felt|feels|feel|is|was|it'?s) (?:not safe|unsafe)\b/gi,
+  /\bhazardous\b/gi,
+  /\b(?:will|going to|gonna) destroy\b/gi,
+  /\bdestroying (?:our|the|this)\b/gi,
+]
+
 // Subject-attributed counterfactual: "<subject> should have/should've/should of".
 // Attribution decides the flag (or drops the hit) — see header.
 const SHOULD_HAVE = /(\S+)\s+should(?:'ve| have| of|n'?t have)\b|^should(?:'ve| have| of)\b/gim
@@ -155,6 +194,8 @@ export function detectEmotionAssertions(
   record('disappointment', firstHit(DISAPPOINTMENT_PATTERNS, text, true))
   record('blame', firstHit(BLAME_PATTERNS, text, false))
   if (!opts.suppressChurn) record('churn intent', firstHit(CHURN_PATTERNS, text, false))
+  record('anger', firstHit(ANGER_PATTERNS, text, true))
+  record('threat ascribed', firstHit(THREAT_PATTERNS, text, true))
 
   // "should have" attribution (spot-check fixes): third-party subject → blame;
   // passive "should have been…" or impersonal subject → disappointment

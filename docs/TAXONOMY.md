@@ -67,10 +67,14 @@ rows; a full re-classify regenerates everything).
 
 `lib/emotionFlags.ts` (`detectEmotionAssertions`) runs in the same keyword-tier
 pass as the dictionary matcher and emits assertions on an 8th axis, **`emotion`**,
-with three subs: `disappointment`, `blame`, `churn intent`. Design was validated
-2026-07-04 on 4 prod datasets + a 30-sample owner spot-check (disappointment
-12/12 precision, blame 6/6; on Ruth's Chris: disappointment ≈31% of 1–3★ reviews,
-blame ≈0.8%, churn intent ≈6% of negatives vs 0.3% of positives — ~20× lift).
+with five subs: `disappointment`, `blame`, `churn intent`, `anger`,
+`threat ascribed`. The first three were validated 2026-07-04 on 4 prod datasets
++ a 30-sample owner spot-check (disappointment 12/12 precision, blame 6/6; on
+Ruth's Chris: disappointment ≈31% of 1–3★ reviews, blame ≈0.8%, churn intent
+≈6% of negatives vs 0.3% of positives — ~20× lift). `anger` and
+`threat ascribed` (added 2026-09-03, TAXONOMY_VERSION v5) implement the
+constructs the ANES 1984–2024 study validated at ~90%+ marker precision
+(150,377 open-ends vs actual votes, 2026-08-24).
 
 Rules (all deliberate, from the validation session):
 
@@ -93,6 +97,22 @@ Rules (all deliberate, from the validation session):
 - **Vertical gating**: churn intent is only meaningful where the audience chose
   the venue — captive verticals (airport, civic) pass `suppressChurn`. Blame
   subjects are core ⊕ per-vertical overlay (restaurant roles today).
+- **Anger vs threat vs worry NEVER merge** (ANES finding — the valence order
+  is threat < anger < plain complaint < worry, so any composite cancels out).
+  `threat ascribed` is the third-party construct ("this is dangerous", "a
+  threat to…") — ~4× the volume of first-person fear at equal precision.
+  **First-person fear and worry stay DARK deliberately**: worry signals
+  ambivalence-not-exit (softer than a plain complaint) and the worry lexicon
+  showed unresolved demographic skew (rarer among Black OR 0.17 / Hispanic
+  0.48 respondents, verbosity-controlled) — do not add "afraid/worried/
+  scared" markers or use emotion flags to compare demographic groups until
+  that is settled. Accusations of fear-mongering ("plays on people's fears",
+  "scare tactics") route to **anger** — the speaker is angry at a tactic, not
+  afraid (owner call, confirmed at -40.7pt vs -34.2 in the data).
+- **Never sell emotion as prediction.** Aggregate emotion differential vs
+  outcomes scored 5/10 (r≈0.00) on ANES; individual-level added ~0.03pt over
+  a plain rating. Emotion flags are explanation and routing — segment
+  triggers at ~4% typical coverage, never a headline chart or index tile.
 - **Genre gating / zero-suppression**: the rollup omits the emotion axis and
   the `emotion` summary entirely when nothing fired — ideation-genre prompts
   (wish-lists) never show "0% emotion language". Client-facing rates are

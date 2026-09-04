@@ -1286,7 +1286,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   // "0% emotion" tab). Best-effort; failures are silent.
   const autoTagEmotion = useCallback(async function (fields: string[]) {
     if (!fields.length) return
-    setDimAutoNotice('Tagging emotion language (disappointment · blame · churn intent)…')
+    setDimAutoNotice('Tagging emotion language (disappointment · blame · churn intent · anger · ascribed threat)…')
     try {
       for (var guard = 0; guard < 300; guard++) {
         if (!classifyAlive.current) return // user left — resume on next visit

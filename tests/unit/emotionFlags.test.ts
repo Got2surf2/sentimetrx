@@ -83,3 +83,52 @@ describe('emotion axis in the embedded block', () => {
     expect(block.al).toEqual([]) // normal severity — never an alert
   })
 })
+
+// ── anger + threat ascribed (added 2026-09-03, ANES-validated constructs) ──
+
+describe('anger', () => {
+  it('flags expressed anger language', () => {
+    expect(subs('This whole experience makes me so angry.')).toContain('anger')
+    expect(subs("I'm furious about the way we were treated.")).toContain('anger')
+    expect(subs('Absolutely outrageous pricing for what you get.')).toContain('anger')
+    expect(subs("Fed up with the constant mistakes here.")).toContain('anger')
+    expect(subs('Sick and tired of waiting an hour every time.')).toContain('anger')
+  })
+
+  it('routes fear-mongering ACCUSATIONS to anger, never threat (the tactic rule)', () => {
+    const out = detectEmotionAssertions('He just plays on people\'s fears to win votes.')
+    expect(out.map(a => a.sub)).toContain('anger')
+    expect(out.map(a => a.sub)).not.toContain('threat ascribed')
+    expect(subs('Pure fear-mongering and scare tactics.')).toContain('anger')
+  })
+
+  it('negation-guards: "never angry" / "not mad" do not flag', () => {
+    expect(subs('The staff were great — I was never angry once.')).not.toContain('anger')
+    expect(subs("I'm not angry, just confused by the menu.")).not.toContain('anger')
+  })
+})
+
+describe('threat ascribed', () => {
+  it('flags third-party danger claims', () => {
+    expect(subs('The parking lot at night is dangerous.')).toContain('threat ascribed')
+    expect(subs('This policy is a threat to small businesses.')).toContain('threat ascribed')
+    expect(subs('Leaving the gate open puts children at risk.')).toContain('threat ascribed')
+    expect(subs('The whole area felt unsafe after dark.')).toContain('threat ascribed')
+  })
+
+  it('first-person fear and worry stay DARK (worry ≠ exit; lexicon-bias hold)', () => {
+    expect(subs("I'm afraid the quality has slipped.")).toEqual([])
+    expect(subs('I worry about where this country is headed.')).toEqual([])
+    expect(subs('Scared to even ask for the bill.')).toEqual([])
+  })
+
+  it('negation-guards: "not dangerous" does not flag', () => {
+    expect(subs('The trail is not dangerous at all, great for kids.')).not.toContain('threat ascribed')
+  })
+
+  it('anger and threat fire independently and never merge', () => {
+    const out = subs('This intersection is dangerous and it makes me so angry that nothing is done.')
+    expect(out).toContain('anger')
+    expect(out).toContain('threat ascribed')
+  })
+})

@@ -222,7 +222,7 @@ export const ALL_AXES: Axis[] = [...AXES, 'emotion']
 
 // Emotion-language subs (expressed-language framing; regret stays dark until
 // the LLM tier). Detection lives in lib/emotionFlags.ts, not the dictionary.
-export const EMOTION_SUBS = ['disappointment', 'blame', 'churn intent'] as const
+export const EMOTION_SUBS = ['disappointment', 'blame', 'churn intent', 'anger', 'threat ascribed'] as const
 
 /**
  * Where this assertion came from.

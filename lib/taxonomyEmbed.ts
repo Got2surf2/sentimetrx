@@ -21,7 +21,7 @@ import { ALL_AXES, type Axis } from './taxonomyVocabulary'
 
 // Bump when the closed vocabulary / dictionary changes so stale rows are
 // detectable (mirrors the productization plan's taxonomy_version).
-export const TAXONOMY_VERSION = 'v4'  // v4: emotion axis (disappointment/blame/churn-intent language flags, lib/emotionFlags.ts); v3: generalized in-food hair phrasings; v2: hair + foreign-object cadre in food-safety dict
+export const TAXONOMY_VERSION = 'v5'  // v5: anger + threat-ascribed emotion flags (ANES-validated constructs); v4: emotion axis (disappointment/blame/churn-intent language flags, lib/emotionFlags.ts); v3: generalized in-food hair phrasings; v2: hair + foreign-object cadre in food-safety dict
 
 /** Top-level data-blob keys that are app metadata, not dataset columns. */
 export const RESERVED_ROW_KEYS = ['_tx'] as const

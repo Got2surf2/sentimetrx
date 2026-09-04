@@ -1498,7 +1498,9 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
 
 - **Emotion-language axis (2026-07-06).** The keyword pass also emits an 8th
   **`emotion`** axis — `disappointment` / `blame` / `churn intent` expressed-language
-  flags (`lib/emotionFlags.ts`; design + gating rules in `TAXONOMY.md §2a`). It rides
+  flags (`lib/emotionFlags.ts`; design + gating rules in `TAXONOMY.md §2a` —
+  five subs since 2026-09-03: disappointment, blame, churn intent, anger,
+  threat ascribed). It rides
   every Dimensions surface through `DIM_AXES`: an extra pill/card set in the
   Dimensions view, DimensionCloud chips, DimensionCompareTab axis, the Comments
   dimension facet (`p_sub_emotion`, sql/158 — param sent only when a chip is
