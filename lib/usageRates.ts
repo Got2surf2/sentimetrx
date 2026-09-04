@@ -51,7 +51,12 @@ export function estimateCost(model: string, input_tokens: number, output_tokens:
   // (Haiku). Defaulting to Haiku silently under-stated any Opus/Sonnet-priced
   // unknown; a new model is far likelier to be standard-or-above than cheapest.
   var rates = RATES[model] || RATES['claude-sonnet-4-6']
-  var inputCost = ((input_tokens - cache_read_tokens) / 1_000_000) * rates.input
+  // Anthropic's usage.input_tokens EXCLUDES cache reads — they arrive in the
+  // separate cache_read_input_tokens counter, so the two ADD. The previous
+  // `input - cache_read` subtraction assumed inclusion and drove every
+  // heavily-cached call NEGATIVE (found 2026-09-04: Ana questions averaged
+  // −$0.29 in /admin/usage while really costing ~$0.14).
+  var inputCost = (input_tokens / 1_000_000) * rates.input
   var cacheCost = (cache_read_tokens / 1_000_000) * rates.cache_read
   var outputCost = (output_tokens / 1_000_000) * rates.output
   return Math.round((inputCost + cacheCost + outputCost) * 1_000_000) / 1_000_000 // 6 decimal places
