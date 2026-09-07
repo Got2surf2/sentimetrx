@@ -32,8 +32,17 @@ const FLAT_PAGE = 1000
 export async function recomputeCollectionAnalytics(
   service: SupabaseClient,
   collectionDatasetId: string,
+  orgId: string,
   updatedBy?: string,
 ): Promise<{ analytics: DatasetAnalytics; rowCount: number } | null> {
+  // Tenancy gate first: this runs on the service-role client (RLS bypassed),
+  // so the collection lookup is paired with org_id before any per-dataset row
+  // is read or written. A collection outside `orgId` is simply "not found".
+  const { data: col, error: colErr } = await service
+    .from('collections').select('id').eq('dataset_id', collectionDatasetId).eq('org_id', orgId).single()
+  if (colErr) void logError('collectionRecompute.recomputeCollectionAnalytics', colErr)
+  if (!col) return null
+
   const { data: stateRow, error: stateErr } = await service
     .from('dataset_state').select('schema_config').eq('dataset_id', collectionDatasetId).single()
   if (stateErr) void logError('collectionRecompute.recomputeCollectionAnalytics', stateErr)
@@ -41,11 +50,6 @@ export async function recomputeCollectionAnalytics(
   // straight through to computeAnalyticsFromRows as the compute route does.
   const schema = (stateRow as { schema_config?: SchemaConfig } | null)?.schema_config
   if (!schema?.fields?.length) return null
-
-  const { data: col, error: colErr } = await service
-    .from('collections').select('id').eq('dataset_id', collectionDatasetId).single()
-  if (colErr) void logError('collectionRecompute.recomputeCollectionAnalytics', colErr)
-  if (!col) return null
   const { data: members, error: membersErr } = await service
     .from('collection_members').select('dataset_id, label')
     .eq('collection_id', (col as { id: string }).id).order('sort_order')
@@ -79,7 +83,7 @@ export async function recomputeCollectionAnalytics(
   const stateUpdate: Record<string, unknown> = { analytics, updated_at: now }
   if (updatedBy) stateUpdate.updated_by = updatedBy
   await service.from('dataset_state').update(stateUpdate).eq('dataset_id', collectionDatasetId)
-  await service.from('datasets').update({ row_count: rowCount, updated_at: now }).eq('id', collectionDatasetId)
+  await service.from('datasets').update({ row_count: rowCount, updated_at: now }).eq('id', collectionDatasetId).eq('org_id', orgId)
   // Drop the stale signal-stats cache — it's keyed on theme-model hash + row
   // count, but invalidating here guarantees an immediate refresh.
   await invalidateSignalStats(service, collectionDatasetId)
@@ -99,10 +103,11 @@ export async function recomputeCollectionAnalytics(
 export async function refreshCollection(
   service: SupabaseClient,
   collectionDatasetId: string,
+  orgId: string,
   updatedBy?: string,
 ): Promise<{ analytics: DatasetAnalytics; rowCount: number } | null> {
   const { data: col, error: colErr } = await service
-    .from('collections').select('id').eq('dataset_id', collectionDatasetId).single()
+    .from('collections').select('id').eq('dataset_id', collectionDatasetId).eq('org_id', orgId).single()
   if (colErr) void logError('collectionRecompute.refreshCollection', colErr)
   if (!col) return null
   const { data: members, error: membersErr } = await service
@@ -114,7 +119,7 @@ export async function refreshCollection(
   const mergedSchema = await buildMergedCollectionSchema(service, memberIds)
   await service.from('dataset_state').update({ schema_config: mergedSchema }).eq('dataset_id', collectionDatasetId)
 
-  return recomputeCollectionAnalytics(service, collectionDatasetId, updatedBy)
+  return recomputeCollectionAnalytics(service, collectionDatasetId, orgId, updatedBy)
 }
 
 /**
@@ -125,6 +130,7 @@ export async function refreshCollection(
 export async function recomputeParentCollections(
   service: SupabaseClient,
   memberDatasetId: string,
+  orgId: string,
 ): Promise<number> {
   const { data: memberships, error: membershipsErr } = await service
     .from('collection_members').select('collection_id').eq('dataset_id', memberDatasetId)
@@ -134,14 +140,14 @@ export async function recomputeParentCollections(
   const collectionIds = Array.from(new Set(
     (memberships as { collection_id: string }[]).map(m => m.collection_id)))
   const { data: cols, error: colsErr } = await service
-    .from('collections').select('dataset_id').in('id', collectionIds)
+    .from('collections').select('dataset_id').in('id', collectionIds).eq('org_id', orgId)
   if (colsErr) void logError('collectionRecompute.recomputeParentCollections', colsErr)
   if (!cols?.length) return 0
 
   let recomputed = 0
   for (const c of cols as { dataset_id: string }[]) {
     try {
-      const res = await recomputeCollectionAnalytics(service, c.dataset_id)
+      const res = await recomputeCollectionAnalytics(service, c.dataset_id, orgId)
       if (res) recomputed++
     } catch (err) {
       console.error({ at: 'recomputeParentCollections', collection: c.dataset_id, err })

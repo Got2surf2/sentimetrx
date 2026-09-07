@@ -105,7 +105,7 @@ export async function POST(_req: Request, props: Params) {
   // member-sync cascade in lib/collectionRecompute). ───────────────────────
   if (dataset.source === 'collection') {
     try {
-      const res = await recomputeCollectionAnalytics(service, params.datasetId, user.id)
+      const res = await recomputeCollectionAnalytics(service, params.datasetId, dataset.org_id, user.id)
       if (!res) return NextResponse.json({ error: 'Collection has no members or schema' }, { status: 400 })
       return NextResponse.json({ ok: true, totalRows: res.analytics.totalRows, computedAt: res.analytics.computedAt, fields: Object.keys(res.analytics.fieldSummaries).length })
     } catch (err) {

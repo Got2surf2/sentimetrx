@@ -164,7 +164,7 @@ export async function POST(req: Request, props: Params) {
     // collection's cached aggregates (row_count, totalRows, signal_stats)
     // stale until the collection is explicitly recomputed. Self-heal them now.
     try {
-      const n = await recomputeParentCollections(service, dataset.id)
+      const n = await recomputeParentCollections(service, dataset.id, dataset.org_id)
       if (n > 0) console.log({ at: 'sync', msg: 'recomputed parent collections', count: n, member: dataset.id })
     } catch (err) {
       console.error({ at: 'sync', msg: "parent collection recompute failed", err: err })

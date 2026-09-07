@@ -37,7 +37,7 @@ export async function POST(_req: Request, props: Props) {
     return NextResponse.json({ error: "This collection isn't available to your account." }, { status: 404 })
   }
 
-  const res = await refreshCollection(service, collectionDatasetId, userId)
+  const res = await refreshCollection(service, collectionDatasetId, collection.org_id, userId)
   if (!res) {
     return NextResponse.json({ error: 'Nothing to refresh — the collection has no analyzable members.' }, { status: 409 })
   }

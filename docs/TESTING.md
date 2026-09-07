@@ -323,6 +323,8 @@ _Mocked-boundary example: `tests/unit/chatCoreTurn.test.ts` (added 2026-09-01) d
 
 _Pure-logic example: `tests/unit/csv.test.ts` (added 2026-09-01) covers the RFC4180 upload parsing in `lib/csv.ts` — `""` escaped quotes (the prod ANES quote-dropping regression), commas/newlines inside quoted fields, CRLF/BOM, blank-line skipping, and the SurveyMonkey two-header-row detection + matrix-header merge — see ANALYTICS.md "CSV parsing correctness"._
 
+_Service-role tenancy example: `tests/unit/collectionRecompute.test.ts` (added 2026-09-07) uses a recording Proxy fake that HONORS `org_id` filters, so it pins the pairing on the real query chains — a wrong-org collection returns null before any per-dataset read/write, and the `datasets` update carries `org_id`. Pattern for any service-role helper: assert on the captured filters, not on the mock being called._
+
 _AGENT_TIERS Phase 3 examples (added 2026-07-14): `tests/unit/callAIStream.test.ts` (raw-SSE parsing against a mocked fetch — text deltas, tool_use `input_json_delta` assembly, byte-split frames, in-stream errors, non-Anthropic fallback), `tests/unit/agentTools.test.ts` (fetch_page host allowlist + redirect re-check, negative-chunk holdout, tool-loop round budget + forced `tool_choice:'none'`), `tests/unit/components/ChatBotStreaming.test.tsx` (jsdom — the widget streams, reconciles to the done event, extracts chips, falls back to JSON, offers Retry on a mid-stream error). The live bar is `scripts/_verify_tool_loop.mts` (untracked KEEP): real Anthropic streaming + a real gnu.org fetch through the loop._
 
 1. Pick the boundary. If you're testing a pure function in `lib/`, write a
