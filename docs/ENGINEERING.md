@@ -821,6 +821,7 @@ needs `'./node_modules/@sparticuz/chromium/bin/**'` traced in:
 '/api/community-feedback-deck':     ['./node_modules/@sparticuz/chromium/bin/**'],
 '/api/pitch-deck-v2':               ['./node_modules/@sparticuz/chromium/bin/**'],
 '/api/pitch-deck-v3':               ['./node_modules/@sparticuz/chromium/bin/**'],
+'/story/[slug]/pdf':                ['./node_modules/@sparticuz/chromium/bin/**'],
 ```
 
 When you add a new headless-Chrome PDF route, add its path here too —
@@ -1155,6 +1156,17 @@ score, never the build.
 zero the audit, but that games a metric with a fake package rather than fixing
 anything, and would silently break pptxgenjs if it ever un-commented that code.
 The honest resolution is upstream — pptxgenjs should drop the unused dependency.
+
+**2026-09-07 follow-up — the stale-pin class recurred.** `npm audit` had grown
+to 8 (4 high). Plain `npm audit fix` cleared `fast-uri` (four new September
+advisories, 3.1.5 → 3.1.7) and `browserslist` (4.28.2 → 4.28.9). A `qs` root
+then surfaced (2 moderate, fixed in 6.16.0) with 7 collateral packages, and it
+could NOT move: our own `overrides` pinned `body-parser` to exactly `1.20.6`,
+which forced `express@5` (wants `body-parser ^2.2.1`) back onto 1.x, whose
+`qs ~6.15.1` range excluded the fix. Scoping the pin to the major it was meant
+for — `"body-parser@1": "^1.20.6"` — let express keep 2.x and `qs` reach 6.16.0.
+Back to the 2 documented `image-size` highs above. Rule restated: **exact pins
+in `overrides` age into blockers; use a scoped caret floor.**
 
 ## Lint ratchet: 229 → 202 (Tier 0, 2026-08-18)
 

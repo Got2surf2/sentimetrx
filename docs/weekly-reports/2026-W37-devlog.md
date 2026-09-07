@@ -40,3 +40,32 @@ the `datasets` update. The three callers pass `dataset.org_id` /
 (4 tests) pins it on the real query chains with a recording fake that honors
 `org_id` filters — wrong org → null with zero writes; right org → update carries
 `org_id`. 43 tests across the touched suites pass; tsc + lint clean.
+
+## 2026-09-07 — Governance routine: the devlog week was off by one (W37 report re-evaluated)
+
+**Why**: the W37 governance report (PR #34) reported "W37 devlog missing" and
+built its narrative + every "not mentioned in devlog" correlation from git log.
+The devlog existed — `2026-W36-devlog.md`, 77 entries covering exactly the
+audited Aug 31–Sep 6 (ISO W36). Root cause is in the remote routine's prompt:
+it computes WK with `date +%G-W%V` on Monday morning and calls that "the
+just-completed week", but on Monday that is the NEW week. Reports have always
+been named by run-week (W36 report = Aug 24–30), so the report names stay; the
+devlog lookup was the bug. Two further findings were false for a different
+reason: the report recommended `npm audit fix` for advisories ENGINEERING.md
+already documents as verified-unreachable (and whose only npm "fix" is a
+deck-breaking major downgrade), and called the coverage floors "conservative"
+when they are ratcheted ~1pp under measured by design.
+
+**What**: remote routine `trig_016jefXaLhZYTJZi2zzkdtxs` updated — WK (run
+week, names the files; unchanged convention) vs COVERED (`date -d yesterday`,
+names the devlog + date range); it must `ls` the devlogs and state which it
+used. `.claude/commands/audit-codebase.md`: Dependencies now separates
+advisory roots from collateral (`via[]` object vs string), honors documented
+acceptances, and never recommends a semver-major "fix"; Tests notes the floors
+are deliberately ratcheted, so slack needs a measured report. Docs closed from
+the drift companion: `USAGE_ACCOUNTING.md` records that `AMERICAN_ENGLISH_RULE`
+rides every system prompt (~50 input tokens per call, all providers);
+`ENGINEERING.md` gets `/story/[slug]/pdf` in the chromium route mirror plus the
+dated deps follow-up. The `CLAUDE.md → ENGINEERING.md` spec-map entry was kept
+on purpose: CLAUDE.md is where engineering policy is written first, and the
+one false positive this week doesn't outweigh that guard.

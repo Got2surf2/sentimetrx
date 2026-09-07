@@ -108,11 +108,31 @@ done
 [ ! -f "package-lock.json" ] && [ ! -f "yarn.lock" ] && [ ! -f "pnpm-lock.yaml" ] && [ -f "package.json" ] && echo "MISSING: No lockfile for Node.js project"
 ```
 
+Before scoring, separate **roots** from **collateral** and honor **documented
+acceptances** — an audit count is not a finding list:
+
+```bash
+# Roots have their own advisory (an OBJECT in via[]); collateral packages only
+# carry strings. Score and name the roots; don't list collateral as findings.
+npm audit --json 2>/dev/null | jq -r '.vulnerabilities | to_entries[] | select(any(.value.via[]; type=="object")) | "\(.value.severity)\t\(.key)\t\(.value.range)\tfix=\(.value.fixAvailable|tostring)"'
+# The repo's written acceptances (verified-unreachable code paths, etc.). A root
+# documented here is NOT an open finding — cite the section instead.
+grep -n -i "npm audit\|advisor" docs/ENGINEERING.md | head
+```
+
+`fixAvailable` that names a **semver-major** change is not a fix to recommend —
+in this repo `npm audit fix --force` downgrades `pptxgenjs` and breaks deck
+exports (ENGINEERING.md). Recommend the plain `npm audit fix`, or scoping /
+repointing an `overrides` pin, and say which roots that clears.
+
 **Scoring:**
 - 10: Zero CVEs, lockfile present, all dependencies <6 months old
 - 7-9: No critical/high CVEs, minor outdated packages
 - 4-6: 1-3 high CVEs, or >50% dependencies outdated by a year+
 - 1-3: Critical CVEs, no lockfile, abandoned dependencies
+
+A high whose only path is a documented acceptance counts in the 7-9 band, not
+4-6 — the score tracks exposure, not the raw `npm audit` number.
 
 ---
 
@@ -192,6 +212,10 @@ else
   echo "No coverage report in this clone — reading the ENFORCED thresholds instead:"
   grep -A6 "thresholds:" vitest.config.* 2>/dev/null
 fi
+# The floors are RATCHETED deliberately ~1pp under measured coverage on every
+# suite that lands (see the devlog "ratchet" entries) so environment variance
+# can't redden CI. Do not call them "conservative" or "slack" from the floor
+# alone — only a measured report (coverage-summary.json) can show a gap.
 
 # Is the suite actually gated in CI? An unenforced test suite is documentation.
 grep -rlE "npm (run )?test|vitest|jest" .github/workflows/ 2>/dev/null

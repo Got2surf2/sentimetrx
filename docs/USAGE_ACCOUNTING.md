@@ -112,6 +112,8 @@ There are **no env vars that affect usage logging or cost calculation** — rate
 
 `callAI(opts)` is the single entrypoint for every AI request. It (a) resolves the provider + model, (b) makes the HTTP call, (c) parses the response, (d) writes a `usage_logs` row if the caller passed a `usage` context.
 
+**Every system prompt carries `AMERICAN_ENGLISH_RULE` (2026-09-02).** `lib/ai.ts` appends the ~50-token style rule to the system prompt of every call on every provider (`anthropicSystem` / the flattened string path — string prompts, block prompts, and no-prompt calls alike), so every `usage_logs.input_tokens` figure includes it. Fixed per-call overhead, not a per-caller cost; it is the CLAUDE.md "American English everywhere" rule enforced structurally — do not remove it or count it as a caller's prompt growth.
+
 ### Public types
 
 ```typescript
