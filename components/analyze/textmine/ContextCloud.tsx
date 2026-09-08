@@ -53,7 +53,6 @@ function fontSizeFor(count: number, max: number): number {
 
 export default function ContextCloud({ rows, fields, targets, termLabel, onSelect, themes, excludeThemeName, entities, datasetId, dimFieldKey, dimensionsEnabled }: Props) {
   const [sortBy, setSortBy] = useState<'count' | 'score'>('count')
-  const [dimChips, setDimChips] = useState<ConceptChip[] | null>(null)
 
   // Collocation is synchronous and can run a few hundred ms on a 50K-row
   // corpus, so it's deferred a tick past mount — the tab paints with the
@@ -87,8 +86,8 @@ export default function ContextCloud({ rows, fields, targets, termLabel, onSelec
   // scoped to the subset's flat row ids — the same engine, gate, and active-
   // question key every other dimension surface uses.
   const subsetIds = conceptsSync?.subsetRowIds
+  const [dimFetched, setDimFetched] = useState<{ ids: number[]; fieldKey?: string; chips: ConceptChip[] } | null>(null)
   useEffect(() => {
-    setDimChips(null)
     if (!dimensionsEnabled || !datasetId || !subsetIds || subsetIds.length === 0) return
     let cancelled = false
     void (async () => {
@@ -101,11 +100,17 @@ export default function ContextCloud({ rows, fields, targets, termLabel, onSelec
           const d = r.ok ? await r.json() : null
           return { axis, counts: (d?.counts || {}) as Record<string, number> }
         }))
-        if (!cancelled) setDimChips(dimensionChipsFromCounts(results))
-      } catch { if (!cancelled) setDimChips([]) }
+        if (!cancelled) setDimFetched({ ids: subsetIds, fieldKey: dimFieldKey, chips: dimensionChipsFromCounts(results) })
+      } catch { if (!cancelled) setDimFetched({ ids: subsetIds, fieldKey: dimFieldKey, chips: [] }) }
     })()
     return () => { cancelled = true }
   }, [datasetId, dimFieldKey, dimensionsEnabled, subsetIds])
+  // Tagged with the subset + field it was fetched for (the same staleness
+  // pattern as `computed` above): a new subset or question shows no stale
+  // chips while its fetch is in flight, and disabling Dimensions hides them.
+  const dimChips = dimensionsEnabled && dimFetched && dimFetched.ids === subsetIds && dimFetched.fieldKey === dimFieldKey
+    ? dimFetched.chips
+    : null
 
   const concepts = conceptsSync ? { ...conceptsSync, dimensions: dimChips || [] } : null
 

@@ -69,3 +69,23 @@ rides every system prompt (~50 input tokens per call, all providers);
 dated deps follow-up. The `CLAUDE.md → ENGINEERING.md` spec-map entry was kept
 on purpose: CLAUDE.md is where engineering policy is written first, and the
 one false positive this week doesn't outweigh that guard.
+
+## 2026-09-08 — CI red on the lint ratchet: 168 warnings vs ceiling 167 (ContextCloud)
+
+**Why**: the 11-commit push landed red on `lint:ci` while typecheck, tests, RLS
+and e2e were green. `7e070186` (CommentsPanel retired) lowered the ceiling 172 →
+167 for the 5 warnings that file carried, but `2fea6be3` (Context dimensions →
+server-side, same stack) added a `react-hooks/set-state-in-effect` in
+`ContextCloud.tsx:91` — `setDimChips(null)` as a synchronous reset at the top of
+the fetch effect — so the tree netted −4, one over the ceiling. Neither commit
+could see the other's effect locally (`eslint .` OOMs; only CI counts).
+
+**What**: the reset is gone. Dimension chips are now stored tagged with the
+subset ids + field key they were fetched for and derived as null on mismatch —
+the exact staleness pattern `computed` already uses a few lines up in the same
+file — so a new subset/question shows no stale chips mid-fetch and disabling
+Dimensions hides them, as before. Ceiling stays 167 (never raised); file lints
+at 0; tsc clean; `contextCloud`/`contextConcepts` suites 12/12. Reasoned +
+unit-tested, not browser-driven: the change is structural and the tag identity
+(`conceptsSync.subsetRowIds` is a stable reference until recompute) is the same
+one the effect already keyed on.
