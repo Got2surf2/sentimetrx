@@ -5583,6 +5583,19 @@ COMMENT ON COLUMN "public"."dataset_state"."outlet_scan_cache" IS 'Persisted out
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."dataset_visit_snapshots" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "org_id" "uuid" NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "dataset_id" "uuid" NOT NULL,
+    "snapshot" "jsonb" NOT NULL,
+    "visited_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."dataset_visit_snapshots" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."datasets" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "name" "text" NOT NULL,
@@ -7122,6 +7135,16 @@ ALTER TABLE ONLY "public"."dataset_state"
 
 ALTER TABLE ONLY "public"."dataset_state"
     ADD CONSTRAINT "dataset_state_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."dataset_visit_snapshots"
+    ADD CONSTRAINT "dataset_visit_snapshots_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."dataset_visit_snapshots"
+    ADD CONSTRAINT "dataset_visit_snapshots_user_id_dataset_id_key" UNIQUE ("user_id", "dataset_id");
 
 
 
@@ -9153,6 +9176,15 @@ ALTER TABLE "public"."dataset_rows_flat" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."dataset_state" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."dataset_visit_snapshots" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "dataset_visit_snapshots_org_read" ON "public"."dataset_visit_snapshots" FOR SELECT USING (("org_id" = ( SELECT "users"."org_id"
+   FROM "public"."users"
+  WHERE ("users"."id" = "auth"."uid"()))));
+
+
+
 ALTER TABLE "public"."datasets" ENABLE ROW LEVEL SECURITY;
 
 
@@ -10617,6 +10649,12 @@ GRANT ALL ON SEQUENCE "public"."dataset_rows_flat_id_seq" TO "service_role";
 GRANT ALL ON TABLE "public"."dataset_state" TO "anon";
 GRANT ALL ON TABLE "public"."dataset_state" TO "authenticated";
 GRANT ALL ON TABLE "public"."dataset_state" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."dataset_visit_snapshots" TO "anon";
+GRANT ALL ON TABLE "public"."dataset_visit_snapshots" TO "authenticated";
+GRANT ALL ON TABLE "public"."dataset_visit_snapshots" TO "service_role";
 
 
 

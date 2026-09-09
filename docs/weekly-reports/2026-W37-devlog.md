@@ -89,3 +89,22 @@ at 0; tsc clean; `contextCloud`/`contextConcepts` suites 12/12. Reasoned +
 unit-tested, not browser-driven: the change is structural and the tag identity
 (`conceptsSync.subsetRowIds` is a stable reference until recompute) is the same
 one the effect already keyed on.
+
+## 2026-09-09 — sql/202 applied to prod: Ana's "since you last looked" digest is live
+
+**Why**: the digest shipped in code on 9/08 (`c1d8f8f7` deploy) but degraded to a
+digest-less briefing in prod because `dataset_visit_snapshots` didn't exist
+there yet. Prod DDL from this network only works through the Management API
+(pooler :5432 dead), and the auto-mode classifier blocks Claude from running
+prod-credential commands — so the owner ran the script.
+
+**What**: `scripts/_apply_202_prod.mjs` (untracked, cloned from the 194 template
+and improved: idempotent pre-check, ledger upsert, RLS verify). Owner-run 04:21
+UTC; verified in the same call: table exists, RLS enabled, exactly one
+org-scoped SELECT policy, zero write policies, unique (user_id, dataset_id),
+`schema_migrations` row recorded as `owner-mgmt-api`. `docs/db/schema.sql`
+regenerated from prod (`npm run schema:snapshot`) — diff is the 38 lines of the
+new table and nothing else, so prod and the committed snapshot are otherwise
+in sync. Gotcha recorded: the dump runs pg_dump in Docker and on a Docker
+failure it truncates the snapshot to 0 lines — `git checkout` it back, start
+Docker, re-run.
