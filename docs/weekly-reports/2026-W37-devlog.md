@@ -108,3 +108,23 @@ new table and nothing else, so prod and the committed snapshot are otherwise
 in sync. Gotcha recorded: the dump runs pg_dump in Docker and on a Docker
 failure it truncates the snapshot to 0 lines — `git checkout` it back, start
 Docker, re-run.
+
+## 2026-09-09 — Deploy gate legibility: "production deploy: success" ≠ deployed
+
+**Why**: after the docs-only `e82e137c` push the checks tab read "production
+deploy (after green): success" and I reported a build had happened. It hadn't
+— dug in: the job's conclusion is the GATE step's; the "Trigger Vercel
+production build" step was `skipped` (`docs-only push → no deploy needed`) on
+both docs-only pushes this week, and `vercel ls --prod` confirms the last
+production build is `c1d8f8f7` (the code push). The mechanism works; the name
+misleads, and a DD reviewer skimming the checks tab would misread it the same
+way. The governance routine's prompt also credited the wrong mechanism ("Vercel
+Ignored Build Step" — retired for main on 2026-07-04; it now only skips
+previews).
+
+**What**: the gate emits a `::notice title=Deploy gate::` annotation in every
+branch (TRIGGERED / NO production build, with the reason) so the run summary
+says it in words; no behavior change. ENGINEERING.md §deploy-behind-CI gains
+the how-to-read-it sentence. Routine prompt updated live to name the CI gate
+and to warn that green ≠ built. Memory rule: read the Trigger step, never the
+job name.

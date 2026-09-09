@@ -719,7 +719,13 @@ Constraints:
   `HEAD^..HEAD` diff, which mis-classified a multi-commit push that
   merely *ended* in a docs commit — the range fix is why it moved
   to CI.) Defaults to DEPLOY when the range is unknowable
-  (force-push, first push).
+  (force-push, first push). **Reading the checks tab: the job is
+  green whenever the gate RAN** — on a docs-only push it says
+  `success` and built nothing. The gate emits a `Deploy gate`
+  annotation in the run summary saying which way it went (added
+  2026-09-09 after that name was misread as "deployed"); the
+  authoritative signal is the "Trigger Vercel production build"
+  step (`skipped` = no build) or `vercel ls --prod`.
 - **Manual fallback:** if the hook path is ever broken,
   `vercel deploy --prod` from an authorized laptop deploys
   independently of the git integration.

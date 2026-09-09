@@ -183,14 +183,20 @@ jobs:
         id: gate
         run: |
           BEFORE="${{ github.event.before }}"
+          # The annotations below surface the decision in the run summary —
+          # this job shows green whenever the GATE ran, which reads as "deployed"
+          # when nothing was built. The only step that builds is the next one.
           if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
             echo "push range unknown → deploy"
+            echo "::notice title=Deploy gate::Push range unknown (dispatch or first push) — production build TRIGGERED"
             echo "deploy=yes" >> "$GITHUB_OUTPUT"
           elif git diff --quiet "$BEFORE" HEAD -- . ':(exclude)docs'; then
             echo "docs-only push → no deploy needed"
+            echo "::notice title=Deploy gate::Docs-only push — NO production build (job is green because the gate ran, not because anything deployed)"
             echo "deploy=no" >> "$GITHUB_OUTPUT"
           else
             echo "code changed → deploy"
+            echo "::notice title=Deploy gate::Code changed — production build TRIGGERED for $(git rev-parse --short HEAD)"
             echo "deploy=yes" >> "$GITHUB_OUTPUT"
           fi
 
