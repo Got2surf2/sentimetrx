@@ -61,13 +61,20 @@ export default defineConfig({
       // branches 29.18 · functions 40.55 · lines 39.55.
       // Ratcheted 2026-09-14 (W38 governance progression #3) after measuring
       // on vitest 4.1.11: statements 41.02 · branches 31.71 · functions 43.92 ·
-      // lines 42.27 — floors were 3–5pp under actual, i.e. slack. Same rule:
-      // ~1pp under measured, rounded down.
+      // lines 42.27 — floors were 3–5pp under actual, i.e. slack.
+      // RE-ratcheted 2026-09-14 after the coverage week (12 new suites:
+      // dataforseo, statsUtils narratives, mcoLiveContext, studyDesignPptx,
+      // agentStudy, agentReadout, share-analytics + share routes, projectReportLoad,
+      // entityDiscovery, recordingDeck, reviewSync, outletReportPdf, socialTagging,
+      // taxonomyMapping, agentStudyHtml, safeFetch — via tests/helpers/fakeSupabase).
+      // Measured: statements 50.04 · branches 39.98 · functions 54.18 · lines 51.37.
+      // Same rule: ~1pp under measured, rounded down. Lines + functions now
+      // enforce a floor ≥50% (the governance Tests-score 8-9 band bar).
       thresholds: {
-        statements: 40,
-        branches: 30,
-        functions: 42,
-        lines: 41,
+        statements: 49,
+        branches: 38,
+        functions: 53,
+        lines: 50,
       },
     },
   },

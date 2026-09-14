@@ -216,7 +216,11 @@ aggregator's dedup (100%). 106 tests. First-pass fixture fixes: the router
 flags a topic-less positive comment off_topic before the intent branch (real
 precedence), and the leaderboard's chain figure uses an ASCII minus.
 
-## 2026-09-14 — Coverage week, batch 5: agentStudyHtml (crosses statements ≥50%)
+## 2026-09-14 — Coverage week, batch 5: agentStudyHtml (statements 49.43 → 49.84)
+
+**Correction:** batch 5 did NOT cross 50% statements — it landed 49.84 (lines
+already 50.76). Batch 6 (safeFetch) was the one that crossed, to 50.04. The
+commit-message subject for batch 5 overstated this.
 
 **Why**: the full-suite measure after batch 4 sat at 49.43% statements / 50.76%
 lines — lines already cleared the Tests-band 50% bar, statements were ~0.6pp
