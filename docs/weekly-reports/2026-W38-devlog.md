@@ -215,3 +215,21 @@ off-topic/emotion rules, and the response router's precedence. `taxonomyMapping`
 aggregator's dedup (100%). 106 tests. First-pass fixture fixes: the router
 flags a topic-less positive comment off_topic before the intent branch (real
 precedence), and the leaderboard's chain figure uses an ASCII minus.
+
+## 2026-09-14 — Coverage week, batch 5: agentStudyHtml (crosses statements ≥50%)
+
+**Why**: the full-suite measure after batch 4 sat at 49.43% statements / 50.76%
+lines — lines already cleared the Tests-band 50% bar, statements were ~0.6pp
+short. `lib/agentStudyHtml.ts` (the sandboxed shared Agent Study bake, 186
+uncovered, a pure string builder like outletReportPdf) closes it in one suite.
+
+**What**: `tests/unit/agentStudyHtml.test.ts` — one rich AgentStudy through
+`renderAgentStudyHtml` exercising every section and its conditionals
+(health-dot title text, KPI gating on beacon coverage + answer rate, the
+recorded-sessions reconciliation note, activity chart, focuses with samples +
+per-focus entities, commentary + KB via the real sub-renderers, intents with
+the zero-detection filter, languages, attribution incl. the untagged row, open
+questions with depth chips + before/after context, insights, methodology,
+footer) plus a minimal study pinning the omitted sections; 11 tests, ~100% of
+the file. Fixture-only first-pass fixes (recorded-count arithmetic, the
+lowercase language badge, the always-present "Open Questions" KPI label).
