@@ -136,3 +136,28 @@ fix found by pinning output: `regrBL` printed a double space before
 fix, not the code's (e.g. `formatPValue(0.001)` is `p = 0.001`, the footer
 names the FLIGHT PREP section, a destination keyword filters arrivals by
 arrivalAirport).
+
+## 2026-09-14 — Coverage week, batch 2: agentStudy · agentReadout · share/analytics route (+ a filter-honoring fake Supabase)
+
+**Why**: the next three largest uncovered product paths are loaders whose
+QUERY SHAPES are the behavior — which rows an `.eq('bot_id')` excludes, what a
+head-count returns, how a collection fans out. A fake that ignores filters
+proves nothing there.
+
+**What**: `tests/helpers/fakeSupabase.ts` — an in-memory client that honors
+eq/neq/in/gte/gt/lte/lt/is (dotted paths for embedded joins), order, range,
+limit, single/maybeSingle (PGRST116 on zero rows), `{count:'exact',head:true}`
+with per-table overrides, and insert/update/upsert/delete that mutate the table
+and are recorded. `tests/unit/agentStudy.test.ts` — both turn substrates, the
+review gate (human overrides, auto-flags, missing table), exchange shaping,
+Tier-1 health incl. every dot state, and the full Tier-2 study with the three AI
+passes routed by system prompt: totals reconcile, disabled focuses dropped,
+junk entities filtered, language-routing intents excluded, open questions carry
+before/after agent lines, cache hit / force / KB-change key (95.0%).
+`tests/unit/agentReadout.test.ts` — hybrid theming, label consolidation, Other
+bucket, polish + glossary, polish failure → raw, garbage AI → identity labels
+(98.5%). `tests/integration/share-analytics-route.test.ts` — token gate codes,
+primary/benchmark split, z-test + proportion test, funnel stages, rating-alias
+enrichment (study + collection member), non-survey → no funnel, >50K sampler
+path + sequential fallback (93.3%). 26 tests; four first-pass expectations were
+mine (3-word small talk is substantive; median of [1,2] is the upper element).
