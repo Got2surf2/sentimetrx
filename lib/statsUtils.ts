@@ -567,7 +567,7 @@ export function regrBL(res: RegressionResult | null, out: string, aliases?: Reco
   var s = sigLabel(res.Fp)
   var label = function(name: string) { return (aliases && aliases[name]) || name }
   if (s.label === 'not significant') return 'The model is not significant (F=' + fmt2(res.F) + ', ' + fmtP(res.Fp) + '), explaining only ' + r2 + '% of variance in ' + out + '.'
-  var sigStr = sig.length ? ' Significant predictors: ' + sig.map(function(c: RegressionResult['coefs'][number]) { return label(c.name) + ' (\u03B2=' + fmt2(c.beta) + ', ' + fmtP(c.p) + ')' }).join(', ') + '.' : 'No individual predictors reached significance.'
+  var sigStr = sig.length ? 'Significant predictors: ' + sig.map(function(c: RegressionResult['coefs'][number]) { return label(c.name) + ' (\u03B2=' + fmt2(c.beta) + ', ' + fmtP(c.p) + ')' }).join(', ') + '.' : 'No individual predictors reached significance.'
   return 'The model explains ' + r2 + '% of variance in ' + out + ' (R\u00B2=' + fmt2(res.R2) + ', adj.R\u00B2=' + fmt2(res.R2adj) + ', F=' + fmt2(res.F) + ', ' + fmtP(res.Fp) + '). ' + sigStr
 }
 

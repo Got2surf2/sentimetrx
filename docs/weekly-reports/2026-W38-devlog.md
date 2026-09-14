@@ -114,3 +114,25 @@ Behavior unchanged; `useSurveyEngine`'s declaration order (TDZ-load-bearing)
 untouched — only an import specifier changed. madge: **0 cycles**. tsc, lint,
 and the serviceHealth / serviceAlerts / surveyEngineFlow / aiProviderGuard
 suites green.
+
+## 2026-09-14 — Coverage week, batch 1: dataforseo · statsUtils narratives · mcoLiveContext · studyDesignPptx
+
+**Why**: Tests scores 8-9 only with an enforced floor ≥50%; measured 41.02%
+→ +3,835 covered statements needed. Batch 1 takes the pure / fetch-mocked
+modules where one suite covers most of a file.
+
+**What**: `tests/unit/dataforseo.test.ts` (fetch stubbed with a response
+queue; polling loops on fake timers — Google + Tripadvisor task submit/poll,
+402 → credit monitor, address parsing fallbacks, search volume trends, SERP;
+95.7%). `tests/unit/statsUtilsNarrative.test.ts` (probit/Shapiro-Wilk/F/VIF/
+pruneCollinear, formatters, every bottom-line narrative in both voices, all
+branches). `tests/unit/mcoLiveContext.test.ts` (only the three GOAA fetchers
+mocked; intent detection, follow-up carry, time windows, checkpoint mapping and
+prep math real; 95.5%). `tests/unit/studyDesignPptx.test.ts` (REAL pptxgenjs
+render opened with jszip — every section, overflow "(cont.)" pages, null-config
+defaults, Datanautix metadata, §6 OOXML tripwire; 97.7%). 62 tests. One source
+fix found by pinning output: `regrBL` printed a double space before
+"Significant predictors" — now single. Six first-pass expectations were mine to
+fix, not the code's (e.g. `formatPValue(0.001)` is `p = 0.001`, the footer
+names the FLIGHT PREP section, a destination keyword filters arrivals by
+arrivalAirport).
