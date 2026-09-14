@@ -35,6 +35,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Dependency audit gate (high+ ROOT advisories; allowlist entries expire)
+        # SECURITY.md Open item 2 / ENGINEERING.md "Dependabot + npm audit".
+        # Fails on any high/critical advisory that is a root (its own advisory,
+        # not collateral) unless audit-allowlist.json carries a verified,
+        # UNEXPIRED entry for it. A new upstream advisory can therefore turn
+        # main red with no code change — that is the point: no push ships a
+        # known high. Fix the root (plain `npm audit fix`, or scope/repoint an
+        # overrides pin — never --force here) or add a reviewed allowlist entry.
+        run: npm run audit:gate
+
       - name: Typecheck
         run: npm run typecheck
 

@@ -26,6 +26,7 @@
     "spec-drift": "tsx scripts/spec-drift.ts",
     "check:sql-tx": "tsx scripts/check-sql-tx-wrap.ts",
     "check:no-legacy-rows": "tsx scripts/check-no-legacy-dataset-rows.ts",
+    "audit:gate": "tsx scripts/audit-gate.ts",
     "migrate": "tsx scripts/apply-migration.ts",
     "migrate:status": "tsx scripts/migrations-status.ts",
     "promote": "tsx scripts/promote.ts",

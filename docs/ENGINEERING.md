@@ -597,18 +597,28 @@ we get the 11pm pages.
     dep
 - **Lockfile is the source of truth.** Never edit
   `package-lock.json` by hand; let `npm install` regenerate.
-- **Dependabot + `npm audit`:** SECURITY.md Open `<TBD>` item 2
-  tracks landing both as CI steps — Dependabot weekly with
-  auto-merge on patch bumps, hand-review on minor/major;
-  `npm audit --audit-level=high` failing CI on new high-severity
-  CVEs.
+- **`npm audit` gate — LIVE in CI since 2026-09-14.**
+  `npm run audit:gate` (`scripts/audit-gate.ts`) runs right after
+  `npm ci` in the `test` job and fails on any **high/critical ROOT**
+  advisory (the package has its own advisory — an object in
+  `via[]`; collateral packages carry only strings and fall away with
+  the root) unless `audit-allowlist.json` has a verified entry with
+  an **unexpired `reviewBy`** date. Rules encoded there: never
+  `--force` (semver-major "fixes"), fix the root or scope/repoint an
+  `overrides` pin, and an acceptance is a decision with a shelf
+  life. Consequence to know: a new upstream advisory can turn `main`
+  red with no code change — by design, no push ships a known high.
+  Dependabot weekly (auto-merge on patch, hand-review minor/major)
+  is the still-open half of SECURITY.md item 2.
 - **`xlsx` is pinned to a SheetJS CDN tarball** — known posture
   decision (npm version has CVE history). Document and review
   annually (next: 2027-05).
 
-**How we verify:** once item 2 lands, Dependabot PRs in the GitHub
-queue + the CI `npm audit` step are the live signal. Until then,
-manual `npm audit` is part of the quarterly governance routine.
+**How we verify:** the CI audit gate is the live per-push signal
+(`tests/unit/auditGate.test.ts` pins its rules); the weekly
+governance report reads the same `npm audit` and must cite
+`audit-allowlist.json` for anything it lists as accepted. Dependabot
+PRs join that signal when item 2's other half lands.
 
 ### `next.config.js` wrap order
 

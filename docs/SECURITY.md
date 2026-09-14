@@ -71,8 +71,12 @@ Primary threats we defend against, in priority order:
    closed by commit 2026-05-25.
 5. **Supply-chain compromise** — a malicious npm dependency.
    Mitigated today by manual lockfile review on every PR.
-   **Gap:** no automated `npm audit` or Dependabot gate in CI —
-   tracked as Open `<TBD>` item 2.
+   Since 2026-09-14 the CI **dependency audit gate**
+   (`scripts/audit-gate.ts`, step in `.github/workflows/ci.yml`)
+   fails every push/PR that carries a high/critical ROOT advisory
+   not covered by an unexpired entry in `audit-allowlist.json`.
+   **Remaining gap:** Dependabot weekly + CodeQL — Open `<TBD>`
+   item 2.
 
 **How we verify:** quarterly review against this list; any new
 threat that takes a CRITICAL finding gets added with its own
@@ -821,8 +825,13 @@ plumbing that needs to ship.
    Sentry configs; see §5. Unit test in
    `tests/unit/sentryScrub.test.ts`. Also drops the Microsoft
    Office "Object Not Found Matching Id…" false positive.)*
-2. **Enable Dependabot weekly + `npm audit --audit-level=high`
-   + CodeQL** in `.github/workflows/ci.yml`. Effort: 1 PR.
+2. **Enable Dependabot weekly + CodeQL** in
+   `.github/workflows/ci.yml`. Effort: 1 PR. *(The `npm audit`
+   half LANDED 2026-09-14 as `scripts/audit-gate.ts` — roots vs
+   collateral, high+ floor, `audit-allowlist.json` entries with a
+   `reviewBy` expiry; 8 unit tests. Prompted by W38: `next` 16.3.1
+   shipped a critical RCE advisory that the weekly cadence caught
+   in 7 days and the gate would have caught on the next push.)*
 3. *(retired — rotation cadence ratified in §4)*
 4. *(retired 2026-05-15 — `admin_action_log` already exists,
    matches §6 contract; see sql/048_admin_action_log.sql)*

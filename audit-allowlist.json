@@ -1,0 +1,14 @@
+[
+  {
+    "ghsa": "GHSA-w3rx-r6r6-pgpr",
+    "package": "image-size",
+    "reason": "Declared-but-never-imported dep of pptxgenjs; the only parser call site is inside a block comment in every shipped bundle. Only npm 'fix' is a semver-major DOWNGRADE of pptxgenjs that breaks deck exports. Full verification: ENGINEERING.md 'The last 2 advisories are a phantom dependency' (2026-08-16).",
+    "reviewBy": "2027-03-01"
+  },
+  {
+    "ghsa": "GHSA-5p2g-fcmc-qvqq",
+    "package": "image-size",
+    "reason": "Same root and same verification as GHSA-w3rx-r6r6-pgpr (JXL/HEIF parsers never loaded).",
+    "reviewBy": "2027-03-01"
+  }
+]
