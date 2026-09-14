@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import DOMPurify from 'isomorphic-dompurify'
 import type { Study, StudyConfig, Sentiment, SurveyPayload, OpeningFlowItem, SectionKey, RatingOption, LikertFollowUp, ContactFieldType } from '@/lib/types'
 import { US_STATES, validateContactField, BUILTIN_UI_TRANSLATIONS, SUPPORTED_LANGUAGES } from '@/lib/types'
-import { pickBrandColor } from '@/components/survey/SurveyWidget'
+import { pickBrandColor } from '@/components/survey/brandColor'
 
 // ============================================================
 // useSurveyEngine

@@ -17,7 +17,6 @@ import 'server-only'
 // state, not org-scoped data.
 
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { maybeAlertCreditError } from '@/lib/serviceAlerts'
 import { logError } from '@/lib/log'
 
 export type ServiceKey =
@@ -112,6 +111,10 @@ export async function recordCreditError(
     // Hitting a limit emails the platform admin IMMEDIATELY (throttled ~daily
     // per service; claim-then-send, so a burst of 402s yields one email) —
     // the 6h service-balance cron is the backstop, not the pager.
+    // Loaded lazily: serviceAlerts → email/provider → recordCreditError (this
+    // file) is a static cycle otherwise. The pager path only runs on an actual
+    // credit error, so nothing is lost by resolving it here.
+    const { maybeAlertCreditError } = await import('@/lib/serviceAlerts')
     await maybeAlertCreditError(key)
   } catch { /* monitoring must never break the caller */ }
 }
