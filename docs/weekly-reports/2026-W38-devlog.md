@@ -233,3 +233,23 @@ questions with depth chips + before/after context, insights, methodology,
 footer) plus a minimal study pinning the omitted sections; 11 tests, ~100% of
 the file. Fixture-only first-pass fixes (recorded-count arithmetic, the
 lowercase language badge, the always-present "Open Questions" KPI label).
+
+## 2026-09-14 — Coverage week, batch 6: safeFetch (SSRF guard) — statements clear 50%
+
+**Why**: batch 5 left statements at 49.84% (lines 51.21, functions 54.08
+already ≥50). Rather than pad with another deck, the last nudge went to a
+security-worth-testing target: `lib/safeFetch.ts`, the SSRF guard every
+user-URL fetch (bot training, crawl, research) goes through — it was at 1%.
+
+**What**: `tests/unit/safeFetch.test.ts` — the full block surface: scheme
+rejection, every private/reserved IPv4 range + the metadata address as
+literal hosts (no DNS), the IPv6 table (loopback / ULA / link-local /
+multicast / IPv4-mapped) driven through resolved records, DNS-rebinding
+(reject if ANY record is private), resolution-failure paths, and the manual
+per-hop redirect revalidation (the classic metadata-via-redirect bypass, no
+Location, malformed Location → 502, the redirect cap, relative Location). 12
+tests. Two findings about the code's real shape surfaced while writing:
+`new URL('http://256.1.1.1')` throws (WHATWG rejects an out-of-range final
+label before any IP check), and `URL.hostname` keeps the brackets on an IPv6
+literal so the literal-v6 branch is only reachable via resolved records — the
+tests exercise the block table through the realistic DNS path.
