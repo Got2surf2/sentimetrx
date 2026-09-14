@@ -54,3 +54,22 @@ advisory can turn `main` red with no code change — that is the point.
 better copy (`a3dbd6db`, 83.0, correct devlog); the PR was a second run that
 scored 80.0 on a false "zero commits" premise and carried a lockfile rewrite.
 Dependabot weekly + CodeQL remain the open half of SECURITY item 2.
+
+## 2026-09-14 — Coverage floors ratcheted 37/28/39/38 → 40/30/42/41 (W38 progression #3)
+
+**Why**: the report asked for a floor ratchet "after the next large test
+addition" and, per the rule the audit now carries, only a measured
+`coverage-summary.json` can justify it. Measured on this tree (vitest 4.1.11,
+2,211 tests): statements 41.02 · branches 31.71 · functions 43.92 · lines 42.27
+— the floors sat 3–5pp under actual, which is the "decoration, not a gate"
+condition the 8/16 raise was written against. Part of the rise since the 9/01
+baseline (38.32/29.18/40.55/39.55) is the prior week's Ask Ana / digest /
+collection suites; part may be v8 accounting differences on the new runner —
+the floor tracks the measurement either way.
+
+**What**: `vitest.config.ts` thresholds → **40/30/42/41** (same rule as every
+prior raise: ~1pp under measured, rounded down). TESTING.md floor history
+updated. Not re-run end-to-end after the edit — the floors are ≥1pp under the
+numbers measured minutes earlier on the same tree; CI enforces them on the next
+push. Not done: chasing the report's "50%+" — that is a test-writing target,
+not a ratchet, and would be scoped as its own coverage week.

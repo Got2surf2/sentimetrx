@@ -59,11 +59,15 @@ export default defineConfig({
       // pptxgenjs slideRenderer render) and the internal-deck exclusion.
       // Measured after the PulseIQ facilitation suite: statements 38.32 ·
       // branches 29.18 · functions 40.55 · lines 39.55.
+      // Ratcheted 2026-09-14 (W38 governance progression #3) after measuring
+      // on vitest 4.1.11: statements 41.02 · branches 31.71 · functions 43.92 ·
+      // lines 42.27 — floors were 3–5pp under actual, i.e. slack. Same rule:
+      // ~1pp under measured, rounded down.
       thresholds: {
-        statements: 37,
-        branches: 28,
-        functions: 39,
-        lines: 38,
+        statements: 40,
+        branches: 30,
+        functions: 42,
+        lines: 41,
       },
     },
   },
