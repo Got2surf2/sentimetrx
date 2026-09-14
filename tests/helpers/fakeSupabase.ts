@@ -28,6 +28,10 @@ export interface FakeServiceOptions {
   errors?: Record<string, FakeError>
   /** Handler for `.rpc(name, params)`; default resolves `{ data: [], error: null }`. */
   rpc?: (name: string, params: Record<string, unknown>) => { data: unknown; error: unknown } | Promise<{ data: unknown; error: unknown }>
+  /** Column defaults applied to every inserted/upserted row of a table — the
+   *  stand-in for DB-generated columns (`token`, `id`, `created_at`) that a
+   *  route reads back through `.insert().select().single()`. */
+  defaults?: Record<string, (row: Row, index: number) => Row>
 }
 
 function getPath(row: Row, path: string): unknown {
@@ -139,7 +143,8 @@ export class FakeQuery implements PromiseLike<{ data: unknown; error: FakeError 
     }
     this.db.writes.push({ table: this.table, op: this.mode as Write['op'], payload: this.payload, filters: [...this.filters] })
     tables[this.table] = tables[this.table] || []
-    const list = Array.isArray(this.payload) ? (this.payload as Row[]) : this.payload ? [this.payload as Row] : []
+    const raw = Array.isArray(this.payload) ? (this.payload as Row[]) : this.payload ? [this.payload as Row] : []
+    const list = (this.mode === 'insert' || this.mode === 'upsert') ? raw.map(r => this.db.withDefaults(this.table, r)) : raw
     if (this.mode === 'insert') tables[this.table].push(...list.map(r => ({ ...r })))
     if (this.mode === 'upsert') {
       const keys = (this.onConflict || 'id').split(',').map(s => s.trim())
@@ -169,7 +174,9 @@ export class FakeService {
   tables: Record<string, Row[]>
   counts: NonNullable<FakeServiceOptions['counts']>
   errors: NonNullable<FakeServiceOptions['errors']>
+  defaults: NonNullable<FakeServiceOptions['defaults']>
   writes: Write[] = []
+  private inserted = 0
   rpcCalls: RpcCall[] = []
   private rpcHandler: FakeServiceOptions['rpc']
 
@@ -178,7 +185,13 @@ export class FakeService {
     this.tables = Object.fromEntries(Object.entries(opts.tables || {}).map(([k, v]) => [k, v.map(r => ({ ...r }))]))
     this.counts = opts.counts || {}
     this.errors = opts.errors || {}
+    this.defaults = opts.defaults || {}
     this.rpcHandler = opts.rpc
+  }
+  /** Apply the table's insert defaults (DB-generated columns) under the row's own values. */
+  withDefaults(table: string, row: Row): Row {
+    const d = this.defaults[table]
+    return d ? { ...d(row, this.inserted++), ...row } : row
   }
   from(table: string) { return new FakeQuery(this, table) }
   async rpc(name: string, params: Record<string, unknown> = {}) {

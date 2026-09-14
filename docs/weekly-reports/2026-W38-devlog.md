@@ -194,3 +194,24 @@ analytics + auto-classify, next-sync scheduling (5-min retry / cadence / manual
 parking), Tripadvisor dispatch. 35 tests. First-pass corrections were fixture
 facts, not code: the canonicaliser drops <2-char canonicals; a one-row batch
 yields no categorical `values` for the schema merge.
+
+## 2026-09-14 — Coverage week, batch 4: share route, outletReportPdf, socialTagging, taxonomyMapping
+
+**Why**: the last of the large uncovered product paths — the share-link
+lifecycle route, the three composed outlet PDFs, the social tagging pipeline,
+and the legacy taxonomy-label projector.
+
+**What**: `tests/integration/share-route.test.ts` — POST/GET/DELETE with the
+tenancy gate (caller-org vs target-org, admin bypass) real over the fake
+Supabase (extended with insert-time column defaults for the generated token);
+every share type, expiry presets, conversation/agent_study/analytics branches,
+the token-resolve payloads, list + revoke authorization. `outletReportPdf` —
+the deep-dive / leaderboard / hierarchy documents as strings: every payload
+figure lands once, verbatim-guarded quotes, empty-state wording, escaping +
+CSS-position clamping, driver-callout tones. `socialTagging` — the full
+moderation matrix by sensitivity (regex + AI scores), spam/intent/topic/
+off-topic/emotion rules, and the response router's precedence. `taxonomyMapping`
+— table-driven over every label family + quarantine bucket + the row
+aggregator's dedup (100%). 106 tests. First-pass fixture fixes: the router
+flags a topic-less positive comment off_topic before the intent branch (real
+precedence), and the leaderboard's chain figure uses an ASCII minus.
