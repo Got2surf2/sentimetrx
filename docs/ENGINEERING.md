@@ -597,6 +597,20 @@ we get the 11pm pages.
     dep
 - **Lockfile is the source of truth.** Never edit
   `package-lock.json` by hand; let `npm install` regenerate.
+- **Zero runtime import cycles (2026-09-14).** `npx madge --circular
+  lib app components` with the committed `.madgerc`, which skips
+  `import type` edges (erased at compile time) and `await import()`
+  edges (resolved inside a function body, so they cannot take part in
+  module-initialisation order or TDZ hazards). What remains is the
+  static graph — and that is the definition of a cycle we care about.
+  The rubric's old check ran on a non-existent `src/` and saw nothing;
+  the real graph had 6 flagged pairs, 3 type-only, 1 already lazy, 2
+  fixed the same day (`serviceHealth` now lazy-loads `serviceAlerts`
+  inside `recordCreditError`; `pickBrandColor` moved to
+  `components/survey/brandColor.ts` so the hook no longer imports the
+  component that renders it). Weekly governance scores Structure and
+  Maintainability on this count. Making a back-edge `import type` or
+  lazy is the fix; suppressing madge is not.
 - **`npm audit` gate — LIVE in CI since 2026-09-14.**
   `npm run audit:gate` (`scripts/audit-gate.ts`) runs right after
   `npm ci` in the `test` job and fails on any **high/critical ROOT**

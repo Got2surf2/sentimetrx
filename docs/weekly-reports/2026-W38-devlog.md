@@ -73,3 +73,44 @@ updated. Not re-run end-to-end after the edit — the floors are ≥1pp under th
 numbers measured minutes earlier on the same tree; CI enforces them on the next
 push. Not done: chasing the report's "50%+" — that is a test-writing target,
 not a ratchet, and would be scoped as its own coverage week.
+
+## 2026-09-14 — Governance rubric made measurable; Structure/Security checks pointed at this repo
+
+**Why**: the routine's prompt scored **Documentation** and **Maintainability**,
+but `audit-codebase.md` defined **Imports** and **AI Patterns** — 30% of the
+weekly score had no written bands and was improvised each run (the "~5pt noise
+floor"). Two other checks measured the wrong thing: Structure ran `madge` on a
+non-existent `src/` (never saw a cycle) and counted App Router nesting as
+complexity; Security deducted for env-gated suites "skipped in this clone" —
+an environment fact, since CI runs them on every push.
+
+**What**: categories 6–7 rewritten as Documentation (spec-drift count, COVERED-
+week devlog, AUDITS registry, policy-doc TBD moves) and Maintainability (tsc,
+`no-explicit-any` = error, lint ceiling held and its DIRECTION, runtime cycles,
+scoped `eslint-disable`s, oversized modules; CLAUDE.md/hooks/commands as
+guardrails — a `.claude/agents` directory is explicitly NOT maturity). Weights
+formula and output table renamed to match. Structure: madge over
+`lib app components` with a committed `.madgerc` that skips type-only and async
+edges; depth check exempts `app/`. Security: read the latest `main` CI
+isolation job via `gh` instead of running suites that will skip. Routine prompt
+updated live: score strictly against the written bands and quote the measured
+number; a methodology note is required in the Trend section on the first run
+under the new bands (a movement there is not a codebase change); commit ONLY
+the two report files (the W36 PR carried a lockfile rewrite); one PR per run.
+
+## 2026-09-14 — The two real runtime import cycles, fixed
+
+**Why**: with type-only and lazy edges skipped, `madge` found 2 static cycles
+(down from the 6 it reported naïvely): `serviceHealth → serviceAlerts →
+email/provider → serviceHealth` (the credit monitor imported by the very
+provider it monitors) and `SurveyWidget → useSurveyEngine → SurveyWidget`
+(the hook imported `pickBrandColor` from the component that renders it).
+
+**What**: `recordCreditError` now `await import()`s `serviceAlerts` — the pager
+path only runs on an actual credit error, so nothing is lost by resolving it
+there (same pattern the file already used for `dataforseo`). `pickBrandColor`
+moved verbatim to `components/survey/brandColor.ts`; both files import it.
+Behavior unchanged; `useSurveyEngine`'s declaration order (TDZ-load-bearing)
+untouched — only an import specifier changed. madge: **0 cycles**. tsc, lint,
+and the serviceHealth / serviceAlerts / surveyEngineFlow / aiProviderGuard
+suites green.

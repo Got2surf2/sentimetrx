@@ -53,6 +53,17 @@ find . -name ".env*" -not -name ".env.example" -not -path "*/node_modules/*" -no
 
 ### Category 2: Security (Weight: 15%)
 
+**Env-gated suites skip in a clone without `SUPABASE_TEST_*` creds — that is
+an environment fact, never a finding.** The RLS / cross-org egress / auth
+round-trip suites run on EVERY push in CI ("multi-tenant isolation (RLS +
+egress)" job). Read that job's conclusion for the latest `main` run and cite
+it instead of trying to run the suites here:
+
+```bash
+RUN=$(gh run list --branch main --workflow CI --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null)
+[ -n "$RUN" ] && gh run view "$RUN" --json jobs --jq '.jobs[] | select(.name|test("isolation")) | "\(.name): \(.conclusion)"'
+```
+
 Check for OWASP-style vulnerabilities and unsafe patterns.
 
 ```bash
@@ -147,22 +158,29 @@ for dir in */; do
     echo "$dir: $(find "$dir" -type f -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | wc -l) files"
 done
 
-# Deeply nested files (complexity indicator)
-find . -type f -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/vendor/*" -mindepth 6 2>/dev/null | head -10
+# Deeply nested files (complexity indicator). Next.js App Router routes are
+# nested BY CONVENTION (app/api/datasets/[datasetId]/views/route.ts is depth 6
+# and correct) — exclude app/ and build/coverage output or the count is noise.
+find . -type f -mindepth 6 -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "./app/*" -not -path "./.next/*" -not -path "./coverage/*" 2>/dev/null | head -10
 
 # Mixed naming conventions
 find . -type f -name "*_*" -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -5
 find . -type f -name "*-*" -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -5
 
-# Circular dependency indicators (for JS/TS projects)
-[ -f "package.json" ] && npx madge --circular --extensions ts,js src/ 2>/dev/null | head -20
+# Circular dependencies — RUNTIME cycles only. There is no src/ here; the
+# source roots are lib/, app/, components/. .madgerc skips `import type`
+# edges (erased at compile time; a type-only back-edge is documentation, not
+# a cycle) and points madge at tsconfig.json for path aliases.
+[ -f "package.json" ] && npx --yes madge --circular lib app components 2>/dev/null | tail -20
 ```
 
 **Scoring:**
-- 10: Clear module boundaries, consistent naming, no circular deps, flat hierarchy
-- 7-9: Good structure with minor inconsistencies
-- 4-6: Mixed conventions, some circular deps, unclear module boundaries
-- 1-3: No clear structure, deeply nested files, widespread circular deps
+- 10: 0 runtime cycles, consistent naming, no non-framework nesting ≥6 deep
+- 7-9: 1-3 runtime cycles, or minor naming inconsistencies
+- 4-6: 4-10 runtime cycles, mixed conventions, unclear module boundaries
+- 1-3: No clear structure, widespread cycles
+Framework-imposed depth (App Router) is NOT a deduction. Report the cycle
+list verbatim so the fix is actionable.
 
 ---
 
@@ -245,71 +263,92 @@ as a methodology note rather than a score movement.
 
 ---
 
-### Category 6: Imports (Weight: 10%)
+### Category 6: Documentation (Weight: 10%)
 
-Check for unused imports, circular dependencies, and type coverage.
+Does the written record keep up with the code? This repo treats specs, the
+devlog, and the audit registry as load-bearing (buyer DD reconstructs intent
+from git + spec + devlog without asking the human — CLAUDE.md "Specs"). Score
+the SYNC, not the volume.
 
 ```bash
-# Unused imports (TypeScript/JavaScript)
-[ -f "tsconfig.json" ] && npx tsc --noEmit 2>&1 | grep -c "declared but" 2>/dev/null
-[ -f "tsconfig.json" ] && npx tsc --noEmit 2>&1 | grep "declared but" | head -10
+# Spec drift over the covered week (the same run Part A of the routine uses)
+npm run spec-drift -- --since '7 days ago' 2>/dev/null | sed -n '/## Summary/,/## Top-level/p'
 
-# TypeScript strict mode
-[ -f "tsconfig.json" ] && grep -E '"strict"|"noImplicitAny"|"strictNullChecks"' tsconfig.json 2>/dev/null
+# Devlog for the COVERED week — named by the ISO week its entries fall in.
+# On a Monday run that is LAST week's file, never the run week's.
+ls -1 docs/weekly-reports/*-devlog.md | tail -3
+date -d yesterday +%G-W%V 2>/dev/null || date -v-1d +%G-W%V
 
-# Python unused imports
-[ -f "pyproject.toml" ] || [ -f "setup.py" ] && python -m pyflakes . 2>/dev/null | grep "imported but unused" | head -10
+# Audit registry: every audit/sweep run in range must have a row (AUDITS.md rule)
+git log --since='7 days ago' --format='%h %s' | grep -iE 'audit|sweep|review' | head
+grep -c '^| \*\*' docs/AUDITS.md
 
-# Wildcard imports (code smell)
-grep -rn 'import \*' --include="*.{py,ts,js}" --exclude-dir={node_modules,vendor,.git} . 2>/dev/null | head -10
+# Policy docs: an Open <TBD> item that MOVED in range must be edited in range
+git log --since='7 days ago' --format='%h %s' -- docs/SECURITY.md docs/ENGINEERING.md docs/COMPLIANCE.md | head
 ```
 
 **Scoring:**
-- 10: Zero unused imports, TypeScript strict mode, no wildcard imports
-- 7-9: <5 unused imports, strict mode enabled with minor gaps
-- 4-6: 5-20 unused imports, no strict mode, some wildcard imports
-- 1-3: >20 unused imports, widespread wildcard imports, no type checking
+- **10**: 0 drift, devlog present for the covered week with an entry per
+  meaningful commit day, AUDITS.md current, policy docs edited when a TBD moved
+- **8-9**: ≤1 drifted spec (with a named owner or a `SKIP_SPEC_CHECK`
+  justification in the commit), devlog present
+- **6-7**: 2-3 drifted specs, or a devlog that covers only part of the week
+- **4-5**: ≥4 drifted specs, or NO devlog for a week with meaningful commits
+- **1-3**: specs absent or unmaintained
+A spec-map artifact (e.g. a `CLAUDE.md`-only commit flagged against
+`ENGINEERING.md`) is not drift — say so and don't deduct. If the routine could
+not find the devlog, check the COVERED-week filename before scoring it missing.
 
 ---
 
-### Category 7: AI Patterns (Weight: 20%)
+### Category 7: Maintainability (Weight: 20%)
 
-Evaluate Claude Code configuration maturity and AI-assisted development readiness.
+Type safety, the lint ratchet, module hygiene, and whether the anti-drift
+guards are ENFORCED (CLAUDE.md "Lint ratchet + touch-it-fix-it"). This is
+the weightiest category because it is the one that decays silently.
 
 ```bash
-# CLAUDE.md presence and quality
-[ -f "CLAUDE.md" ] && echo "OK: CLAUDE.md exists ($(wc -l < CLAUDE.md) lines)" || echo "MISSING: No CLAUDE.md"
-[ -f ".claude/settings.json" ] && echo "OK: .claude/settings.json exists" || echo "MISSING: No .claude/settings.json"
+# Type errors (must be 0 — CI gates it)
+npx tsc --noEmit 2>&1 | grep -c "error TS"
 
-# Custom commands
-COMMANDS=$(find .claude/commands -name "*.md" 2>/dev/null | wc -l)
-echo "Custom commands: $COMMANDS"
+# `any` is an ERROR, not a warning (promoted 2026-07-13 after burning 3,000+ → 0)
+grep -n "no-explicit-any" eslint.config.mjs
 
-# Hooks
-HOOKS_CFG=$(grep -c "hooks" .claude/settings.json 2>/dev/null || echo "0")
-echo "Hook configurations: $HOOKS_CFG"
+# Lint ratchet: the ceiling can only go DOWN. Compare to the previous report.
+grep -o 'max-warnings [0-9]*' package.json
+git log --since='28 days ago' --format='%h %ad %s' --date=short -G'"lint:ci"' -- package.json | head -5
+# Actual count: read CI's "Lint (warn-only ratchet)" step for the latest main
+# run (eslint . can OOM locally). The ratchet FAILS CI if actual > ceiling.
+gh run list --branch main --workflow CI --limit 1 --json databaseId,headSha,conclusion 2>/dev/null
 
-# Rules files
-RULES=$(find .claude/rules -name "*.md" 2>/dev/null | wc -l)
-echo "Rule files: $RULES"
+# Scoped escape hatches (each must carry a `-- reason`)
+grep -rn "eslint-disable" --include='*.ts' --include='*.tsx' lib app components | grep -vc -- '-- '
 
-# Agents
-AGENTS=$(find .claude/agents -name "*.md" 2>/dev/null | wc -l)
-echo "Agent definitions: $AGENTS"
+# Runtime cycles (same run as Structure; .madgerc skips type-only edges)
+npx --yes madge --circular lib app components 2>/dev/null | grep -c '^[0-9]*)'
 
-# Skills
-SKILLS=$(find .claude/skills -name "*.md" 2>/dev/null | wc -l)
-echo "Skills: $SKILLS"
+# Oversized modules (behavior-sensitive to split; report, don't demand)
+find lib app components -name '*.ts' -o -name '*.tsx' | xargs wc -l 2>/dev/null | sort -rn | awk '$1>1500' | head -8
 
-# .gitignore for AI artifacts
-grep -q "claude" .gitignore 2>/dev/null && echo "OK: Claude patterns in .gitignore" || echo "INFO: No Claude patterns in .gitignore"
+# AI-assisted-development guardrails are part of maintainability here:
+# CLAUDE.md + committed settings + hooks + commands. A directory's presence
+# (.claude/agents, .claude/skills) is NOT maturity — do not list it as a gap.
+[ -f "CLAUDE.md" ] && wc -l < CLAUDE.md; [ -f ".claude/settings.json" ] && grep -c hooks .claude/settings.json; ls .claude/commands/*.md 2>/dev/null | wc -l
 ```
 
 **Scoring:**
-- 10: CLAUDE.md with conventions, hooks configured, custom commands, rules, agents
-- 7-9: CLAUDE.md exists with project context, some commands or rules
-- 4-6: Basic CLAUDE.md, no hooks or commands
-- 1-3: No CLAUDE.md or empty CLAUDE.md
+- **10**: tsc 0, `no-explicit-any` = error with 0 occurrences, lint count ≤
+  ceiling AND the ceiling lower than 4 weeks ago, 0 runtime cycles, every
+  `eslint-disable` scoped with a reason
+- **8-9**: tsc 0, any = error, ceiling held (not raised) in range, ≤3 runtime
+  cycles, guardrails (CLAUDE.md, hooks, commands) present
+- **6-7**: ceiling RAISED in range, or 4-10 runtime cycles, or unscoped
+  disables, or oversized modules growing
+- **4-5**: tsc errors on main, or `any` allowed, or no ratchet
+- **1-3**: no type checking, no lint
+The remaining `react-hooks/*` backlog rides the ratchet by design (a
+behavior-sensitive refactor caused a production infinite loop once); its
+existence is not a deduction, its DIRECTION is the signal.
 
 ---
 
@@ -319,8 +358,8 @@ grep -q "claude" .gitignore 2>/dev/null && echo "OK: Claude patterns in .gitigno
 
 ```
 Overall = (Secrets * 0.15) + (Security * 0.15) + (Dependencies * 0.15) +
-          (Structure * 0.10) + (Tests * 0.15) + (Imports * 0.10) +
-          (AI Patterns * 0.20)
+          (Structure * 0.10) + (Tests * 0.15) + (Documentation * 0.10) +
+          (Maintainability * 0.20)
 ```
 
 Round to one decimal place.
@@ -343,8 +382,8 @@ Round to one decimal place.
 | Dependencies | X/10 | 15% | X.XX | [one-line summary] |
 | Structure | X/10 | 10% | X.XX | [one-line summary] |
 | Tests | X/10 | 15% | X.XX | [one-line summary] |
-| Imports | X/10 | 10% | X.XX | [one-line summary] |
-| AI Patterns | X/10 | 20% | X.XX | [one-line summary] |
+| Documentation | X/10 | 10% | X.XX | [one-line summary] |
+| Maintainability | X/10 | 20% | X.XX | [one-line summary] |
 | **Overall** | | **100%** | **X.XX** | |
 
 ### Trend vs the previous report
@@ -422,6 +461,6 @@ Approximately 70% of findings should be automatable (scripts, linters, CI checks
 **Sources**:
 - Variant Systems codebase analyzer plugin (variantsystems.io, Feb 2026): 7-category analysis framework
 - OWASP Top 10 (2021): Security category patterns
-- Claude Code Security Hardening Guide: AI Patterns category baseline
+- Claude Code Security Hardening Guide: Maintainability guardrails baseline
 
 $ARGUMENTS
