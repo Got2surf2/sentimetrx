@@ -75,8 +75,9 @@ Primary threats we defend against, in priority order:
    (`scripts/audit-gate.ts`, step in `.github/workflows/ci.yml`)
    fails every push/PR that carries a high/critical ROOT advisory
    not covered by an unexpired entry in `audit-allowlist.json`.
-   **Remaining gap:** Dependabot weekly + CodeQL — Open `<TBD>`
-   item 2.
+   Dependabot (alerts + weekly grouped version PRs,
+   `.github/dependabot.yml`) and CodeQL (`.github/workflows/codeql.yml`)
+   landed 2026-09-14 — item 2 closed.
 
 **How we verify:** quarterly review against this list; any new
 threat that takes a CRITICAL finding gets added with its own
@@ -648,10 +649,16 @@ leak is reviewer-enforced until the wrapper assert lands.
 - **Dependencies:**
   - Lockfile (`package-lock.json`) committed; PR review checks
     new entries and license obligations.
-  - Open `<TBD>` item 2: enable Dependabot weekly + add
-    `npm audit --audit-level=high` as a CI step. CI today runs
-    only `npm run typecheck` + `npm test` (see
-    `.github/workflows/ci.yml`).
+  - `npm run audit:gate` fails every push/PR on a high/critical
+    ROOT advisory not allowlisted with an unexpired `reviewBy`
+    (`scripts/audit-gate.ts`, since 2026-09-14).
+  - Dependabot **alerts** on since 2026-09-14; weekly **version
+    updates** (`.github/dependabot.yml`): Monday 02:00 ET, grouped
+    minor+patch PRs (production / development), 7-day cooldown,
+    majors one PR each, framework + jsdom/dompurify majors ignored
+    by design. `dependabot/**` branches build no Vercel preview
+    (`vercel.json` `git.deploymentEnabled`) and **nothing
+    auto-merges** — a merge to main is a production release.
 - **Static analysis:**
   - ESLint (`next/core-web-vitals`) + TypeScript strict mode.
   - The promise/any rules (`no-floating-promises`,
@@ -664,8 +671,12 @@ leak is reviewer-enforced until the wrapper assert lands.
     was removed, so the lint toolchain (eslint 8→9 + flat config)
     must be migrated before any of this re-applies — Open `<TBD>`
     item 10.
-  - Open `<TBD>` item 2 (continued): add CodeQL on push for
-    OWASP Top 10 pattern detection.
+  - CodeQL (`javascript-typescript` + `actions`) on every push/PR
+    to `main` and weekly, since 2026-09-14
+    (`.github/workflows/codeql.yml`); `tests/` and `scripts/oneoff`
+    excluded. Alerts live in Security → Code scanning and annotate
+    PRs; **not yet a deploy gate** — becomes a required check once
+    the first-run backlog is triaged.
 - **Penetration testing:** **annual** external pen test (ratified
   cadence) + after any security-relevant architecture change.
   First external pen test: scheduled for **post first paying
@@ -675,8 +686,9 @@ leak is reviewer-enforced until the wrapper assert lands.
   `security@sentimetrx.com` (or whichever domain is final) once a
   public marketing site exists. Open `<TBD>` item 7.
 
-**How we verify:** quarterly dep-graph review (manual today);
-Dependabot becomes the automated layer once item 2 lands. Pen
+**How we verify:** Dependabot alerts + weekly PRs and the CodeQL
+alert feed are the automated layer (the weekly governance rubric
+reads both); the quarterly manual dep-graph review stays. Pen
 test report is filed in `docs/audit/` with the report date in
 the filename.
 
@@ -825,13 +837,26 @@ plumbing that needs to ship.
    Sentry configs; see §5. Unit test in
    `tests/unit/sentryScrub.test.ts`. Also drops the Microsoft
    Office "Object Not Found Matching Id…" false positive.)*
-2. **Enable Dependabot weekly + CodeQL** in
-   `.github/workflows/ci.yml`. Effort: 1 PR. *(The `npm audit`
-   half LANDED 2026-09-14 as `scripts/audit-gate.ts` — roots vs
-   collateral, high+ floor, `audit-allowlist.json` entries with a
-   `reviewBy` expiry; 8 unit tests. Prompted by W38: `next` 16.3.1
-   shipped a critical RCE advisory that the weekly cadence caught
-   in 7 days and the gate would have caught on the next push.)*
+2. ~~Enable Dependabot weekly + CodeQL~~ **LANDED 2026-09-14** in
+   three parts: `scripts/audit-gate.ts` (per-push npm audit gate;
+   8 unit tests), `.github/dependabot.yml` (alerts on via API;
+   weekly grouped version PRs, no auto-merge, no preview builds),
+   `.github/workflows/codeql.yml` (push/PR/weekly; not a deploy
+   gate yet). *(Prompted by W38: `next` 16.3.1 shipped a critical
+   RCE advisory that the weekly cadence caught in 7 days and the
+   gate would have caught on the next push.)* **Two follow-ups
+   stay under this item:** (a) Dependabot **security updates**
+   (alert-driven fix PRs) are switched on only AFTER the
+   `dependabot/**` preview gate is on `origin/main` — one
+   `gh api -X PUT repos/{owner}/{repo}/automated-security-fixes`;
+   until then an alert-driven PR would trigger an ungated Vercel
+   build. (b) The repository is **PUBLIC** (verified via the API
+   2026-09-14 — which is what makes CodeQL free) with GitHub
+   **secret scanning and push protection OFF**; both are free on
+   public repos. Owner decision: whether the repo should be
+   public at all, and if so, enable both (push protection can
+   block the owner's own pushes when a pattern matches, which is
+   the point).
 3. *(retired — rotation cadence ratified in §4)*
 4. *(retired 2026-05-15 — `admin_action_log` already exists,
    matches §6 contract; see sql/048_admin_action_log.sql)*

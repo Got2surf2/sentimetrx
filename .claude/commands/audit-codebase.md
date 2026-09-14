@@ -64,6 +64,20 @@ RUN=$(gh run list --branch main --workflow CI --limit 1 --json databaseId --jq '
 [ -n "$RUN" ] && gh run view "$RUN" --json jobs --jq '.jobs[] | select(.name|test("isolation")) | "\(.name): \(.conclusion)"'
 ```
 
+CodeQL runs on every push/PR to `main` and weekly (`.github/workflows/codeql.yml`,
+since 2026-09-14). Read the open code-scanning alerts instead of re-deriving
+them by grep — a grep hit that CodeQL does not flag is a lead to verify, not a
+finding; an open CodeQL alert is a finding with a rule id and a location:
+
+```bash
+gh api 'repos/{owner}/{repo}/code-scanning/alerts?state=open&per_page=100' \
+  --jq 'group_by(.rule.security_severity_level) | map({sev: .[0].rule.security_severity_level, n: length, rules: (map(.rule.id)|unique)})' 2>/dev/null \
+  || echo "code-scanning API unavailable to this token — say so; it is not a finding"
+```
+
+If the CodeQL workflow has never completed on `main` (first week after enable),
+report "CodeQL enabled, first analysis pending" and score the band on the rest.
+
 Check for OWASP-style vulnerabilities and unsafe patterns.
 
 ```bash
@@ -135,6 +149,22 @@ grep -n -i "npm audit\|advisor" docs/ENGINEERING.md | head
 in this repo `npm audit fix --force` downgrades `pptxgenjs` and breaks deck
 exports (ENGINEERING.md). Recommend the plain `npm audit fix`, or scoping /
 repointing an `overrides` pin, and say which roots that clears.
+
+Dependabot is on (alerts since 2026-09-14; weekly grouped version-update PRs
+via `.github/dependabot.yml`). Its alert feed is the same advisory data as
+`npm audit` with GitHub's dismissal state layered on — cite it, and treat an
+open Dependabot PR as a fix already queued rather than as a finding:
+
+```bash
+gh api 'repos/{owner}/{repo}/dependabot/alerts?state=open&per_page=100' \
+  --jq 'map({sev: .security_advisory.severity, pkg: .dependency.package.name, scope: .dependency.scope}) | group_by(.sev) | map({sev: .[0].sev, n: length, pkgs: (map(.pkg)|unique)})' 2>/dev/null \
+  || echo "dependabot API unavailable to this token — say so; it is not a finding"
+gh pr list --author 'app/dependabot' --state open --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null
+```
+
+Dependabot PRs never auto-merge here (a merge to main is a production
+release); "open Dependabot PR older than two weeks" is a fair Maintainability
+observation, not a Dependencies CVE finding.
 
 **Scoring:**
 - 10: Zero CVEs, lockfile present, all dependencies <6 months old

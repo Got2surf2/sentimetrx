@@ -2,7 +2,8 @@
   "buildCommand": "next build --webpack",
   "git": {
     "deploymentEnabled": {
-      "main": false
+      "main": false,
+      "dependabot/**": false
     }
   },
   "crons": [

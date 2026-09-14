@@ -1,0 +1,67 @@
+# Dependabot — SECURITY.md §9 / open item 2, the "weekly" half (the npm-audit
+# half is scripts/audit-gate.ts, which runs on every push). Scheduled Monday
+# 02:00 ET so any PRs are already open when the 04:00 ET weekly governance
+# routine reads the repo.
+#
+# Cost rules this file encodes (CLAUDE.md push policy — zero builds nobody
+# asked for):
+#   - PRs are GROUPED: a normal week is at most two npm PRs (production /
+#     development minor+patch) plus one per semver-major that isn't ignored.
+#   - Preview builds for dependabot/** branches are OFF in vercel.json
+#     (`git.deploymentEnabled`), so a Dependabot PR costs CI minutes only
+#     (public repo: free), never a Vercel build.
+#   - NOTHING auto-merges. A merge to main is a production release
+#     (deploy-behind-CI) and stays a human action, like every other push.
+#   - 7-day cooldown: a version must be a week old before we take it, so a
+#     compromised release (the supply-chain threat in SECURITY.md §2) is
+#     usually pulled upstream before it can reach a PR here.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "02:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: deps
+      prefix-development: deps(dev)
+    groups:
+      prod-minor-patch:
+        dependency-type: production
+        update-types: [minor, patch]
+      dev-minor-patch:
+        dependency-type: development
+        update-types: [minor, patch]
+    ignore:
+      # jsdom is held at 26 and isomorphic-dompurify at 2.x (3.x needs jsdom 27)
+      # — a deliberate pin from the Next 16 upgrade, see ENGINEERING.md. A
+      # major here is a planned change, not a Monday PR.
+      - dependency-name: jsdom
+        update-types: [version-update:semver-major]
+      - dependency-name: isomorphic-dompurify
+        update-types: [version-update:semver-major]
+      # Framework majors are upgrade PROJECTS (Next 16 took its own week with a
+      # --webpack opt-out and a middleware→proxy rename), never a bot PR.
+      - dependency-name: next
+        update-types: [version-update:semver-major]
+      - dependency-name: react
+        update-types: [version-update:semver-major]
+      - dependency-name: react-dom
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "02:00"
+      timezone: America/New_York
+    groups:
+      actions:
+        patterns: ["*"]

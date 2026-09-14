@@ -1,0 +1,55 @@
+# CodeQL — SECURITY.md §9 / open item 2, the static-analysis half. The repo is
+# public, so GitHub code scanning is free. Findings land in Security → Code
+# scanning and annotate PRs against main.
+#
+# This workflow does NOT gate the production deploy — ci.yml's `deploy` job
+# owns that, and blocking prod on a first-run backlog would be the wrong first
+# step. Wire it into the gate (a required "CodeQL" check) once the initial
+# alerts are triaged. The weekly governance routine reads the open-alert count
+# (.claude/commands/audit-codebase.md, Security band).
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Monday 06:00 UTC = 02:00 ET — picks up newly published queries against an
+    # unchanged main, and finishes before the 04:00 ET governance run.
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # `actions` scans the workflow files themselves (expression injection,
+        # untrusted checkout) — cheap, and ci.yml is part of the deploy path.
+        language: [javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          # Tests carry fixture credentials and deliberately hostile inputs —
+          # noise, not findings. scripts/oneoff are one-shot local tools.
+          config: |
+            paths-ignore:
+              - tests
+              - scripts/oneoff
+              - '**/*.test.ts'
+              - '**/*.test.tsx'
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}

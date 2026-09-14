@@ -257,3 +257,31 @@ tests. Two findings about the code's real shape surfaced while writing:
 label before any IP check), and `URL.hostname` keeps the brackets on an IPv6
 literal so the literal-v6 branch is only reachable via resolved records — the
 tests exercise the block table through the realistic DNS path.
+
+## 2026-09-14 — SECURITY item 2 closed: Dependabot + CodeQL
+
+**Why**: the npm-audit gate (earlier today) was one of three halves of the
+oldest open SECURITY.md item. W38's `next` RCE showed the cost of relying on a
+weekly human cadence; the other two halves are the automated layer.
+
+**What**: `.github/dependabot.yml` — Monday 02:00 ET (before the 04:00 ET
+governance run), grouped minor+patch PRs for production and development
+deps, 7-day cooldown (supply-chain: a bad release is usually pulled before it
+reaches us), majors individually, framework + jsdom/dompurify majors ignored
+by design, plus a github-actions group. Dependabot **alerts** switched on via
+the API. `.github/workflows/codeql.yml` — `javascript-typescript` + `actions`
+on push/PR to main and weekly; tests + scripts/oneoff excluded; alerts only,
+NOT a deploy gate until the first-run backlog is triaged. `vercel.json`
+`git.deploymentEnabled` gains `dependabot/**: false` so a bot PR never costs
+a preview build. The governance rubric now reads both alert feeds via
+`gh api` (Security + Dependencies bands).
+
+**Decisions**: no auto-merge — ENGINEERING.md had floated "auto-merge on
+patch", which is an unattended production deploy; dropped, every Dependabot
+PR is merged by a human. **Found while verifying**: the repo is PUBLIC (hence
+free CodeQL) with secret scanning + push protection off — flagged to the owner
+in SECURITY.md item 2 (b), not changed. **Sequencing**: Dependabot *security
+updates* stay off until the preview gate is on origin/main (item 2 (a)); CI on
+Dependabot PRs needs the `SUPABASE_TEST_*` creds mirrored into the Dependabot
+secrets store (Dependabot-triggered runs cannot read Actions secrets) — owner
+step.

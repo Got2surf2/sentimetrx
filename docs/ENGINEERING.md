@@ -622,8 +622,14 @@ we get the 11pm pages.
   `overrides` pin, and an acceptance is a decision with a shelf
   life. Consequence to know: a new upstream advisory can turn `main`
   red with no code change — by design, no push ships a known high.
-  Dependabot weekly (auto-merge on patch, hand-review minor/major)
-  is the still-open half of SECURITY.md item 2.
+  Dependabot weekly landed 2026-09-14 (`.github/dependabot.yml`):
+  grouped minor+patch PRs (production / development), 7-day cooldown,
+  majors one PR each, framework + jsdom/dompurify majors ignored by
+  design. **Nothing auto-merges** — a merge to main is a production
+  release, so the earlier "auto-merge on patch" idea is dropped;
+  every Dependabot PR is merged by a human like any other push.
+  `dependabot/**` branches build no Vercel preview (`vercel.json`
+  `git.deploymentEnabled`), so a PR costs CI minutes only.
 - **`xlsx` is pinned to a SheetJS CDN tarball** — known posture
   decision (npm version has CVE history). Document and review
   annually (next: 2027-05).
@@ -632,7 +638,8 @@ we get the 11pm pages.
 (`tests/unit/auditGate.test.ts` pins its rules); the weekly
 governance report reads the same `npm audit` and must cite
 `audit-allowlist.json` for anything it lists as accepted. Dependabot
-PRs join that signal when item 2's other half lands.
+alerts/PRs and the CodeQL alert feed are part of that signal — the
+rubric's Dependencies and Security bands read both via `gh api`.
 
 ### `next.config.js` wrap order
 
