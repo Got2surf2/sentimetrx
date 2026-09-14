@@ -1174,6 +1174,18 @@ for — `"body-parser@1": "^1.20.6"` — let express keep 2.x and `qs` reach 6.1
 Back to the 2 documented `image-size` highs above. Rule restated: **exact pins
 in `overrides` age into blockers; use a scoped caret floor.**
 
+**2026-09-14 — W38 governance pass.** Four new roots had landed in the week
+since: `next` 16.3.1 (CRITICAL — unauthenticated RCE in the Image Optimization
+API; patched 16.3.5), `sharp` 0.35.4, `js-yaml` 4.3.2, and `vitest`/
+`@vitest/mocker` 4.1.11 (path-traversal in redirect mocks; dev-only). All
+in-major: plain `npm audit fix` took the first three, an explicit
+`npm i vitest@4.1.11 @vitest/coverage-v8@4.1.11` the last (audit fix skipped
+it despite `^4.1.5` allowing it). Verified before commit: tsc, the full suite on
+the NEW runner, and a real `next build --webpack` on 16.3.5. Back to the 2
+documented `image-size` highs. The weekly cadence caught a critical Next
+advisory within 7 days — the CI `npm audit --audit-level=high` gate (§600 TBD)
+would have caught it within one push; still an owner policy call.
+
 ## Lint ratchet: 229 → 202 (Tier 0, 2026-08-18)
 
 First pass of a staged burn-down of the react-hooks backlog. Cleared 27, in four
