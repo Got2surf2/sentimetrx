@@ -161,3 +161,36 @@ primary/benchmark split, z-test + proportion test, funnel stages, rating-alias
 enrichment (study + collection member), non-survey → no funnel, >50K sampler
 path + sequential fallback (93.3%). 26 tests; four first-pass expectations were
 mine (3-word small talk is substantive; median of [1,2] is the upper element).
+
+## 2026-09-14 — Coverage week, batch 3: projectReportLoad · entityDiscovery · recordingDeck · reviewSync
+
+**Why**: the remaining large uncovered product paths — the collection report
+loaders, the entity-catalog write side, the Town Hall deck builder, and the
+review sync engine. All four are orchestration over Supabase + one external
+boundary, so they ride the filter-honoring fake from batch 2.
+
+**What**: `tests/unit/projectReportLoad.test.ts` — every per-source loader
+(town hall with panel filtering + Q&A/commentary split + proceedings →
+presentation; agent via the mocked study; reviews with own themes + Dimensions
+from the taxonomy RPCs; CSAT), shared-theme scoring from the sampled rows with
+monthly ratings, member-theme clustering when the collection has no theme set,
+sampler failure → empty rows, and the route-facing gate (404/400/org/409,
+community vs compare dispatch, HTML render). `tests/unit/entityDiscovery.test.ts`
+— scope resolution REAL (dataset + collection), eligible-field sampling, brand
+"do not extract" context, NER parsing/normalisation, canonicalisation merge
+(pre-merge names kept as aliases), curated rows never overwritten, hidden rows
+never resurfaced, auto-exclude of curated categories, partial/total batch
+failure, upsert failure, run logging. `tests/unit/recordingDeck.test.ts` — REAL
+pptxgenjs: draft watermark, classification, attribution/objective/sign-off,
+meeting overview + detail cards, executive summary KPIs recounted FROM THE
+PAIRS (a deliberately stale summary never leaks), sentiment recount, timeline,
+theme cards resolved to polished text, actions/decisions overflow caps, appendix
+precedence edited → polished → verbatim, and the bare-input skips; §6 tripwire.
+`tests/unit/reviewSync.test.ts` — the three phases end to end (drain with date
+range + last-known cutoff, submit with estimated/budget-capped depth, stale
+refresh), transient vs permanent error handling, dedup (in-batch + already
+present, contiguous row_index, count reconciliation), schema build vs merge,
+analytics + auto-classify, next-sync scheduling (5-min retry / cadence / manual
+parking), Tripadvisor dispatch. 35 tests. First-pass corrections were fixture
+facts, not code: the canonicaliser drops <2-char canonicals; a one-row batch
+yields no categorical `values` for the schema merge.
