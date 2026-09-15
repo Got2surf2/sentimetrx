@@ -7,6 +7,7 @@
 // here (isPanelMember on the recording's roster), the single point of truth so
 // every downstream surface inherits it.
 
+import { assertDatasetsBelongToOrg } from '@/lib/aiOrgGuard'
 import 'server-only'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { logError } from '@/lib/log'
@@ -446,7 +447,7 @@ export async function loadInputsForDatasets(datasetIds: string[]): Promise<Proje
 // ── Collection → inputs ──────────────────────────────────────────────────────
 export async function loadProjectInputs(collectionDatasetId: string): Promise<{ name: string; inputs: ProjectInputModel[] } | null> {
   const svc = createServiceRoleClient()
-  const { data: collectionDs, error: collectionDsErr } = await svc.from('datasets').select('id, name').eq('id', collectionDatasetId).single()
+  const { data: collectionDs, error: collectionDsErr } = await svc.from('datasets').select('id, name, org_id').eq('id', collectionDatasetId).single()
   if (collectionDsErr) void logError('projectReportLoad.loadProjectInputs', collectionDsErr)
   if (!collectionDs) return null
   const { data: col, error: colErr } = await svc.from('collections').select('id').eq('dataset_id', collectionDatasetId).single()
@@ -460,6 +461,9 @@ export async function loadProjectInputs(collectionDatasetId: string): Promise<{ 
   if (!members?.length) return { name: collectionDs.name, inputs: [] }
 
   const ids = members.map(m => m.dataset_id)
+  // Every member must belong to the collection's org before its rows and
+  // themes reach the report prompt (SECURITY.md item 7).
+  await assertDatasetsBelongToOrg(svc, ids, (collectionDs as { org_id?: string | null }).org_id as string, 'projectReportLoad.loadProjectInputs')
   const { data: dsRows, error: dsRowsErr } = await svc.from('datasets').select('id, source, name, row_count, description, brand_tag').in('id', ids)
   if (dsRowsErr) void logError('projectReportLoad.loadProjectInputs', dsRowsErr)
   const dsMap = new Map((dsRows || []).map(d => [d.id, d]))

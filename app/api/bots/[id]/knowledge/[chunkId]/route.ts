@@ -7,28 +7,16 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { generateEmbedding } from '@/lib/embeddings'
 import { serverError } from '@/lib/apiError'
+import { gateResourceForUser, type GateDenied } from '@/lib/auth/gate'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
 interface Params { params: Promise<{ id: string; chunkId: string }> }
 
-async function gateBotAccess(supabase: Awaited<ReturnType<typeof createClient>>, service: ReturnType<typeof createServiceRoleClient>, userId: string, botId: string): Promise<{ ok: true; orgId: string | null } | { ok: false; status: number; error: string }> {
-  type OrgRel = { is_admin_org: boolean | null }
-  type UserRow = { org_id: string | null; organizations: OrgRel | OrgRel[] | null }
-  const { data: userData } = await supabase
-    .from('users')
-    .select('org_id, organizations(is_admin_org)')
-    .eq('id', userId)
-    .single()
-  const orgRel = (userData as UserRow | null)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
-  const userOrgId = (userData as UserRow | null)?.org_id ?? null
-
-  const { data: bot } = await service.from('agents').select('id, org_id').eq('id', botId).single()
-  if (!bot) return { ok: false, status: 404, error: 'Bot not found' }
-  const botOrgId = (bot as { org_id: string | null }).org_id
-  if (!isAdmin && botOrgId !== userOrgId) return { ok: false, status: 404, error: 'Bot not found' }
-  return { ok: true, orgId: botOrgId }
+async function gateBotAccess(service: ReturnType<typeof createServiceRoleClient>, userId: string, botId: string): Promise<{ ok: true; orgId: string } | GateDenied> {
+  const gate = await gateResourceForUser(service, userId, 'agent', botId)
+  return gate.ok ? { ok: true, orgId: gate.targetOrgId } : gate
 }
 
 export async function PATCH(req: NextRequest, props: Params) {
@@ -48,7 +36,7 @@ export async function PATCH(req: NextRequest, props: Params) {
 
   var service = createServiceRoleClient()
 
-  const gate = await gateBotAccess(supabase, service, user.id, params.id)
+  const gate = await gateBotAccess(service, user.id, params.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
   // Verify chunk belongs to this bot (and grab current text for re-embedding)
@@ -73,7 +61,7 @@ export async function PATCH(req: NextRequest, props: Params) {
     const emb = await generateEmbedding(newTitle + '\n' + newContent, gate.orgId ?? undefined)
     updates.embedding = emb ? JSON.stringify(emb) : null
   } catch (e: unknown) {
-    console.error({ at: 'bots.knowledge.chunk.update', msg: 'Re-embed failed; clearing stale embedding', err: e instanceof Error ? e.message : undefined })
+    void logError('bots.knowledge.chunk.update', e instanceof Error ? e.message : undefined, { msg: 'Re-embed failed; clearing stale embedding' })
     updates.embedding = null
   }
 
@@ -94,7 +82,7 @@ export async function DELETE(req: NextRequest, props: Params) {
 
   var service = createServiceRoleClient()
 
-  const gate = await gateBotAccess(supabase, service, user.id, params.id)
+  const gate = await gateBotAccess(service, user.id, params.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
   var { error } = await service

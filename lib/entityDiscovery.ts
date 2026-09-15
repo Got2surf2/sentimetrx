@@ -15,6 +15,7 @@ import 'server-only'
 // "service"). The NER prompt below is deliberately strict: only specific
 // *named* things — never adjectives, sentiments, or generic nouns.
 
+import { assertDatasetsBelongToOrg } from '@/lib/aiOrgGuard'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { SchemaConfig } from '@/lib/analyzeTypes'
 import { callAI } from '@/lib/ai'
@@ -544,6 +545,10 @@ export async function discoverEntities(opts: {
   }
 
   // ── Sample ───────────────────────────────────────────────────────────────
+  // Every sampled dataset must belong to the scope's org before its text
+  // reaches the NER prompt (SECURITY.md item 7). A null-org scope (platform-
+  // wide discovery) has nothing to assert against.
+  if (scope.orgId) await assertDatasetsBelongToOrg(service, sampleFrom, scope.orgId, 'entityDiscovery.sampleRowTexts')
   const texts = await sampleRowTexts(service, sampleFrom, sampleSize)
   if (texts.length === 0) {
     const emptyMsg = 'No rows to sample — check that at least one open-ended field is enabled for entity extraction in the Schema tab'

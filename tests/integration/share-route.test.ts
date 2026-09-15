@@ -42,6 +42,8 @@ function tables(): Record<string, Row[]> {
       { id: 'adm', org_id: 'org-9', organizations: { is_admin_org: true }, role: 'platform_admin' },
       { id: 'noorg', org_id: null, organizations: null, role: 'member' },
     ],
+    // lib/auth/gate reads is_admin_org from the org row, not the embedded relation.
+    organizations: [{ id: 'org-1', is_admin_org: false }, { id: 'org-2', is_admin_org: false }, { id: 'org-9', is_admin_org: true }],
     studies: [{ id: 'st1', org_id: 'org-1', name: 'Guest Pulse', bot_name: 'Sarina', bot_emoji: '🌊', status: 'active', config: { ratingScale: [{ score: 1, emoji: '😠', label: 'Poor' }], experienceRatingLabel: 'Meal', npsEnabled: false, ratingPrompt: 'How was it?' } }],
     campaigns: [{ id: 'c1', org_id: 'org-1', name: 'Spring push', status: 'live', target_responses: 100, study_url: 'https://x/s/abc', created_at: '2026-03-01' }],
     pulseiq_sessions: [{ id: 'th1', org_id: 'org-1' }],
@@ -85,13 +87,13 @@ describe('POST /api/share — create', () => {
     expect(checkRateLimit).toHaveBeenCalledWith('share:create:u1', 30, 3600000)
   })
 
-  it('tenancy gate: no org → 401, unknown target → 404, other org → 403, admin crosses orgs', async () => {
+  it('tenancy gate: no org → 401, unknown target → 404, other org → 404 (same as unknown — no existence probe), admin crosses orgs', async () => {
     ctx.user = { id: 'noorg' }
     expect((await post({ type: 'study', target_id: 'st1' })).status).toBe(401)
     ctx.user = { id: 'u1' }
     expect((await post({ type: 'study', target_id: 'nope' })).status).toBe(404)
     ctx.user = { id: 'u2' }
-    expect((await post({ type: 'campaign', target_id: 'c1' })).status).toBe(403)
+    expect((await post({ type: 'campaign', target_id: 'c1' })).status).toBe(404)
     ctx.user = { id: 'adm' }
     expect((await post({ type: 'townhall', target_id: 'th1' })).status).toBe(201)
   })
@@ -165,7 +167,7 @@ describe('GET /api/share — list', () => {
     ctx.user = { id: 'u1' }
     expect((await get('?list_type=deck&list_target_id=st1')).status).toBe(400)
     ctx.user = { id: 'u2' }
-    expect((await get('?list_type=study&list_target_id=st1')).status).toBe(403)
+    expect((await get('?list_type=study&list_target_id=st1')).status).toBe(404)
     ctx.user = { id: 'u1' }
     const res = await get('?list_type=study&list_target_id=st1')
     expect(res.status).toBe(200)

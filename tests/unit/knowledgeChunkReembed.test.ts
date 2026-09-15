@@ -18,9 +18,12 @@ let embedThrows = false
 function service() {
   return {
     from(table: string) {
-      if (table === 'agents') {
-        return { select: () => ({ eq: () => ({ single: async () => ({ data: { id: 'b1', org_id: 'o1' } }) }) }) }
-      }
+      // lib/auth/gate resolves the caller (users → organizations) and the bot
+      // through the service client, all via maybeSingle.
+      const point = (data: Record<string, unknown>) => ({ select: () => ({ eq: () => ({ single: async () => ({ data }), maybeSingle: async () => ({ data }) }) }) })
+      if (table === 'agents') return point({ id: 'b1', org_id: 'o1' })
+      if (table === 'users') return point({ id: 'u1', org_id: 'o1' })
+      if (table === 'organizations') return point({ id: 'o1', is_admin_org: false })
       // agent_knowledge_chunks
       return {
         select: () => ({ eq: () => ({ eq: () => ({ single: async () => ({ data: store.chunk }) }) }) }),

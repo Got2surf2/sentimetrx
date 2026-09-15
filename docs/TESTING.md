@@ -325,6 +325,16 @@ _Pure-logic example: `tests/unit/csv.test.ts` (added 2026-09-01) covers the RFC4
 
 _Coverage week (2026-09-14) — the suites that took `lib/**` + `app/api/**` from 41% to 50% statements, all extending the two harness patterns above. Pure/fetch-mocked: `dataforseo` (task-poll on fake timers), `statsUtilsNarrative`, `mcoLiveContext`, `taxonomyMapping`, `safeFetch` (SSRF block tables), `socialTagging`; REAL-pptxgenjs artifact renders: `studyDesignPptx`, `recordingDeck`; pure HTML builders: `outletReportPdf`, `agentStudyHtml`; and loader/route suites over the filter-honoring `tests/helpers/fakeSupabase.ts`: `agentStudy`, `agentReadout`, `projectReportLoad`, `entityDiscovery`, `reviewSync`, and the `share`/`share-analytics` routes. The fake honors eq/in/gte/order/range/single/head-count and mutating writes, plus insert-time column defaults, so a test asserts on the query SHAPE (which rows an org filter excludes, how a collection fans out) rather than on a mock being called._
 
+_Gate + prompt-guard suites (2026-09-14): `tests/unit/authGate.test.ts` pins
+`lib/auth/gate.ts` on the fake — 401 without an org, cross-org and missing
+resources indistinguishable (same 404 + message), admins cross orgs, every
+resource type's table incl. the pulseiq slug fallback and the two-step
+"conversation" resolution; `tests/unit/aiOrgGuard.test.ts` pins that a foreign
+dataset in a fan-out throws `CrossOrgPromptError` naming ids and counts but
+never row content, that a stale (unknown) member is ignored, and that a query
+error is a refusal. The five route-gate integration suites stayed green through
+the collapse of six `gate*` functions._
+
 _Service-role tenancy example: `tests/unit/collectionRecompute.test.ts` (added 2026-09-07) uses a recording Proxy fake that HONORS `org_id` filters, so it pins the pairing on the real query chains — a wrong-org collection returns null before any per-dataset read/write, and the `datasets` update carries `org_id`. Pattern for any service-role helper: assert on the captured filters, not on the mock being called._
 
 _AGENT_TIERS Phase 3 examples (added 2026-07-14): `tests/unit/callAIStream.test.ts` (raw-SSE parsing against a mocked fetch — text deltas, tool_use `input_json_delta` assembly, byte-split frames, in-stream errors, non-Anthropic fallback), `tests/unit/agentTools.test.ts` (fetch_page host allowlist + redirect re-check, negative-chunk holdout, tool-loop round budget + forced `tool_choice:'none'`), `tests/unit/components/ChatBotStreaming.test.tsx` (jsdom — the widget streams, reconciles to the done event, extracts chips, falls back to JSON, offers Retry on a mid-stream error). The live bar is `scripts/_verify_tool_loop.mts` (untracked KEEP): real Anthropic streaming + a real gnu.org fetch through the loop._
@@ -420,6 +430,21 @@ npm run test:egress
 
 Sets `EGRESS_TEST=1`. Same .env.local + pre-launch caveats as RLS. Test
 data is prefixed `_egresstest_<runId>_`.
+
+**Write path too (2026-09-14, SECURITY.md item 5).** For every seeded
+table the suite also issues a DELETE as Org B against Org A's row and
+proves — via the service role — the row is still there (0 rows affected
+under RLS or a not-found error both pass; "permission denied" or a
+vanished row fails). Two FK dry-runs follow: deleting a dataset must
+cascade to `dataset_rows_flat` + `dataset_state`, and deleting an org
+that still owns a collection must be BLOCKED (`23503`) — that RESTRICT
+is deliberate, `lib/orgDelete.ts` erases per-table first.
+
+**Run it locally without touching prod:**
+`bash scripts/test-isolation-local.sh test:egress` re-points the runtime
+env at the TEST project the same way `scripts/dev.sh test` does (the
+runtime names in `.env.local` are PROD, kept for read-only scripts). Works
+for `test:rls` / `test:auth-flows` too. 2026-09-14: 42/42.
 
 ### Auth flows (`tests/integration/auth-flows.test.ts`)
 

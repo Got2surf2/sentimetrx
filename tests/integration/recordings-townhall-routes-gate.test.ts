@@ -101,6 +101,7 @@ const req = (method = 'POST', body: unknown = {}) =>
 function authAs(orgId: string, isAdmin = false) {
   ctx.authUser = { id: 'u1', email: 'u1@x' }
   ctx.results['users'] = { data: { org_id: orgId, organizations: { is_admin_org: isAdmin } }, error: null }
+  ctx.results['organizations'] = { data: { id: orgId, is_admin_org: isAdmin }, error: null }   // lib/auth/gate reads the flag from the org row
   ctx.userContext = { userId: 'u1', orgId, isAdmin, features: { analyze: true, recordings: true } }
   ctx.callerCtx = { userId: 'u1', orgId, isAdmin }
 }

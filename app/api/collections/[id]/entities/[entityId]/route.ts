@@ -7,6 +7,7 @@
 // canonical/aliases flips source='manual' (highest authority) + stamps manual
 // provenance, mirroring the bot + dataset scope rules.
 
+import { gateResourceAccess, gateDenied } from '@/lib/auth/gate'
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
@@ -19,10 +20,9 @@ export const dynamic = 'force-dynamic'
 interface Params { params: Promise<{ id: string; entityId: string }> }
 
 async function gateCollection(service: ReturnType<typeof createServiceRoleClient>, id: string, orgId: string | null, isAdmin: boolean) {
-  const { data: col } = await service.from('collections').select('id, org_id').eq('id', id).single<{ id: string; org_id: string }>()
-  if (!col) return { error: NextResponse.json({ error: 'Collection not found' }, { status: 404 }) }
-  if (!isAdmin && col.org_id !== orgId) return { error: NextResponse.json({ error: 'Not found' }, { status: 404 }) }
-  return { col }
+  const gate = await gateResourceAccess(service, { orgId, isAdmin }, 'collection', id)
+  if (!gate.ok) return { error: gateDenied(gate) }
+  return { col: { id, org_id: gate.targetOrgId } }
 }
 
 export async function PATCH(req: NextRequest, props: Params) {

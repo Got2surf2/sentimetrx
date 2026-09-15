@@ -9,16 +9,13 @@ import { NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { recordUserEvent, eventContextFromRequest } from '@/lib/userEvents'
 import { serverError } from '@/lib/apiError'
+import { gateResourceForUser, resolveCallerOrg, resolveResourceOrgId, type GateResourceType, type GateResult } from '@/lib/auth/gate'
 import { getTownHallAsLegacy, fetchAllRows } from '@/lib/townHallAdapter'
 
 export const dynamic = 'force-dynamic'
 
 type ShareType = 'study' | 'campaign' | 'townhall' | 'conversation' | 'analytics' | 'agent_study'
 
-type OrgIdRow = { org_id: string | null }
-type OrgAdminFlag = { is_admin_org: boolean }
-type UserOrgRow = { org_id: string | null; organizations: OrgAdminFlag | OrgAdminFlag[] | null }
-type RespStudiesRow = { studies: OrgIdRow | OrgIdRow[] | null }
 
 interface ShareRequestBody {
   type?: string
@@ -62,64 +59,15 @@ interface TownhallTheme {
   example_quote?: string
 }
 
-async function getUserOrg(service: ReturnType<typeof createServiceRoleClient>, userId: string) {
-  const { data: userData } = await service
-    .from('users')
-    .select('org_id, organizations(is_admin_org)')
-    .eq('id', userId)
-    .single()
-  const orgRel = (userData as UserOrgRow | null)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
-  const orgId = (userData as UserOrgRow | null)?.org_id as string | null
-  return { orgId, isAdmin }
+// One resource gate for every share target (lib/auth/gate — SECURITY.md item
+// 11). Cross-org and non-existent targets are the same 404, so a share
+// attempt cannot probe for another org's resources.
+const SHARE_TARGET: Record<ShareType, GateResourceType> = {
+  study: 'study', campaign: 'campaign', townhall: 'pulseiq_session',
+  conversation: 'conversation', analytics: 'dataset', agent_study: 'agent',
 }
-
-// Returns the org_id that owns the share target, or null if the target is unknown.
-// For `conversation`, target_id is either a bot id (bot conversations page) or a
-// response id (study response sharing); we try both.
-async function resolveTargetOrgId(service: ReturnType<typeof createServiceRoleClient>, type: ShareType, targetId: string): Promise<string | null> {
-  if (type === 'study') {
-    const { data } = await service.from('studies').select('org_id').eq('id', targetId).single()
-    return (data as OrgIdRow | null)?.org_id ?? null
-  }
-  if (type === 'campaign') {
-    const { data } = await service.from('campaigns').select('org_id').eq('id', targetId).single()
-    return (data as OrgIdRow | null)?.org_id ?? null
-  }
-  if (type === 'townhall') {
-    const { data } = await service.from('pulseiq_sessions').select('org_id').eq('id', targetId).single()
-    return (data as OrgIdRow | null)?.org_id ?? null
-  }
-  if (type === 'analytics') {
-    const { data } = await service.from('datasets').select('org_id').eq('id', targetId).single()
-    return (data as OrgIdRow | null)?.org_id ?? null
-  }
-  if (type === 'agent_study') {
-    const { data } = await service.from('agents').select('org_id').eq('id', targetId).maybeSingle()
-    return (data as OrgIdRow | null)?.org_id ?? null
-  }
-  if (type === 'conversation') {
-    const { data: bot } = await service.from('agents').select('org_id').eq('id', targetId).maybeSingle()
-    if ((bot as OrgIdRow | null)?.org_id) return (bot as OrgIdRow).org_id as string
-    const { data: resp } = await service
-      .from('responses')
-      .select('studies(org_id)')
-      .eq('id', targetId)
-      .maybeSingle()
-    const s = (resp as RespStudiesRow | null)?.studies
-    const orgId = Array.isArray(s) ? s[0]?.org_id : s?.org_id
-    return orgId ?? null
-  }
-  return null
-}
-
-async function gateShareTarget(service: ReturnType<typeof createServiceRoleClient>, userId: string, type: ShareType, targetId: string): Promise<{ ok: true; targetOrgId: string } | { ok: false; status: number; error: string }> {
-  const { orgId, isAdmin } = await getUserOrg(service, userId)
-  if (!orgId) return { ok: false, status: 401, error: 'Unauthorized' }
-  const targetOrg = await resolveTargetOrgId(service, type, targetId)
-  if (!targetOrg) return { ok: false, status: 404, error: 'Target not found' }
-  if (!isAdmin && targetOrg !== orgId) return { ok: false, status: 403, error: 'Forbidden' }
-  return { ok: true, targetOrgId: targetOrg }
+async function gateShareTarget(service: ReturnType<typeof createServiceRoleClient>, userId: string, type: ShareType, targetId: string): Promise<GateResult> {
+  return gateResourceForUser(service, userId, SHARE_TARGET[type], targetId)
 }
 
 export async function POST(req: NextRequest) {
@@ -492,10 +440,10 @@ export async function DELETE(req: NextRequest) {
   // Allow revoke if the user created the share, or if they have access to the
   // underlying target (org match or admin). Without this, any authed user
   // could enumerate tokens and revoke any other org's links.
-  const { orgId, isAdmin } = await getUserOrg(service, user.id)
+  const { orgId, isAdmin } = await resolveCallerOrg(service, user.id)
   let allowed = isAdmin || existing.created_by === user.id
   if (!allowed && orgId) {
-    const targetOrg = await resolveTargetOrgId(service, existing.type as ShareType, existing.target_id as string)
+    const targetOrg = await resolveResourceOrgId(service, SHARE_TARGET[existing.type as ShareType], existing.target_id as string)
     if (targetOrg && targetOrg === orgId) allowed = true
   }
   if (!allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

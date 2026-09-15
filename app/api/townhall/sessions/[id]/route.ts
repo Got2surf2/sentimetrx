@@ -1,4 +1,5 @@
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { gateResourceForUser, type GateDenied } from '@/lib/auth/gate'
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
@@ -12,10 +13,6 @@ export const dynamic = 'force-dynamic'
 
 // ── Local row/shape types (service-role selects are untyped) ─────────────────
 interface OrgIsAdmin { is_admin_org?: boolean }
-interface UserOrgRow {
-  org_id: string | null
-  organizations: OrgIsAdmin | OrgIsAdmin[] | null
-}
 // A discussion_guide topic as stored in JSON on the session.
 interface GuideTopic {
   label: string
@@ -46,28 +43,9 @@ interface TopicRow { id: string; label: string; state: string; source: string }
 
 // Verifies the caller's org owns the session (or the caller is an admin-org member).
 // Without this, any authed user can read/edit/delete any org's PulseIQ session via service role.
-async function gateSessionAccess(supabase: Awaited<ReturnType<typeof createClient>>, db: ReturnType<typeof createServiceRoleClient>, userId: string, sessionId: string): Promise<{ ok: true; isAdmin: boolean; userOrgId: string | null } | { ok: false; status: number; error: string }> {
-  const { data: userData } = await supabase
-    .from('users')
-    .select('org_id, organizations(is_admin_org)')
-    .eq('id', userId)
-    .single()
-  const orgRel = (userData as UserOrgRow | null)?.organizations
-  const isAdmin = Array.isArray(orgRel) ? !!orgRel[0]?.is_admin_org : !!orgRel?.is_admin_org
-  const userOrgId = (userData as UserOrgRow | null)?.org_id as string | null
-
-  let hall: { org_id: string } | null = null
-  if (/^[0-9a-f-]{36}$/i.test(sessionId)) {
-    const { data } = await db.from('pulseiq_sessions').select('org_id').eq('id', sessionId).maybeSingle()
-    if (data) hall = data
-  }
-  if (!hall) {
-    const { data } = await db.from('pulseiq_sessions').select('org_id').eq('slug', sessionId.toLowerCase()).maybeSingle()
-    if (data) hall = data
-  }
-  if (!hall) return { ok: false, status: 404, error: 'Session not found' }
-  if (!isAdmin && hall.org_id !== userOrgId) return { ok: false, status: 404, error: 'Session not found' }
-  return { ok: true, isAdmin, userOrgId }
+async function gateSessionAccess(db: ReturnType<typeof createServiceRoleClient>, userId: string, sessionId: string): Promise<{ ok: true; isAdmin: boolean; userOrgId: string | null } | GateDenied> {
+  const gate = await gateResourceForUser(db, userId, 'pulseiq_session', sessionId)
+  return gate.ok ? { ok: true, isAdmin: gate.isAdmin, userOrgId: gate.userOrgId } : gate
 }
 
 // ── Phase-3 status maps (legacy ↔ pulseiq_sessions) ─────────────────────────────
@@ -342,7 +320,7 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
   // Use service role to bypass RLS (auth already verified above)
   const db = createServiceRoleClient()
 
-  const gate = await gateSessionAccess(supabase, db, user.id, params.id)
+  const gate = await gateSessionAccess(db, user.id, params.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
   // Full payload (with optional analytics) via the adapter — shared
@@ -364,7 +342,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   // Use service role to bypass RLS (auth already verified above)
   const db = createServiceRoleClient()
 
-  const gate = await gateSessionAccess(supabase, db, user.id, params.id)
+  const gate = await gateSessionAccess(db, user.id, params.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
   let body: Record<string, unknown>
@@ -384,7 +362,7 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
 
   const db = createServiceRoleClient()
 
-  const gate = await gateSessionAccess(supabase, db, user.id, params.id)
+  const gate = await gateSessionAccess(db, user.id, params.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
   // Cascade through pulseiq_session_conversations → conversations →

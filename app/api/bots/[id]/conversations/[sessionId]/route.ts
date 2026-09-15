@@ -9,30 +9,17 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { mirrorDeleteSession } from '@/lib/phase3DualWrite'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
 import { serverError } from '@/lib/apiError'
+import { gateResourceForUser, type GateDenied } from '@/lib/auth/gate'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
 
 interface Params { params: Promise<{ id: string; sessionId: string }> }
 
-async function gateBotAccess(userId: string, botId: string): Promise<{ ok: true; service: ReturnType<typeof createServiceRoleClient> } | { ok: false; status: number; error: string }> {
+async function gateBotAccess(userId: string, botId: string): Promise<{ ok: true; service: ReturnType<typeof createServiceRoleClient> } | GateDenied> {
   const service = createServiceRoleClient()
-  const { data: userData } = await service
-    .from('users')
-    .select('org_id, organizations(is_admin_org)')
-    .eq('id', userId)
-    .single()
-  type OrgRel = { is_admin_org?: boolean | null }
-  type UserRow = { org_id: string | null; organizations: OrgRel | OrgRel[] | null }
-  const row = userData as UserRow | null
-  const orgRel = row?.organizations
-  const isAdmin = Array.isArray(orgRel) ? orgRel[0]?.is_admin_org : orgRel?.is_admin_org
-  const userOrgId = row?.org_id ?? null
-
-  const { data: bot } = await service.from('agents').select('id, org_id').eq('id', botId).single()
-  if (!bot) return { ok: false, status: 404, error: 'Bot not found' }
-  if (!isAdmin && bot.org_id !== userOrgId) return { ok: false, status: 403, error: 'Forbidden' }
-  return { ok: true, service }
+  const gate = await gateResourceForUser(service, userId, 'agent', botId)
+  return gate.ok ? { ok: true, service } : gate
 }
 
 export async function GET(req: NextRequest, props: Params) {

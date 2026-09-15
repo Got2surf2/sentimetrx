@@ -11,6 +11,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { assertDatasetsBelongToOrg } from '@/lib/aiOrgGuard'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { serverError } from '@/lib/apiError'
@@ -99,6 +100,9 @@ export async function POST(req: Request, props: Params) {
     if (isCollection) {
       const members = (await resolveScopeMembers(service, params.datasetId))
         .filter(m => m.datasetId !== params.datasetId)
+      // Every member must belong to the collection's org before its rows reach
+      // the story prompt (SECURITY.md item 7).
+      await assertDatasetsBelongToOrg(service, members.map(m => m.datasetId), dataset.org_id as string, 'datasets.story')
       const { data: memberDs } = await service
         .from('datasets').select('id, name, row_count').in('id', members.map(m => m.datasetId))
       const rowsOf = new Map(((memberDs || []) as { id: string; name: string | null; row_count: number | null }[])

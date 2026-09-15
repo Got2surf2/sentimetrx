@@ -285,3 +285,60 @@ updates* stay off until the preview gate is on origin/main (item 2 (a)); CI on
 Dependabot PRs needs the `SUPABASE_TEST_*` creds mirrored into the Dependabot
 secrets store (Dependabot-triggered runs cannot read Actions secrets) — owner
 step.
+
+## 2026-09-14 — SECURITY.md open items 5–13: eight of nine moved
+
+**Why**: with items 1, 2, 4 and 14 closed and the W38 report scoring 83, the
+remaining `<TBD>` list (some entries from May) was the oldest open governance
+debt — and two of them (7, 11) sit exactly on the pattern behind every
+CRITICAL finding to date: a service-role query that widened past its org.
+
+**Landed (code)**
+- **#11 one resource gate** — `lib/auth/gate.ts`: `gateResourceForUser` /
+  `gateResourceAccess` for agent · dataset · collection · study · campaign ·
+  pulseiq_session (id or slug) · conversation (agent, or response → study);
+  cross-org and non-existent return the SAME 404 + message. Six of nine
+  `gate*` functions collapsed (share — all 6 target types — both
+  `gateBotAccess`, `gateSessionAccess`, both `gateCollection`); share's
+  cross-org answer moved 403 → 404 to match. 12 unit tests; the five
+  route-gate suites stayed green after three fixtures learned that the gate
+  reads `users`/`organizations` through the service client.
+- **#7 prompt guard** — `lib/aiOrgGuard.ts`: `assertDatasetsBelongToOrg`
+  at every collection fan-out that feeds a Claude call (dataset search, Data
+  Story, entity discovery, project report) and `assertSingleOrg` for
+  org-bearing row sets; `CrossOrgPromptError` = 500 + Sentry. A stale
+  (unknown) member is ignored — it contributes no rows; a FOREIGN one refuses.
+- **#5 write-path egress** — Org B DELETEs every Org A row across 13 tables
+  and the row must survive; FK dry-runs: dataset delete cascades to rows +
+  state, org delete is BLOCKED while a collection exists (RESTRICT by design,
+  `lib/orgDelete.ts` erases per-table first). Ran against Sentimetrx-Test:
+  42/42. New `scripts/test-isolation-local.sh` re-points the isolation suites
+  at TEST the way `dev.sh test` does — never prod.
+- **#12 logger** — `logInfo` added; 189 `console.*` calls in `app/api` (61
+  files) + `lib` (30 files) migrated by AST codemod; `no-console` is an ESLint
+  error for both trees. Every lib file was checked against the real import
+  graph (madge BFS from 212 client roots) before importing the server-only
+  logger. Three tests that spied on `console` now assert the structured
+  payload (`at`, `err`) after the awaited request-id lookup.
+- **#9 (2 of 3)** — `docs/postmortems/TEMPLATE.md` + `README.md`; gitleaks
+  in CI (`secret scan` job, deploy waits on it) with `.gitleaks.toml`
+  allowlisting the 11 verified non-secrets from a 3,248-commit history scan
+  (flymco's public site key/token, test fixtures, a build cache committed
+  once in 2026-04). Status page stays for the first paying customer.
+- **#13 (tooling)** — `scripts/dr-audit.ts` (read-only: S3 versioning /
+  encryption / lifecycle, snapshot continuity, Supabase backups + PITR; exits
+  non-zero on FAIL) + `docs/runbooks/dr-restore-drill.md`. First drill is
+  owner-run and NOT yet performed — the classifier blocks this session from
+  reading the backup credentials, which is the right boundary.
+
+**Closed on review (docs)**: **#10** was stale — ESLint 9 flat config, the
+promise rules and `no-explicit-any` at `error`, `lint:ci` in CI all already
+true. **#6** is built (org `ai_key_mode='off'` ceiling + per-user
+`users.ai_enabled` with `ai_consent_audit`), so the item now names the two
+real gaps: the default is opt-OUT for new orgs, and 42 `callAI` sites pass
+no `usage` context and bypass the switch.
+
+**Owner decisions queued**: **#8** MFA + admin session policy (ratification
+text + enforcement plan written into the item); **#7b** a real
+`security@sentimetrx.ai` mailbox before publishing it; **#9c** status page;
+**#13** run the first drill.

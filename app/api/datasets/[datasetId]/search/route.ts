@@ -10,8 +10,10 @@ import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
+import { assertDatasetsBelongToOrg } from '@/lib/aiOrgGuard'
 import { callAI } from '@/lib/ai'
 import { serverError } from '@/lib/apiError'
+import { logError } from '@/lib/log'
 
 // Number of candidates to pull from full-text per target before AI re-ranking.
 // Larger pools give better recall but cost more tokens / latency.
@@ -114,6 +116,9 @@ export async function GET(req: NextRequest, props: Params) {
       }
     }
   }
+  // Member datasets must all belong to the collection's org before their rows
+  // reach the search prompt (SECURITY.md item 7).
+  await assertDatasetsBelongToOrg(service, targets.map(t => t.datasetId), dataset.org_id as string, 'datasets.search')
 
   // Search each target. Prefer the search_dataset_rows RPC because it returns rows
   // ordered by ts_rank (full-text relevance), so the AI re-ranker sees the densest
@@ -219,7 +224,7 @@ export async function GET(req: NextRequest, props: Params) {
         reranked = true
       }
     } catch (err) {
-      console.error({ at: 'search/rerank', msg: "failed, falling back to keyword order", err: err })
+      void logError('search/rerank', err, { msg: "failed, falling back to keyword order" })
     }
   }
 

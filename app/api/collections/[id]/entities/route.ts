@@ -13,6 +13,7 @@
 // Service role + paired (id, org_id) check on the collection per CLAUDE.md
 // multi-tenancy invariants — mirrors the bot entities routes.
 
+import { gateResourceAccess, gateDenied } from '@/lib/auth/gate'
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
@@ -30,10 +31,9 @@ interface Params { params: Promise<{ id: string }> }
 
 // Resolve + org-gate the collection. Returns the row or a NextResponse error.
 async function gateCollection(service: ReturnType<typeof createServiceRoleClient>, id: string, orgId: string | null, isAdmin: boolean) {
-  const { data: col } = await service.from('collections').select('id, org_id, kind').eq('id', id).single()
-  if (!col) return { error: NextResponse.json({ error: 'Collection not found' }, { status: 404 }) }
-  if (!isAdmin && (col as { org_id: string }).org_id !== orgId) return { error: NextResponse.json({ error: 'Not found' }, { status: 404 }) }
-  return { col: col as { id: string; org_id: string; kind: string } }
+  const gate = await gateResourceAccess(service, { orgId, isAdmin }, 'collection', id)
+  if (!gate.ok) return { error: gateDenied(gate) }
+  return { col: { id, org_id: gate.targetOrgId } }
 }
 
 export async function GET(req: NextRequest, props: Params) {

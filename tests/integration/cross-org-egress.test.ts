@@ -381,6 +381,76 @@ describeMaybe('Cross-org data egress (env-gated)', () => {
     }, 15_000)
   }
 
+  // ── Write-path egress (SECURITY.md open item 5) ───────────────────────────
+  // A SELECT policy that filters is not proof a DELETE policy does. For every
+  // table, Org B issues a DELETE against Org A's row by id; the row must still
+  // exist afterwards as seen by the service role. Acceptable denial shapes: 0
+  // rows affected (RLS filtered), or a not-found-style error. A "permission
+  // denied" error still means the grant/policy structure is broken, and a
+  // vanished row is the leak.
+  for (const c of cases) {
+    it('Org B cannot DELETE Org A\'s ' + c.table + ' row', async () => {
+      const id = ids[c.idKey]
+      expect(id, c.table + ' was not seeded — fix beforeAll').not.toBeNull()
+      const del = await orgBClient.from(c.table).delete().eq('id', id!)
+      expect(del.error?.message ?? '', c.table + ' returned permission error on delete')
+        .not.toMatch(/permission denied/i)
+      const { data: still } = await admin.from(c.table).select('id').eq('id', id!).maybeSingle()
+      expect(still, c.table + ' row was deleted cross-org by Org B').not.toBeNull()
+    }, 15_000)
+  }
+
+  // ── Cascade coverage (item 5, second half): the FK dry-run in the scratch DB ──
+  // Seeds its own throwaway rows so the read-path cases above are untouched.
+  it('deleting a dataset (service role) cascades to its dataset_rows_flat + dataset_state', async () => {
+    const ds = await admin.from('datasets').insert({
+      name: PREFIX + 'cascade', source: 'upload', org_id: ids.orgA, created_by: ids.userA,
+      status: 'active', row_count: 0, visibility: 'private', description: MARKER,
+    }).select('id').single()
+    expect(ds.error, ds.error?.message).toBeNull()
+    const dsId = ds.data!.id as string
+    const row = await admin.from('dataset_rows_flat').insert({ dataset_id: dsId, row_index: 0, data: { _marker: MARKER } }).select('id').single()
+    expect(row.error, row.error?.message).toBeNull()
+    const st = await admin.from('dataset_state').insert({
+      dataset_id: dsId, schema_config: {}, theme_model: {}, saved_charts: [], saved_stats: [], filter_state: {}, updated_by: ids.userA,
+    }).select('id').single()
+    expect(st.error, st.error?.message).toBeNull()
+
+    const del = await admin.from('datasets').delete().eq('id', dsId)
+    expect(del.error, del.error?.message).toBeNull()
+    const { data: rowsLeft } = await admin.from('dataset_rows_flat').select('id').eq('dataset_id', dsId).limit(1)
+    const { data: stateLeft } = await admin.from('dataset_state').select('id').eq('dataset_id', dsId).limit(1)
+    expect(rowsLeft ?? [], 'dataset_rows_flat orphaned after dataset delete').toEqual([])
+    expect(stateLeft ?? [], 'dataset_state orphaned after dataset delete').toEqual([])
+  }, 20_000)
+
+  it('deleting an org that still owns a collection is BLOCKED by the FK — fail-closed by design (lib/orgDelete.ts erases per-table first)', async () => {
+    // collections.org_id → organizations has no ON DELETE clause (RESTRICT),
+    // unlike the 17 org_id FKs that cascade. lib/orgDelete.ts relies on that:
+    // an org row can only go once every org-scoped table is empty, so a
+    // partial erasure can never silently orphan a tenant's collections.
+    const org = await admin.from('organizations').insert({ name: PREFIX + 'C', slug: PREFIX + 'c' }).select('id').single()
+    expect(org.error, org.error?.message).toBeNull()
+    const orgC = org.data!.id as string
+    const ds = await admin.from('datasets').insert({
+      name: PREFIX + 'c-collection', source: 'collection', org_id: orgC, created_by: ids.userA,
+      status: 'active', row_count: 0, visibility: 'private', description: MARKER,
+    }).select('id').single()
+    expect(ds.error, ds.error?.message).toBeNull()
+    const col = await admin.from('collections').insert({ dataset_id: ds.data!.id, org_id: orgC, created_by: ids.userA }).select('id').single()
+    expect(col.error, col.error?.message).toBeNull()
+    try {
+      const del = await admin.from('organizations').delete().eq('id', orgC)
+      expect(del.error?.code, 'org delete should be blocked by collections_org_id_fkey (23503)').toBe('23503')
+      const { data: stillThere } = await admin.from('organizations').select('id').eq('id', orgC).maybeSingle()
+      expect(stillThere, 'org row must survive a blocked delete').not.toBeNull()
+    } finally {
+      await admin.from('collections').delete().eq('id', col.data!.id)
+      await admin.from('datasets').delete().eq('id', ds.data!.id)
+      await admin.from('organizations').delete().eq('id', orgC)
+    }
+  }, 20_000)
+
   it('Org A user CAN read its own seeded study (control case)', async () => {
     const orgAClient = createClient(url!, anonKey!, { auth: { persistSession: false } })
     const signIn = await orgAClient.auth.signInWithPassword({
