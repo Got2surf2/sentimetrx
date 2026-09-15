@@ -414,3 +414,13 @@ required check. Each alert was read against the code, not the rule name.
 
 Next `main` analysis should leave CodeQL at ~0 open; then make it a
 required check (SECURITY.md §9).
+
+## 2026-09-15 — SECURITY item 8 ratified
+
+Owner ratified the §3 defaults as proposed: MFA required for platform
+admins, optional for customer org admins, off for regular users until the
+first paying customer; platform-admin sessions 30 min idle / 24 h max
+(app-enforced — Supabase JWT expiry is project-wide). Item 8 becomes an
+enforcement item: idle timeout first (no enrollment dependency), then the
+`aal2` check in `requireAdmin` behind a TOTP enrollment screen with a grace
+window. The §10 on-call escalation policy still awaits a second operator.

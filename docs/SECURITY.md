@@ -334,15 +334,20 @@ test project exists.
     column; 077 dropped it in favor of the existing `role` column.)
   - There is no `org_members` table — membership is a column on
     `users`, not a separate join table.
-- **MFA:** not enforced today. **Proposed default (pending owner
-  ratification):** required for platform admins, optional for org
-  admins, off for regular users until first paying customer.
-  Tracked as Open `<TBD>` item 8.
+- **MFA — ratified 2026-09-15 (owner):** **required for platform
+  admins** (`organizations.is_admin_org`), **optional for customer org
+  admins**, **off for regular users** until the first paying customer.
+  Not yet enforced in code — item 8 tracks the enforcement: an `aal2`
+  assertion in `lib/auth/requireAdmin.ts`, a TOTP enrollment screen,
+  and a grace window so existing admins enroll before the check bites.
 - **Session policy:**
   - Idle timeout: Supabase default (1 hour access token, 7 day
     refresh).
-  - **Proposed for platform admins:** 30-minute access token,
-    24-hour refresh. Tracked as Open `<TBD>` item 8.
+  - **Platform admins — ratified 2026-09-15 (owner):** **30-minute
+    idle timeout, 24-hour maximum session.** Supabase's JWT expiry is
+    project-wide, so this is enforced in the app for admin-org users
+    (last-activity stamp + re-auth prompt), not a dashboard setting.
+    Item 8 tracks the enforcement.
 - **CSRF protection:** `proxy.ts` enforces a same-site or
   CSRF-token check on cookie-authed mutating routes. Webhooks /
   cron / embed widgets are explicitly bypassed (each documented
@@ -908,15 +913,16 @@ plumbing that needs to ship.
    **Still open:** publish a `security@sentimetrx.ai` disclosure
    address — needs a real mailbox first (no invented addresses in
    shipped surfaces), then a line in the privacy notice.
-8. **Ratify MFA + session policy** for platform admins (proposed
-   defaults in §3). *Prepared 2026-09-14 for a yes/no:* (i) MFA
-   required for `is_admin_org` users — enforcement is an `aal2`
-   check in `lib/auth/requireAdmin.ts` + a TOTP enrollment screen,
-   with a grace window so the owner enrolls before the check bites;
-   (ii) admin session policy — Supabase JWT expiry is project-wide,
-   so a shorter admin session is an app-enforced idle timeout (last
-   activity stamp + re-auth prompt), not a dashboard setting. Both
-   are code follow-ups once ratified.
+8. ~~Ratify MFA + session policy~~ **RATIFIED 2026-09-15** (§3: MFA
+   required for platform admins, optional for org admins, off for
+   users; admin sessions 30 min idle / 24 h max). **Now an
+   enforcement item:** (i) `aal2` assertion in
+   `lib/auth/requireAdmin.ts` + a TOTP enrollment screen under
+   `/admin`, with a grace window (enrollment deadline shown in the
+   admin shell) so the owner enrolls before the check bites; (ii)
+   app-level admin idle timeout — last-activity stamp in the session,
+   re-auth prompt at 30 min, hard sign-out at 24 h. Ship (ii) first
+   (no enrollment dependency), then (i).
 9. **Incident-response plumbing — 2 of 3 landed 2026-09-14:**
    post-mortem template + README (`docs/postmortems/`), and the
    gitleaks secret scan in CI (§4). The on-call escalation policy in
