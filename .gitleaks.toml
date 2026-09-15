@@ -1,0 +1,29 @@
+# gitleaks — SECURITY.md §4 (secrets) / open item 9. Default ruleset plus an
+# allowlist of every hit from the 2026-09-14 full-history scan (3,248 commits,
+# 11 findings), each verified to be a non-secret. Anything NEW fails CI.
+#
+# Verify locally:  gitleaks git --redact --config .gitleaks.toml .
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Verified non-secrets from the 2026-09-14 history scan"
+regexTarget = "match"
+paths = [
+  # Fixture credentials in tests are fake by construction.
+  '''^tests/''',
+  # A local `.next` build cache committed once (2026-04-02, nested `sentimetrx/`
+  # dir, since removed). Its preview-mode keys belonged to a LOCAL build and
+  # never to a Vercel deployment.
+  '''^sentimetrx/\.next/''',
+]
+regexes = [
+  # flymco.com's PUBLIC GOAA site key — embedded in their public web app's JS
+  # and used here as the fallback behind the GOAA_API_KEY env (lib/flights,
+  # lib/parking, lib/securityWait, lib/meridian).
+  '''8eaac7209c824616a8fe58d22268cd59''',
+  # flymco.com's PUBLIC Meridian indoor-map token, same provenance (lib/meridian).
+  '''eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9\.eyJ2YWx1ZSI6IjFiYmRmM2EzOWM''',
+  # A localStorage cache-key NAME in the MCO demo, not a credential.
+  '''mco_parking_v1''',
+]

@@ -160,6 +160,24 @@ jobs:
       - name: e2e smoke suite
         run: npx playwright test tests/e2e/smoke.spec.ts
 
+  secrets:
+    name: secret scan (gitleaks)
+    # SECURITY.md §4 / item 9. Full-history scan with .gitleaks.toml (default
+    # rules + the allowlist of verified non-secrets). A new hit fails the
+    # build — and the deploy below waits on this job.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+          GITLEAKS_ENABLE_SUMMARY: "true"
+
   deploy:
     name: production deploy (after green)
     # Deploy-behind-CI (2026-07-04): pushes to main no longer auto-deploy —
@@ -171,7 +189,7 @@ jobs:
     # push ending in a docs commit would have silently skipped deploying
     # its code). Manual fallback if the hook path is ever broken:
     # `vercel deploy --prod` from an authorized laptop.
-    needs: [test, isolation, e2e]
+    needs: [test, isolation, e2e, secrets]
     # workflow_dispatch deploys too, otherwise the manual recovery path can
     # verify CI but never ship — which is exactly the hole that stranded
     # f4fec8eb: green on dispatch, deploy skipped, production left behind.
