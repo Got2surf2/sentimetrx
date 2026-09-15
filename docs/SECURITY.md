@@ -411,9 +411,15 @@ requires a logged-in caller and reads no tenant data by id.)
   patterns. **Gap:** `.env.production` and other non-`.local`
   variants are not currently covered; tighten to `.env*` when
   convenient (low risk today because Vercel env is the source of
-  truth and `.env.production` is not used locally). CI does not
-  re-check — Open `<TBD>` item 9 tracks adding `gitleaks` as a
-  pre-push hook + CI step.
+  truth and `.env.production` is not used locally). CI re-checks
+  on every push since 2026-09-14: the `secret scan (gitleaks)` job
+  scans the FULL history with `.gitleaks.toml` (default rules + an
+  allowlist of verified non-secrets), and the production deploy
+  waits on it. Baseline: the 2026-09-14 scan of 3,248 commits
+  returned 11 hits, 0 real — flymco.com's public GOAA site key and
+  Meridian token (fallbacks behind env), fake test fixtures, and a
+  local `.next` build cache committed once in 2026-04 and long
+  removed. Local check: `gitleaks git --config .gitleaks.toml .`.
 - **Rotation cadence (ratified default, last reviewed
   2026-05-12):**
   - Supabase service-role key: **90 days**
@@ -623,9 +629,7 @@ quarterly):
   queries or arbitrary HTTP calls.
 - **Prompt budget:** no single Claude prompt may include rows
   from more than one `org_id`. Enforced by reviewer today;
-  Open `<TBD>` item 7 tracks a `lib/ai.ts` wrapper that asserts
-  the row set has a single `org_id` before dispatch, with a unit
-  test.
+  `lib/aiOrgGuard.ts` (2026-09-14, item 7): `assertDatasetsBelongToOrg` runs at every collection fan-out that feeds a prompt — dataset search, Data Story, entity discovery, project report — and `assertSingleOrg` covers org-bearing row sets; a violation is a `CrossOrgPromptError` (500 + Sentry), never a degraded prompt. Single-dataset prompts are covered by the route gate that already paired `id` with `org_id`.
 - **Model output sanitization:** every surface that renders
   AI- or user-derived HTML routes through `isomorphic-dompurify`
   first — the survey engine (`components/survey/useSurveyEngine.ts`)
@@ -668,9 +672,11 @@ leak is reviewer-enforced until the wrapper assert lands.
     after 374 pre-existing violations broke the Vercel deploy (back
     when `next build` ran ESLint). **Next 16 changes this:**
     `next build` no longer runs ESLint and the `next lint` command
-    was removed, so the lint toolchain (eslint 8→9 + flat config)
-    must be migrated before any of this re-applies — Open `<TBD>`
-    item 10.
+    was removed. **Done (item 10 closed 2026-09-14):** ESLint 9 flat
+    config (`eslint.config.mjs`); `no-floating-promises`,
+    `no-misused-promises` and `no-explicit-any` are all `error`;
+    `npm run lint:ci` enforces a `--max-warnings` ceiling in CI that
+    only ratchets down (167 today, all `react-hooks/*`).
   - CodeQL (`javascript-typescript` + `actions`) on every push/PR
     to `main` and weekly, since 2026-09-14
     (`.github/workflows/codeql.yml`); `tests/` and `scripts/oneoff`
@@ -745,10 +751,11 @@ when a second operator joins:** primary on a 7-day rotation,
 secondary on call for SEV-1 escalation, owner always reachable.
 Open `<TBD>` item 9.
 
-**Post-mortem template:** Open `<TBD>` item 9 — add
-`docs/postmortems/TEMPLATE.md` and `docs/postmortems/README.md`
-explaining the per-incident naming convention
-(`YYYY-MM-DD-short-slug.md`).
+**Post-mortem template:** `docs/postmortems/TEMPLATE.md` +
+`docs/postmortems/README.md` (2026-09-14) — SEV-1 within 5 business
+days, SEV-2 within 10, near-misses too; blameless; every action item
+has an owner and a due date; filed as `YYYY-MM-DD-short-slug.md` and
+linked from that week's devlog.
 
 **Status page:** stand up a public status page (Vercel-hosted
 `/status` route, or hosted via Better Stack / Statuspage) at the
@@ -773,9 +780,15 @@ devlog. Quarterly review counts unfiled post-mortems.
 - **Application:** Vercel rollback is instant via the deployment
   history. Each push is a separate deploy; instant rollback to
   the previous deployment via `vercel rollback`.
-- **DR test cadence:** **quarterly** restore drill — pick a
-  backup, restore to a scratch DB, confirm row count + key
-  invariants. Drill logged in the weekly devlog.
+- **DR test cadence:** **quarterly** restore drill per
+  `docs/runbooks/dr-restore-drill.md` (2026-09-14): step 1 is the
+  read-only `npx tsx scripts/dr-audit.ts` (S3 versioning /
+  encryption / lifecycle, org-snapshot continuity, Supabase backup
+  inventory + PITR flag — exits non-zero on any FAIL), then a restore
+  into a scratch project with the row-count + invariant queries in
+  the runbook, timed for the RTO, then one org snapshot re-hydrated
+  against its manifest. Drill logged in the weekly devlog. **First
+  drill: not yet performed** — owner-run.
 
 **How we verify:** drill log entries in `docs/weekly-reports/`;
 any quarter with zero entries triggers the next governance
@@ -860,49 +873,95 @@ plumbing that needs to ship.
 3. *(retired — rotation cadence ratified in §4)*
 4. *(retired 2026-05-15 — `admin_action_log` already exists,
    matches §6 contract; see sql/048_admin_action_log.sql)*
-5. **Add a delete-path test** to the egress suite, then confirm
-   cascade-FK coverage by grep + dry-run delete in a scratch DB.
-6. **Add an explicit org-level "AI may analyze our responses"
-   toggle** before the first paying customer. Default: opt-in
-   at onboarding.
-7. **Add `lib/ai.ts` wrapper** that asserts single-`org_id` in
-   the row set before any Claude call, with a unit test. Also
-   publish `security@<final-domain>` disclosure address.
-8. **Ratify MFA + session policy** for platform admins
-   (proposed defaults are in §3).
-9. **Incident-response plumbing:** post-mortem template,
-   on-call rotation policy, public status page. Bundle for the
-   first paying customer.
-10. **Migrate the ESLint toolchain, then tighten config:** Next 16
-    removed `next lint`, so step zero is migrating eslint 8→9 +
-    flat config (`eslint-config-next`@16 peer-requires eslint ≥9);
-    the `"lint": "next lint"` script is stale until then, and lint
-    is not in CI. **Then:** fix the 374 `no-floating-promises` /
-    `no-misused-promises` violations (and the 1801 `any` warnings)
-    and promote the two promise rules from `warn` back to `error`.
-    Because `next build` no longer runs ESLint in 16, enforcement
-    must come from a **CI lint step** (not the build). Initial
-    attempt on 2026-05-12 set them to `error` immediately and broke
-    production — sequence matters: migrate, fix, then enforce.
-11. **Extract a generalized `gate*Access` helper** to
-    `lib/auth/gate.ts`. The trigger is met: four parallel
-    definitions exist today —
-    `gateShareTarget` in `app/api/share/route.ts`,
-    `gateBotAccess` in
-    `app/api/bots/[id]/conversations/[sessionId]/route.ts`,
-    a second `gateBotAccess` in
-    `app/api/bots/[id]/knowledge/[chunkId]/route.ts`, and
-    gating logic in `app/api/townhall/sessions/[id]/route.ts`.
-    Collapse to one helper that takes `(service, userId,
-    resourceType, resourceId)` and returns the verified
-    `{ targetOrgId }` or a typed denial.
-12. **Introduce a structured logger** (`lib/log.ts`, pino or
-    similar) and migrate prod handlers off bare `console.*`.
-    Until then, handlers must pass a structured object —
-    `console.warn({ event, request_id, org_id, ... })` — and
-    never include PII fields.
-13. **Quarterly DR restore drill** + S3 versioning audit on
-    every bucket holding customer data.
+5. ~~Add a delete-path test~~ **LANDED 2026-09-14.**
+   `tests/integration/cross-org-egress.test.ts` now issues a DELETE
+   as Org B against every seeded Org A row (13 tables) and proves
+   the row survives, plus two FK dry-runs in the scratch (TEST)
+   project: deleting a dataset cascades to `dataset_rows_flat` +
+   `dataset_state`; deleting an org that still owns a collection is
+   BLOCKED (`collections_org_id_fkey` has no ON DELETE clause — by
+   design, `lib/orgDelete.ts` erases per-table first, fail-closed).
+   Run 2026-09-14 against Sentimetrx-Test: 42/42. FK inventory from
+   `docs/db/schema.sql`: 17 `org_id` FKs cascade, 8 SET NULL,
+   `collections` RESTRICT. **Noted for later:** 9 `*_by →
+   auth.users` FKs have no clause, so a per-user hard delete would
+   be blocked while that user's rows exist — 6 of those columns are
+   nullable (SET NULL migration), `collections` / `datasets` /
+   `recordings.created_by` are NOT NULL (reassign first). Nothing
+   deletes an auth user today except `lib/orgDelete.ts`, which goes
+   last. Local: `bash scripts/test-isolation-local.sh test:egress`.
+6. **AI-analysis consent toggle — BUILT, default still opt-out.**
+   As of 2026-09-14 review: the org ceiling exists
+   (`organizations.ai_key_mode = 'off'`, admin-set via
+   `/api/admin/orgs/[id]/ai-key`, enforced in `lib/ai.ts` for every
+   call that carries `usage.org_id`) and so does a per-user opt-in
+   (`users.ai_enabled` via `/api/me/ai-mode`, every flip written to
+   `ai_consent_audit` with IP + UA). **Still open, two halves:**
+   (a) the org default is `'platform'` (on) — "opt-in at onboarding"
+   is a product decision to flip the default for NEW orgs before the
+   first paying customer; (b) 42 `callAI`/`callAIStream` sites pass
+   no `usage` context and therefore bypass the off-switch (and cost
+   attribution). Public-widget chat and cron paths are most of them;
+   threading the bot's/session's org through is the fix.
+7. ~~Add `lib/ai.ts` wrapper~~ **LANDED 2026-09-14** as
+   `lib/aiOrgGuard.ts` (see §8) with `tests/unit/aiOrgGuard.test.ts`.
+   **Still open:** publish a `security@sentimetrx.ai` disclosure
+   address — needs a real mailbox first (no invented addresses in
+   shipped surfaces), then a line in the privacy notice.
+8. **Ratify MFA + session policy** for platform admins (proposed
+   defaults in §3). *Prepared 2026-09-14 for a yes/no:* (i) MFA
+   required for `is_admin_org` users — enforcement is an `aal2`
+   check in `lib/auth/requireAdmin.ts` + a TOTP enrollment screen,
+   with a grace window so the owner enrolls before the check bites;
+   (ii) admin session policy — Supabase JWT expiry is project-wide,
+   so a shorter admin session is an app-enforced idle timeout (last
+   activity stamp + re-auth prompt), not a dashboard setting. Both
+   are code follow-ups once ratified.
+9. **Incident-response plumbing — 2 of 3 landed 2026-09-14:**
+   post-mortem template + README (`docs/postmortems/`), and the
+   gitleaks secret scan in CI (§4). The on-call escalation policy in
+   §10 stands as written — ratify with item 8. **Still open:** a
+   public status page — at the first paying customer.
+10. ~~Migrate the ESLint toolchain, then tighten config~~ **CLOSED
+    2026-09-14 (was stale).** ESLint 9 flat config landed with the
+    Next 16 upgrade; the promise rules and `no-explicit-any` are
+    `error`; `lint:ci` runs in CI behind a ratcheting warning
+    ceiling (see §9). The 2026-05-12 lesson — migrate, fix, then
+    enforce — is what the ratchet encodes.
+11. ~~Extract a generalized `gate*Access` helper~~ **LANDED
+    2026-09-14** as `lib/auth/gate.ts`:
+    `gateResourceForUser(service, userId, type, id)` /
+    `gateResourceAccess(service, caller, type, id)` → `{ ok,
+    targetOrgId, userOrgId, isAdmin }` or a typed `{ 401 | 404 }`
+    denial; resource types agent · dataset · collection · study ·
+    campaign · pulseiq_session (id or slug) · conversation (agent
+    or response→study). Policy: cross-org and non-existent are the
+    SAME 404 + message. Collapsed: `share` (all 6 target types),
+    both `gateBotAccess`, `gateSessionAccess`, both
+    `gateCollection` — the share route's cross-org answer moved
+    403 → 404 to match. 12 unit tests
+    (`tests/unit/authGate.test.ts`); the five route gate suites
+    stayed green. **Follow-up:** the three cookie-client dataset
+    gates (`datasets/[id]/views/gate.ts`, `taxonomy`, `story`)
+    already share `getCallerOrgContext`; route the latter two
+    through `views/gate.ts`.
+12. ~~Introduce a structured logger and migrate prod handlers off
+    bare `console.*`~~ **LANDED 2026-09-14.** `lib/log.ts` (landed
+    2026-07-02) gained `logInfo`; all **189** bare `console.*` calls
+    in `app/api/**` (61 files) and `lib/**` (30 files) were migrated
+    by an AST codemod to `logError` / `logWarn` / `logInfo` — one
+    object per line with `at`, `request_id`, `org_id` — and
+    `no-console` is now an ESLint **error** for both trees
+    (`lib/log.ts` is the only exemption). Every `lib` file was
+    checked against the real import graph before importing the
+    server-only logger (madge BFS from 212 `'use client'` roots: none
+    reachable). Log-payload PII rule (§7) is unchanged: opaque ids,
+    never the field.
+13. **Quarterly DR restore drill** + S3 versioning audit —
+    **tooling landed 2026-09-14** (`scripts/dr-audit.ts` +
+    `docs/runbooks/dr-restore-drill.md`, see §11). **First drill
+    not yet run** — owner-run; log it in the devlog, then this item
+    becomes a recurring calendar entry, not a TBD.
 14. **✅ CLOSED (2026-06-01).** All three `dangerouslySetInnerHTML`
     callsites now `DOMPurify.sanitize(...)` before render, matching
     the survey-engine pattern: `ConversationsClient.tsx` (agent

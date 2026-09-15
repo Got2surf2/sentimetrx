@@ -39,6 +39,26 @@ Last reviewed: 2026-05-15.
   hard-fails if the secrets are missing/placeholder, so a green check
   means isolation was actually tested, not silently skipped. Owner
   follow-up: populate the secrets and make the job a required check.
+- **One resource gate: `lib/auth/gate.ts` (2026-09-14, SECURITY.md
+  item 11).** A service-role route that checks "does this resource
+  belong to the caller's org (or is the caller a platform admin)"
+  calls `gateResourceForUser(service, userId, type, id)` — or
+  `gateResourceAccess(service, caller, type, id)` when it already
+  ran `getCallerOrgContext` — and returns `gateDenied(result)` on
+  `!ok`. Do not write a new `gate*` function; add a resource type to
+  the helper instead. Policy the helper encodes: cross-org and
+  non-existent are the SAME 404 + message, so a non-admin cannot
+  probe for existence. The cookie-client dataset gate is
+  `app/api/datasets/[datasetId]/views/gate.ts`.
+- **Prompt material is single-tenant by assertion: `lib/aiOrgGuard.ts`
+  (2026-09-14, SECURITY.md item 7).** Wherever rows from more than one
+  dataset are assembled for a Claude call — a collection fan-out in
+  search, Data Story, entity discovery, project reports — call
+  `assertDatasetsBelongToOrg(service, datasetIds, orgId, where)`
+  first; for org-bearing row sets use `assertSingleOrg(rows, orgId,
+  where)`. A violation throws `CrossOrgPromptError` (500 + Sentry) —
+  loud, never a degraded prompt. The gate proves the caller may see
+  ONE resource; the guard proves the ROW SET stayed inside that org.
 - **Lint is live in CI (2026-07-02, Open `<TBD>` item 10 CLOSED).**
   Migrated to **eslint 9 flat config** (`eslint.config.mjs`, replacing
   `.eslintrc.json`): `eslint-config-next@16`'s native flat config +
@@ -236,11 +256,18 @@ its corresponding entry.
 
 ## 4. Logging & observability
 
-- **Structured payloads.** `lib/log.ts` is the logger (landed
-  2026-07-02 — see below). Where a raw `console.warn` /
-  `console.error` is still justified, use a **single object
-  argument** — never an interpolated string — so the Vercel log
-  viewer can parse and grep on fields:
+- **Structured payloads — through `lib/log.ts`, not `console`
+  (SECURITY.md item 12, 2026-09-14).** `logError(where, err, fields)`
+  (also captures to Sentry), `logWarn(where, msg, fields)` and
+  `logInfo(where, msg, fields)` each emit ONE object with `at`,
+  `request_id` (from the per-request context) and `org_id`, so a
+  customer's `x-request-id` joins the log line to the Sentry event.
+  `no-console` is an ESLint **error** in `app/api/**` and `lib/**`
+  (154 bare `console.*` calls were migrated in one AST codemod;
+  `lib/log.ts` itself is the only exemption). `where` is
+  `<file>.<function>` (`'share.POST'`, `'chatCore.handleChatTurn'`).
+  Never put a PII field (email, phone, free text) in `fields` — pass
+  an opaque id. The legacy guidance below shows the payload shape:
 
   ```ts
   console.warn({
