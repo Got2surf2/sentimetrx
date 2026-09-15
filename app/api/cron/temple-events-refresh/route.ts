@@ -25,6 +25,7 @@ import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { checkCronAuth } from '@/lib/cronAuth'
 import { serverError } from '@/lib/apiError'
+import { removeElements, stripTags, decodeEntities } from '@/lib/htmlStrip'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -59,11 +60,7 @@ export async function GET(req: NextRequest) {
 
   // Strip scripts/styles/tags, normalise whitespace, cap at 60k chars so we
   // stay inside Haiku's input budget comfortably.
-  const stripped = html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
+  const stripped = decodeEntities(stripTags(removeElements(html, ['script', 'style'])))   // lib/htmlStrip: tolerates `</script >`
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 60000)

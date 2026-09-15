@@ -361,7 +361,7 @@ export default function UsageClient() {
                       <tr key={i} style={{ borderTop: '1px solid #f3f4f6' }}>
                         <td style={{ padding: '6px 0', color: '#111827', fontWeight: 600 }}>
                           <Link
-                            href={'/admin/usage/' + r.resource_type + '/' + r.resource_id + '?' + (days != null ? 'days=' + days : 'from=' + from + (to ? '&to=' + to : ''))}
+                            href={'/admin/usage/' + encodeURIComponent(r.resource_type) + '/' + encodeURIComponent(r.resource_id) + '?' + (days != null ? 'days=' + days : 'from=' + from + (to ? '&to=' + to : ''))}
                             style={{ color: '#111827', textDecoration: 'none', borderBottom: '1px dotted #9ca3af' }}>
                             {r.name}
                           </Link>

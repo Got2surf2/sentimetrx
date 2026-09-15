@@ -9,6 +9,7 @@ import Image from 'next/image'
 
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { randomId } from '@/lib/clientId'
 
 interface Message { role: 'user' | 'assistant'; content: string }
 interface Props {
@@ -48,7 +49,7 @@ function renderBold(text: string): ReactNode {
 }
 
 export default function MobileChat({ botId, initialMessages, code }: Props) {
-  const [sessionId] = useState(() => 'm_' + Math.random().toString(36).slice(2, 9) + '_' + Date.now().toString(36))
+  const [sessionId] = useState(() => randomId('m_'))
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [input, setInput] = useState('')
   const [pending, setPending] = useState(false)

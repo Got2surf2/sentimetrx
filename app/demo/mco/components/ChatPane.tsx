@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { DeploymentMode, ExtractorContext, UiHint } from '@/lib/uiHints'
+import { randomId } from '@/lib/clientId'
 
 const LIVE_ASKANA_BOT_ID = '920c571b-5a09-4d3a-a20e-904a417d20b3'
 
@@ -76,7 +77,7 @@ interface Props {
 }
 
 function newSessionId() {
-  return 'demo_' + Math.random().toString(36).slice(2, 9) + '_' + Date.now().toString(36)
+  return randomId('demo_')
 }
 
 export default function ChatPane({ greeting, chips: initialChips, placeholder, mode, botOverride, activeContext, pendingMessage, onPendingMessageConsumed, resetKey, onHintReceived, onExtractingChange, onMessagesChange, onSessionIdChange, onBotIdChange }: Props) {

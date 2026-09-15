@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Link must be 3-50 characters: lowercase letters, numbers, and hyphens only' }, { status: 400 })
     }
   } else {
-    const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'pulseiq'
+    const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-/, '').replace(/-$/, '').slice(0, 40) || 'pulseiq'
     slug = base + '-' + Math.random().toString(36).slice(2, 7)
   }
   const { data: slugConflict } = await db.from('pulseiq_sessions').select('id').eq('slug', slug).limit(1)

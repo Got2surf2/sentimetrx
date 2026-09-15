@@ -8,6 +8,7 @@
 // Honors the 30/min rate limit by spacing requests with a small gap.
 
 import { SARINA_TESTS, type SarinaTest } from '../app/admin/sarina-regression/tests'
+import { randomId } from '../lib/clientId'
 
 type Status = 'pass' | 'partial' | 'fail' | 'error'
 
@@ -50,7 +51,7 @@ function gradeReply(test: SarinaTest, reply: string): { status: Status; mustIncl
 }
 
 async function runOne(baseUrl: string, botId: string, test: SarinaTest): Promise<TestRun> {
-  const sessionId = (globalThis.crypto?.randomUUID?.() ?? 'sess_' + Math.random().toString(36).slice(2))
+  const sessionId = randomId('sess_')
   const transcript: { role: 'user' | 'assistant'; content: string }[] = []
   const started = Date.now()
 

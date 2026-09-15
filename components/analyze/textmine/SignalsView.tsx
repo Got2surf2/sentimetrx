@@ -6,6 +6,7 @@
 // Cards are sticky at top. Clicking a card shows its comments below (one at a time).
 
 import { useState, useMemo } from 'react'
+import { isUrlOnly } from '@/lib/urlOnly'
 
 interface SignalComment {
   text: string
@@ -32,7 +33,6 @@ var HERMES = '#E8632A'
 var DEFAULT_VISIBLE = 5
 
 // Detect if text is primarily a URL (no meaningful content)
-var URL_RE = /^(\s*(https?:\/\/\S+)\s*)+$/i
 
 // Reddit tiers
 var REDDIT_TIER_KEYS: Array<'mainstream' | 'controversial' | 'noise' | 'fringe'> = ['mainstream', 'controversial', 'fringe', 'noise']
@@ -68,7 +68,7 @@ export default function SignalsView({ rows, mainstreamCutoff, noiseCutoff, onCut
     var threads: Record<string, { score: number; row: Record<string, unknown> }[]> = {}
     rows.forEach(function(r) {
       var text = String(r.body || r.user_message || '').trim()
-      if (!text || URL_RE.test(text)) return
+      if (!text || isUrlOnly(text)) return
       var tid = String(r[groupKey] || 'unknown')
       if (!threads[tid]) threads[tid] = []
       threads[tid].push({ score: Number(r[scoreKey]) || 0, row: r })

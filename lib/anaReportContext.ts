@@ -14,6 +14,7 @@ import { applyFilters, deserializeFilters } from '@/lib/filterUtils'
 import { isSubstantiveText } from '@/lib/datasetUtils'
 import type { SerializedFilters } from '@/lib/filterUtils'
 import { SIGNAL_SAMPLE_CAP, SAMPLE_BLOCKS } from '@/lib/sampledSignalCounts'
+import { isUrlOnly } from '@/lib/urlOnly'
 
 type Service = ReturnType<typeof createServiceRoleClient>
 
@@ -21,7 +22,6 @@ export const ANA_CONTEXT_CAP = 500   // absolute max rows sent to the model
 export const ANA_DEFAULT_SAMPLE = 200
 const FETCH_CAP    = 2000
 const MEMBER_FLOOR = 20
-const URL_ONLY_RE  = /^(\s*(https?:\/\/\S+)\s*)+$/i
 
 export interface CollectionMember { dataset_id: string; name: string; row_count: number }
 
@@ -299,7 +299,7 @@ export async function loadAnaSample(opts: {
   if (dataset.source === 'reddit' || dataset.source === 'substack' || dataset.source === 'google_reviews') {
     filteredRows = filteredRows.filter(function(r) {
       const text = String(r.body || r.user_message || r.review_text || '').trim()
-      return text && !URL_ONLY_RE.test(text)
+      return text && !isUrlOnly(text)
     })
   }
 

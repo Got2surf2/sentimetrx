@@ -59,6 +59,17 @@ Last reviewed: 2026-05-15.
   where)`. A violation throws `CrossOrgPromptError` (500 + Sentry) —
   loud, never a degraded prompt. The gate proves the caller may see
   ONE resource; the guard proves the ROW SET stayed inside that org.
+- **HTML → text goes through `lib/htmlStrip.ts`; client-minted ids through
+  `lib/clientId.ts` (2026-09-15, CodeQL backlog).** `stripTags` strips to a
+  fixed point (a split `<scr<b>ipt>` cannot reassemble), `removeElements`
+  tolerates `</script >`, `decodeEntities` decodes `&amp;` LAST; use
+  `htmlToPlainText` for whole documents. Never write another inline
+  `.replace(/<[^>]+>/g, '')` or an `&amp;`-first decode chain — CodeQL flags
+  both, and it is right to. `randomId(prefix)` (WebCrypto) is the only way
+  to mint a session/visitor id that leaves the browser; `Math.random()` ids
+  were readable handles for other people's conversations. A regex over
+  user input needs bounded quantifiers or a linear rewrite
+  (`lib/urlOnly.isUrlOnly` replaced an exponential one).
 - **Lint is live in CI (2026-07-02, Open `<TBD>` item 10 CLOSED).**
   Migrated to **eslint 9 flat config** (`eslint.config.mjs`, replacing
   `.eslintrc.json`): `eslint-config-next@16`'s native flat config +

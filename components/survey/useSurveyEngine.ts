@@ -5,6 +5,8 @@ import DOMPurify from 'isomorphic-dompurify'
 import type { Study, StudyConfig, Sentiment, SurveyPayload, OpeningFlowItem, SectionKey, RatingOption, LikertFollowUp, ContactFieldType } from '@/lib/types'
 import { US_STATES, validateContactField, BUILTIN_UI_TRANSLATIONS, SUPPORTED_LANGUAGES } from '@/lib/types'
 import { pickBrandColor } from '@/components/survey/brandColor'
+import { stripTags } from '@/lib/htmlStrip'
+import { randomId } from '@/lib/clientId'
 
 // ============================================================
 // useSurveyEngine
@@ -111,7 +113,7 @@ type UrlCapture = {
   recipientGuid: string | null
 }
 
-const newSessionId = () => 'ses_' + Math.random().toString(36).slice(2) + Date.now().toString(36)
+const newSessionId = () => randomId('ses_')
 
 /** Kiosk gets a fresh session per guest (the component remounts between them, so
  *  a new id here means a new respondent); everyone else resumes the tab's id. */
@@ -649,7 +651,7 @@ export function useSurveyEngine({ study, orgName = '', chatRef, inputRef, scroll
         state.current.conversationLog.push({ who: 'bot', text: '[AI Thinking] ' + data._debug.join(' | '), ai: true })
       }
       // Log the deflection (strip HTML for clean log)
-      const plainText = data.deflection.replace(/<[^>]+>/g, '')
+      const plainText = stripTags(data.deflection, '')
       state.current.conversationLog.push({ who: 'bot', text: plainText, ai: true })
       // Render bot message with HTML link
       if (chatRef.current) {

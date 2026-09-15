@@ -10,6 +10,7 @@ import DownloadButton from '@/components/ui/DownloadButton'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { getFlagStyle, isFixedFlag } from '@/lib/flagStyles'
 import type { Persona } from '@/lib/personaExtractor'
+import { stripTags } from '@/lib/htmlStrip'
 
 var HERMES = '#E8632A'
 var IMSG_BLUE = '#007AFF'
@@ -696,7 +697,7 @@ function linkify(text: string): string {
   var normalized = text.replace(
     /<a\s+[^>]*href=["']?(https?:\/\/[^"'\s>]+)["']?[^>]*>([\s\S]*?)<\/a>/gi,
     function(_m: string, url: string, t: string) {
-      var clean = t.replace(/<[^>]+>/g, '').trim() || url
+      var clean = stripTags(t, '').trim() || url
       return '[' + clean + '](' + url + ')'
     },
   )

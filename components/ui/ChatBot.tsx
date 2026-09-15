@@ -7,9 +7,11 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import DOMPurify from 'isomorphic-dompurify'
 import SanjayModal, { checkVerboseCommand } from './SanjayModal'
+import { randomId } from '@/lib/clientId'
+import { stripTags } from '@/lib/htmlStrip'
 
 function genSessionId() {
-  return 'bs_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
+  return randomId('bs_')
 }
 
 // Per-bot session id stored in localStorage so a respondent who refreshes,
@@ -599,7 +601,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
     const normalized = content.replace(
       /<a\s+[^>]*href=["']?(https?:\/\/[^"'\s>]+)["']?[^>]*>([\s\S]*?)<\/a>/gi,
       function(_m: string, url: string, text: string) {
-        const cleanText = text.replace(/<[^>]+>/g, '').trim() || url
+        const cleanText = stripTags(text, '').trim() || url
         return '[' + cleanText + '](' + url + ')'
       }
     )

@@ -15,6 +15,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
+import { randomId } from '@/lib/clientId'
 
 const HERMES = '#E8632A'
 const STATE_KEY = 'help_widget_state_v1'
@@ -53,11 +54,15 @@ function renderInline(line: string, onNav: (path: string) => void) {
           <a key={m.index} onClick={() => onNav(url)}
             style={{ color: HERMES, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}>{label}</a>,
         )
-      } else {
+      } else if (/^https?:\/\//i.test(url)) {
         out.push(
           <a key={m.index} href={url} target="_blank" rel="noreferrer"
             style={{ color: HERMES, fontWeight: 600, textDecoration: 'underline' }}>{label}</a>,
         )
+      } else {
+        // The label/url pair came out of model text; anything but http(s)
+        // (javascript:, data:, …) renders as plain text, never a clickable href.
+        out.push(<span key={m.index}>{label}</span>)
       }
     }
     last = re.lastIndex
@@ -76,7 +81,7 @@ function getSessionId(): string {
   try {
     const k = 'help_session_id'
     let v = localStorage.getItem(k)
-    if (!v) { v = 'help-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(k, v) }
+    if (!v) { v = randomId('help-'); localStorage.setItem(k, v) }
     return v
   } catch { return 'help-ephemeral' }
 }

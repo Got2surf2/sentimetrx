@@ -9,6 +9,7 @@ import ShareModal from '@/components/ui/ShareModal'
 import DownloadButton from '@/components/ui/DownloadButton'
 import Link from 'next/link'
 import type { CampaignEmail, CampaignRespondent, CampaignStatus, EmailProviderType } from '@/lib/types'
+import { stripTags } from '@/lib/htmlStrip'
 
 const HERMES = '#E8632A'
 
@@ -656,7 +657,7 @@ function parseStructureFromHtml(html: string): TemplateStructure {
   }
   // Extract header text
   const h1Match = html.match(/<h1[^>]*>(.*?)<\/h1>/i)
-  if (h1Match) struct.headerText = h1Match[1].replace(/<[^>]+>/g, '')
+  if (h1Match) struct.headerText = stripTags(h1Match[1], '')
   // Extract header color
   const gradMatch = html.match(/background:\s*linear-gradient\([^,]+,\s*(#[0-9a-f]+)/i)
   if (gradMatch) struct.headerColor = gradMatch[1]
@@ -673,7 +674,7 @@ function parseStructureFromHtml(html: string): TemplateStructure {
   const stepMatches = Array.from(html.matchAll(/data-block="step"[^>]*>[\s\S]*?<td[^>]*style="[^"]*font-size:\s*28px[^"]*"[^>]*>(\d+)<\/td>[\s\S]*?<strong[^>]*>(.*?)<\/strong>[\s\S]*?<\/div>\s*([\s\S]*?)<\/td>/gi))
   const steps: EmailBlock[] = []
   for (const m of stepMatches) {
-    steps.push({ type: 'numbered_step', content: m[3]?.replace(/<[^>]+>/g, '').trim() || '', stepNumber: parseInt(m[1]), stepHeading: m[2]?.replace(/<[^>]+>/g, '').trim() || '' })
+    steps.push({ type: 'numbered_step', content: stripTags(m[3] ?? '', '').trim() || '', stepNumber: parseInt(m[1]), stepHeading: stripTags(m[2] ?? '', '').trim() || '' })
   }
   // Extract image blocks
   const imgMatches = Array.from(html.matchAll(/data-block="image"[^>]*>[\s\S]*?<img[^>]*src="([^"]+)"[^>]*(?:alt="([^"]*)")?/gi))
@@ -683,12 +684,12 @@ function parseStructureFromHtml(html: string): TemplateStructure {
   // Extract signature blocks
   const sigMatch = html.match(/data-block="signature"[\s\S]*?<strong[^>]*>(.*?)<\/strong>[\s\S]*?<span[^>]*>(.*?)<\/span>/i)
   if (sigMatch) {
-    struct.blocks.push({ type: 'signature', content: '', signatureName: sigMatch[1].replace(/<[^>]+>/g, ''), signatureTitle: sigMatch[2].replace(/<[^>]+>/g, '') })
+    struct.blocks.push({ type: 'signature', content: '', signatureName: stripTags(sigMatch[1], ''), signatureTitle: stripTags(sigMatch[2], '') })
   }
   // Extract paragraphs (skip ones already captured as steps/signatures)
   const pMatches = html.match(/<p[^>]*>(.*?)<\/p>/gi) || []
   for (const p of pMatches) {
-    const text = p.replace(/<[^>]+>/g, '').trim()
+    const text = stripTags(p, '').trim()
     if (!text || text.includes('Unsubscribe')) continue
     if (!struct.greeting && (text.startsWith('Hi') || text.startsWith('Hello') || text.startsWith('Dear'))) {
       struct.greeting = text

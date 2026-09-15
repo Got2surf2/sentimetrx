@@ -1,5 +1,6 @@
 
 import { logWarn } from '@/lib/log'// lib/regulations.ts
+import { stripTags, decodeEntities } from '@/lib/htmlStrip'
 // Regulations.gov API v4 client
 // Docs: https://open.gsa.gov/api/regulationsgov/
 
@@ -146,7 +147,7 @@ export async function searchDockets(query: string, page: number = 1): Promise<{ 
   // If query looks like a docket or document ID (e.g. USDA-2024-0003 or USDA-2024-0003-0262),
   // try direct docket lookup first, stripping any trailing document suffix
   var trimmed = query.trim()
-  if (page === 1 && /^[A-Z]+-\d{4}-[A-Z0-9]+-?\d*$/i.test(trimmed)) {
+  if (page === 1 && trimmed.length <= 64 && /^[A-Z]{1,12}-\d{4}-[A-Z0-9]{1,24}(?:-\d{1,12})?$/i.test(trimmed)) {
     // Try the full ID first, then without trailing segment (document ID → docket ID)
     var candidates = [trimmed]
     var parts = trimmed.split('-')
@@ -247,15 +248,10 @@ export async function fetchCommentsBatch(commentIds: string[]): Promise<RegComme
 
 function cleanText(s: string): string {
   if (!s) return s
-  return s
-    .replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n').replace(/<[^>]+>/g, '')
-    .replace(/&#(\d+);/g, function(_, n) { return String.fromCharCode(Number(n)) })
-    .replace(/&#x([0-9a-fA-F]+);/g, function(_, h) { return String.fromCharCode(parseInt(h, 16)) })
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&nbsp;/g, ' ')
-    .replace(/&rsquo;/g, "'").replace(/&lsquo;/g, "'")
-    .replace(/&rdquo;/g, '"').replace(/&ldquo;/g, '"')
-    .replace(/&mdash;/g, '-').replace(/&ndash;/g, '-').replace(/&hellip;/g, '...')
+  // lib/htmlStrip: fixed-point tag strip, numeric + named entities, &amp; decoded
+  // LAST (the old chain decoded it first — a double-unescape). The unicode
+  // normalisation below then straightens the curly quotes / dashes it yields.
+  return decodeEntities(stripTags(s.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n'), ''))
     .replace(/[\u2018\u2019\u201A]/g, "'").replace(/[\u201C\u201D\u201E]/g, '"')
     .replace(/\u2026/g, '...').replace(/[\u2013\u2014]/g, '-')
     .replace(/\n{3,}/g, '\n\n').trim()

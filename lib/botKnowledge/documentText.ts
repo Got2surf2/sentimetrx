@@ -13,6 +13,7 @@
 import 'server-only'
 import { extractText, getDocumentProxy } from 'unpdf'
 import mammoth from 'mammoth'
+import { removeElements, stripTags, decodeEntities } from '@/lib/htmlStrip'
 
 export type DocMethod = 'pdf-text' | 'docx' | 'text'
 
@@ -72,8 +73,7 @@ export function assemblePdfPages(pages: string[]): { text: string; pageCount: nu
  * tags are stripped and entities decoded. No length cap here (clip() applies).
  */
 export function htmlToMarkdownish(html: string): string {
-  return html
-    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
+  const md = removeElements(html, ['script', 'style'])
     .replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, '\n## $1\n')
     .replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, '\n## $1\n')
     .replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, '\n### $1\n')
@@ -82,10 +82,8 @@ export function htmlToMarkdownish(html: string): string {
     .replace(/<\/(p|div|tr|li|table)>/gi, '\n')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<td[^>]*>/gi, ' | ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
-    .replace(/&#\d+;/g, '')
+  // lib/htmlStrip: fixed-point tag strip, &amp; decoded last.
+  return decodeEntities(stripTags(md))
     .replace(/[ \t]+/g, ' ')
     .replace(/ *\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')

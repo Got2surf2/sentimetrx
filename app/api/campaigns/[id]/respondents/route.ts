@@ -102,12 +102,14 @@ export async function POST(req: NextRequest, props: Params) {
   }
 
   // Validate emails
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  // Bounded quantifiers + a length cap: the unbounded form is polynomial on
+  // inputs like '!@!.!@!.…' (CodeQL js/polynomial-redos).
+  const emailRegex = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,63}$/
   const invalid: string[] = []
   const valid: { email: string; fields: Record<string, string> }[] = []
 
   for (const r of respondents) {
-    if (!r.email || !emailRegex.test(r.email)) {
+    if (!r.email || r.email.length > 320 || !emailRegex.test(r.email)) {
       invalid.push(r.email || '(empty)')
     } else {
       valid.push({ email: r.email.toLowerCase().trim(), fields: r.fields || {} })

@@ -14,8 +14,9 @@ export async function POST(req: NextRequest) {
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
   const { org_id, email, role } = body
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  if (!email || !emailRegex.test(email)) {
+  // Bounded quantifiers + a length cap (CodeQL js/polynomial-redos).
+  const emailRegex = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,63}$/
+  if (!email || email.length > 320 || !emailRegex.test(email)) {
     return NextResponse.json({ error: 'Valid email is required' }, { status: 400 })
   }
   if (!org_id) {

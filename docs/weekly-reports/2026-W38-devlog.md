@@ -373,3 +373,44 @@ Triage, with the reasoning recorded on each dismissal:
   not security-relevant), `polynomial-redos`/`redos` (12), `xss-through-dom`
   (5, admin/demo clients). Once that backlog is worked, make CodeQL a required
   check (SECURITY.md §9).
+
+## 2026-09-15 — CodeQL high backlog worked (45 alerts → 3 shared helpers + 10 rewrites)
+
+**Why**: the first-run backlog was the only thing between CodeQL and a
+required check. Each alert was read against the code, not the rule name.
+
+**What**
+- **HTML stripping / entity decoding (16 alerts)** — fourteen inline
+  single-pass `.replace(/<[^>]+>/g,'')` strips and `&amp;`-first decodes,
+  across crawl/fetch-url/research/documentText/regulations/temple-events
+  and five client parsers, now go through `lib/htmlStrip.ts`: `stripTags`
+  reaches a fixed point (a split `<scr<b>ipt>` cannot reassemble),
+  `removeElements` tolerates `</script >`, `decodeEntities` decodes `&amp;`
+  LAST so `&amp;lt;` stays `&lt;`. None of those outputs is rendered as HTML
+  today — this is defence in depth, in one place. The townhall search's
+  two-layer `\` escape is intentional (ILIKE metas + PostgREST `or()`
+  quoting) and was dismissed with that reasoning.
+- **Insecure randomness (13)** — every hit was a chat/visitor **session id**
+  minted with `Math.random()` and sent to the server (the agent widget reads
+  `/session/<id>/turns` by it). `lib/clientId.randomId()` (WebCrypto
+  `randomUUID`, `getRandomValues` fallback, throws rather than degrade)
+  replaces all nine generators; the `Math.random() < 0.7` simulated-answer
+  lines were the same taint path and clear with them.
+- **ReDoS (12)** — bounded email regexes + a 320-char cap (invite,
+  respondents); `^_+|_+$` trims became `^_`/`_$` (after the preceding
+  collapse there is at most one separator — same output); trailing-run trims
+  became linear walks (botProbeGuards, substack); the docket-id regex got
+  bounded quantifiers + a length cap; the exponential `URL_ONLY_RE` used in
+  two places is now `lib/urlOnly.isUrlOnly`, a token walk (tested at 50k
+  adversarial chars < 200 ms).
+- **XSS through DOM (5)** — `HelpWidget` rendered `<a href>` from model text
+  with no scheme check: `javascript:` was clickable; http(s) only now, else
+  plain text. `ChatPane`/`MobileChat` already constrain the URL to
+  `https?://` in the link regex (dismissed as such); the two admin `<Link>`s
+  encode their DB ids (dismissed: internal path, admin-only).
+- New tests: `tests/unit/htmlStrip.test.ts` (fixed point, whitespace in
+  closing tags, decode order, out-of-range numeric refs, `isUrlOnly`,
+  `randomId`).
+
+Next `main` analysis should leave CodeQL at ~0 open; then make it a
+required check (SECURITY.md §9).

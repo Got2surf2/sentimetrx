@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback } from 'react'
+import { randomId } from '@/lib/clientId'
 
 // ── Response data pools ─────────────────────────────────────────────────
 
@@ -283,7 +284,7 @@ export default function SimulatorClient() {
       if (stopRef.current) { addLog('Stopped.', 'info'); break }
 
       const { payload, exp, nps, duration } = generatePayload(config, weights)
-      const sid = 'sim_' + Math.random().toString(36).slice(2) + Date.now().toString(36)
+      const sid = randomId('sim_')
 
       try {
         const res = await fetch('/api/respond', {

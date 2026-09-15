@@ -1,3 +1,4 @@
+import { removeElements, stripTags, decodeEntities } from '@/lib/htmlStrip'
 // lib/crawlText.ts
 // D4 (AGENT_TIERS §2) — pure text helpers for the website deep-crawl. Split
 // out of the route so the link-preservation, boilerplate-strip and sitemap
@@ -32,9 +33,7 @@ function anchorToMarkdown(rawHref: string, innerHtml: string, pageUrl: string): 
  * invents them (the Spacy incident).
  */
 export function htmlToText(html: string, pageUrl: string): string {
-  let text = html
-    // Remove script, style, noscript blocks
-    .replace(/<(script|style|noscript)[^>]*>[\s\S]*?<\/\1>/gi, '')
+  let text = removeElements(html, ['script', 'style', 'noscript'])
     // D4(a): preserve links BEFORE stripping tags
     .replace(/<a\b[^>]*?href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_m, href, inner) => ' ' + anchorToMarkdown(href, inner, pageUrl) + ' ')
     // Convert headings to markdown
@@ -50,12 +49,10 @@ export function htmlToText(html: string, pageUrl: string): string {
     .replace(/<\/div>/gi, '\n')
     .replace(/<\/tr>/gi, '\n')
     .replace(/<td[^>]*>/gi, ' | ')
-    // Remove remaining tags
-    .replace(/<[^>]+>/g, ' ')
-    // Decode entities
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
-    .replace(/&#\d+;/g, '')
+  // Remaining tags + entities via lib/htmlStrip: fixed-point strip so split
+  // tags cannot reassemble; &amp; decoded last so &amp;lt; stays &lt;.
+  text = decodeEntities(stripTags(text))
+  text = text
     // Collapse whitespace (but keep newlines)
     .replace(/[ \t]+/g, ' ')
     .replace(/\n /g, '\n')

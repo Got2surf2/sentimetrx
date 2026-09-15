@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import { decodeEntities } from '@/lib/htmlStrip'
 
 interface TestResult {
   text: string
@@ -105,7 +106,7 @@ export default function ContentGuardClient() {
         if (parts.length <= textIdx) continue
         var text = (textIdx === 6 ? parts.slice(6).join(',') : parts[textIdx]).replace(/^"|"$/g, '').trim()
         if (text.length < 3) continue
-        text = text.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/RT @\w+:?\s*/g, '').trim()
+        text = decodeEntities(text).replace(/RT @\w+:?\s*/g, '').trim()   // &amp; decoded last (lib/htmlStrip)
         texts.push(text)
         if (labelIdx >= 0) {
           var raw = parts[labelIdx].replace(/"/g, '').trim()

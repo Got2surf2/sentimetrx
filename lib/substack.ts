@@ -113,7 +113,8 @@ export interface SubstackComment {
 // ── Resolve publication base URL ─────────────────────────────────────────────
 
 export function resolveBaseUrl(input: string): string {
-  var url = input.trim().replace(/\/+$/, '')
+  var url = input.trim()
+  while (url.endsWith('/')) url = url.slice(0, -1)   // linear; `/\/+$/` is polynomial on a run of slashes
   // If user pastes a full URL, extract the base
   if (url.match(/^https?:\/\//)) {
     var parsed = new URL(url)

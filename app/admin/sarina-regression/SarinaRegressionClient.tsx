@@ -5,6 +5,7 @@ import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import { SARINA_TESTS, type SarinaTest, type Category } from './tests'
 import type { ModuleFeatures } from '@/lib/types'
+import { randomId } from '@/lib/clientId'
 
 interface Props {
   botId: string
@@ -70,7 +71,7 @@ function gradeReply(test: SarinaTest, reply: string): Pick<TestRun, 'status' | '
 }
 
 async function runOneTest(botId: string, test: SarinaTest): Promise<TestRun> {
-  const sessionId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto) ? crypto.randomUUID() : 'sess_' + Math.random().toString(36).slice(2)
+  const sessionId = randomId('sess_')
   const transcript: { role: 'user' | 'assistant'; content: string }[] = []
   const ragDebug: string[] = []
   const intentDebug: string[] = []

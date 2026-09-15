@@ -5,6 +5,8 @@ import type { ModuleFeatures } from '@/lib/types'
 import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import type { StudyConfig, SurveyQuestion, OpeningFlowItem } from '@/lib/types'
+import { randomId } from '@/lib/clientId'
+import { stripTags } from '@/lib/htmlStrip'
 
 // ── Shared types ────────────────────────────────────────────────────────
 
@@ -273,7 +275,7 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
       body: JSON.stringify({ studyName: studyOrgName || studyName || 'Test Org', orgName: studyOrgName || '', questionAsked: aiQuestion, answer: text, linkText: qr.linkText || '', linkUrl: qr.linkUrl || '', customMessage: qr.message || '' }),
     })
     const data = await res.json()
-    return { input: text, output: data.deflection ? data.deflection.replace(/<[^>]+>/g, '') : null, type: 'deflect', ms: Date.now() - start }
+    return { input: text, output: data.deflection ? stripTags(data.deflection, '') : null, type: 'deflect', ms: Date.now() - start }
   }, [studyConfig, studyName, aiQuestion])
 
   // ── AI: clarify ─────────────────────────────────────────────────────
@@ -436,7 +438,7 @@ export default function TestingClient({ logoUrl = '', orgName = '', fullName = '
     for (let i = 0; i < simCount; i++) {
       if (simStop.current) { simLog('Stopped.', 'info'); break }
 
-      const sid = 'sim_' + Math.random().toString(36).slice(2) + Date.now().toString(36)
+      const sid = randomId('sim_')
       const nps = weightedScore(weights), exp = weightedScore(weights)
       const npsOpt = scale.find((r: ScaleOption) => r.score === nps) || { label: 'Score ' + nps }
       const expOpt = scale.find((r: ScaleOption) => r.score === exp) || { label: 'Score ' + exp }

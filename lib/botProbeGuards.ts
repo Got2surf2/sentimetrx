@@ -28,7 +28,10 @@ export function isInfoOnlyMessage(text: string | null | undefined): boolean {
   if (countWords(trimmed) > 6) return false
 
   // Strip trailing punctuation/emoji clusters before regex compare.
-  const normalized = trimmed.toLowerCase().replace(/[\s!.,;:~\-]+$/, '')
+  // Character-at-a-time trim: `/[…]+$/` is polynomial on a long run of the
+  // same characters (CodeQL js/polynomial-redos); this walk is linear.
+  let normalized = trimmed.toLowerCase()
+  while (normalized.length && /[\s!.,;:~\-]/.test(normalized[normalized.length - 1])) normalized = normalized.slice(0, -1)
 
   return INFO_ONLY_PATTERNS.test(normalized)
 }

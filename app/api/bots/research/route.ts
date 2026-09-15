@@ -8,20 +8,14 @@ import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { searchGoogle } from '@/lib/dataforseo'
 import { serverError } from '@/lib/apiError'
 import { safeFetch } from '@/lib/safeFetch'
+import { htmlToPlainText } from '@/lib/htmlStrip'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 // Reuse the same HTML-to-text extraction as fetch-url
 function extractText(html: string): string {
-  return html
-    .replace(/<(script|style|nav|header|footer|noscript)[^>]*>[\s\S]*?<\/\1>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+  return htmlToPlainText(html)   // fixed-point strip, &amp; decoded last (lib/htmlStrip)
 }
 
 export async function POST(req: NextRequest) {

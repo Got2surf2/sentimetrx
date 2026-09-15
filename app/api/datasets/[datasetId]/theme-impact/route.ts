@@ -88,7 +88,7 @@ export async function POST(req: Request, props: Props) {
   // Normalize field keys
   let keyMap: Record<string, string> = {}
   let keyMapBuilt = false
-  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_/, '').replace(/_$/, '')
 
   // Pre-compile theme regexes
   const themeRegexes = themes.map(t => ({

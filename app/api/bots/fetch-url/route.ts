@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { safeFetch, SafeFetchError } from '@/lib/safeFetch'
 import { serverError } from '@/lib/apiError'
+import { htmlToPlainText } from '@/lib/htmlStrip'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -39,19 +40,7 @@ export async function POST(req: NextRequest) {
     const html = await res.text()
 
     // Strip HTML tags and extract text
-    var text = html
-      // Remove script, style, nav, header, footer blocks
-      .replace(/<(script|style|nav|header|footer|noscript)[^>]*>[\s\S]*?<\/\1>/gi, '')
-      // Remove all HTML tags
-      .replace(/<[^>]+>/g, ' ')
-      // Decode common entities
-      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
-      // Collapse whitespace
-      .replace(/\s+/g, ' ')
-      // Collapse multiple newlines
-      .replace(/\n{3,}/g, '\n\n')
-      .trim()
+    var text = htmlToPlainText(html)   // fixed-point strip, &amp; decoded last (lib/htmlStrip)
 
     // Truncate to ~50K chars to stay within reasonable system prompt sizes
     if (text.length > 50000) text = text.slice(0, 50000) + '\n\n[Truncated — content exceeds 50,000 characters]'

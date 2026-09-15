@@ -108,7 +108,7 @@ export const STUDY_ALLOWED_KEYS = new Set([
 ])
 
 export function slugify(name: string, fallback: string): string {
-  return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || fallback
+  return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-/, '').replace(/-$/, '').slice(0, 40) || fallback
 }
 
 // Find a free slug: base, base-copy, base-copy2, … (same ladder the bot
