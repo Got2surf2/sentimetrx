@@ -38,7 +38,7 @@ jobs:
         # untrusted checkout) — cheap, and ci.yml is part of the deploy path.
         language: [javascript-typescript, actions]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
