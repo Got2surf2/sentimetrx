@@ -2,6 +2,8 @@
 // Substack public API client — no auth required for free publications
 // Endpoints: /api/v1/archive (posts), /api/v1/post/{id}/comments
 
+import { safeFetch } from '@/lib/safeFetch'
+
 const USER_AGENT = 'sentimetrx:substack-reader:v1.0 (datanautix.com)'
 const RATE_DELAY = 500 // ms between requests — Substack has no observed rate limits but be polite
 
@@ -16,9 +18,12 @@ async function throttle(): Promise<void> {
 
 async function substackGet(url: string): Promise<unknown> {
   await throttle()
-  const res = await fetch(url, {
+  // The base URL is user-supplied (resolveBaseUrl accepts any pasted URL —
+  // Substack publications live on custom domains too), so this is a classic
+  // SSRF surface: safeFetch refuses non-http(s), private / loopback /
+  // link-local / metadata hosts, and re-validates every redirect hop.
+  const res = await safeFetch(url, {
     headers: { 'User-Agent': USER_AGENT },
-    redirect: 'follow',
   })
   if (!res.ok) throw new Error('Substack API ' + res.status + ': ' + url)
   return res.json()

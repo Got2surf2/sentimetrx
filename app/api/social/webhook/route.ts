@@ -154,7 +154,9 @@ async function processComment(
     ? 'id,message,from,created_time,is_hidden,parent'
     : 'id,text,username,timestamp'
 
-  const res = await fetch(`https://graph.facebook.com/v19.0/${commentId}?fields=${fields}&access_token=${connection.access_token}`)
+  // Host is fixed; the id comes from Meta's signature-verified payload — encode
+  // it anyway so it can only ever be a path segment (CodeQL #23, not SSRF).
+  const res = await fetch(`https://graph.facebook.com/v19.0/${encodeURIComponent(commentId)}?fields=${fields}&access_token=${connection.access_token}`)
   if (!res.ok) {
     void logError('social/webhook', 'Failed to fetch comment', { commentId, body: await res.text() })
     return

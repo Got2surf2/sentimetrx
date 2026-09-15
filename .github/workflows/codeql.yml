@@ -44,10 +44,13 @@ jobs:
           languages: ${{ matrix.language }}
           # Tests carry fixture credentials and deliberately hostile inputs —
           # noise, not findings. scripts/oneoff are one-shot local tools.
+          # prototype/ is static design prototypes (CDN scripts, Math.random
+          # ids) that never ship — 8 of the first run's 70 alerts were there.
           config: |
             paths-ignore:
               - tests
               - scripts/oneoff
+              - prototype
               - '**/*.test.ts'
               - '**/*.test.tsx'
       - uses: github/codeql-action/analyze@v4

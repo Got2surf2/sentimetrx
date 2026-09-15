@@ -12,6 +12,12 @@ on:
   # to recover except pushing another commit.
   workflow_dispatch:
 
+# Least privilege for the default GITHUB_TOKEN (CodeQL actions/missing-workflow-
+# permissions, 2026-09-15). No job here writes to the repo through the token —
+# the deploy fires a Vercel hook from a secret.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: typecheck + tests
@@ -177,6 +183,9 @@ jobs:
           GITLEAKS_CONFIG: .gitleaks.toml
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
           GITLEAKS_ENABLE_SUMMARY: "true"
+          # PR comments would need pull-requests:write on the token; the job
+          # summary + red check are enough signal.
+          GITLEAKS_ENABLE_COMMENTS: "false"
 
   deploy:
     name: production deploy (after green)

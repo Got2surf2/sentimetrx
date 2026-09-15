@@ -155,7 +155,7 @@ export async function searchSubreddits(query: string): Promise<SubredditResult[]
 // ── Search posts within subreddits ───────────────────────────────────────────
 
 export async function searchPosts(query: string, subreddit?: string, sort: string = 'relevance', limit: number = 50): Promise<RedditThread[]> {
-  const sub = subreddit ? `/r/${subreddit}` : ''
+  const sub = subreddit ? `/r/${encodeURIComponent(subreddit)}` : ''
   const data = await redditGet(`${sub}/search.json?q=${encodeURIComponent(query)}&sort=${sort}&limit=${Math.min(limit, 100)}&restrict_sr=${subreddit ? 'true' : 'false'}&type=link`) as RedditListing<RedditPostData>
   const children = data?.data?.children || []
   return children.map(function(c: RedditChild<RedditPostData>): RedditThread {
@@ -183,6 +183,9 @@ export async function searchPosts(query: string, subreddit?: string, sort: strin
 // ── Fetch all comments for a thread ──────────────────────────────────────────
 
 export async function fetchThreadComments(permalink: string, limit: number = 500): Promise<{ post: RedditThread; comments: RedditComment[] }> {
+  // A permalink is a Reddit path (/r/<sub>/comments/<id>/<slug>); anything else
+  // is refused before it reaches the request line.
+  if (!/^\/r\/[A-Za-z0-9_]+\/comments\/[A-Za-z0-9_]+(\/[A-Za-z0-9_\-]*)?\/?$/.test(permalink)) throw new Error('Invalid Reddit permalink')
   // Reddit returns [post_listing, comment_listing]
   const data = await redditGet(`${permalink}.json?limit=${Math.min(limit, 500)}&depth=10&sort=top`) as [RedditListing<RedditPostData>, RedditListing<RedditCommentData>]
 
@@ -286,7 +289,9 @@ export function commentToRow(c: RedditComment): Record<string, unknown> {
 // ── Fetch top/hot posts from a subreddit ─────────────────────────────────────
 
 export async function fetchSubredditPosts(subreddit: string, sort: string = 'hot', limit: number = 50): Promise<RedditThread[]> {
-  const data = await redditGet(`/r/${subreddit}/${sort}.json?limit=${Math.min(limit, 100)}`) as RedditListing<RedditPostData>
+  // Host is fixed (BASE); encode the user-supplied segments so they cannot
+  // rewrite the path or query (CodeQL js/request-forgery #24/#25 — not SSRF).
+  const data = await redditGet(`/r/${encodeURIComponent(subreddit)}/${encodeURIComponent(sort)}.json?limit=${Math.min(limit, 100)}`) as RedditListing<RedditPostData>
   const children = data?.data?.children || []
   return children.map(function(c: RedditChild<RedditPostData>): RedditThread {
     const d = c.data

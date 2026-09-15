@@ -342,3 +342,34 @@ no `usage` context and bypass the switch.
 text + enforcement plan written into the item); **#7b** a real
 `security@sentimetrx.ai` mailbox before publishing it; **#9c** status page;
 **#13** run the first drill.
+
+## 2026-09-15 — Push + CodeQL first-run triage
+
+**Shipped**: the 17-commit W38 stack (`db3e4650..4ced49eb`) — CI green on
+every job incl. the new `secret scan`, production deployed. The Next 16.3.1
+critical RCE fix is live. Dependabot security updates switched on once the
+`dependabot/**` preview gate was on `origin/main` (item 2(a) done).
+
+**CodeQL's first analysis**: 70 alerts (5 critical · 56 high · 9 medium).
+Triage, with the reasoning recorded on each dismissal:
+- **1 real critical** — `lib/substack.ts`: `resolveBaseUrl` accepts any pasted
+  URL (custom-domain publications), and `substackGet` fetched it with plain
+  `fetch` + follow-redirects. Now goes through `lib/safeFetch` (SSRF guard,
+  per-hop revalidation). This was reachable from the substack-sources routes.
+- **4 false-positive criticals** dismissed: `safeFetch`'s own fetch (it IS the
+  guard); reddit ×2 and the Meta webhook — hosts are hardcoded, only path
+  segments were user-controlled; those are now `encodeURIComponent`'d and the
+  Reddit permalink is shape-validated before the request line.
+- **5 medium** `missing-workflow-permissions` → `permissions: contents: read`
+  at the top of ci.yml (gitleaks PR comments off — summary + red check suffice).
+- **8 alerts in `prototype/`** (static design mocks with CDN scripts /
+  Math.random ids, never shipped) → excluded from analysis.
+- **1 high** won't-fix: the TEST seed script prints the throwaway password it
+  just generated — that is its job.
+- **~50 high remain for triage** (next governance cycle): `double-escaping` /
+  `incomplete-multi-character-sanitization` (HTML-stripping regexes in
+  crawlText, documentText, regulations, fetch-url, research — 22),
+  `insecure-randomness` (Math.random ids in client chat UIs — 15, mostly
+  not security-relevant), `polynomial-redos`/`redos` (12), `xss-through-dom`
+  (5, admin/demo clients). Once that backlog is worked, make CodeQL a required
+  check (SECURITY.md §9).
