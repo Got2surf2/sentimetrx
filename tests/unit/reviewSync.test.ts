@@ -22,7 +22,8 @@ const classifyPendingRows = vi.fn(async () => ({ classified: 3, hasMore: false }
 vi.mock('@/lib/taxonomyClassify', () => ({ classifyPendingRows: (...a: unknown[]) => classifyPendingRows(...(a as [])) }))
 const readStoredTaxonomy = vi.fn(async () => null as unknown)
 vi.mock('@/lib/taxonomyRollup', () => ({ readStoredTaxonomy: (...a: unknown[]) => readStoredTaxonomy(...(a as [])) }))
-vi.mock('@/lib/log', () => ({ logError: vi.fn() }))
+import { logError } from '@/lib/log'
+vi.mock('@/lib/log', () => ({ logError: vi.fn(), logWarn: vi.fn(), logInfo: vi.fn(), errMessage: (e: unknown) => String(e) }))
 
 import { syncReviewSource, reviewDedupKey } from '@/lib/reviewSync'
 
@@ -208,11 +209,12 @@ describe('syncReviewSource — the three phases + save', () => {
     computeAnalyticsSQL.mockRejectedValue(new Error('57014'))
     readStoredTaxonomy.mockResolvedValue({ fields: { review_text: { selFields: ['review_text'] } } })
     classifyPendingRows.mockRejectedValue(new Error('classify down'))
-    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(logError).mockClear()
     const r = await syncReviewSource('src1', svc as never, { drainOnly: true })
     expect(r.synced).toBe(2)
-    expect(err).toHaveBeenCalledTimes(2)
-    err.mockRestore()
+    // Both failures are logged at their own sites (a pre-existing Supabase-error
+    // log may fire too, so assert on WHICH, not how many).
+    expect(vi.mocked(logError).mock.calls.map(c => c[0])).toEqual(expect.arrayContaining(['reviewSync.ensureSchemaAndRecompute', 'reviewSync.autoClassify']))
   })
 })
 

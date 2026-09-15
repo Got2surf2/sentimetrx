@@ -13,6 +13,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { detectThemesForTownHall } from '@/lib/cohortThemeAggregator'
 import { reconcileMirrorForHall } from '@/lib/phase3DualWrite'
 import { checkCronAuth } from '@/lib/cronAuth'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -58,7 +59,7 @@ export async function GET(req: Request) {
         totalHealed += healed.healed
       }
     } catch (e) {
-      console.error({ at: 'cron/townhall-theme-detection', msg: 'mirror reconcile error', townHallId: th.id, err: e })
+      void logError('cron/townhall-theme-detection', e, { townHallId: th.id, msg: 'mirror reconcile error' })
     }
 
     const cohortConfig = (th.cohort_config || {}) as { theme_detection_mode?: string; engine?: { theme_detection_mode?: string } }
@@ -91,7 +92,7 @@ export async function GET(req: Request) {
       const result = await detectThemesForTownHall(th.id)
       totalDetected += result.inserted
     } catch (e) {
-      console.error({ at: 'cron/townhall-theme-detection', msg: 'new substrate detect error', townHallId: th.id, err: e })
+      void logError('cron/townhall-theme-detection', e, { townHallId: th.id, msg: 'new substrate detect error' })
     }
   }
 

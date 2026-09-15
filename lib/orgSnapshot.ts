@@ -21,6 +21,7 @@
 // the clone script materializes v2 snapshots into this same shape.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { logError } from '@/lib/log'
 
 export interface OrgSnapshotMeta {
   snapshot_version: 1
@@ -232,7 +233,7 @@ async function fetchParentIds(db: SupabaseClient, orgId: string, parent: Snapsho
       .order('id', { ascending: true })
       .range(from, from + PAGE - 1)
     if (error) {
-      console.error('[orgSnapshot] parent fetch failed for ' + parent + ':', error.message)
+      void logError('orgSnapshot.fetchParentIds', error.message, { msg: '[orgSnapshot] parent fetch failed for ' + parent + ':' })
       return { ids: [], error: error.message }
     }
     const page = (data || []).map(r => (r as { id: string }).id)
@@ -263,7 +264,7 @@ export async function* iterateTablePages(
   if (spec.filter.kind === 'id_eq_org') {
     const { data, error } = await db.from(spec.name).select('*').eq('id', orgId)
     if (error) {
-      console.error('[orgSnapshot] ' + spec.name + ' fetch failed:', error.message)
+      void logError('orgSnapshot.iterateTablePages', error.message, { msg: '[orgSnapshot] ' + spec.name + ' fetch failed:' })
       yield { rows: [], error: error.message, cursor: null }
       return
     }
@@ -279,7 +280,7 @@ export async function* iterateTablePages(
         .order(spec.orderBy || 'id', { ascending: true })
         .range(from, from + PAGE - 1)
       if (error) {
-        console.error('[orgSnapshot] ' + spec.name + ' fetch failed:', error.message)
+        void logError('orgSnapshot.iterateTablePages', error.message, { msg: '[orgSnapshot] ' + spec.name + ' fetch failed:' })
         yield { rows: [], error: error.message, cursor: null }
         return
       }
@@ -315,7 +316,7 @@ export async function* iterateTablePages(
           .order(spec.pageOrder, { ascending: true })
           .range(from, from + PAGE - 1)
         if (error) {
-          console.error('[orgSnapshot] ' + spec.name + ' page fetch failed:', error.message)
+          void logError('orgSnapshot.iterateTablePages', error.message, { msg: '[orgSnapshot] ' + spec.name + ' page fetch failed:' })
           yield { rows: [], error: error.message, cursor: null }
           return
         }
@@ -336,7 +337,7 @@ export async function* iterateTablePages(
         .order('id', { ascending: true })
         .range(from, from + PAGE - 1)
       if (error) {
-        console.error('[orgSnapshot] ' + spec.name + ' chunk fetch failed:', error.message)
+        void logError('orgSnapshot.iterateTablePages', error.message, { msg: '[orgSnapshot] ' + spec.name + ' chunk fetch failed:' })
         yield { rows: [], error: error.message, cursor: null }
         return
       }

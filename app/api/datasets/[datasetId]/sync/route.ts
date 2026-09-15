@@ -10,6 +10,7 @@ import { formatResponsesAsRows } from '@/lib/datasetUtils'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
 import { recomputeParentCollections } from '@/lib/collectionRecompute'
 import { serverError } from '@/lib/apiError'
+import { logError, logInfo } from '@/lib/log'
 
 export const dynamic  = 'force-dynamic'
 export const maxDuration = 30
@@ -156,7 +157,7 @@ export async function POST(req: Request, props: Params) {
           .update({ analytics, updated_at: syncTimestamp, updated_by: user.id })
           .eq('dataset_id', dataset.id)
       } catch (err) {
-        console.error({ at: 'sync', msg: "analytics compute failed", err: err })
+        void logError('sync', err, { msg: "analytics compute failed" })
       }
     }
 
@@ -165,9 +166,9 @@ export async function POST(req: Request, props: Params) {
     // stale until the collection is explicitly recomputed. Self-heal them now.
     try {
       const n = await recomputeParentCollections(service, dataset.id, dataset.org_id)
-      if (n > 0) console.log({ at: 'sync', msg: 'recomputed parent collections', count: n, member: dataset.id })
+      if (n > 0) void logInfo('sync', 'recomputed parent collections', { count: n, member: dataset.id })
     } catch (err) {
-      console.error({ at: 'sync', msg: "parent collection recompute failed", err: err })
+      void logError('sync', err, { msg: "parent collection recompute failed" })
     }
 
     return NextResponse.json({ synced: newRows.length, total: newTotal, dataset_id: dataset.id })

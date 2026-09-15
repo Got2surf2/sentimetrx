@@ -12,6 +12,7 @@ import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { checkRateLimit } from '@/lib/rateLimit'
+import { logWarn } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
     })
   } catch (err) {
     // Don't surface — uniform response. Log server-side for observability.
-    console.warn('magic-link: signInWithOtp threw', err)
+    void logWarn('auth.magic-link.POST', 'magic-link: signInWithOtp threw', { args: [err] })
   }
 
   return NextResponse.json({ ok: true }, { status: 200 })

@@ -5,6 +5,7 @@ import { createHash } from 'crypto'
 import { checkRateLimit } from '@/lib/rateLimit'
 import type { SubmitResponseBody, Sentiment } from '@/lib/types'
 import { auditContent, auditConversationLog, type ContentFlag } from '@/lib/contentGuard'
+import { logError } from '@/lib/log'
 
 // POST /api/respond
 // Public endpoint -- no auth required.
@@ -220,7 +221,7 @@ export async function POST(req: NextRequest) {
         const { error: updateError } = await updateQuery
 
         if (updateError) {
-          console.error('Response update error:', updateError)
+          void logError('respond.POST', updateError, { msg: 'Response update error:' })
           return NextResponse.json({ error: 'Failed to update response' }, { status: 500 })
         }
 
@@ -253,7 +254,7 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (insertError) {
-    console.error('Response insert error:', insertError)
+    void logError('respond.POST', insertError, { msg: 'Response insert error:' })
     return NextResponse.json({ error: 'Failed to save response' }, { status: 500 })
   }
 

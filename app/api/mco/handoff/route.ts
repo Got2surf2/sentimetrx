@@ -12,6 +12,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import type { PostgrestError } from '@supabase/supabase-js'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
     if (error.code !== '23505') break
   }
   if (lastErr) {
-    console.error('[mco/handoff] insert failed:', lastErr)
+    void logError('mco.handoff.POST', lastErr, { msg: '[mco/handoff] insert failed:' })
     return NextResponse.json({ error: 'handoff_failed' }, { status: 500, headers: cors })
   }
 

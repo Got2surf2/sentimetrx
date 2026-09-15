@@ -14,6 +14,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'crypto'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -80,7 +81,7 @@ function verifySvixSignature(secret: string, id: string, timestamp: string, body
 export async function POST(req: NextRequest) {
   const secret = process.env.RESEND_WEBHOOK_SECRET
   if (!secret) {
-    console.error({ at: 'resend/webhook', msg: "RESEND_WEBHOOK_SECRET not configured" })
+    void logError('resend/webhook', "RESEND_WEBHOOK_SECRET not configured")
     return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 503 })
   }
 
@@ -137,7 +138,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, deduped: true })
     }
     // Otherwise log and continue — fail-open by design.
-    console.error({ at: 'resend/webhook/dedup', svixId, err: dedupErr })
+    void logError('resend/webhook/dedup', dedupErr, { svixId })
   }
   const providerMsgId = data.email_id
   const eventTime = data.created_at || new Date().toISOString()

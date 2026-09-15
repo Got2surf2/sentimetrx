@@ -9,7 +9,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { loadAnaSample } from '@/lib/anaReportContext'
 import type { SerializedFilters } from '@/lib/filterUtils'
 
-vi.mock('@/lib/log', () => ({ logError: vi.fn(async () => undefined) }))
+vi.mock('@/lib/log', () => ({ logError: vi.fn(async () => undefined), logWarn: vi.fn(), logInfo: vi.fn(), errMessage: (e: unknown) => String(e) }))
 
 type RpcImpl = (name: string, args: Record<string, unknown>) => { data: unknown; error: { message: string } | null }
 

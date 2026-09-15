@@ -144,7 +144,7 @@ export async function GET(req: NextRequest) {
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      console.error('[org-snapshot] resumed org ' + resume + ' failed:', msg)
+      void logError('cron.org-snapshot.GET', msg, { msg: '[org-snapshot] resumed org ' + resume + ' failed:' })
       results.push({ org_id: resume, org_name: null, error: msg, ms: Date.now() - orgStart, day })
     }
   }
@@ -170,7 +170,7 @@ export async function GET(req: NextRequest) {
             // A table failed to read → the uploaded snapshot is INCOMPLETE. Surface
             // it as an error so the run can't report a green backup that silently
             // dropped a content table.
-            console.error('[org-snapshot] org ' + org.id + ' INCOMPLETE — fetch errors:', JSON.stringify(fetchErrors))
+            void logError('cron.org-snapshot.GET', JSON.stringify(fetchErrors), { msg: '[org-snapshot] org ' + org.id + ' INCOMPLETE — fetch errors:' })
           }
           results.push({
             org_id: org.id,
@@ -189,7 +189,7 @@ export async function GET(req: NextRequest) {
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
-        console.error('[org-snapshot] org ' + org.id + ' failed:', msg)
+        void logError('cron.org-snapshot.GET', msg, { msg: '[org-snapshot] org ' + org.id + ' failed:' })
         results.push({
           org_id: org.id,
           org_name: org.name,

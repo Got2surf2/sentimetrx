@@ -9,7 +9,7 @@ import type * as EntityFilterMod from '@/lib/entityFilter'
 
 const callAI = vi.fn()
 vi.mock('@/lib/ai', () => ({ callAI: (...a: unknown[]) => callAI(...a) }))
-vi.mock('@/lib/log', () => ({ logError: vi.fn() }))
+vi.mock('@/lib/log', () => ({ logError: vi.fn(), logWarn: vi.fn(), logInfo: vi.fn(), errMessage: (e: unknown) => String(e) }))
 const storeEntityMentionCounts = vi.fn(async () => {})
 vi.mock('@/lib/entityFilter', async () => ({ ...(await vi.importActual<typeof EntityFilterMod>('@/lib/entityFilter')), storeEntityMentionCounts: (...a: unknown[]) => storeEntityMentionCounts(...(a as [])) }))
 

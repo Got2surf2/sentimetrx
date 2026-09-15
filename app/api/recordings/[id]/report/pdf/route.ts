@@ -19,6 +19,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { logDeckDownload } from '@/lib/auth/logDeckDownload'
 import { renderRecordingReportPdf } from '@/lib/recordings/reportPdf'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -75,7 +76,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       },
     })
   } catch (e: unknown) {
-    console.error({ at: 'recording-pdf', msg: 'render failed', err: e instanceof Error ? e.message : String(e) })
+    void logError('recording-pdf', e instanceof Error ? e.message : String(e), { msg: 'render failed' })
     return NextResponse.json({ error: 'PDF render failed' }, { status: 500 })
   }
 }

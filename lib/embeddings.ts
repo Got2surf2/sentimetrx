@@ -16,6 +16,7 @@ import 'server-only'
 
 import { resolveOrgAiConfig } from '@/lib/aiKey'
 import { logUsage } from '@/lib/usageLog'
+import { logError } from '@/lib/log'
 
 const EMBEDDING_MODEL = 'text-embedding-3-small'
 const EMBEDDING_DIMS = 1536
@@ -53,7 +54,7 @@ export async function generateEmbedding(text: string, orgId: string | undefined)
   })
 
   if (!res.ok) {
-    console.error('[embeddings] OpenAI error:', res.status, await res.text().catch(function() { return '' }))
+    void logError('embeddings.generateEmbedding', res.status, { msg: '[embeddings] OpenAI error:', args: [await res.text().catch(function() { return '' })] })
     return null
   }
 
@@ -75,7 +76,7 @@ export async function generateEmbeddings(texts: string[], orgId: string | undefi
   })
 
   if (!res.ok) {
-    console.error('[embeddings] OpenAI batch error:', res.status, await res.text().catch(function() { return '' }))
+    void logError('embeddings.generateEmbeddings', res.status, { msg: '[embeddings] OpenAI batch error:', args: [await res.text().catch(function() { return '' })] })
     return texts.map(function() { return null })
   }
 

@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
+import { logError } from '@/lib/log'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -87,7 +88,7 @@ export async function POST(req: Request) {
     try {
       suggestion = JSON.parse(jsonStr)
     } catch {
-      console.error({ at: 'study-suggest', msg: "JSON parse failed", err: jsonStr.slice(0, 200) })
+      void logError('study-suggest', jsonStr.slice(0, 200), { msg: "JSON parse failed" })
       return NextResponse.json({ error: 'AI returned invalid response' }, { status: 502 })
     }
 
@@ -117,7 +118,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ suggestion: result })
 
   } catch (err: unknown) {
-    console.error({ at: 'study-suggest', msg: "error", err: err })
+    void logError('study-suggest', err, { msg: "error" })
     return NextResponse.json({ error: 'Failed to generate suggestions' }, { status: 500 })
   }
 }

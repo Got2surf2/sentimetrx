@@ -20,6 +20,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkCronAuth } from '@/lib/cronAuth'
 import { alertRecipients, pickAlertWorthy, sendServiceAlert } from '@/lib/serviceAlerts'
 import { probeBalances, getServiceHealthRows } from '@/lib/serviceHealth'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest) {
         service.from('service_health').update({ last_alerted_at: stamp }).eq('service', r.service)
       ))
     } catch (e: unknown) {
-      console.error({ at: 'cron/service-balance', msg: 'email send failed', err: e instanceof Error ? e.message : e })
+      void logError('cron/service-balance', e instanceof Error ? e.message : e, { msg: 'email send failed' })
     }
   }
 

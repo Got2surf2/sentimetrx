@@ -12,6 +12,7 @@ import { aliasedCounts } from '@/lib/aliasUtils'
 import { buildKwRegex, themeSetsForExport, themeModelKey, themeFieldKey, type ThemeModel } from '@/lib/themeUtils'
 import { deserializeFilters, applyFilters, type SerializedFilters } from '@/lib/filterUtils'
 import { pageSampledRows } from '@/lib/bulkRowSample'
+import { logError } from '@/lib/log'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -1072,7 +1073,7 @@ export async function POST(req: Request, props: Params) {
   }
   if (!skipAI) {
     try { narratives = await generateNarratives((dataset as DatasetRow).org_id, datasetName, analytics.totalRows, audience, selectedFields, instructions || undefined) }
-    catch (e) { console.error({ at: 'export/html', msg: "AI error", err: e }) }
+    catch (e) { void logError('export/html', e, { msg: "AI error" }) }
   }
 
   // Per-request mutable state (no module-level sharing)

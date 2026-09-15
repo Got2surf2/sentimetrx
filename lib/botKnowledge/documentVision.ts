@@ -14,6 +14,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { renderPdfToPng } from '@/lib/vision/renderDoc'
 import { visionReadPages } from '@/lib/vision/readDocument'
 import type { AIUsageContext } from '@/lib/ai'
+import { logError } from '@/lib/log'
 
 const BUCKET = process.env.RECORDINGS_BUCKET || 'recordings'
 
@@ -42,7 +43,7 @@ export async function extractPdfViaVision(input: DocumentVisionInput): Promise<{
   try {
     const up = await service.storage.from(BUCKET).upload(pdfPath, input.buffer, { contentType: 'application/pdf', upsert: true })
     if (up.error) {
-      console.error({ at: 'botKnowledge.vision', msg: 'temp pdf upload failed', err: up.error.message })
+      void logError('botKnowledge.vision', up.error.message, { msg: 'temp pdf upload failed' })
       return null
     }
 
@@ -68,7 +69,7 @@ export async function extractPdfViaVision(input: DocumentVisionInput): Promise<{
     if (body.length < 10) return null
     return { text: body, pageCount: rendered.page_count }
   } catch (e) {
-    console.error({ at: 'botKnowledge.vision', msg: 'vision extraction failed', err: (e as Error)?.message })
+    void logError('botKnowledge.vision', (e as Error)?.message, { msg: 'vision extraction failed' })
     return null
   } finally {
     // Clean up temp artifacts (source PDF + rendered PNGs live under `stem`).

@@ -13,6 +13,7 @@ import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { logBotChange } from '@/lib/auditLog'
 import { chunkText } from '@/lib/botKnowledge/chunkText'
+import { logError } from '@/lib/log'
 
 type ServiceClient = ReturnType<typeof createServiceRoleClient>
 type InsertedChunk = { id: string; title: string; content: string }
@@ -97,7 +98,7 @@ export async function ingestKnowledgeText(service: ServiceClient, bot: IngestBot
   async function pruneStale() {
     if (staleIds.length === 0) return
     const { error: delErr } = await service.from('agent_knowledge_chunks').delete().in('id', staleIds).eq('bot_id', bot.id)
-    if (delErr) console.error({ at: 'knowledge', msg: 'replace prune failed (new chunks already stored)', err: delErr.message })
+    if (delErr) void logError('knowledge', delErr.message, { msg: 'replace prune failed (new chunks already stored)' })
   }
 
   if (deduped.length === 0) {
@@ -112,7 +113,7 @@ export async function ingestKnowledgeText(service: ServiceClient, bot: IngestBot
   try {
     candEmbeddings = await generateEmbeddings(deduped.map(function(c) { return c.title + '\n' + c.content }), bot.org_id)
   } catch (e: unknown) {
-    console.error({ at: 'knowledge', msg: 'candidate embedding failed (proceeding lexical-only)', err: e instanceof Error ? e.message : undefined })
+    void logError('knowledge', e instanceof Error ? e.message : undefined, { msg: 'candidate embedding failed (proceeding lexical-only)' })
     candEmbeddings = deduped.map(function() { return null })
   }
 
@@ -219,7 +220,7 @@ export async function ingestKnowledgeText(service: ServiceClient, bot: IngestBot
           }
         }
       } catch (e: unknown) {
-        console.error({ at: 'knowledge', msg: "Classification failed (chunks still usable)", err: e instanceof Error ? e.message : undefined })
+        void logError('knowledge', e instanceof Error ? e.message : undefined, { msg: "Classification failed (chunks still usable)" })
       }
     }
   }

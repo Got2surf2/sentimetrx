@@ -5,7 +5,7 @@
 // row is read or written, and the writes that do happen carry org_id.
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('@/lib/log', () => ({ logError: () => {} }))
+vi.mock('@/lib/log', () => ({ logError: () => {}, logWarn: vi.fn(), logInfo: vi.fn(), errMessage: (e: unknown) => String(e) }))
 vi.mock('@/lib/signalStats', () => ({ invalidateSignalStats: async () => {} }))
 vi.mock('@/lib/collectionSchema', () => ({ buildMergedCollectionSchema: async () => ({ fields: [{ key: 'f' }] }) }))
 vi.mock('@/lib/analyticsCompute', () => ({

@@ -3,6 +3,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getEmailProvider } from '@/lib/email/provider'
 import { buildInviteEmail } from '@/lib/email/inviteTemplate'
+import { logError } from '@/lib/log'
 
 const INVITE_FROM = 'Sentimetrx <invites@sentimetrx.ai>'
 
@@ -58,7 +59,7 @@ export async function sendInviteEmail(
     return { status: 'sent' }
   } catch (e: unknown) {
     const error = e instanceof Error ? e.message : String(e)
-    console.error('invite: email send failed', { invite_id: invite.id, error })
+    void logError('email.sendInvite.sendInviteEmail', { invite_id: invite.id, error }, { msg: 'invite: email send failed' })
     return { status: 'failed', error }
   }
 }

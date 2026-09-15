@@ -7,6 +7,7 @@ import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { getEmailProvider, interpolateTemplate, buildSurveyUrl, getSMSProvider, buildSMSBody } from '@/lib/email/provider'
 import type { EmailProviderType, CampaignChannel } from '@/lib/types'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -139,13 +140,7 @@ export async function POST(req: NextRequest, props: Params) {
         try {
           await smsProvider.send({ to: respondent.phone, body: smsBody })
         } catch (smsErr: unknown) {
-          console.error({
-            event: 'sms_send_failed',
-            campaign_id: params.id,
-            respondent_id: respondent.id,
-            phone_tail: respondent.phone?.slice(-4),
-            error: smsErr instanceof Error ? smsErr.message : String(smsErr),
-          })
+          void logError('campaigns.id.send.POST', 'error', { event: 'sms_send_failed', campaign_id: params.id, respondent_id: respondent.id, phone_tail: respondent.phone?.slice(-4), error: smsErr instanceof Error ? smsErr.message : String(smsErr) })
         }
       }
 
@@ -231,7 +226,7 @@ export async function POST(req: NextRequest, props: Params) {
         }
       }
     } catch (err) {
-      console.error('Failed to schedule reminders:', err)
+      void logError('campaigns.id.send.POST', err, { msg: 'Failed to schedule reminders:' })
     }
   }
 

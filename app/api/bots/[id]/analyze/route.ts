@@ -15,6 +15,7 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { buildBotSchema, mergeSchemaStats } from '@/lib/datasetUtils'
 import { isPhase3ReadSafe } from '@/lib/phase3Read'
 import { serverError } from '@/lib/apiError'
+import { logError } from '@/lib/log'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -308,7 +309,7 @@ export async function POST(_req: Request, props: Params) {
       await service.from('dataset_state').update({ schema_config: merged, updated_at: syncTimestamp }).eq('dataset_id', datasetId)
     }
   } catch (err) {
-    console.error({ at: 'bots/analyze', msg: "schema merge failed", err: err })
+    void logError('bots/analyze', err, { msg: "schema merge failed" })
   }
 
   return NextResponse.json({ dataset_id: datasetId, synced: rows.length, total: newTotal, created })

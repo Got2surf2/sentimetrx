@@ -8,6 +8,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { cleanDeflectResponse } from '@/lib/guardrails'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -127,7 +128,7 @@ ${body.testing ? `\nDEBUG MODE — Think step by step. Before your response, exp
     return NextResponse.json({ deflection, ...(debugInfo ? { _debug: debugInfo } : {}) })
 
   } catch (err) {
-    console.error('Deflect API error:', err)
+    void logError('deflect.POST', err, { msg: 'Deflect API error:' })
     return NextResponse.json({ deflection: null })
   }
 }

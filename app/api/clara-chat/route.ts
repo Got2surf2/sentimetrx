@@ -8,6 +8,7 @@ import { checkRateLimit } from '@/lib/rateLimit'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { checkMessage } from '@/lib/contentGuard'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -221,7 +222,7 @@ ${KNOWLEDGE_BASE}`,
 
     return NextResponse.json({ reply: text }, { headers: cors })
   } catch (err) {
-    console.error('Clara chat error:', err)
+    void logError('clara-chat.POST', err, { msg: 'Clara chat error:' })
     return NextResponse.json({ reply: "I'm having trouble connecting right now. Please try again in a moment, or visit craniometrix.com for help." }, { headers: cors })
   }
 }

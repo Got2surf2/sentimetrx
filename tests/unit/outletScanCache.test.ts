@@ -33,7 +33,7 @@ function builder(table: string) {
   return b
 }
 vi.mock('@/lib/supabase/server', () => ({ createServiceRoleClient: () => ({ from: (t: string) => builder(t) }) }))
-vi.mock('@/lib/log', () => ({ logError: vi.fn() }))
+vi.mock('@/lib/log', () => ({ logError: vi.fn(), logWarn: vi.fn(), logInfo: vi.fn(), errMessage: (e: unknown) => String(e) }))
 
 import { computeOutletReportWithPredictor, computeOutletLeaderboard, computeHierarchyReport } from '@/lib/outletReport'
 import type { SchemaFieldConfig } from '@/lib/analyzeTypes'

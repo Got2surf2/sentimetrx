@@ -7,6 +7,7 @@ import { isInputSafe, isOutputSafe, extractQuestion } from '@/lib/guardrails'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -173,7 +174,7 @@ Generate a targeted follow-up question or return SKIP.`
     return NextResponse.json({ question: clean, ...(debug ? { _debug: debug } : {}) })
 
   } catch (err) {
-    console.error('Clarify API error:', err)
+    void logError('clarify.POST', err, { msg: 'Clarify API error:' })
     return NextResponse.json({ question: null })
   }
 }

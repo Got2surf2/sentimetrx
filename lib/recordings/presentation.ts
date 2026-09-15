@@ -15,6 +15,7 @@ import type {
   QaSetupInputs,
   TranscriptSegment,
 } from '@/lib/recordings/types'
+import { logError } from '@/lib/log'
 
 const SONNET_MODEL = 'claude-sonnet-4-6'
 
@@ -47,13 +48,13 @@ export async function summarizePresentation(input: SummarizePresentationInput): 
       usage: { org_id: input.org_id, resource_type: 'recording', resource_id: input.recording_id, event_type: 'recording_presentation_summary' },
     })
   } catch (e) {
-    console.error({ at: 'recordings.presentation', msg: 'summary call failed', err: (e as Error)?.message })
+    void logError('recordings.presentation', (e as Error)?.message, { msg: 'summary call failed' })
     return { summary: null, cents: 0 }
   }
 
   const obj = parseJsonObject(resp.text)
   if (!obj) {
-    console.error({ at: 'recordings.presentation', msg: 'summary JSON unparseable' })
+    void logError('recordings.presentation', 'summary JSON unparseable')
     return { summary: null, cents: 25 }
   }
 

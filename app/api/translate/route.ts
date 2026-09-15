@@ -8,6 +8,7 @@ import type { StudyTranslation, StudyConfig, LikertScaleOption } from '@/lib/typ
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { serverError } from '@/lib/apiError'
+import { logWarn } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -253,7 +254,7 @@ Return ONLY valid JSON, no markdown, no explanation.`
     try {
       parsed = await attemptTranslation()
     } catch (firstErr) {
-      console.warn('[translate] first attempt failed, retrying:', (firstErr as Error).message)
+      void logWarn('translate.POST', '[translate] first attempt failed, retrying:', { args: [(firstErr as Error).message] })
       parsed = await attemptTranslation()
     }
 

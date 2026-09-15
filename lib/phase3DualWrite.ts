@@ -92,7 +92,7 @@ async function withRetry<T extends { error: { message: string } | null }>(
     }
     if (i < attempts - 1) await new Promise(r => setTimeout(r, 250 * (i + 1)))
   }
-  console.error({ at: 'phase3-dual-write', msg: label + ' failed after ' + attempts + ' attempts', err: last?.error?.message })
+  void logError('phase3-dual-write', last?.error?.message, { msg: label + ' failed after ' + attempts + ' attempts' })
   return last as T
 }
 
@@ -140,7 +140,7 @@ export async function mirrorTurns(
     )
 
     if (convErr || !convRow) {
-      console.error({ at: 'phase3-dual-write', msg: 'conversations upsert failed', err: convErr?.message, bot_id: args.botId, session_id: args.sessionId })
+      void logError('phase3-dual-write', convErr?.message, { bot_id: args.botId, session_id: args.sessionId, msg: 'conversations upsert failed' })
       return
     }
 
@@ -163,7 +163,7 @@ export async function mirrorTurns(
         'pulseiq_session_conversations link',
       )
       if (linkErr) {
-        console.error({ at: 'phase3-dual-write', msg: 'pulseiq_session_conversations link failed', err: linkErr.message, town_hall_id: args.townHallId, conversation_id: conversationId })
+        void logError('phase3-dual-write', linkErr.message, { town_hall_id: args.townHallId, conversation_id: conversationId, msg: 'pulseiq_session_conversations link failed' })
       }
     }
 
@@ -198,10 +198,10 @@ export async function mirrorTurns(
     )
     if (turnsErr) {
       void logError('phase3DualWrite.turnsInsert', turnsErr, { orgId: args.orgId })
-      console.error({ at: 'phase3-dual-write', msg: 'conversation_turns insert failed', err: turnsErr.message, bot_id: args.botId, session_id: args.sessionId, count: turnRows.length })
+      void logError('phase3-dual-write', turnsErr.message, { bot_id: args.botId, session_id: args.sessionId, count: turnRows.length, msg: 'conversation_turns insert failed' })
     }
   } catch (e) {
-    console.error({ at: 'phase3-dual-write', msg: 'unexpected error', err: (e as { message?: unknown })?.message, bot_id: args.botId, session_id: args.sessionId })
+    void logError('phase3-dual-write', (e as { message?: unknown })?.message, { bot_id: args.botId, session_id: args.sessionId, msg: 'unexpected error' })
   }
 }
 
@@ -240,10 +240,10 @@ export async function mirrorFocusFlagsUpdate(
       .eq('turn_number', args.turnNumber)
 
     if (error) {
-      console.error({ at: 'phase3-dual-write', msg: 'conversation_turns flags update failed', err: error.message, bot_id: args.botId, session_id: args.sessionId, turn_number: args.turnNumber })
+      void logError('phase3-dual-write', error.message, { bot_id: args.botId, session_id: args.sessionId, turn_number: args.turnNumber, msg: 'conversation_turns flags update failed' })
     }
   } catch (e) {
-    console.error({ at: 'phase3-dual-write', msg: 'unexpected error in flags update', err: (e as { message?: unknown })?.message })
+    void logError('phase3-dual-write', (e as { message?: unknown })?.message, { msg: 'unexpected error in flags update' })
   }
 }
 
@@ -373,9 +373,9 @@ export async function mirrorDeleteSession(
       .eq('session_id', args.sessionId)
 
     if (error) {
-      console.error({ at: 'phase3-dual-write', msg: 'conversations delete failed', err: error.message, bot_id: args.botId, session_id: args.sessionId })
+      void logError('phase3-dual-write', error.message, { bot_id: args.botId, session_id: args.sessionId, msg: 'conversations delete failed' })
     }
   } catch (e) {
-    console.error({ at: 'phase3-dual-write', msg: 'unexpected error in delete', err: (e as { message?: unknown })?.message })
+    void logError('phase3-dual-write', (e as { message?: unknown })?.message, { msg: 'unexpected error in delete' })
   }
 }

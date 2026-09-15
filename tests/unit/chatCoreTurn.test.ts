@@ -26,7 +26,7 @@ vi.mock('@/lib/embeddings', () => ({
 
 const logUsageMock = vi.fn()
 vi.mock('@/lib/usageLog', () => ({ logUsage: (...args: unknown[]) => logUsageMock(...args) }))
-vi.mock('@/lib/log', () => ({ logError: vi.fn() }))
+vi.mock('@/lib/log', () => ({ logError: vi.fn(), logWarn: vi.fn(), logInfo: vi.fn(), errMessage: (e: unknown) => String(e) }))
 
 const mirrorTurnsMock = vi.fn(async (..._args: unknown[]) => {})
 vi.mock('@/lib/phase3DualWrite', () => ({

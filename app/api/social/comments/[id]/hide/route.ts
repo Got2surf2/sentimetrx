@@ -4,6 +4,7 @@
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       })
       if (!res.ok) {
         const err = await res.text()
-        console.error({ at: 'social/hide', msg: "Meta API error", err: err })
+        void logError('social/hide', err, { msg: "Meta API error" })
         return NextResponse.json({ error: 'Failed to update on platform' }, { status: 502 })
       }
     }

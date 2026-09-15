@@ -11,6 +11,7 @@
 
 import { NextResponse } from 'next/server'
 import { timingSafeEqual } from 'crypto'
+import { logError } from '@/lib/log'
 
 /**
  * Returns null if the request is authorized to invoke a cron route.
@@ -19,7 +20,7 @@ import { timingSafeEqual } from 'crypto'
 export function checkCronAuth(authHeader: string | null): NextResponse | null {
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret || cronSecret.length < 16) {
-    console.error('[cron-auth] CRON_SECRET missing or too short — refusing cron request')
+    void logError('cronAuth.checkCronAuth', '[cron-auth] CRON_SECRET missing or too short — refusing cron request')
     return NextResponse.json({ error: 'Cron secret not configured' }, { status: 503 })
   }
 

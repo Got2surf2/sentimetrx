@@ -38,7 +38,7 @@ export async function ingestSlides(input: IngestSlidesInput): Promise<Presentati
 
   // v1 supports PDF only.
   if (!String(slideFile.mime_type || '').includes('pdf') && !String(slideFile.original_filename || '').toLowerCase().endsWith('.pdf')) {
-    console.error({ at: 'recordings.slides', msg: 'slides not a PDF — skipping (v1 PDF-only)', file: slideFile.original_filename })
+    void logError('recordings.slides', 'slides not a PDF — skipping (v1 PDF-only)', { file: slideFile.original_filename })
     return null
   }
 
@@ -78,7 +78,7 @@ export async function ingestSlides(input: IngestSlidesInput): Promise<Presentati
       model: SONNET_MODEL,
     }
   } catch (e) {
-    console.error({ at: 'recordings.slides', msg: 'slide ingestion failed', err: (e as Error)?.message })
+    void logError('recordings.slides', (e as Error)?.message, { msg: 'slide ingestion failed' })
     return null
   }
 }

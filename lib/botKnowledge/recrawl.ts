@@ -26,6 +26,7 @@ import type { createServiceRoleClient } from '@/lib/supabase/server'
 import { safeFetch } from '@/lib/safeFetch'
 import { htmlToText } from '@/lib/crawlText'
 import { ingestKnowledgeText, KnowledgeInsertError, type IngestBot } from '@/lib/botKnowledge/ingest'
+import { logError } from '@/lib/log'
 
 type ServiceClient = ReturnType<typeof createServiceRoleClient>
 
@@ -147,7 +148,7 @@ export async function recrawlAgentPages(
     } catch (e) {
       // Insert failed — do NOT write the hash so the page is retried next run.
       if (!(e instanceof KnowledgeInsertError)) {
-        console.error({ at: 'recrawl', msg: 'ingest failed', url, err: e instanceof Error ? e.message : undefined })
+        void logError('recrawl', e instanceof Error ? e.message : undefined, { url, msg: 'ingest failed' })
       }
       pages.push({ url, status: 'error', chunksAdded: 0 })
       continue

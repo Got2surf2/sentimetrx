@@ -9,6 +9,7 @@
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { waitUntil } from '@vercel/functions'
 import type { AIUsage } from '@/lib/ai'
+import { logError, logWarn } from '@/lib/log'
 
 // Re-export the pure constants so existing server callers don't need to update imports.
 export { RATES, TIER_DEFAULT_MODEL, estimateCost } from '@/lib/usageRates'
@@ -39,7 +40,7 @@ export interface UsageContext {
 const CUSTOMER_RESOURCE_TYPES = new Set(['bot', 'townhall', 'social', 'dataset', 'study', 'recording'])
 function warnIfUnattributed(context: UsageContext): void {
   if (!context.org_id && CUSTOMER_RESOURCE_TYPES.has(context.resource_type)) {
-    console.warn(`[usage] unattributed ${context.resource_type}/${context.event_type} logged with null org_id — org attribution gap`)
+    void logWarn('usageLog.warnIfUnattributed', `[usage] unattributed ${context.resource_type}/${context.event_type} logged with null org_id — org attribution gap`)
   }
 }
 
@@ -66,11 +67,11 @@ export function logUsage(context: UsageContext, usage: AIUsage | undefined): voi
       cache_read_tokens: usage.cache_read_tokens,
       cache_creation_tokens: usage.cache_creation_tokens,
     }).then(function(r: { error: { message: string } | null }) {
-      if (r.error) console.error('[usage] log failed:', r.error.message)
+      if (r.error) void logError('usageLog.logUsage', r.error.message, { msg: '[usage] log failed:' })
     }))
   } catch (e: unknown) {
     // Never block the caller
-    console.error('[usage] log error:', e instanceof Error ? e.message : e)
+    void logError('usageLog.logUsage', e instanceof Error ? e.message : e, { msg: '[usage] log error:' })
   }
 }
 
@@ -105,10 +106,10 @@ export function logFlatCost(
       cache_creation_tokens: 0,
       cost_cents: Math.round(costCents),
     }).then(function(r: { error: { message: string } | null }) {
-      if (r.error) console.error('[usage] flat-cost log failed:', r.error.message)
+      if (r.error) void logError('usageLog.logFlatCost', r.error.message, { msg: '[usage] flat-cost log failed:' })
     }))
   } catch (e: unknown) {
-    console.error('[usage] flat-cost log error:', e instanceof Error ? e.message : e)
+    void logError('usageLog.logFlatCost', e instanceof Error ? e.message : e, { msg: '[usage] flat-cost log error:' })
   }
 }
 

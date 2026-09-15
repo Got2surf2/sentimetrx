@@ -19,6 +19,7 @@ import type {
   PresentationOutline,
   TranscriptSegment,
 } from '@/lib/recordings/types'
+import { logError } from '@/lib/log'
 
 const SONNET_MODEL = 'claude-sonnet-4-6'
 
@@ -164,7 +165,7 @@ export async function detectPhases(input: DetectPhasesInput): Promise<PhaseMap> 
     if (!clamped) return wholeTranscriptPhaseMap(input.durationSec)
     return { phases: clamped, detected_at: new Date().toISOString(), model: SONNET_MODEL, edited_by_user: false }
   } catch (e) {
-    console.error({ at: 'recordings.phases', msg: 'phase detection failed', err: (e as Error)?.message })
+    void logError('recordings.phases', (e as Error)?.message, { msg: 'phase detection failed' })
     return wholeTranscriptPhaseMap(input.durationSec)
   }
 }

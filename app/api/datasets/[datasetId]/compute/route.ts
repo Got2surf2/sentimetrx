@@ -17,6 +17,7 @@ import { recomputeCollectionAnalytics } from '@/lib/collectionRecompute'
 import { rebuildBrandSchema, discoverBrandEntitiesIfNeeded } from '@/lib/brandRules'
 import { serverError } from '@/lib/apiError'
 import type { SchemaFieldConfig } from '@/lib/analyzeTypes'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -142,7 +143,7 @@ export async function POST(_req: Request, props: Params) {
   // via waitUntil so it never adds latency to the compute response.
   waitUntil(
     discoverBrandEntitiesIfNeeded(service, params.datasetId).catch(err => {
-      console.error({ at: 'compute', msg: "brand entity discovery failed", err: err })
+      void logError('compute', err, { msg: "brand entity discovery failed" })
     }),
   )
 

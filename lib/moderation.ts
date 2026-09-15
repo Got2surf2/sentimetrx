@@ -12,6 +12,7 @@ import 'server-only'
 //   platform → platform OPENAI_API_KEY
 
 import { resolveOrgAiConfig } from '@/lib/aiKey'
+import { logError } from '@/lib/log'
 
 export interface ModerationScore {
   toxicity: number       // harassment + hate combined peak
@@ -50,7 +51,7 @@ export async function moderateTexts(texts: string[], orgId: string | undefined):
   }
 
   if (!res || !res.ok) {
-    console.error('[moderation] OpenAI error:', res?.status, res ? await res.text() : 'no response')
+    void logError('moderation.moderateTexts', res?.status, { msg: '[moderation] OpenAI error:', args: [res ? await res.text() : 'no response'] })
     return texts.map(() => emptyScore())
   }
 

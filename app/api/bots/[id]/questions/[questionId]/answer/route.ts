@@ -26,6 +26,7 @@ import { serverError } from '@/lib/apiError'
 import { generateEmbedding } from '@/lib/embeddings'
 import { logBotChange } from '@/lib/auditLog'
 import { materializeExternalExchange } from '@/lib/externalExchange'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -94,7 +95,7 @@ export async function POST(req: NextRequest, props: Params) {
     try {
       vec = await generateEmbedding(title + '\n' + content, bot.org_id)
     } catch (e: unknown) {
-      console.error({ at: 'question-answer', msg: 'embedding failed (chunk still usable)', err: e instanceof Error ? e.message : String(e) })
+      void logError('question-answer', e instanceof Error ? e.message : String(e), { msg: 'embedding failed (chunk still usable)' })
     }
     const embeddingPatch = vec ? { embedding: JSON.stringify(vec) } : {}
 
@@ -162,7 +163,7 @@ export async function POST(req: NextRequest, props: Params) {
         questionId: params.questionId, question: question.original_comment || question.user_message, answer,
       })
     } catch (e: unknown) {
-      console.error({ at: 'question-answer', msg: 'external corpus materialize failed (answer still saved)', err: e instanceof Error ? e.message : String(e) })
+      void logError('question-answer', e instanceof Error ? e.message : String(e), { msg: 'external corpus materialize failed (answer still saved)' })
     }
   }
 

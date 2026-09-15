@@ -10,7 +10,7 @@
 // who moved what, when, between which orgs.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { logError } from '@/lib/log'
+import { logError, logWarn } from '@/lib/log'
 
 export type TransferableResource = 'bot' | 'study' | 'dataset' | 'townhall_session' | 'recording'
 
@@ -141,9 +141,9 @@ export async function recordAdminAction(ctx: {
       initiated_by_email: ctx.initiatedByEmail || null,
       metadata:           ctx.metadata || {},
     })
-    if (error) console.warn('[adminAction] failed to record audit row: ' + error.message)
+    if (error) void logWarn('orgTransfer.recordAdminAction', '[adminAction] failed to record audit row: ' + error.message)
   } catch (e: unknown) {
-    console.warn('[adminAction] audit log threw: ' + errMessage(e))
+    void logWarn('orgTransfer.recordAdminAction', '[adminAction] audit log threw: ' + errMessage(e))
   }
 }
 
@@ -168,9 +168,9 @@ export async function recordAdminCrossOrgAction(ctx: AdminActionContext): Promis
       initiated_by_email: ctx.initiatedByEmail || null,
       metadata:           ctx.metadata || {},
     })
-    if (error) console.warn('[adminAction] failed to record audit row: ' + error.message)
+    if (error) void logWarn('orgTransfer.recordAdminCrossOrgAction', '[adminAction] failed to record audit row: ' + error.message)
   } catch (e: unknown) {
-    console.warn('[adminAction] audit log threw: ' + errMessage(e))
+    void logWarn('orgTransfer.recordAdminCrossOrgAction', '[adminAction] audit log threw: ' + errMessage(e))
   }
 }
 
@@ -204,8 +204,8 @@ export async function recordOrgTransfer(ctx: TransferContext): Promise<void> {
     })
     // Don't fail the response if logging fails — the transfer itself
     // already succeeded by the time we get here. Just warn.
-    if (error) console.warn('[orgTransfer] failed to record audit row: ' + error.message)
+    if (error) void logWarn('orgTransfer.recordOrgTransfer', '[orgTransfer] failed to record audit row: ' + error.message)
   } catch (e: unknown) {
-    console.warn('[orgTransfer] audit log threw: ' + errMessage(e))
+    void logWarn('orgTransfer.recordOrgTransfer', '[orgTransfer] audit log threw: ' + errMessage(e))
   }
 }

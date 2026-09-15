@@ -19,6 +19,7 @@ import { taxonomyFieldKey } from '@/lib/dimensionFields'
 import { buildOperationalReviewDeck, type OperationalOpts } from '@/lib/pptx/operationalReviewDeck'
 import { renderDeck } from '@/lib/pptx/slideRenderer'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { logWarn } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -106,7 +107,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ datasetId
         opts.competitors = bench.competitors
       }
     } catch (e) {
-      console.warn('[operational-review-deck] competitor benchmark pull failed; shipping without competitor slide:', e)
+      void logWarn('datasets.datasetId.operational-review-deck.GET', '[operational-review-deck] competitor benchmark pull failed; shipping without competitor slide:', { args: [e] })
     }
   }
 

@@ -40,7 +40,7 @@ import { logQuestion, replyLooksUncertain } from '@/lib/logQuestion'
 import { resolveCapability } from '@/lib/agentCapability'
 import { mergeRankedChunks } from '@/lib/multiQueryRetrieval'
 import { detectEntityMentions } from '@/lib/entityMentionDetector'
-import { logError } from '@/lib/log'
+import { logError, logWarn } from '@/lib/log'
 
 export interface TownHallContext {
   townHallId: string
@@ -321,7 +321,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
     }
     const { error: insertErr } = await service.from('bot_conversation_turns').insert(probeRow)
     if (insertErr) {
-      console.error({ at: 'bot-chat', msg: 'silence_probe insert failed', err: insertErr.message })
+      void logError('bot-chat', insertErr.message, { msg: 'silence_probe insert failed' })
       return { reply: null, skipped: 'insert_failed' }
     }
     if (ctx.townHallContext) {
@@ -905,11 +905,11 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
     if (emb) { params.p_embedding = JSON.stringify(emb); name = 'search_knowledge_semantic' }
     let { data, error } = await service.rpc(name, params)
     if (error && name === 'search_knowledge_semantic') {
-      console.error({ at: 'bot-chat', msg: "Semantic search failed, falling back", err: error.message })
+      void logError('bot-chat', error.message, { msg: "Semantic search failed, falling back" })
       const fb = await service.rpc('search_knowledge_chunks', { p_bot_id: bot.id, p_query: q, p_limit: capKnobs.ragChunks })
       data = fb.data; error = fb.error
     }
-    if (error) console.error({ at: 'bot-chat', msg: "RAG search error", err: error.message })
+    if (error) void logError('bot-chat', error.message, { msg: "RAG search error" })
     // D1: the keyword-fallback RPC returns `rank` but no `confidence`, which
     // would read as 0 and suppress the entire KB. Derive it before scoring.
     normalizeChunkConfidence(data as RagChunk[] | null)
@@ -1028,7 +1028,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
         }
       }
     } catch (e) {
-      console.error({ at: 'bot-chat', msg: "RAG search exception", err: (e as Error)?.message })
+      void logError('bot-chat', (e as Error)?.message, { msg: "RAG search exception" })
     }
   }
   if (!knowledgeInjected && bot.knowledge_base) {
@@ -1424,7 +1424,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
           if (!detectLimited) {
             if (debugMode) _debug.push('PulseIQ trigger: response_count=' + (totalResponses + 1) + ' hits threshold (' + threshold + ') — firing theme detection')
             detectThemesForTownHall(ctx.townHallContext.townHallId).catch(function(e: unknown) {
-              console.error({ at: 'chat-core', msg: 'pulseiq theme detection trigger failed', err: (e as Error)?.message, townHallId: ctx.townHallContext?.townHallId })
+              void logError('chat-core', (e as Error)?.message, { townHallId: ctx.townHallContext?.townHallId, msg: 'pulseiq theme detection trigger failed' })
             })
           }
         }
@@ -1432,7 +1432,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
         _debug.push('PulseIQ topic: pool empty (no pulseiq_topics rows)')
       }
     } catch (e) {
-      console.error({ at: 'chat-core', msg: 'pulseiq topic injection failed', err: (e as Error)?.message, townHallId: ctx.townHallContext.townHallId })
+      void logError('chat-core', (e as Error)?.message, { townHallId: ctx.townHallContext.townHallId, msg: 'pulseiq topic injection failed' })
     }
   }
 
@@ -1549,7 +1549,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
           _debug.push('Probe enforcement: probe already fired earlier this session')
         }
       } catch (e) {
-        console.error({ at: 'bot-chat', msg: 'probeEnforcement regex failed', err: (e as Error)?.message })
+        void logError('bot-chat', (e as Error)?.message, { msg: 'probeEnforcement regex failed' })
       }
     } else if (debugMode) {
       _debug.push('Probe enforcement: turn ' + userTurnCount + ' < fallback ' + fallbackTurn)
@@ -1609,7 +1609,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
       systemParts.push(stateBlock)
       if (debugMode) _debug.push('Stateful focus: ' + captured.length + ' captured / ' + remaining.length + ' remaining (' + remaining.slice(0, 3).map(function(f: AgentFocus) { return f.slug }).join(', ') + (remaining.length > 3 ? ', …' : '') + ')')
     } catch (e) {
-      console.error({ at: 'chat-core', msg: 'stateful focus injection failed', err: (e as Error)?.message, sessionId: session_id })
+      void logError('chat-core', (e as Error)?.message, { sessionId: session_id, msg: 'stateful focus injection failed' })
     }
   }
 
@@ -1991,7 +1991,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
           .insert(turnsToInsert)
           .select('id, turn_number, role')
         if (insertErr) {
-          console.error({ at: 'bot-chat', msg: 'turn insert error', err: insertErr.message, session_id, bot_id: bot.id })
+          void logError('bot-chat', insertErr.message, { session_id, bot_id: bot.id, msg: 'turn insert error' })
         } else if (debugMode) {
           _debug.push('Storage: inserted ' + (insertedRows?.length || 0) + ' turns (turn_base=' + turnBase + ')')
         }
@@ -2049,7 +2049,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
                 service.from('bot_conversation_turns').update({ content_flags: flags }).eq('id', assistantRow.id).eq('bot_id', bot.id).then(function() {})
                 void mirrorFocusFlagsUpdate(service, { botId: bot.id, sessionId: session_id, turnNumber: assistantRow.turn_number, flags }).then(function() {})
               }
-            }).catch(function(e: unknown) { console.error({ at: 'bot-chat', msg: 'focus classify failed', err: (e as Error)?.message }) })
+            }).catch(function(e: unknown) { void logError('bot-chat', (e as Error)?.message, { msg: 'focus classify failed' }) })
           }
         }
 
@@ -2074,7 +2074,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
                 asked_turn: conceptAskTurn, ask_context: conceptAskContext,
               }, { onConflict: 'agent_id,session_id,probe_id', ignoreDuplicates: true })
               .then(({ error }) => { if (error) void logError('chatCore.probeAskRow', error, { orgId: bot.org_id }) })
-          }).catch(function(e: unknown) { console.error({ at: 'bot-chat', msg: 'probe concept detect failed', err: e instanceof Error ? e.message : String(e) }) })
+          }).catch(function(e: unknown) { void logError('bot-chat', e instanceof Error ? e.message : String(e), { msg: 'probe concept detect failed' }) })
         }
 
         // Name capture — two sources, in priority order:
@@ -2105,7 +2105,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
                 await service.from('agent_session_personas')
                   .upsert({ bot_id: bot.id, session_id, name: widgetName, updated_at: new Date().toISOString() }, { onConflict: 'bot_id,session_id' })
               } catch (e) {
-                console.error({ at: 'bot-chat', msg: 'widget name persist failed', err: (e as Error)?.message })
+                void logError('bot-chat', (e as Error)?.message, { msg: 'widget name persist failed' })
               }
             })()
           }
@@ -2134,7 +2134,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
               await service.from('agent_session_personas')
                 .upsert({ bot_id: bot.id, session_id, name: r.name, updated_at: new Date().toISOString() }, { onConflict: 'bot_id,session_id' })
             } catch (e) {
-              console.error({ at: 'bot-chat', msg: 'name capture failed', err: (e as Error)?.message })
+              void logError('bot-chat', (e as Error)?.message, { msg: 'name capture failed' })
             }
           })()
         }
@@ -2170,13 +2170,13 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
                 await service.from('bot_conversation_turns').update({ content_flags: merged }).eq('id', userRow.id).eq('bot_id', bot.id)
                 await mirrorFocusFlagsUpdate(service, { botId: bot.id, sessionId: session_id, turnNumber: userRow.turn_number, flags: merged as string[] })
               } catch (e) {
-                console.error({ at: 'bot-chat', msg: 'user-turn classify failed', err: (e as Error)?.message })
+                void logError('bot-chat', (e as Error)?.message, { msg: 'user-turn classify failed' })
               }
             })()
           }
         }
       } catch (e) {
-        console.error({ at: 'bot-chat', msg: 'turn storage failed', err: (e as Error)?.message, session_id, bot_id: bot.id })
+        void logError('bot-chat', (e as Error)?.message, { session_id, bot_id: bot.id, msg: 'turn storage failed' })
       }
     }
 
@@ -2199,7 +2199,7 @@ export async function handleChatTurn(ctx: ChatCoreContext, body: Record<string, 
     const scrubbed = sanitizeBotReply(result.text)
     if (scrubbed.leaked) {
       _debug.push('Meta-prompt leak detected — fallback reply served')
-      console.warn('[bot-chat] meta-prompt leak detected', { bot_id: bot.id, session_id, raw: result.text.slice(0, 200) })
+      void logWarn('chatCore.handleChatTurn', '[bot-chat] meta-prompt leak detected', { args: [{ bot_id: bot.id, session_id, raw: result.text.slice(0, 200) }] })
     }
     // Question Log — assistant hedged with an "I don't know" phrasing.
     // Fire-and-forget; replyLooksUncertain is a regex pass (no AI cost).

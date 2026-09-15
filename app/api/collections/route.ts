@@ -10,6 +10,7 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { emptyThemeModel } from '@/lib/datasetUtils'
 import { buildMergedCollectionSchema } from '@/lib/collectionSchema'
 import { serverError } from '@/lib/apiError'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -119,7 +120,7 @@ export async function POST(req: Request) {
       updated_by:    user.id,
     })
 
-  if (stErr) console.error({ at: 'collections', msg: "state insert error", err: stErr.message })
+  if (stErr) void logError('collections', stErr.message, { msg: "state insert error" })
 
   // Report purpose: honor an explicit, valid pick; else smart-default from the
   // member sources (all town halls/agents → community, else competitive — the

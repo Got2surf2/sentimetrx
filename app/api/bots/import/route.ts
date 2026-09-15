@@ -11,6 +11,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { serverError } from '@/lib/apiError'
 import { logBotChange } from '@/lib/auditLog'
 import { parseManifest, applyAgentManifest } from '@/lib/promotion'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return serverError(e, 'bots.import', { orgId: userOrgId })
   }
-  if (result.chunkError) console.error('[bot import] chunk insert error:', result.chunkError)
+  if (result.chunkError) void logError('bots.import.POST', result.chunkError, { msg: '[bot import] chunk insert error:' })
 
   void logBotChange({
     botId: result.id,

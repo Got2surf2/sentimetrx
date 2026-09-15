@@ -8,7 +8,7 @@
 // checkpoint), and error marking on a broken file.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('@/lib/log', () => ({ logError: vi.fn() }))
+vi.mock('@/lib/log', () => ({ logError: vi.fn(), logWarn: vi.fn(), logInfo: vi.fn(), errMessage: (e: unknown) => String(e) }))
 vi.mock('@/lib/analyticsCompute', () => ({ computeAnalyticsSQL: vi.fn(async () => ({ totalRows: 3, fieldSummaries: {}, computedAt: 'now' })) }))
 vi.mock('@/lib/datasetAnalytics', () => ({ mergeDatasetAnalytics: vi.fn(async () => {}) }))
 

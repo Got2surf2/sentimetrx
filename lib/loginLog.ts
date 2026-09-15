@@ -47,6 +47,6 @@ export async function logLogin(opts: {
       userAgent: opts.userAgent || null,
     })
   } catch (e) {
-    console.error('[loginLog] failed:', (e as Error)?.message || e)
+    void logError('loginLog.logLogin', (e as Error)?.message || e, { msg: '[loginLog] failed:' })
   }
 }

@@ -11,6 +11,7 @@
 import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -79,7 +80,7 @@ export async function POST(req: Request) {
   if (insertErr) {
     const isDup = /duplicate key value|unique constraint/i.test(insertErr.message || '')
     if (!isDup) {
-      console.error({ at: 'townhall/responses', msg: 'insert error', err: insertErr })
+      void logError('townhall/responses', insertErr, { msg: 'insert error' })
       return NextResponse.json({ error: 'Failed to save responses' }, { status: 500 })
     }
     const { error: updateErr } = await service
@@ -92,7 +93,7 @@ export async function POST(req: Request) {
       .eq('participant_id', participant_id)
       .eq('town_hall_id', townHallId)
     if (updateErr) {
-      console.error({ at: 'townhall/responses', msg: 'update error', err: updateErr })
+      void logError('townhall/responses', updateErr, { msg: 'update error' })
       return NextResponse.json({ error: 'Failed to update responses' }, { status: 500 })
     }
   }

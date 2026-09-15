@@ -20,7 +20,7 @@ vi.mock('@/lib/sampledSignalCounts', () => ({
 const timeout = Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' })
 let nonEmptyBehaviour: () => Promise<number> = async () => 1000
 vi.mock('@/lib/nonEmptyCount', () => ({ countNonEmptyRows: () => nonEmptyBehaviour() }))
-vi.mock('@/lib/log', () => ({ logError: vi.fn() }))
+vi.mock('@/lib/log', () => ({ logError: vi.fn(), logWarn: vi.fn(), logInfo: vi.fn(), errMessage: (e: unknown) => String(e) }))
 vi.mock('@/lib/datasetAnalytics', () => ({ mergeDatasetAnalytics: vi.fn(), deleteDatasetAnalyticsKey: vi.fn() }))
 
 const { computeSignalStatsRaw } = await import('@/lib/signalStats')

@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkCronAuth } from '@/lib/cronAuth'
 import { serverError } from '@/lib/apiError'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
       })
 
       if (!res.ok) {
-        console.error({ at: 'social-token-refresh', msg: 'refresh failed', account: conn.account_name, body: await res.text() })
+        void logError('social-token-refresh', 'refresh failed', { account: conn.account_name, body: await res.text() })
         failed++
         continue
       }
@@ -73,7 +74,7 @@ export async function GET(req: NextRequest) {
 
       refreshed++
     } catch (err: unknown) {
-      console.error({ at: 'social-token-refresh', msg: 'connection error', connectionId: conn.id, err })
+      void logError('social-token-refresh', err, { connectionId: conn.id, msg: 'connection error' })
       failed++
     }
   }

@@ -11,6 +11,7 @@ import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { recordAdminAction } from '@/lib/orgTransfer'
 import { deleteOrgScopedData, deleteOrgStorage, purgeOrgAuthUsers } from '@/lib/orgDelete'
 import { serverError } from '@/lib/apiError'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -153,7 +154,7 @@ export async function DELETE(req: Request, props: Params) {
   // report success. The sweep is idempotent, so the operator can re-run.
   const sweep = await deleteOrgScopedData(org.id)
   if (Object.keys(sweep.failed).length > 0) {
-    console.error('[org.delete] incomplete erasure for ' + org.id + ':', JSON.stringify(sweep.failed))
+    void logError('admin.orgs.id.DELETE', JSON.stringify(sweep.failed), { msg: '[org.delete] incomplete erasure for ' + org.id + ':' })
     return NextResponse.json({
       error: 'Erasure incomplete — these tables could not be cleared: ' + Object.keys(sweep.failed).join(', ') + '. Org left suspended; investigate and retry.',
       failed: sweep.failed,
@@ -168,7 +169,7 @@ export async function DELETE(req: Request, props: Params) {
   const storage = await deleteOrgStorage(org.id)
   const auth = await purgeOrgAuthUsers(userIds)
   const warnings = [...storage.errors.map(e => 'storage: ' + e), ...auth.errors.map(e => 'auth: ' + e)]
-  if (warnings.length > 0) console.error('[org.delete] cleanup warnings for ' + org.id + ':', JSON.stringify(warnings))
+  if (warnings.length > 0) void logError('admin.orgs.id.DELETE', JSON.stringify(warnings), { msg: '[org.delete] cleanup warnings for ' + org.id + ':' })
 
   // Finally the org row itself (cascades the few org_id-CASCADE tables, already
   // emptied by the sweep above).

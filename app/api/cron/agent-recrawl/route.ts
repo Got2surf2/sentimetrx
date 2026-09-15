@@ -21,6 +21,7 @@ import { checkCronAuth } from '@/lib/cronAuth'
 import { normalizeCapability } from '@/lib/agentCapability'
 import { recrawlAgentPages, type RecrawlResult } from '@/lib/botKnowledge/recrawl'
 import { serverError } from '@/lib/apiError'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -74,7 +75,7 @@ export async function GET(req: NextRequest) {
       })
       results.push({ agent: agent.id, result, error: null })
     } catch (err: unknown) {
-      console.error({ at: 'cron/agent-recrawl', msg: 'agent failed', agent: agent.id, err })
+      void logError('cron/agent-recrawl', err, { agent: agent.id, msg: 'agent failed' })
       results.push({ agent: agent.id, result: null, error: err instanceof Error ? err.message : 'recrawl failed' })
     }
   }

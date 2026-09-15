@@ -11,7 +11,7 @@ import { computeAnalyticsSQL } from './analyticsCompute'
 import { getReviewBudget, logReviewDownload } from './reviewLimits'
 import { classifyPendingRows } from './taxonomyClassify'
 import { readStoredTaxonomy } from './taxonomyRollup'
-import { logError } from '@/lib/log'
+import { logError, logInfo } from '@/lib/log'
 
 export interface SyncResult {
   synced: number
@@ -385,10 +385,10 @@ export async function syncReviewSource(
           service, datasetId: source.dataset_id, orgId: source.org_id,
           textFields, brand: 'core', maxRows: 10000,
         })
-        if (classified > 0) console.log({ at: 'reviewSync.autoClassify', datasetId: source.dataset_id, classified, textFields })
+        if (classified > 0) void logInfo('reviewSync.autoClassify', 'log', { datasetId: source.dataset_id, classified, textFields })
       }
     } catch (e) {
-      console.error({ at: 'reviewSync.autoClassify', datasetId: source.dataset_id, err: e })
+      void logError('reviewSync.autoClassify', e, { datasetId: source.dataset_id })
     }
   }
 
@@ -621,6 +621,6 @@ async function ensureSchemaAndRecompute(service: SupabaseClient, datasetId: stri
       await service.from('dataset_state').update({
         analytics, updated_at: new Date().toISOString(),
       }).eq('dataset_id', datasetId)
-    } catch (err) { console.error('[reviewSync] analytics compute failed:', err) }
+    } catch (err) { void logError('reviewSync.ensureSchemaAndRecompute', err, { msg: '[reviewSync] analytics compute failed:' }) }
   }
 }

@@ -16,6 +16,7 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { getEmailProvider } from '@/lib/email/provider'
 import { buildReportEmail } from '@/lib/recordings/reportEmail'
 import { renderRecordingReportPdf } from '@/lib/recordings/reportPdf'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -111,7 +112,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       const { buffer, fileName } = await renderRecordingReportPdf(service, rec, { includeTranscript })
       attachments = [{ filename: fileName, content: buffer.toString('base64') }]
     } catch (e: unknown) {
-      console.error({ at: 'recording-report-send', msg: 'pdf render failed', err: errMessage(e) })
+      void logError('recording-report-send', errMessage(e), { msg: 'pdf render failed' })
       return NextResponse.json({ error: 'Could not generate the PDF attachment.' }, { status: 500 })
     }
   }
@@ -139,7 +140,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       await provider.send({ to, from: REPORT_FROM, replyTo: senderEmail, subject, html, text, attachments })
       results.push({ email: to, status: 'sent' })
     } catch (e: unknown) {
-      console.error({ at: 'recording-report-send', msg: 'send failed', to, err: errMessage(e) })
+      void logError('recording-report-send', errMessage(e), { to, msg: 'send failed' })
       results.push({ email: to, status: 'failed', error: errMessage(e) || 'send failed' })
     }
   }

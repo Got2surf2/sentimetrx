@@ -9,6 +9,7 @@ import { checkRateLimit } from '@/lib/rateLimit'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -102,7 +103,7 @@ Return ONLY valid JSON, no markdown, no explanation.`
 
     return NextResponse.json({ texts: resultTexts, customTexts: resultCustom })
   } catch (err: unknown) {
-    console.error('Response translation error:', err)
+    void logError('translate-responses.POST', err, { msg: 'Response translation error:' })
     return NextResponse.json({ texts: {}, customTexts: {} })
   }
 }

@@ -214,6 +214,6 @@ async function ensureSchemaAndRecompute(service: SupabaseClient, datasetId: stri
       await service.from('dataset_state').update({
         analytics, updated_at: new Date().toISOString(),
       }).eq('dataset_id', datasetId)
-    } catch (err) { console.error('[redditSync] analytics compute failed:', err) }
+    } catch (err) { void logError('redditSync.ensureSchemaAndRecompute', err, { msg: '[redditSync] analytics compute failed:' }) }
   }
 }

@@ -9,7 +9,8 @@ import { makeFakeService, type FakeService, type Row } from '../helpers/fakeSupa
 const callAI = vi.fn()
 vi.mock('@/lib/ai', () => ({ callAI: (...a: unknown[]) => callAI(...a) }))
 vi.mock('@/lib/usageLog', () => ({ logUsage: vi.fn() }))
-vi.mock('@/lib/log', () => ({ logError: vi.fn() }))
+import { logError } from '@/lib/log'
+vi.mock('@/lib/log', () => ({ logError: vi.fn(), logWarn: vi.fn(), logInfo: vi.fn(), errMessage: (e: unknown) => String(e) }))
 let svc: FakeService
 vi.mock('@/lib/supabase/server', () => ({ createServiceRoleClient: () => svc }))
 const polishVerbatims = vi.fn(async (texts: string[]) => texts.map(t => t + ' ✓'))
@@ -119,10 +120,10 @@ describe('getAgentReadout', () => {
 
   it('a polish failure shows raw verbatims; unparseable AI output leaves identity labels and an empty summary', async () => {
     polishVerbatims.mockRejectedValueOnce(new Error('polish down'))
-    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(logError).mockClear()
     const r = (await getAgentReadout('bot-1'))!
     expect(r.questionThemes[1].samples[0].text).toBe('When does construction start on the 429?')
-    expect(err).toHaveBeenCalled(); err.mockRestore()
+    expect(logError).toHaveBeenCalled()
 
     svc = makeFakeService({ tables: tables() })
     callAI.mockImplementation(async (opts: { system: string; messages: { content: string }[] }) => {

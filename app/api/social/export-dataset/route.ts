@@ -10,6 +10,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { serverError } from '@/lib/apiError'
 import { buildSocialSchema, emptyThemeModel } from '@/lib/datasetUtils'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -238,7 +239,7 @@ export async function POST(req: NextRequest) {
     var batch = flatRows.slice(b, b + 500)
     var { error: insertErr } = await service.from('dataset_rows_flat').insert(batch)
     if (insertErr) {
-      console.error({ at: 'social/export-dataset', msg: 'insert error', batch: b, err: insertErr })
+      void logError('social/export-dataset', insertErr, { batch: b, msg: 'insert error' })
     }
   }
 

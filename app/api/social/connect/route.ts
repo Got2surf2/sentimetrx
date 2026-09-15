@@ -5,6 +5,7 @@ import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { signOauthState } from '@/lib/oauthState'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
   try {
     state = signOauthState({ userId: user.id })
   } catch (e: unknown) {
-    console.error({ at: 'social/connect', err: e instanceof Error ? e.message : String(e) })
+    void logError('social/connect', e instanceof Error ? e.message : String(e))
     return NextResponse.json({ error: 'OAuth not configured' }, { status: 500 })
   }
 

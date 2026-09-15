@@ -237,7 +237,7 @@ export async function detectThemesForTownHall(townHallId: string): Promise<{ ins
       existingKeywords.push({ label: name, keywords, mention_count: mentionCount })
       existingLabels.push(name.toLowerCase())
     } else {
-      console.error({ at: 'cohortThemeAggregator', msg: 'insert pulseiq_topics failed', err: insertErr.message })
+      void logError('cohortThemeAggregator', insertErr.message, { msg: 'insert pulseiq_topics failed' })
       skipped++
     }
   }

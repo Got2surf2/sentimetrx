@@ -10,6 +10,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { handleChatTurn } from '@/lib/chatCore'
 import { assertSuperTurnAllowed } from '@/lib/featureFlags'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 // Phase 3 — super-agent turns can run a bounded tool loop (up to 3 tool
@@ -134,7 +135,7 @@ export async function POST(req: NextRequest, props: Params) {
         const result = await handleChatTurn({ agent, service, ip, emit: send }, body)
         send({ type: 'done', result })
       } catch (e) {
-        console.error({ at: 'bot-chat', msg: 'stream turn failed', err: (e as Error)?.message })
+        void logError('bot-chat', (e as Error)?.message, { msg: 'stream turn failed' })
         send({ type: 'error', error: 'chat failed' })
       }
       if (!closed) { try { controller.close() } catch { /* already closed */ } }

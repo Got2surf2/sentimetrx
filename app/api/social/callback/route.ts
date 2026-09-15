@@ -5,6 +5,7 @@ import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { verifyOauthState } from '@/lib/oauthState'
+import { logError, logInfo } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,7 +13,7 @@ export const dynamic = 'force-dynamic'
 // query string. Anything in the URL (including secrets) lands in upstream
 // proxy logs, NEL reports, and any CDN trail along the way; bodies don't.
 async function exchangeCodeForToken(code: string, redirectUri: string): Promise<{ access_token: string; expires_in?: number }> {
-  console.log('[social/callback] exchanging code with redirect_uri:', redirectUri)
+  void logInfo('social.callback.exchangeCodeForToken', '[social/callback] exchanging code with redirect_uri:', { args: [redirectUri] })
   const body = new URLSearchParams({
     client_id: process.env.META_APP_ID || '',
     client_secret: process.env.META_APP_SECRET || '',
@@ -26,7 +27,7 @@ async function exchangeCodeForToken(code: string, redirectUri: string): Promise<
   })
   if (!res.ok) {
     const errBody = await res.text()
-    console.error({ at: 'social/callback', msg: 'token exchange failed', status: res.status, errBody })
+    void logError('social/callback', 'token exchange failed', { status: res.status, errBody })
     throw new Error('Failed to exchange code: ' + errBody)
   }
   return res.json()
@@ -74,7 +75,7 @@ export async function GET(req: NextRequest) {
   // is set in every deployed environment; refuse to redirect if it isn't.
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
   if (!siteUrl) {
-    console.error({ at: 'social/callback', msg: "NEXT_PUBLIC_SITE_URL not configured" })
+    void logError('social/callback', "NEXT_PUBLIC_SITE_URL not configured")
     return NextResponse.json({ error: 'Site URL not configured' }, { status: 503 })
   }
 
@@ -110,10 +111,10 @@ export async function GET(req: NextRequest) {
 
     // Get pages the user manages
     const pages = await getPageTokens(longToken.access_token)
-    console.log('[social/callback] Token exchange OK. Pages found:', pages.length, pages.map(p => p.name).join(', '))
+    void logInfo('social.callback.GET', '[social/callback] Token exchange OK. Pages found:', { args: [pages.length, pages.map(p => p.name).join(', ')] })
 
     if (pages.length === 0) {
-      console.log('[social/callback] No pages found — user may not manage any Facebook Pages')
+      void logInfo('social.callback.GET', '[social/callback] No pages found — user may not manage any Facebook Pages')
       return NextResponse.redirect(`${siteUrl}/social?error=no_pages`)
     }
 
@@ -130,8 +131,8 @@ export async function GET(req: NextRequest) {
         token_expires_at: expiresAt,
         connected_by: userId,
       })
-      if (fbErr) console.error({ at: 'social/callback', msg: "FB insert error", err: fbErr.message })
-      else console.log('[social/callback] Stored FB page:', page.name, page.id)
+      if (fbErr) void logError('social/callback', fbErr.message, { msg: "FB insert error" })
+      else void logInfo('social.callback.GET', '[social/callback] Stored FB page:', { args: [page.name, page.id] })
 
       // Check for linked Instagram Business account
       const ig = await getInstagramAccount(page.id, page.access_token)
@@ -146,13 +147,13 @@ export async function GET(req: NextRequest) {
           token_expires_at: expiresAt,
           connected_by: userId,
         })
-        if (igErr) console.error({ at: 'social/callback', msg: "IG insert error", err: igErr.message })
+        if (igErr) void logError('social/callback', igErr.message, { msg: "IG insert error" })
       }
     }
 
     return NextResponse.redirect(`${siteUrl}/social?connected=true`)
   } catch (err: unknown) {
-    console.error({ at: 'social/callback', msg: "OAuth error", err: err })
+    void logError('social/callback', err, { msg: "OAuth error" })
     return NextResponse.redirect(`${siteUrl}/social?error=oauth_failed`)
   }
 }

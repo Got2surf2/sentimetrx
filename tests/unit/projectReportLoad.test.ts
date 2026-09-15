@@ -10,7 +10,7 @@ import type * as SampleMod from '@/lib/bulkRowSample'
 
 let svc: FakeService
 vi.mock('@/lib/supabase/server', () => ({ createServiceRoleClient: () => svc }))
-vi.mock('@/lib/log', () => ({ logError: vi.fn() }))
+vi.mock('@/lib/log', () => ({ logError: vi.fn(), logWarn: vi.fn(), logInfo: vi.fn(), errMessage: (e: unknown) => String(e) }))
 const getAgentStudy = vi.fn()
 vi.mock('@/lib/agentStudy', () => ({ getAgentStudy: (...a: unknown[]) => getAgentStudy(...a) }))
 const buildProjectReportModel = vi.fn(async (name: string, inputs: unknown[], stamp: string, opts: unknown) => ({ name, n: inputs.length, stamp, opts }))

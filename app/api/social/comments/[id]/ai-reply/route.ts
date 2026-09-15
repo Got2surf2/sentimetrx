@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
         body: JSON.stringify({ message: replyText, access_token: token }),
       })
       if (!res.ok) {
-        console.error({ at: 'social/ai-reply', msg: "Meta API error", err: await res.text() })
+        void logError('social/ai-reply', await res.text(), { msg: "Meta API error" })
         // Still return the generated text even if posting failed
         return NextResponse.json({ reply: replyText, posted: false, error: 'Failed to post to platform' })
       }

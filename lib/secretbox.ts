@@ -19,6 +19,7 @@ import 'server-only'
 // re-entering the key). Treat it like any other production secret.
 
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'crypto'
+import { logWarn } from '@/lib/log'
 
 const MARKER = 'enc:v1:'
 
@@ -60,7 +61,7 @@ export function decryptSecret(stored: string | null | undefined): string | undef
   if (!stored.startsWith(MARKER)) return stored // legacy plaintext
   const key = keyMaterial()
   if (!key) {
-    console.warn('[secretbox] encrypted value present but AI_KEY_ENC_SECRET is unset — cannot decrypt')
+    void logWarn('secretbox.decryptSecret', '[secretbox] encrypted value present but AI_KEY_ENC_SECRET is unset — cannot decrypt')
     return undefined
   }
   try {
@@ -70,7 +71,7 @@ export function decryptSecret(stored: string | null | undefined): string | undef
     const pt = Buffer.concat([decipher.update(Buffer.from(ctB64, 'base64')), decipher.final()])
     return pt.toString('utf8')
   } catch (e: unknown) {
-    console.warn('[secretbox] decrypt failed: ' + (e instanceof Error ? e.message : String(e)))
+    void logWarn('secretbox.decryptSecret', '[secretbox] decrypt failed: ' + (e instanceof Error ? e.message : String(e)))
     return undefined
   }
 }

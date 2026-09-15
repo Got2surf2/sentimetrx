@@ -150,7 +150,7 @@ export async function recomputeParentCollections(
       const res = await recomputeCollectionAnalytics(service, c.dataset_id, orgId)
       if (res) recomputed++
     } catch (err) {
-      console.error({ at: 'recomputeParentCollections', collection: c.dataset_id, err })
+      void logError('recomputeParentCollections', err, { collection: c.dataset_id })
     }
   }
   return recomputed

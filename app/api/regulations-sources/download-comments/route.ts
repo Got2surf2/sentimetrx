@@ -6,6 +6,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { listComments, fetchCommentsBatch, commentToRow } from '@/lib/regulations'
 import { mergeSchemaStats } from '@/lib/datasetUtils'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
+import { logError, logInfo } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -69,7 +70,7 @@ export async function POST(req: NextRequest) {
         await service.from('dataset_state').update({ analytics, updated_at: new Date().toISOString() }).eq('dataset_id', dataset_id)
       }
     } catch (err) {
-      console.error({ at: 'regulations', msg: "analytics compute failed", err: err })
+      void logError('regulations', err, { msg: "analytics compute failed" })
     }
     // Mark download as complete in description
     try {
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest) {
 
   // Step 1: List comment IDs for this page (10 per batch to stay within 60s timeout)
   const listResult = await listComments(docket_id, page || 1, 10, use_search || false)
-  console.log('[regulations-dl] page', page, 'listed', listResult.data.length, 'total', listResult.totalElements, 'usedSearch', listResult.usedSearch)
+  void logInfo('regulations-sources.download-comments.POST', '[regulations-dl] page', { args: [page, 'listed', listResult.data.length, 'total', listResult.totalElements, 'usedSearch', listResult.usedSearch] })
   const commentIds = listResult.data.map(function(c) { return c.id })
 
   if (commentIds.length === 0) {
@@ -135,7 +136,7 @@ export async function POST(req: NextRequest) {
         await service.from('dataset_state').update({ schema_config: merged, updated_at: syncTimestamp }).eq('dataset_id', dataset_id)
       }
     } catch (err) {
-      console.error({ at: 'regulations', msg: "per-batch schema merge failed", err: err })
+      void logError('regulations', err, { msg: "per-batch schema merge failed" })
     }
   }
 

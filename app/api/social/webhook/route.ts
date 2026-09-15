@@ -8,6 +8,7 @@ import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { auditContent, scoreSentimentFull } from '@/lib/contentGuard'
 import { createHmac, timingSafeEqual } from 'crypto'
+import { logError, logInfo } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,12 +56,12 @@ export async function GET(req: NextRequest) {
 
   const verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN
   if (!verifyToken) {
-    console.error({ at: 'social/webhook', msg: "META_WEBHOOK_VERIFY_TOKEN not configured" })
+    void logError('social/webhook', "META_WEBHOOK_VERIFY_TOKEN not configured")
     return NextResponse.json({ error: 'Not configured' }, { status: 500 })
   }
 
   if (mode === 'subscribe' && token === verifyToken) {
-    console.log('[social/webhook] Verification successful')
+    void logInfo('social.webhook.GET', '[social/webhook] Verification successful')
     return new NextResponse(challenge, { status: 200 })
   }
 
@@ -71,7 +72,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const appSecret = process.env.META_APP_SECRET
   if (!appSecret) {
-    console.error({ at: 'social/webhook', msg: "META_APP_SECRET not configured" })
+    void logError('social/webhook', "META_APP_SECRET not configured")
     return NextResponse.json({ error: 'App secret not configured' }, { status: 503 })
   }
 
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (!connection) {
-      console.log('[social/webhook] No connection found for page:', pageId)
+      void logInfo('social.webhook.POST', '[social/webhook] No connection found for page:', { args: [pageId] })
       continue
     }
 
@@ -155,7 +156,7 @@ async function processComment(
 
   const res = await fetch(`https://graph.facebook.com/v19.0/${commentId}?fields=${fields}&access_token=${connection.access_token}`)
   if (!res.ok) {
-    console.error({ at: 'social/webhook', msg: 'Failed to fetch comment', commentId, body: await res.text() })
+    void logError('social/webhook', 'Failed to fetch comment', { commentId, body: await res.text() })
     return
   }
 
@@ -188,8 +189,8 @@ async function processComment(
 
   const { error } = await service.from('social_comments').insert(row)
   if (error) {
-    console.error({ at: 'social/webhook', msg: "Insert error", err: error.message })
+    void logError('social/webhook', error.message, { msg: "Insert error" })
   } else {
-    console.log('[social/webhook] Ingested comment:', commentId, '| sentiment:', sentFull.label, '| flags:', audit.flags.length)
+    void logInfo('social.webhook.processComment', '[social/webhook] Ingested comment:', { args: [commentId, '| sentiment:', sentFull.label, '| flags:', audit.flags.length] })
   }
 }

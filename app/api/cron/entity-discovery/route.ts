@@ -19,6 +19,7 @@ import { NextResponse } from 'next/server'
 import { discoverEntities } from '@/lib/entityDiscovery'
 import { checkCronAuth } from '@/lib/cronAuth'
 import { serverError } from '@/lib/apiError'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -81,7 +82,7 @@ export async function GET(req: NextRequest) {
         error:          r.error,
       })
     } catch (err: unknown) {
-      console.error({ at: 'cron/entity-discovery', msg: 'brand failed', brand: brand.slug, err })
+      void logError('cron/entity-discovery', err, { brand: brand.slug, msg: 'brand failed' })
       results.push({
         brand:          brand.slug || brand.id,
         entities_new:   0,

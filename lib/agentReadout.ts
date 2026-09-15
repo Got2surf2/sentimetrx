@@ -342,7 +342,7 @@ export async function getAgentReadout(botId: string, opts: { force?: boolean } =
       })
     }
   } catch (e: unknown) {
-    console.error({ at: 'agent-readout', msg: 'verbatim polish failed (showing raw)', err: e instanceof Error ? e.message : String(e) })
+    void logError('agent-readout', e instanceof Error ? e.message : String(e), { msg: 'verbatim polish failed (showing raw)' })
   }
 
   // Pass C: executive summary over the (now polished) themed structure.

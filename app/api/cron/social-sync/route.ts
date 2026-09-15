@@ -13,6 +13,7 @@ import { logUsage } from '@/lib/usageLog'
 import { checkCronAuth } from '@/lib/cronAuth'
 import { serverError } from '@/lib/apiError'
 import { resolveOrg } from '@/lib/resolveOrg'
+import { logError, logInfo } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -39,7 +40,7 @@ async function fetchFacebookComments(pageId: string, token: string, since?: stri
 
   const postsRes = await fetch(postsUrl)
   if (!postsRes.ok) {
-    console.error({ at: 'social-sync', msg: "FB posts error", err: await postsRes.text() })
+    void logError('social-sync', await postsRes.text(), { msg: "FB posts error" })
     return []
   }
 
@@ -80,7 +81,7 @@ async function fetchInstagramComments(igAccountId: string, token: string, since?
   const mediaUrl = `https://graph.facebook.com/v19.0/${igAccountId}/media?fields=id,caption,timestamp&limit=25&access_token=${token}`
   const mediaRes = await fetch(mediaUrl)
   if (!mediaRes.ok) {
-    console.error({ at: 'social-sync', msg: "IG media error", err: await mediaRes.text() })
+    void logError('social-sync', await mediaRes.text(), { msg: "IG media error" })
     return []
   }
 
@@ -224,7 +225,7 @@ export async function GET(req: NextRequest) {
         .insert(rows)
 
       if (insertError) {
-        console.error({ at: 'social-sync', msg: 'insert error', connectionId: conn.id, err: insertError })
+        void logError('social-sync', insertError, { connectionId: conn.id, msg: 'insert error' })
         continue
       }
 
@@ -245,10 +246,10 @@ export async function GET(req: NextRequest) {
               body: JSON.stringify({ is_hidden: true, access_token: conn.access_token }),
             })
           } catch (e: unknown) {
-            console.error({ at: 'social-sync', msg: 'auto-hide error', commentId: c.comment_id, err: e })
+            void logError('social-sync', e, { commentId: c.comment_id, msg: 'auto-hide error' })
           }
         }
-        if (toHide.length > 0) console.log('[social-sync] auto-hid', toHide.length, 'comments for connection', conn.id)
+        if (toHide.length > 0) void logInfo('cron.social-sync.GET', '[social-sync] auto-hid', { args: [toHide.length, 'comments for connection', conn.id] })
       }
 
       // ── Auto-reply (template or AI) ───────────────────────────────
@@ -285,7 +286,7 @@ export async function GET(req: NextRequest) {
               logUsage({ org_id: conn.org_id, resource_type: 'social', event_type: 'auto_reply' }, result.usage)
               replyText = result.text.trim()
             } catch (e: unknown) {
-              console.error({ at: 'social-sync', msg: "AI reply error", err: e instanceof Error ? e.message : String(e) })
+              void logError('social-sync', e instanceof Error ? e.message : String(e), { msg: "AI reply error" })
             }
           }
 
@@ -303,13 +304,13 @@ export async function GET(req: NextRequest) {
                 .eq('comment_id', c.comment_id)
                 .eq('org_id', conn.org_id)
             } catch (e: unknown) {
-              console.error({ at: 'social-sync', msg: 'auto-reply error', commentId: c.comment_id, err: e })
+              void logError('social-sync', e, { commentId: c.comment_id, msg: 'auto-reply error' })
             }
           }
         }
       }
     } catch (err: unknown) {
-      console.error({ at: 'social-sync', msg: 'error processing connection', connectionId: conn.id, err })
+      void logError('social-sync', err, { connectionId: conn.id, msg: 'error processing connection' })
     }
   }
 

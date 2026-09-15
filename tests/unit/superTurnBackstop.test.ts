@@ -30,7 +30,7 @@ function service() {
 }
 
 vi.mock('@/lib/supabase/server', () => ({ createServiceRoleClient: () => service() }))
-vi.mock('@/lib/log', () => ({ logError: () => {} }))
+vi.mock('@/lib/log', () => ({ logError: () => {}, logWarn: vi.fn(), logInfo: vi.fn(), errMessage: (e: unknown) => String(e) }))
 
 import { assertSuperTurnAllowed } from '@/lib/featureFlags'
 

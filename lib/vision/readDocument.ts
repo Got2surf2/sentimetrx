@@ -8,6 +8,7 @@
 
 import 'server-only'
 import { callAI, type AIUsageContext, type TextContentBlock, type ImageContentBlock } from '@/lib/ai'
+import { logError } from '@/lib/log'
 
 const SONNET_MODEL = 'claude-sonnet-4-6'
 
@@ -52,7 +53,7 @@ export async function visionReadPages(input: VisionReadInput): Promise<Record<st
       const obj = parseJsonObject(resp.text)
       pages = Array.isArray(obj?.pages) ? (obj!.pages as Record<string, unknown>[]) : []
     } catch (e) {
-      console.error({ at: 'vision.readPages', msg: 'batch failed', batchStart: i, err: (e as Error)?.message })
+      void logError('vision.readPages', (e as Error)?.message, { batchStart: i, msg: 'batch failed' })
     }
     // Align to batch length: pad/truncate so positions stay correct.
     for (let k = 0; k < batch.length; k++) out.push(pages[k] && typeof pages[k] === 'object' ? pages[k] : {})

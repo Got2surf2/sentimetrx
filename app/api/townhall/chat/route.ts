@@ -19,7 +19,7 @@ import {
   LANGUAGE_SWITCH_CLASSIFIER_PROMPT,
 } from '@/lib/languageSwitch'
 import { handleChatTurn } from '@/lib/chatCore'
-import { logError } from '@/lib/log'
+import { logError, logWarn } from '@/lib/log'
 import { mirrorTurns } from '@/lib/phase3DualWrite'
 
 export const dynamic = 'force-dynamic'
@@ -364,10 +364,7 @@ async function callClaude(
     // as a bot moderator message visible to participants. Empty text lets
     // callers fall through to their existing fallback paths.
     if (looksLikeAIRefusal(outText)) {
-      console.warn({
-        event: 'th_chat_ai_refusal',
-        text_preview: outText.slice(0, 200),
-      })
+      void logWarn('townhall.chat.callClaude', 'warn', { event: 'th_chat_ai_refusal', text_preview: outText.slice(0, 200) })
       return { text: '', thinking }
     }
     return { text: outText, thinking }

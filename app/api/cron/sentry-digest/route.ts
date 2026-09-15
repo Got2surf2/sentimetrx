@@ -15,6 +15,7 @@ import { checkCronAuth } from '@/lib/cronAuth'
 import { serverError } from '@/lib/apiError'
 import { fetchUnresolvedIssues, type SentryIssue } from '@/lib/sentry'
 import { getEmailProvider } from '@/lib/email/provider'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -146,7 +147,7 @@ export async function GET(req: NextRequest) {
       await Promise.all(recipients.map(to => provider.send({ to, from: FROM, subject, html, text })))
       emailed = true
     } catch (e: unknown) {
-      console.error({ at: 'cron/sentry-digest', msg: "email send failed", err: e instanceof Error ? e.message : e })
+      void logError('cron/sentry-digest', e instanceof Error ? e.message : e, { msg: "email send failed" })
     }
   }
 

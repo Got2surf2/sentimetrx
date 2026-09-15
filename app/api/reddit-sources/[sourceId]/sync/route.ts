@@ -6,6 +6,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import { buildRedditSchema, enrichSchemaWithStats } from '@/lib/datasetUtils'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
 import { serverError } from '@/lib/apiError'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -84,7 +85,7 @@ export async function POST(_req: Request, props: Params) {
         await service.from('dataset_state').update({
           analytics, updated_at: new Date().toISOString(),
         }).eq('dataset_id', datasetId)
-      } catch (err) { console.error({ at: 'reddit/sync', msg: "analytics compute failed", err: err }) }
+      } catch (err) { void logError('reddit/sync', err, { msg: "analytics compute failed" }) }
     }
 
     return NextResponse.json({

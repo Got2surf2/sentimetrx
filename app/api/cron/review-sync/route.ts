@@ -11,6 +11,7 @@ import { NextResponse } from 'next/server'
 import { syncReviewSource } from '@/lib/reviewSync'
 import { checkCronAuth } from '@/lib/cronAuth'
 import { serverError } from '@/lib/apiError'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -60,7 +61,7 @@ export async function GET(req: NextRequest) {
       })
       consecutiveErrors = 0
     } catch (err: unknown) {
-      console.error({ at: 'cron/review-sync', msg: 'source failed', sourceId: source.id, err })
+      void logError('cron/review-sync', err, { sourceId: source.id, msg: 'source failed' })
       results.push({ brand: source.brand_name, synced: 0, errors: 1 })
       consecutiveErrors++
 

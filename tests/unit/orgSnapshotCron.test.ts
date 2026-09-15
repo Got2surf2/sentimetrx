@@ -79,6 +79,7 @@ vi.mock('@/lib/orgSnapshotV2', () => ({
 const logErrorMock = vi.fn()
 vi.mock('@/lib/log', () => ({
   logError: async (where: string, err: unknown, fields?: Record<string, unknown>) => { logErrorMock(where, err, fields) },
+  logWarn: vi.fn(), logInfo: vi.fn(), errMessage: (e: unknown) => String(e),
 }))
 
 // waitUntil: record the promise so tests can prove the continuation was

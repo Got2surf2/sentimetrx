@@ -8,6 +8,7 @@ import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { fetchSubredditPosts } from '@/lib/reddit'
 import { serverError } from '@/lib/apiError'
 import { resolveOrg } from '@/lib/resolveOrg'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
       posts,
     })
   } catch (err: unknown) {
-    console.error({ at: 'reddit-sources/search', msg: "error", err: err })
+    void logError('reddit-sources/search', err, { msg: "error" })
     const errMessage = err instanceof Error ? err.message : undefined
     if (errMessage?.includes('404')) {
       return NextResponse.json({ error: 'Subreddit "r/' + subName + '" not found or is private. Check the spelling and try again.' }, { status: 404 })

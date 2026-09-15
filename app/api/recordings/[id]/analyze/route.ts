@@ -14,6 +14,7 @@ import { analyzeRecordingWorkflow } from '@/workflows/recordings'
 import { sanitizeEntityMap } from '@/lib/recordings/entities'
 import { snapshotConfigVersion } from '@/lib/recordings/configVersion'
 import type { PhaseMap } from '@/lib/recordings/types'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -111,7 +112,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     })
     await service.from('recordings').update({ analyzed_config_version: version_number }).eq('id', recording_id).eq('org_id', org_id)
   } catch (e) {
-    console.error({ at: 'recordings.analyze', msg: 'config snapshot failed', err: (e as Error)?.message })
+    void logError('recordings.analyze', (e as Error)?.message, { msg: 'config snapshot failed' })
   }
 
   // Flip the status synchronously BEFORE returning so the gate UI leaves the

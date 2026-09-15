@@ -24,6 +24,7 @@ import { loadAnalystMemories, memoryPromptBlock, REMEMBER_GUIDANCE } from '@/lib
 import { buildVisitSnapshot, buildDigest, type VisitSnapshot } from '@/lib/anaDigest'
 import { jsonStringifySafe } from '@/lib/jsonSafe'
 import { AMERICAN_ENGLISH_RULE } from '@/lib/ai'
+import { logError } from '@/lib/log'
 
 export const dynamic     = 'force-dynamic'
 // Query-tool rounds are sequential upstream calls. 120s was not enough on
@@ -745,7 +746,7 @@ async function streamAnthropicResponse(
   if (!firstRes.ok) {
     let errMsg = 'AI API error: ' + firstRes.status
     try { const d = await firstRes.json(); errMsg = d?.error?.message || errMsg } catch {}
-    console.error('[askAna.upstream] status=' + firstRes.status + ' :: ' + String(errMsg).slice(0, 400))
+    void logError('ask-ana.streamAnthropicResponse', '[askAna.upstream] status=' + firstRes.status + ' :: ' + String(errMsg).slice(0, 400))
     return serverError(errMsg, 'askAna.upstream', { orgId })
   }
 

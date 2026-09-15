@@ -25,6 +25,7 @@ import { computeInsightAlerts, dimensionsToSignals, themesToSignals, type AlertK
 import { buildQuantSignals } from '@/lib/quantSignals'
 import { buildThemeSignals } from '@/lib/themeSignals'
 import { serverError } from '@/lib/apiError'
+import { logError } from '@/lib/log'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
@@ -858,7 +859,7 @@ export async function POST(req: Request, props: Params) {
   }
   if (!skipAI) {
     try { narratives = await generateNarratives(dataset.org_id, datasetName, knownTotal || analytics.totalRows, audience, selectedFields, instructions || undefined) }
-    catch (e) { console.error({ at: 'export/pptx', msg: "AI error", err: e }) }
+    catch (e) { void logError('export/pptx', e, { msg: "AI error" }) }
   }
 
   // ── Assemble the deck (shared cream renderer) ────────────────────────────────
@@ -1415,14 +1416,14 @@ export async function POST(req: Request, props: Params) {
             await discoverEntities({ service, datasetId: params.datasetId, mode: 'manual', triggeredByUser: user.id })
             ents = await getEntitiesWithCounts({ service, datasetId: params.datasetId, limit: 200, textFieldKeys: entityFields })
             entityRows = ('notFound' in ents ? [] : ents.entities).filter(e => !PLATFORM_NAMES.has(e.canonical.toLowerCase().trim()))
-          } catch (e) { console.error({ at: 'export/pptx', msg: 'entity discovery failed', err: e }) }
+          } catch (e) { void logError('export/pptx', e, { msg: 'entity discovery failed' }) }
         }
         if (entityRows.length > 0) {
           if (!skipAI) {
             try {
               const focusMap = await categoriseEntityNames(entityRows.map(e => e.canonical), orgId ?? undefined)
               if (Object.keys(focusMap).length > 0) entityRows = entityRows.map(e => ({ ...e, category: focusMap[e.canonical] || e.category }))
-            } catch (e) { console.error({ at: 'export/pptx', msg: 'entity recategorisation failed', err: e }) }
+            } catch (e) { void logError('export/pptx', e, { msg: 'entity recategorisation failed' }) }
           }
           const catAgg: Record<string, number> = {}
           for (const e of entityRows) catAgg[e.category] = (catAgg[e.category] || 0) + e.mentions
@@ -1432,7 +1433,7 @@ export async function POST(req: Request, props: Params) {
           const specs = entitySlideSpecs(entLabels[0] || 'Entities', agg, { includeQuotes: false })
           for (const spec of specs) slides.push(spec as unknown as SlideSpec)
         }
-      } catch (e) { console.error({ at: 'export/pptx', msg: 'entity analysis failed', err: e }) }
+      } catch (e) { void logError('export/pptx', e, { msg: 'entity analysis failed' }) }
     }
 
     // ── 5. Categorical + numeric fields (all sections) ───────────────────────
@@ -1599,7 +1600,7 @@ export async function POST(req: Request, props: Params) {
         note: 'Estimated analyst time to produce the equivalent readout by hand — reading every response, identifying themes, selecting quotes, building charts, and writing the narrative. Assumes ~15 minutes per content slide (excluding the title and closing slides).',
       })
     } catch (provErr) {
-      if (provErr !== '__skip_closers__') console.error({ at: 'export/pptx', msg: 'provenance/custom-decks slide failed', err: provErr instanceof Error ? provErr.message : provErr })
+      if (provErr !== '__skip_closers__') void logError('export/pptx', provErr instanceof Error ? provErr.message : provErr, { msg: 'provenance/custom-decks slide failed' })
     }
 
     // ── 10. Generation-recap appendix ────────────────────────────────────────
@@ -1628,7 +1629,7 @@ export async function POST(req: Request, props: Params) {
           slides.push({ type: 'bullets', title: 'Custom Instructions (verbatim)', bullets: [instructions.trim()] })
         }
       } catch (recapErr) {
-        console.error({ at: 'export/pptx', msg: 'recap slide failed', err: recapErr instanceof Error ? recapErr.message : recapErr })
+        void logError('export/pptx', recapErr instanceof Error ? recapErr.message : recapErr, { msg: 'recap slide failed' })
       }
     }
 

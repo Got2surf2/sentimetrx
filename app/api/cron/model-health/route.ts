@@ -13,6 +13,7 @@ import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { checkCronAuth } from '@/lib/cronAuth'
 import { checkConfiguredModels } from '@/lib/modelHealth'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
       .map(r => r.model + ' (' + r.tiers.join('/') + ' tier): ' + r.status + (r.detail ? ' — ' + r.detail : ''))
       .join('; ')
     const msg = 'Configured Anthropic model(s) unhealthy — calls will 404: ' + bad
-    console.error('[model-health] ' + msg)
+    void logError('cron.model-health.GET', '[model-health] ' + msg)
     Sentry.captureMessage(msg, 'error')
   }
 

@@ -74,6 +74,17 @@ export async function logError(where: string, err: unknown, fields: LogFields = 
   } catch { /* never break the caller */ }
 }
 
+/** Structured informational line with the request correlation id. No Sentry
+ *  capture. The replacement for a bare `console.log(...)` in a handler: same
+ *  visibility in the Vercel logs, plus the request id and org so the line
+ *  can be joined to a customer report. */
+export async function logInfo(where: string, msg: string, fields: LogFields = {}): Promise<void> {
+  const requestId = await getRequestId().catch(() => null)
+  try {
+    console.log({ at: where, request_id: requestId, org_id: fields.orgId ?? null, msg, ...extras(fields) })
+  } catch { /* never throw */ }
+}
+
 /** Structured warning with the request correlation id. No Sentry capture. */
 export async function logWarn(where: string, msg: string, fields: LogFields = {}): Promise<void> {
   const requestId = await getRequestId().catch(() => null)

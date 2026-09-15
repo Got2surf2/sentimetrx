@@ -10,6 +10,7 @@ import { recordAdminCrossOrgAction } from '@/lib/orgTransfer'
 import { computeAnalyticsSQL } from '@/lib/analyticsCompute'
 import { mergeDatasetAnalytics } from '@/lib/datasetAnalytics'
 import { serverError } from '@/lib/apiError'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -129,7 +130,7 @@ export async function POST(req: Request, props: Params) {
             updated_by: user.id,
           }).eq('dataset_id', params.datasetId)
         } catch (err) {
-          console.error({ at: 'trim', msg: "analytics recompute failed", err: err })
+          void logError('trim', err, { msg: "analytics recompute failed" })
         }
       }
     }

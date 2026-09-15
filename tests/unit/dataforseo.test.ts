@@ -159,7 +159,8 @@ describe('review tasks (Google)', () => {
     enqueue(200, task({ result: [{ reviews_count: 12, items: [] }] }))
     const res = await checkReviewTask(ref)
     expect(res).toEqual({ status: 'ready', reviews: [] })
-    expect(warn).toHaveBeenCalled()
+    // logWarn emits its structured line after awaiting the request-id lookup
+    await vi.waitFor(() => expect(warn).toHaveBeenCalledWith(expect.objectContaining({ at: 'dataforseo.checkReviewTask' })))
     warn.mockRestore()
   })
 
@@ -192,7 +193,7 @@ describe('review tasks (Google)', () => {
     const out = await p
     expect(Array.from(out.keys())).toEqual(['P1'])
     expect(out.get('P1')?.[0].review_id).toBe('r')
-    expect(err).toHaveBeenCalledWith(expect.stringMatching(/Review task b failed: dead/))
+    await vi.waitFor(() => expect(err).toHaveBeenCalledWith(expect.objectContaining({ at: 'dataforseo.fetchReviewsBatch', err: expect.stringMatching(/Review task b failed: dead/) })))
     expect((calls[0].body as Array<{ tag: string }>).map(t => t.tag)).toEqual(['P1', 'P2'])
     err.mockRestore()
   })

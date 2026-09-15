@@ -49,4 +49,13 @@ export default [
       'react-hooks/preserve-manual-memoization': 'warn',
     },
   },
+  // SECURITY.md item 12 (2026-09-14): server code logs through lib/log
+  // (logError / logWarn / logInfo — one structured object with at,
+  // request_id, org_id). 154 bare console.* calls were migrated by AST codemod;
+  // lib/log.ts is the only place console is called on the server.
+  {
+    files: ['app/api/**/*.ts', 'lib/**/*.ts'],
+    ignores: ['lib/log.ts'],
+    rules: { 'no-console': 'error' },
+  },
 ]

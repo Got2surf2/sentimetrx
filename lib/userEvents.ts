@@ -13,6 +13,7 @@
 
 import { createServiceRoleClient } from './supabase/server'
 import type { NextRequest } from 'next/server'
+import { logWarn } from '@/lib/log'
 
 // Keep the name union narrow so typos surface at compile time. Add to
 // the union when instrumenting a new event.
@@ -80,7 +81,7 @@ export async function recordUserEvent(opts: RecordEventOpts): Promise<void> {
   } catch (e) {
     // Best-effort: log + swallow. A failed analytics write should
     // never bubble up and break the user-facing operation.
-    console.warn('[userEvents] insert failed', (e as Error)?.message || e)
+    void logWarn('userEvents.recordUserEvent', '[userEvents] insert failed', { args: [(e as Error)?.message || e] })
   }
 }
 

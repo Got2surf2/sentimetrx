@@ -14,6 +14,7 @@ import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/userContext'
 import { checkTransferTarget, recordOrgTransfer } from '@/lib/orgTransfer'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -238,7 +239,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   }
   if (paths.size > 0) {
     const { error: rmErr } = await service.storage.from(BUCKET).remove(Array.from(paths))
-    if (rmErr) console.error('[recordings:delete] storage remove failed:', rmErr.message)  // best-effort
+    if (rmErr) void logError('recordings.id.DELETE', rmErr.message, { msg: '[recordings:delete] storage remove failed:' })  // best-effort
   }
 
   // 2) Derived dataset (recording → dataset is 1:1) + its mirrored rows.

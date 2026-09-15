@@ -6,6 +6,7 @@
 // request to fail. Errors are logged to console.
 
 import { createServiceRoleClient } from './supabase/server'
+import { logError } from '@/lib/log'
 
 export type BotChangeAction =
   | 'create'
@@ -85,8 +86,8 @@ export async function logBotChange(args: LogBotChangeArgs): Promise<void> {
       after: args.after ?? null,
       metadata: args.metadata ?? {},
     })
-    if (error) console.error('[auditLog] bot_change_log insert failed:', error.message)
+    if (error) void logError('auditLog.logBotChange', error.message, { msg: '[auditLog] bot_change_log insert failed:' })
   } catch (e: unknown) {
-    console.error('[auditLog] bot_change_log exception:', e instanceof Error ? e.message : e)
+    void logError('auditLog.logBotChange', e instanceof Error ? e.message : e, { msg: '[auditLog] bot_change_log exception:' })
   }
 }

@@ -8,6 +8,7 @@ import { checkRateLimit } from '@/lib/rateLimit'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { checkMessage } from '@/lib/contentGuard'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -248,7 +249,7 @@ ${KNOWLEDGE_BASE}`,
 
     return NextResponse.json({ reply: text }, { headers: cors })
   } catch (err: unknown) {
-    console.error('Bot chat error:', err)
+    void logError('bot-chat.POST', err, { msg: 'Bot chat error:' })
     return NextResponse.json({ reply: "I'm having trouble connecting right now. Please try again in a moment, or reach out to info@datanautix.com for help." }, { headers: cors })
   }
 }

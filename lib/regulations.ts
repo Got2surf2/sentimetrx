@@ -1,4 +1,5 @@
-// lib/regulations.ts
+
+import { logWarn } from '@/lib/log'// lib/regulations.ts
 // Regulations.gov API v4 client
 // Docs: https://open.gsa.gov/api/regulationsgov/
 
@@ -236,7 +237,7 @@ export async function fetchCommentsBatch(commentIds: string[]): Promise<RegComme
       const detail = await getCommentDetail(id)
       results.push(detail)
     } catch (err) {
-      console.warn('[regulations] failed to fetch comment', id, err)
+      void logWarn('regulations.fetchCommentsBatch', '[regulations] failed to fetch comment', { args: [id, err] })
     }
   }
   return results

@@ -47,6 +47,7 @@ import type {
 } from '@/lib/recordings/types'
 import { glossaryFromEntities } from '@/lib/recordings/entities'
 import { tightenSpansFromTranscript } from '@/lib/recordings/transcriptRoles'
+import { logError } from '@/lib/log'
 
 const OPUS_MODEL = 'claude-opus-4-7'
 const SONNET_MODEL = 'claude-sonnet-4-6'
@@ -322,7 +323,7 @@ async function classifyPresentationScope(
     })
     return centsFromUsage(resp.usage)
   } catch (e) {
-    console.error({ at: 'recordings.scope', msg: 'scope classification failed', err: (e as Error)?.message })
+    void logError('recordings.scope', (e as Error)?.message, { msg: 'scope classification failed' })
     return 0
   }
 }
@@ -427,13 +428,13 @@ async function synthesizeQa(
       },
     })
   } catch (e) {
-    console.error({ at: 'recordings.synthesize', msg: 'synthesis call failed', err: (e as Error)?.message })
+    void logError('recordings.synthesize', (e as Error)?.message, { msg: 'synthesis call failed' })
     return { summary: null, actionItems: [], cents: 0 }
   }
 
   const obj = parseJsonObject(resp.text)
   if (!obj) {
-    console.error({ at: 'recordings.synthesize', msg: 'synthesis JSON unparseable' })
+    void logError('recordings.synthesize', 'synthesis JSON unparseable')
     return { summary: null, actionItems: [], cents: 20 }
   }
 

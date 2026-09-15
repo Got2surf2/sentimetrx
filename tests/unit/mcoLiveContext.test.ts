@@ -2,7 +2,7 @@
 // prompt. Only the three live fetchers are mocked; intent detection, the
 // follow-up carry logic, the time window, the checkpoint mapping
 // (lib/walkingTime) and the prep math all run for real.
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
 import type { Flight } from '@/lib/flights'
 import type { CheckpointWait } from '@/lib/securityWait'
 import type { ParkingLot } from '@/lib/parking'
@@ -18,6 +18,15 @@ vi.mock('@/lib/securityWait', async () => ({ ...(await vi.importActual<typeof Se
 vi.mock('@/lib/parking', async () => ({ ...(await vi.importActual<typeof ParkingMod>('@/lib/parking')), fetchParkingAvailability: () => fetchParkingAvailability() }))
 
 import { buildMcoLiveContext, ASKANA_BOT_ID } from '@/lib/mcoLiveContext'
+
+// Flight fixtures are built with atLocalHour(19, 50) etc. — the module-level
+// FLIGHTS list included — and the window logic compares against Date.now()
+// (lib/flights: "not more than 30 min in the past"), so this file only passed
+// before 7:50 PM local. Pin the clock at 3 PM AT IMPORT TIME (a beforeAll runs
+// after the fixtures are already built); only Date is faked, so fetch mocks and
+// timers run real.
+vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 8, 14, 15, 0, 0))
+afterAll(() => { vi.useRealTimers() })
 
 const now = Math.floor(Date.now() / 1000)
 function flight(over: Partial<Flight>): Flight {

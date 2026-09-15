@@ -12,6 +12,7 @@ import { serverError } from '@/lib/apiError'
 import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supabase/server'
 import { reanalyzeRecording, type ReanalyzeScope } from '@/lib/recordings/reanalyze'
 import { snapshotConfigVersion } from '@/lib/recordings/configVersion'
+import { logError } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 
@@ -81,7 +82,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         const { version_number } = await snapshotConfigVersion(service, recording_id, org_id, { source: 'analysis', createdBy: user.id })
         await service.from('recordings').update({ analyzed_config_version: version_number }).eq('id', recording_id).eq('org_id', org_id)
       } catch (e) {
-        console.error({ at: 'recordings.reanalyze', msg: 'config snapshot/stamp failed', err: (e as Error)?.message })
+        void logError('recordings.reanalyze', (e as Error)?.message, { msg: 'config snapshot/stamp failed' })
       }
     }
 

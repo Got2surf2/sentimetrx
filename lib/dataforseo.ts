@@ -289,14 +289,14 @@ export async function checkReviewTask(ref: ReviewTaskRef): Promise<TaskCheckResu
   if (task.status_code === 20000 && task.result?.length) {
     const resultData = task.result[0]
     const items = (resultData?.items || []) as DfsReviewItem[]
-    console.log('[dataforseo] task ready — items:', items.length, 'sample keys:', items[0] ? Object.keys(items[0]).join(',') : 'none', 'reviews_count:', resultData?.reviews_count)
+    void logInfo('dataforseo.checkReviewTask', '[dataforseo] task ready — items:', { args: [items.length, 'sample keys:', items[0] ? Object.keys(items[0]).join(',') : 'none', 'reviews_count:', resultData?.reviews_count] })
     if (items.length === 0 && resultData?.reviews_count > 0) {
       // Items empty but reviews exist — might be nested differently
-      console.warn('[dataforseo] reviews_count > 0 but items is empty. Full result keys:', Object.keys(resultData).join(','))
+      void logWarn('dataforseo.checkReviewTask', '[dataforseo] reviews_count > 0 but items is empty. Full result keys:', { args: [Object.keys(resultData).join(',')] })
     }
     const reviews = items.map(parseItem).filter((r: DfsReview | null) => r !== null) as DfsReview[]
     if (items.length > 0 && reviews.length === 0) {
-      console.warn('[dataforseo] parseReviewItem filtered all items. Sample item:', JSON.stringify(items[0]).slice(0, 300))
+      void logWarn('dataforseo.checkReviewTask', '[dataforseo] parseReviewItem filtered all items. Sample item:', { args: [JSON.stringify(items[0]).slice(0, 300)] })
     }
     return { status: 'ready', reviews }
   }
@@ -372,17 +372,17 @@ export async function fetchReviewsBatch(
             pending.delete(taskId)
           } else if (task.status_code !== 40402) {
             // Non-retryable error
-            console.error(`Review task ${taskId} failed: ${task.status_message}`)
+            void logError('dataforseo.fetchReviewsBatch', `Review task ${taskId} failed: ${task.status_message}`)
             pending.delete(taskId)
           }
         } catch (err) {
-          console.error(`Error polling task ${taskId}:`, err)
+          void logError('dataforseo.fetchReviewsBatch', err, { msg: `Error polling task ${taskId}:` })
         }
       }
     }
 
     if (pending.size > 0) {
-      console.warn(`${pending.size} review tasks timed out`)
+      void logWarn('dataforseo.fetchReviewsBatch', `${pending.size} review tasks timed out`)
     }
   }
 
@@ -522,6 +522,7 @@ function parseTripadvisorReviewItem(item: DfsReviewItem): DfsReview | null {
 // ---------------------------------------------------------------------------
 
 import type { SearchInterestTier, SearchTrend } from './themeUtils'
+import { logError, logInfo, logWarn } from '@/lib/log'
 
 export interface SearchVolumeResult {
   keyword: string

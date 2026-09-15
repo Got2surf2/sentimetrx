@@ -17,6 +17,7 @@
 // gaps that can feed back into KB improvements.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { logError } from '@/lib/log'
 
 export type QuestionClassification = 'deflect' | 'kb_miss' | 'ai_uncertain'
 
@@ -82,10 +83,10 @@ export async function logQuestion(args: LogQuestionArgs): Promise<void> {
       classification: args.classification,
     })
     if (error) {
-      console.error({ at: 'log-question', msg: 'insert failed', err: error.message, bot_id: args.botId, classification: args.classification })
+      void logError('log-question', error.message, { bot_id: args.botId, classification: args.classification, msg: 'insert failed' })
     }
   } catch (e: unknown) {
-    console.error({ at: 'log-question', msg: 'unexpected error', err: e instanceof Error ? e.message : String(e) })
+    void logError('log-question', e instanceof Error ? e.message : String(e), { msg: 'unexpected error' })
   }
 }
 

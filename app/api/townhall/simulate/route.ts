@@ -7,6 +7,7 @@ import { getCallerOrgContext } from '@/lib/auth/orgAccess'
 import { callAI } from '@/lib/ai'
 import { logUsage } from '@/lib/usageLog'
 import { looksLikeAIRefusal } from '@/lib/guardrails'
+import { logWarn } from '@/lib/log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 15
@@ -73,11 +74,7 @@ RULES:
     logUsage({ org_id: orgId ?? undefined, resource_type: 'townhall', event_type: 'simulate' }, result.usage)
     const cleaned = result.text.trim().replace(/^["']|["']$/g, '')
     if (looksLikeAIRefusal(cleaned)) {
-      console.warn({
-        event: 'townhall_simulate_ai_refusal',
-        persona_name: persona.name,
-        text_preview: cleaned.slice(0, 200),
-      })
+      void logWarn('townhall.simulate.POST', 'warn', { event: 'townhall_simulate_ai_refusal', persona_name: persona.name, text_preview: cleaned.slice(0, 200) })
       return NextResponse.json({
         message: persona.flags?.includes('curt-detection') ? 'ok' : 'I think that\'s an important issue for our community.',
         language: targetLang,

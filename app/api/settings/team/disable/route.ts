@@ -8,6 +8,7 @@ import { createClient, createServiceRoleClient, getAuthUser } from '@/lib/supaba
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 import { serverError } from '@/lib/apiError'
+import { logError } from '@/lib/log'
 
 const FAR_FUTURE = '2099-12-31T23:59:59Z'
 
@@ -55,7 +56,7 @@ export async function PATCH(req: NextRequest) {
   } catch (e: unknown) {
     // Non-fatal: even if the admin call fails, the public.users.disabled flag
     // means the app will reject the user (in pages that check). Log only.
-    console.error({ at: 'team/disable', msg: "admin updateUserById failed", err: e instanceof Error ? e.message : e })
+    void logError('team/disable', e instanceof Error ? e.message : e, { msg: "admin updateUserById failed" })
   }
 
   return NextResponse.json({ success: true, disabled })
