@@ -325,6 +325,17 @@ _Pure-logic example: `tests/unit/csv.test.ts` (added 2026-09-01) covers the RFC4
 
 _Coverage week (2026-09-14) — the suites that took `lib/**` + `app/api/**` from 41% to 50% statements, all extending the two harness patterns above. Pure/fetch-mocked: `dataforseo` (task-poll on fake timers), `statsUtilsNarrative`, `mcoLiveContext`, `taxonomyMapping`, `safeFetch` (SSRF block tables), `socialTagging`; REAL-pptxgenjs artifact renders: `studyDesignPptx`, `recordingDeck`; pure HTML builders: `outletReportPdf`, `agentStudyHtml`; and loader/route suites over the filter-honoring `tests/helpers/fakeSupabase.ts`: `agentStudy`, `agentReadout`, `projectReportLoad`, `entityDiscovery`, `reviewSync`, and the `share`/`share-analytics` routes. The fake honors eq/in/gte/order/range/single/head-count and mutating writes, plus insert-time column defaults, so a test asserts on the query SHAPE (which rows an org filter excludes, how a collection fans out) rather than on a mock being called._
 
+_Admin session policy (2026-09-15): `tests/unit/auth/adminSession.test.ts` pins
+the evaluator (fresh sign-in passes, 29 vs 31 min idle, 24 h max even when
+active, tampered/foreign-key stamps ignored, a newer sign-in supersedes an old
+stamp, `touch:false` doesn't count as activity); `tests/unit/auth/requireAdmin.test.ts`
+gained four cases (401 idle / 401 max / refresh on pass / no refresh on
+touch:false) with `next/headers` `cookies()` faked as a controllable jar. Rule
+for any test that fakes an admin user: give it a recent `last_sign_in_at`, or
+the policy correctly rejects it. Live wiring check (proxy 401 vs redirect,
+`/login?reason=` notice): `bash scripts/_adminSessionVerify.sh` against
+`npm run dev` — untracked harness, KEEP._
+
 _Gate + prompt-guard suites (2026-09-14): `tests/unit/authGate.test.ts` pins
 `lib/auth/gate.ts` on the fake — 401 without an org, cross-org and missing
 resources indistinguishable (same 404 + message), admins cross orgs, every

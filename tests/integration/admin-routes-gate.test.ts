@@ -39,7 +39,9 @@ function builder(table: string): Builder {
 }
 const client = () => ({
   from: (t: string) => builder(t),
-  auth: { getUser: async () => ({ data: { user: ctx.authUser }, error: null }) },
+  // requireAdmin now also applies the admin session policy; a fresh sign-in
+  // time keeps these tenancy-gate tests about tenancy.
+  auth: { getUser: async () => ({ data: { user: ctx.authUser ? { last_sign_in_at: new Date().toISOString(), ...ctx.authUser } : null }, error: null }) },
 })
 
 vi.mock('@/lib/supabase/server', () => ({

@@ -70,6 +70,13 @@ Last reviewed: 2026-05-15.
   were readable handles for other people's conversations. A regex over
   user input needs bounded quantifiers or a linear rewrite
   (`lib/urlOnly.isUrlOnly` replaced an exponential one).
+- **`requireAdmin` also enforces the admin session policy (2026-09-15).**
+  It returns a 401 `{ reason: 'idle' | 'max' }` — not the 404 it uses for
+  non-admins — when the signed activity stamp (`lib/auth/adminSession.ts`)
+  shows 30 min idle or 24 h since sign-in, and re-stamps on success.
+  Heartbeat-style checks pass `{ touch: false }` so they never count as
+  activity. A test that fakes an admin user must give it a recent
+  `last_sign_in_at`, or the policy (correctly) rejects it.
 - **Lint is live in CI (2026-07-02, Open `<TBD>` item 10 CLOSED).**
   Migrated to **eslint 9 flat config** (`eslint.config.mjs`, replacing
   `.eslintrc.json`): `eslint-config-next@16`'s native flat config +

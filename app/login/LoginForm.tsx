@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 
@@ -26,6 +26,12 @@ function LoginFormInner() {
   const searchParams = useSearchParams()
   const urlError     = searchParams.get('error')
   const supabase     = createClient()
+  // Sent here by the platform-admin session policy (30 min idle / 24 h max,
+  // SECURITY.md §3): end the Supabase session too, then say why.
+  const reason       = searchParams.get('reason')
+  const reasonNotice = reason === 'idle' ? 'Signed out after 30 minutes of inactivity — sign in again.'
+    : reason === 'max' ? 'Admin sessions end after 24 hours — sign in again.' : null
+  useEffect(() => { if (reasonNotice) void supabase.auth.signOut() }, [reasonNotice, supabase])
 
   const inputClass = 'w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 bg-white border border-gray-300 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all'
 
@@ -227,6 +233,7 @@ function LoginFormInner() {
         required
         className={inputClass}
       />
+      {reasonNotice && <p className="text-xs px-1" style={{ color: '#b45309' }}>{reasonNotice}</p>}
       {error && <p className="text-xs px-1" style={{ color: '#dc2626' }}>{error}</p>}
       <button
         type="submit"

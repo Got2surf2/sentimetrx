@@ -424,3 +424,25 @@ first paying customer; platform-admin sessions 30 min idle / 24 h max
 enforcement item: idle timeout first (no enrollment dependency), then the
 `aal2` check in `requireAdmin` behind a TOTP enrollment screen with a grace
 window. The §10 on-call escalation policy still awaits a second operator.
+
+## 2026-09-15 — Admin session policy enforced (item 8 (ii))
+
+Hours after ratification: `lib/auth/adminSession.ts` — a signed HttpOnly
+activity stamp (`start.seen.hmac`, HMAC keyed from the existing server
+secret; no new env, no migration) refreshed by `requireAdmin` on every admin
+API call and by `proxy.ts` on every page navigation; `app/admin/layout.tsx`
+checks hard loads. 30 min idle / 24 h max → 401 `{reason}` on APIs, redirect
+to `/login?reason=idle|max` on pages (LoginForm ends the Supabase session and
+says why). The design point that matters: no stamp or a tampered one falls
+back to Supabase's `last_sign_in_at`, so deleting the cookie can only force a
+re-login, never extend a session; a newer sign-in supersedes an old stamp.
+proxy.ts's matcher now covers pages too (skipping `_next/`, files, favicon).
+12 unit tests on the evaluator, 4 on `requireAdmin`. **Verified live** against
+the dev server (TEST project): expired-idle and expired-max stamps → 401
+`{reason}` on an admin API; expired stamp on `/admin` → 307 to
+`/login?reason=idle` with the cookie cleared; a fresh stamp is re-issued with
+`seen` advanced and `start` preserved; non-admin traffic untouched; the
+`/login` notice renders (browser check — it is client-rendered under
+Suspense, so curl never shows it; the first pass had placed it in the
+magic-link form, fixed). Item 8 (i) — the `aal2` MFA check behind an
+enrollment screen with a grace window — remains.

@@ -343,11 +343,19 @@ test project exists.
 - **Session policy:**
   - Idle timeout: Supabase default (1 hour access token, 7 day
     refresh).
-  - **Platform admins — ratified 2026-09-15 (owner):** **30-minute
-    idle timeout, 24-hour maximum session.** Supabase's JWT expiry is
-    project-wide, so this is enforced in the app for admin-org users
-    (last-activity stamp + re-auth prompt), not a dashboard setting.
-    Item 8 tracks the enforcement.
+  - **Platform admins — ratified 2026-09-15 (owner), ENFORCED
+    2026-09-15:** **30-minute idle timeout, 24-hour maximum session.**
+    `lib/auth/adminSession.ts`: a signed HttpOnly stamp
+    (`sessionStart.lastSeen.hmac`, keyed from the server secret) is
+    refreshed on every admin API call (`requireAdmin`) and every page
+    navigation (`proxy.ts`); `app/admin/layout.tsx` checks on hard
+    loads. Expiry → 401 `{reason: idle|max}` on APIs, redirect to
+    `/login?reason=…` on pages, which also ends the Supabase session.
+    No stamp / a tampered stamp counts only a sign-in inside the idle
+    window (Supabase `last_sign_in_at`), so stripping the cookie forces
+    re-login rather than extending anything; a sign-in newer than the
+    stamp supersedes it. Not a dashboard setting because Supabase's JWT
+    expiry is project-wide.
 - **CSRF protection:** `proxy.ts` enforces a same-site or
   CSRF-token check on cookie-authed mutating routes. Webhooks /
   cron / embed widgets are explicitly bypassed (each documented
@@ -920,9 +928,9 @@ plumbing that needs to ship.
    `lib/auth/requireAdmin.ts` + a TOTP enrollment screen under
    `/admin`, with a grace window (enrollment deadline shown in the
    admin shell) so the owner enrolls before the check bites; (ii)
-   app-level admin idle timeout — last-activity stamp in the session,
-   re-auth prompt at 30 min, hard sign-out at 24 h. Ship (ii) first
-   (no enrollment dependency), then (i).
+   ~~app-level admin idle timeout~~ **SHIPPED 2026-09-15** (§3:
+   `lib/auth/adminSession.ts`, 12 unit tests + 4 in requireAdmin).
+   Remaining: (i).
 9. **Incident-response plumbing — 2 of 3 landed 2026-09-14:**
    post-mortem template + README (`docs/postmortems/`), and the
    gitleaks secret scan in CI (§4). The on-call escalation policy in
