@@ -10,6 +10,7 @@ import { FavoriteStar } from '@/components/ui/FavoriteStar'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { ModuleFeatures } from '@/lib/types'
+import { hardNavigate } from '@/lib/hardNavigate'
 
 interface StudyConfig {
   theme?: { headerGradient?: string }
@@ -134,7 +135,7 @@ function StudyCard({ study, stats: initialStats, isAdmin, userId, campaignsEnabl
     : null
 
   const handleExport = () => {
-    window.location.href = '/studies/' + study.id + '/responses?export=csv'
+    hardNavigate('/studies/' + study.id + '/responses?export=csv')
   }
 
   const handleRefresh = async () => {
@@ -370,7 +371,7 @@ function AnalyzeInAnaButton({ studyId }: { studyId: string }) {
       const res = await fetch('/api/studies/' + studyId + '/analyze', { method: 'POST' })
       const data = await res.json()
       if (!res.ok) { setStatus(data.error || 'Failed'); setLoading(false); return }
-      window.location.href = '/analyze/' + data.dataset_id + '/textmine' + (data.created ? '?new=1' : '')
+      hardNavigate('/analyze/' + data.dataset_id + '/textmine' + (data.created ? '?new=1' : ''))
     } catch {
       setStatus('Error')
       setLoading(false)

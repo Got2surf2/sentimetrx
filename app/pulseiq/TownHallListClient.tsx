@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import DownloadButton from '@/components/ui/DownloadButton'
 import type { ModuleFeatures, TownHallConfig, TownHallGuideTopic } from '@/lib/types'
+import { hardNavigate } from '@/lib/hardNavigate'
 
 type SessionConfig = Partial<TownHallConfig> & { archived?: boolean }
 
@@ -524,7 +525,7 @@ function AnalyzeInAnaButton({ sessionId, disabled }: { sessionId: string; disabl
       const res = await fetch('/api/townhall/sessions/' + sessionId + '/analyze', { method: 'POST' })
       const data = await res.json()
       if (!res.ok) { setStatus(data.error || 'Failed'); setLoading(false); return }
-      window.location.href = '/analyze/' + data.dataset_id + '/textmine' + (data.created ? '?new=1' : '')
+      hardNavigate('/analyze/' + data.dataset_id + '/textmine' + (data.created ? '?new=1' : ''))
     } catch {
       setStatus('Error')
       setLoading(false)

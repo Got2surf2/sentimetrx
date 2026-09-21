@@ -9,6 +9,7 @@ import type { SchemaConfig, SchemaFieldConfig, AnaFieldType, AnaFieldSqt } from 
 import { suggestMapping } from '@/lib/scaleUtils'
 import { hierarchyLevels } from '@/lib/hierarchy'
 import ExtractEntitiesPanel from '@/components/analyze/ExtractEntitiesPanel'
+import { hardNavigate } from '@/lib/hardNavigate'
 
 function suggestMappingForField(values: string[]): Record<string, number> | null {
   return suggestMapping(values)
@@ -734,7 +735,7 @@ export default function SchemaEditor({ schema, datasetId, onChange, onSave, read
       // Auto-redirect to TextMine after first save on new datasets (Reddit/Substack)
       var params = new URLSearchParams(window.location.search)
       if (params.get('new') === '1') {
-        setTimeout(function() { window.location.href = '/analyze/' + datasetId + '/textmine' }, 800)
+        setTimeout(function() { hardNavigate('/analyze/' + datasetId + '/textmine') }, 800)
         return
       }
       setTimeout(function() { setSaved(false) }, 2200)

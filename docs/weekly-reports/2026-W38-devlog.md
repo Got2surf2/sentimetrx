@@ -485,3 +485,29 @@ Left alone on purpose: the two `image-size` alerts (no upstream fix; allowlisted
 with a 2027-03-01 review date) and PR #39, which fails the lint ratchet because
 the newer eslint plugins report more `react-hooks` warnings than the ceiling —
 the ceiling does not get raised to admit a bot PR.
+
+## 2026-09-20 — Dependabot PR #39 landed by hand: dev-dependency group + `hardNavigate`
+
+**Correction to the entry above:** PR #39 did NOT fail on `react-hooks`
+warnings. Measured against the CI logs, every existing rule had the same count
+on the PR as on main (167); the 14 extra warnings were all one NEW rule that
+`eslint-config-next` 16.3 ships, `@next/next/no-location-assign-relative-destination`.
+
+All 14 sites were intentional full page loads after a server-side mutation
+(one carries the comment "full page load to ensure fresh server data"), plus
+one navigation-style CSV export. Converting them to `router.push()` would have
+changed behavior on 14 flows for a lint bump, so they now call
+`lib/hardNavigate.ts` — `window.location.assign(path)` behind a name that says
+why. Same browser behavior (checked in Chrome against the local server:
+`location.assign('/login?reason=idle')` produced a `navigate`-type document
+load and wiped page state). The rule stays on; the ceiling stays at 167.
+
+The twelve dev-dependency bumps from the PR were applied on main rather than
+merged, so the code fix and the bump ship as ONE build. Two packages npm
+resolved past the PR (autoprefixer 10.6.1, tsx 4.23.15) were under the 7-day
+cooldown and are held at the PR's versions (10.5.5, 4.23.13);
+`eslint-config-next` 16.3.5 is nine days old and matches `next` 16.3.5.
+Verified: clean tsc, 2,471 tests, audit gate, local production build (same two
+optional-provider warnings as before), eslint on the ten touched files with
+the new plugins — 0 hits on the new rule. Not verified: the signed-in flows
+themselves in a browser (the local site needs a login).

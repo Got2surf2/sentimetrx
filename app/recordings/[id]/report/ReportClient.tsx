@@ -33,6 +33,7 @@ import { buildReplacements, normalizeSegments, normalizeText } from '@/lib/recor
 import { computeCoverage } from '@/lib/recordings/coverage'
 import { buildTranscriptRoles, traceActionItem } from '@/lib/recordings/transcriptRoles'
 import { packLanes, laneTop, barHeight, LANE_H } from '@/lib/recordings/timeline'
+import { hardNavigate } from '@/lib/hardNavigate'
 
 // A request to open the audio modal at a given point. `nonce` forces a re-seek
 // even when two Play buttons share the same start_sec.
@@ -1751,7 +1752,7 @@ function StaleQaBanner({ recordingId, canEdit }: { recordingId: string; canEdit:
         body: JSON.stringify({ scope: 'all' }),
       })
       if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d?.error || `Re-analyze failed (${r.status})`); setBusy(false); return }
-      window.location.href = `/recordings/${recordingId}/status`
+      hardNavigate(`/recordings/${recordingId}/status`)
     } catch { alert('Re-analyze failed'); setBusy(false) }
   }
   return (
@@ -1788,7 +1789,7 @@ function CoverageTab({ recording, extractions, transcript, recordingId, canEdit,
         body: JSON.stringify({ start_sec: g.start_sec, end_sec: g.end_sec, vendor: spanVendor }),
       })
       if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d?.error || `Re-transcribe failed (${r.status})`); setSpanBusy(null); return }
-      window.location.href = `/recordings/${recordingId}/status`
+      hardNavigate(`/recordings/${recordingId}/status`)
     } catch { alert('Re-transcribe failed'); setSpanBusy(null) }
   }
   const qaPairs = useMemo(
@@ -2119,7 +2120,7 @@ function TranscriptTab({ transcript, entityMap, extractions, channelLabels, spea
         body: JSON.stringify({ strategy: retStrategy }),
       })
       if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d?.error || `Re-transcribe failed (${r.status})`); setRetBusy(false); return }
-      window.location.href = `/recordings/${recordingId}/status`
+      hardNavigate(`/recordings/${recordingId}/status`)
     } catch { alert('Re-transcribe failed'); setRetBusy(false) }
   }
 

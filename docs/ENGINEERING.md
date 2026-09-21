@@ -70,6 +70,15 @@ Last reviewed: 2026-05-15.
   were readable handles for other people's conversations. A regex over
   user input needs bounded quantifiers or a linear rewrite
   (`lib/urlOnly.isUrlOnly` replaced an exponential one).
+- **A deliberate full page load goes through `lib/hardNavigate.ts`
+  (2026-09-20).** `eslint-config-next` 16.3 added
+  `@next/next/no-location-assign-relative-destination`, which flags inline
+  `window.location.href = '/…'`. The 14 sites it found were all intentional:
+  after a mutation that rebuilds what the next screen shows (dataset sync,
+  re-transcribe, clone, delete) the destination must be a fresh server render,
+  not a `router.push()` into a live React tree. `hardNavigate(path)` names that
+  intent and keeps the rule ON for accidental cases. Ordinary links use
+  `useRouter().push()`; do not reach for the helper to silence the rule.
 - **`requireAdmin` also enforces the admin session policy (2026-09-15).**
   It returns a 401 `{ reason: 'idle' | 'max' }` — not the 404 it uses for
   non-admins — when the signed activity stamp (`lib/auth/adminSession.ts`)

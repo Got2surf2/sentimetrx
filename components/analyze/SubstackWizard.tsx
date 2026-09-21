@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
 import type { SubstackPost } from '@/lib/substack'
 import BrandTagInput from '@/components/analyze/BrandTagInput'
+import { hardNavigate } from '@/lib/hardNavigate'
 
 const HERMES = '#E8632A'
 
@@ -250,7 +251,7 @@ export default function SubstackWizard({ onBack }: Props) {
       await fetch('/api/datasets/' + datasetId + '/compute', { method: 'POST' }).catch(function() {})
 
       // Navigate to Schema page first — auto-redirects to TextMine after save
-      window.location.href = '/analyze/' + datasetId + '/settings?new=1'
+      hardNavigate('/analyze/' + datasetId + '/settings?new=1')
     } catch (e: unknown) {
       setCreateError((e instanceof Error ? e.message : '') || 'Download failed')
       setCreating(false)

@@ -5,6 +5,7 @@ import TopNav from '@/components/nav/TopNav'
 import SubHeader from '@/components/nav/SubHeader'
 import Link from 'next/link'
 import type { CampaignStatus, CampaignStats, ModuleFeatures } from '@/lib/types'
+import { hardNavigate } from '@/lib/hardNavigate'
 
 interface CampaignRow {
   id: string; name: string; status: CampaignStatus; study_id: string
@@ -274,7 +275,7 @@ function CampaignCard({ campaign, stats, respondents = [], onDelete }: {
                       method: 'POST', headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ include_recipients: true }),
                     })
-                    if (res.ok) { const data = await res.json(); window.location.href = '/campaigns/' + data.id }
+                    if (res.ok) { const data = await res.json(); hardNavigate('/campaigns/' + data.id) }
                   } finally { setBusy(false) }
                 })() }} disabled={busy}
                 className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all disabled:opacity-50"

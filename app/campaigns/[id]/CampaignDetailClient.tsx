@@ -10,6 +10,7 @@ import DownloadButton from '@/components/ui/DownloadButton'
 import Link from 'next/link'
 import type { CampaignEmail, CampaignRespondent, CampaignStatus, EmailProviderType } from '@/lib/types'
 import { stripTags } from '@/lib/htmlStrip'
+import { hardNavigate } from '@/lib/hardNavigate'
 
 const HERMES = '#E8632A'
 
@@ -1642,7 +1643,7 @@ export default function CampaignDetailClient({ user, campaign: initialCampaign, 
               onClick={() => { void (async () => {
                 if (!confirm('Delete "' + campaign.name + '"? This cannot be undone.')) return
                 const res = await fetch('/api/campaigns/' + campaign.id, { method: 'DELETE' })
-                if (res.ok) window.location.href = '/campaigns'
+                if (res.ok) hardNavigate('/campaigns')
               })() }}
               className="text-xs px-3 py-1.5 rounded-lg font-medium border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors"
             >

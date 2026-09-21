@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import LottieLoader from '@/components/ui/LottieLoader'
 import { FavoriteStar } from '@/components/ui/FavoriteStar'
+import { hardNavigate } from '@/lib/hardNavigate'
 
 const HERMES = '#E8632A'
 
@@ -572,7 +573,7 @@ function AnalyzeInAnaButton({ botId }: { botId: string }) {
       const res = await fetch('/api/bots/' + botId + '/analyze', { method: 'POST' })
       const data = await res.json()
       if (!res.ok) { setStatus(data.error || 'Failed'); setLoading(false); return }
-      window.location.href = '/analyze/' + data.dataset_id + '/textmine' + (data.created ? '?new=1' : '')
+      hardNavigate('/analyze/' + data.dataset_id + '/textmine' + (data.created ? '?new=1' : ''))
     } catch {
       setStatus('Error')
       setLoading(false)

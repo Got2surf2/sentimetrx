@@ -6,6 +6,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { hardNavigate } from '@/lib/hardNavigate'
 
 interface Props {
   studyId: string
@@ -57,9 +58,9 @@ export default function AnalyzeButton({ studyId }: Props) {
         }
 
         if (syncData.synced > 0) {
-          window.location.href = '/analyze/' + existing.id + '/textmine?synced=' + syncData.synced
+          hardNavigate('/analyze/' + existing.id + '/textmine?synced=' + syncData.synced)
         } else {
-          window.location.href = '/analyze/' + existing.id + '/textmine'
+          hardNavigate('/analyze/' + existing.id + '/textmine')
         }
       } else {
         // First time — fetch study config to get industry for ana_library
@@ -110,7 +111,7 @@ export default function AnalyzeButton({ studyId }: Props) {
         await fetch('/api/datasets/' + datasetId + '/compute', { method: 'POST' }).catch(function() {})
 
         // Go straight to TextMine — full page load to ensure fresh server data
-        window.location.href = '/analyze/' + datasetId + '/textmine?new=1'
+        hardNavigate('/analyze/' + datasetId + '/textmine?new=1')
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
