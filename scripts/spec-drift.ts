@@ -282,9 +282,11 @@ function main() {
   let asJson = false
   let writeWeekly = false
   let weekOverride: string | undefined
+  let failOnDrift = false
   for (let i = 0; i < args.length; i++) {
     const a = args[i]
     if (a === '--json') asJson = true
+    else if (a === '--fail-on-drift') failOnDrift = true
     else if (a === '--write-weekly') writeWeekly = true
     else if (a === '--week') weekOverride = args[++i]
     else if (a === '--since') sinceRef = execSync(`git log --until="${args[++i]}" --format=%H -n 1`, { encoding: 'utf8' }).trim()
@@ -314,6 +316,10 @@ function main() {
   } else {
     console.log(renderMarkdown(sinceRef, commits, driftBySpec, anyModuleDrift))
   }
+
+  // --fail-on-drift: the pre-push gate (.githooks/pre-push). Exit 2 so a caller
+  // can tell "drift found" from a crash (1).
+  if (failOnDrift && anyModuleDrift) process.exit(2)
 }
 
 main()

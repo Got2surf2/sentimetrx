@@ -72,3 +72,27 @@ and the workflow header no longer say "not yet".
 **Process fix.** Two devlog entries dated 9/21 had been appended to the W38
 file; they are moved here (the routine reads the file named for the ISO week
 the entries fall in).
+
+## 2026-09-21 — The spec-drift rule becomes a gate (pre-push), because remembering it failed three times
+
+**Why**: the owner asked the right question about the W39 score — "isn't running
+the drift tool a standing instruction? If you don't run it, who will?" It is,
+and every commit in that range was written by a Claude session, so "nobody ran
+it" meant the assistant did not. It was the THIRD miss of the same rule
+(2026-07-06, 2026-07-13, week of 2026-09-14), each recorded in memory with a
+firmer wording than the last. Firmer wording did not work. Measured, the
+bypass had quietly become the default: commits mentioning `SKIP_SPEC_CHECK`
+were 4% of all commits in May, 18% in June, 35% in July, 54% in August, 31% so
+far in September — and the hook is all-or-nothing, so each bypass dropped
+coverage for every spec the commit touched.
+
+**What changed**: `.githooks/pre-push` runs `scripts/spec-drift.ts origin/main
+--fail-on-drift` (new flag, exit 2 on drift) on any push to `main` and blocks
+while a module spec in the unpushed range has code against it and no edit. The
+pre-commit bypass still exists but now prints the specs it leaves OWED instead
+of exiting silently. On its first run the gate caught this morning's own two
+bypasses — and one of them was real: TESTING.md still gave the lint ceiling as
+172 (it is 166). Both paid in this commit. CLAUDE.md, ENGINEERING.md and
+TESTING.md describe the gate; the doctrine line is in ENGINEERING.md: a
+standing instruction that matters gets a mechanical gate — memory is for
+context, not enforcement.

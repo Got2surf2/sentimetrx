@@ -201,9 +201,24 @@ service-role import.
   to flag staged code that maps to a spec doc that isn't also staged.
   Installed automatically by the `postinstall` script
   (`git config core.hooksPath .githooks`). Bypass with
-  `SKIP_SPEC_CHECK=1 git commit ...` when the change is genuinely
-  doc-irrelevant (pure refactor, formatting). The Monday spec-drift
-  routine still runs as a weekly safety net.
+  `SKIP_SPEC_CHECK=1 git commit ...` — but since 2026-09-21 the bypass
+  **defers** the spec edit, it does not waive it: the hook prints the
+  specs now owed, and the pre-push gate below blocks until they are paid.
+- **Spec-drift pre-push gate (2026-09-21).** `.githooks/pre-push` runs
+  `scripts/spec-drift.ts origin/main --fail-on-drift` over the unpushed
+  range on any push to `main` and blocks if a module spec has code
+  committed against it with no spec edit in that range. It exists because
+  "run the drift tool after a bypassed sweep" was a remember-to rule and
+  was missed three times (2026-07-06, 07-13, week of 09-14 — the last
+  cost Documentation 9 → 5 with ten flagged specs, six of which really
+  did contain false statements). By then the bypass had become the norm:
+  commits mentioning `SKIP_SPEC_CHECK` ran 4% in May, 18% in June, 35% in
+  July, 54% in August. **Doctrine: a standing instruction that matters
+  gets a mechanical gate; memory is for context, not enforcement.** The
+  file-based map is deliberate — a "cosmetic" or "mechanics only" sweep
+  still owes each touched module an accurate line. Emergency bypass
+  (owner's call): `SKIP_DRIFT_PUSH_CHECK=1 git push`. The Monday
+  spec-drift routine remains the weekly safety net.
 - **Devlog-drift pre-commit hook.** Same hook also runs
   `scripts/check-devlog-drift-staged.ts`. Blocks the commit when any
   staged file under `app/`, `lib/`, `sql/`, `components/`, `scripts/`,

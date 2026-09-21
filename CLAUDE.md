@@ -144,7 +144,7 @@ The repo carries heavy spec docs that must stay in sync with code. When a change
 
 Both rules are enforced at commit time by `.githooks/pre-commit`:
 
-- **Spec drift** check blocks the commit if staged code maps to a `docs/*.md` spec that isn't also staged. Bypass: `SKIP_SPEC_CHECK=1 git commit ...` — only for legitimate code-only changes (pure refactor, formatting, no behavioral spec impact).
+- **Spec drift** check blocks the commit if staged code maps to a `docs/*.md` spec that isn't also staged. Bypass: `SKIP_SPEC_CHECK=1 git commit ...` — **this defers the spec edit, it does not waive it.** `.githooks/pre-push` runs the drift tool over `origin/main..HEAD` on every push to `main` and blocks until every touched module spec has been edited in that range (2026-09-21: the remember-to version of this rule was missed three times). "Mechanics only" / "cosmetic" is not an exemption — the map is file-based, so each touched module still owes one ACCURATE line, and reading the spec against the change is how real staleness gets found (six of ten flagged specs were genuinely wrong in W39). Before any "ready for the audit?" answer, run `npm run spec-drift -- --since '7 days ago'` fresh and report its table.
 - **Devlog drift** check blocks the commit if staged code touches `app/`, `lib/`, `sql/`, `components/`, `scripts/`, `proxy.ts`, `next.config.*`, or `vercel.json` and no weekly devlog file is staged. Bypass: `SKIP_DEVLOG_CHECK=1 git commit ...` — only for typos, whitespace, package-lock churn, or dependency bumps with no behavior change.
 
 If you bypass either, justify why in the commit message. A buyer's DD review (or your own audit a year from now) needs to be able to reconstruct intent from the git + spec + devlog trail without asking the human.

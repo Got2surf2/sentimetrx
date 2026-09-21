@@ -11,10 +11,12 @@
 import { execSync } from 'node:child_process'
 import { SPEC_MAP, type SpecKey } from './specMap'
 
-if (process.env.SKIP_SPEC_CHECK) {
-  console.log('spec-drift check skipped (SKIP_SPEC_CHECK set).')
-  process.exit(0)
-}
+// The bypass is NOT a waiver. It defers the spec edit to a later commit in the
+// same push: .githooks/pre-push runs scripts/spec-drift.ts over the unpushed
+// range and blocks until every spec named below has been edited. (Until
+// 2026-09-21 the bypass exited silently here, a third to half of all commits
+// used it, and the debt surfaced only at the Monday audit — three times.)
+const BYPASSED = Boolean(process.env.SKIP_SPEC_CHECK)
 
 function globToRegex(glob: string): RegExp {
   let pattern = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&')
@@ -63,6 +65,13 @@ for (const [spec, globs] of Object.entries(SPEC_MAP) as [SpecKey, string[]][]) {
 }
 
 if (missing.length === 0) process.exit(0)
+
+if (BYPASSED) {
+  console.error('spec-drift check BYPASSED (SKIP_SPEC_CHECK). Spec edits now OWED before the next push:')
+  for (const { spec, triggers } of missing) console.error(`  - ${spec}  (${triggers.length} file${triggers.length === 1 ? '' : 's'})`)
+  console.error('The pre-push gate will block until each of these is edited in the unpushed range.')
+  process.exit(0)
+}
 
 console.error('Spec drift: staged code maps to a spec doc that is NOT staged.\n')
 for (const { spec, triggers } of missing) {

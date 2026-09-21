@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Pre-push gate: no spec drift leaves this machine.
+#
+# Runs scripts/spec-drift.ts over the UNPUSHED range (origin/main..HEAD) and
+# blocks the push if any module spec has code committed against it without a
+# spec edit in the same range.
+#
+# Why this exists (2026-09-21): "after a sweep that uses SKIP_SPEC_CHECK, run
+# the drift tool" was a standing instruction that lived only in memory. It was
+# missed on 2026-07-06, 2026-07-13 and again the week of 2026-09-14, each time
+# surfacing as a drop in the Monday governance score. A rule that depends on
+# someone remembering it is not a rule; this makes it mechanical. The
+# pre-commit bypass still works — it now DEFERS the spec edit to this gate
+# instead of waiving it.
+#
+# Fix a block by adding the (usually one-line, always accurate) spec note and
+# committing it; the range is re-evaluated on the next push.
+#
+# Emergency bypass (owner's call only — say why in the push context):
+#   SKIP_DRIFT_PUSH_CHECK=1 git push ...
+
+set -e
+
+if [ -n "$SKIP_DRIFT_PUSH_CHECK" ]; then
+  echo "pre-push: spec-drift gate BYPASSED (SKIP_DRIFT_PUSH_CHECK)." >&2
+  exit 0
+fi
+
+# Only gate pushes that update main.
+gate=0
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  [ "$remote_ref" = "refs/heads/main" ] && gate=1
+done
+[ "$gate" = "1" ] || exit 0
+
+base=$(git rev-parse --verify --quiet origin/main || true)
+[ -n "$base" ] || exit 0
+
+set +e
+out=$(npx tsx scripts/spec-drift.ts "$base" --fail-on-drift 2>&1)
+code=$?
+set -e
+
+if [ "$code" = "2" ]; then
+  echo "pre-push: BLOCKED — spec drift in the unpushed range (origin/main..HEAD)." >&2
+  echo "$out" | sed -n '/^## Summary/,/^## Top-level/p' >&2
+  echo "Edit each drifted spec (one accurate line is enough), commit, push again." >&2
+  exit 1
+fi
+if [ "$code" != "0" ]; then
+  echo "pre-push: spec-drift tool failed to run (exit $code) — not blocking, but look at this:" >&2
+  echo "$out" | tail -5 >&2
+fi
+exit 0
