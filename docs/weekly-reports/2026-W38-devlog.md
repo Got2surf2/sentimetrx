@@ -602,3 +602,16 @@ the dev server AND against a production build pointed at TEST (the way CI runs
 them; 6 passed in 14.6s). The e2e seeder's password had the same
 password-policy defect as the env-gated suites and now uses
 `tests/helpers/testPassword.ts`.
+
+## 2026-09-21 — Push `21aabd0d` landed; lint ceiling 167 → 166
+
+Six commits pushed; CI green on the exact SHA (all five jobs incl. production
+deploy), CodeQL green with **0 open alerts** (#71 auto-closed as fixed),
+Dependabot closed PRs 37–42 on its own and its re-run confirms the new ignores
+hold (the fresh prod group PR carries neither `isomorphic-dompurify` nor
+`puppeteer-core`). The two new e2e smoke tests passed in CI against the
+production build (6 passed). The Node 20 action deprecation warning is gone.
+CI's lint step reported **166** warnings against the 167 ceiling, so the
+ceiling drops to 166 — the ratchet tracks the real count, never slack. The new
+Next rule has zero hits. Remaining Dependabot alerts: the two allowlisted
+`image-size` advisories (no upstream fix).
