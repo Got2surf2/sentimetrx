@@ -1131,6 +1131,13 @@ nothing re-checks it, and a stale one is invisible.
 Scope an override when only one major is affected (`"brace-expansion@1"`), or a
 blanket pin drags every other copy back to that major.
 
+**It recurred (2026-09-20)**: `overrides.devalue` sat at exactly `5.8.1` while the
+advisory covered `< 5.9.1`. `@workflow/core` also pins `5.8.1` exactly, so the
+Dependabot security-update job had no version it could write and failed on every
+run instead of opening a PR. Moved to `5.9.2` (the newest release past the 7-day
+cooldown). **A red "Dependabot Updates" run for a transitive package means: read
+our own `overrides` first.**
+
 ## Scratch scripts must not be able to break the build (2026-08-16)
 
 `tsconfig.json` excluded only `node_modules`, and `next build` type-checks the

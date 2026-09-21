@@ -44,7 +44,7 @@ export default function UsageDetailClient({ type, id }: { type: string; id: stri
     setError(null)
     var qs: string
     if (days != null) qs = 'days=' + days
-    else if (from)    qs = 'from=' + from + (to ? '&to=' + to : '')
+    else if (from)    qs = 'from=' + encodeURIComponent(from) + (to ? '&to=' + encodeURIComponent(to) : '')
     else              qs = 'days=30'
     fetch('/api/admin/usage/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '?' + qs)
       .then(function(r) {

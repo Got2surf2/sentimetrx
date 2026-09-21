@@ -54,6 +54,11 @@ updates:
         update-types: [version-update:semver-major]
       - dependency-name: react-dom
         update-types: [version-update:semver-major]
+      # Tailwind 4 replaces tailwind.config.js + the PostCSS plugin with a
+      # CSS-first config — the bot PR (#42) failed the e2e smoke job.
+      # Every screen needs a visual pass, so it is a project, not a bump.
+      - dependency-name: tailwindcss
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /

@@ -456,3 +456,32 @@ underscore rule — a documented command that could not run from a clean
 checkout. Both are now tracked (the generator force-added; it prints stamps,
 never the key), and the script's hardcoded home-directory `cd` is now
 relative to the script. No app behavior change.
+
+## 2026-09-20 — Post-push alert cleanup: usage-link encoding, devalue pin, Tailwind 4 held
+
+The push of the 9/15 security work re-ran CodeQL and left two `high`
+`js/xss-through-dom` alerts plus one fixable Dependabot alert.
+
+- **`app/admin/usage/UsageClient.tsx:364`** — last week's edit encoded the DB ids
+  in the resource `<Link>`, which changed the alert's fingerprint: the dismissed
+  #51 came back as a new #71, now tracing the custom-range `from`/`to` date
+  inputs into the href unencoded. Both are now `encodeURIComponent`'d, along
+  with the two fetch query strings that built the same range (list + detail
+  page). For the `YYYY-MM-DD` values the inputs produce, the output is
+  byte-identical, so nothing visible changes.
+- **`components/ui/HelpWidget.tsx:59`** — no code change. The link regex and the
+  explicit `^https?://` test both constrain the scheme; CodeQL does not model a
+  regex test as a sanitizer. Dismissed as a false positive with the same written
+  reason as the identical renderers #53/#54.
+- **`devalue` 5.8.1 → 5.9.2** — our own `overrides` pin held it at the vulnerable
+  version, which is also why Dependabot's security-update run failed rather than
+  opening a PR (ENGINEERING.md "Dependency overrides age" now records the
+  recurrence). Verified: round-trip of Date/Map/BigInt on 5.9.2, full suite,
+  audit gate, local production build.
+- **Tailwind 4** added to the Dependabot major-ignore list: CSS-first config is a
+  migration with a visual pass on every screen, not a bot PR (#42 failed e2e).
+
+Left alone on purpose: the two `image-size` alerts (no upstream fix; allowlisted
+with a 2027-03-01 review date) and PR #39, which fails the lint ratchet because
+the newer eslint plugins report more `react-hooks` warnings than the ceiling —
+the ceiling does not get raised to admit a bot PR.
