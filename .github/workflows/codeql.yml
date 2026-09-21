@@ -2,11 +2,11 @@
 # public, so GitHub code scanning is free. Findings land in Security → Code
 # scanning and annotate PRs against main.
 #
-# This workflow does NOT gate the production deploy — ci.yml's `deploy` job
-# owns that, and blocking prod on a first-run backlog would be the wrong first
-# step. Wire it into the gate (a required "CodeQL" check) once the initial
-# alerts are triaged. The weekly governance routine reads the open-alert count
-# (.claude/commands/audit-codebase.md, Security band).
+# The first-run backlog was triaged to 0 open alerts, and "CodeQL" has been a
+# REQUIRED status check on main since 2026-09-21 (branch protection) — a PR
+# that introduces an alert cannot merge. The production deploy itself is still
+# gated by ci.yml's `deploy` job. The weekly governance routine reads the
+# open-alert count (.claude/commands/audit-codebase.md, Security band).
 name: CodeQL
 
 on:

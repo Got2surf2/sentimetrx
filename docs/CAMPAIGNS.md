@@ -196,7 +196,7 @@ Nav chrome (2026-07-12, system-wide breadcrumbs): the per-study campaigns page (
 A separate `/campaigns/[id]/edit` page provides a focused form for the same campaign-level fields surfaced in the Setup tab.
 
 ### Operations
-- **Clone** — Duplicate campaign with optional recipients
+- **Clone** — Duplicate campaign with optional recipients. On success the dashboard does a **full page load** to the new campaign (`lib/hardNavigate`), as does **Delete** back to `/campaigns` — deliberately not `router.push()`, so the next screen is a fresh server render rather than the previous campaign's client state (2026-09-20: named helper, same behavior).
 - **Delete** — With confirmation
 - **Export** — Respondents as CSV
 

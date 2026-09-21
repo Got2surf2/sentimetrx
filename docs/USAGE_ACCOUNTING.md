@@ -628,7 +628,7 @@ A full audit of every AI/ML call site (all 100+ `callAI` sites + every direct-fe
 
 **Concurrency correctness:** `personaExtractor` (`persona`/`demographics`) and the legacy `townhall/chat` language-switch path both attributed via a **mutable module-global** usage context — a cross-request org-misattribution hazard on Fluid Compute. Both now pass the context per call.
 
-**Guard against regressions:** `logUsage` / `logFlatCost` now `console.warn` when a **customer** resource type (`bot|townhall|social|dataset|study|recording`) is logged with a null `org_id`. `system` is the one legitimately org-less bucket.
+**Guard against regressions:** `logUsage` / `logFlatCost` now warn — via `lib/log.logWarn` (`usageLog.warnIfUnattributed`; was `console.warn` until the 2026-09-14 logging migration) — when a **customer** resource type (`bot|townhall|social|dataset|study|recording`) is logged with a null `org_id`. `system` is the one legitimately org-less bucket.
 
 **Intentionally `system` / org-less (by design, not gaps):** the platform-hosted single-tenant assistants `nora-chat` (Tabla) and `clara-chat` (Craniometrix) and the `bot-chat` marketing assistant have **no** dataset/org binding in code — reclassified from a mislabeled `dataset`+null to honest `resource_type='system'`. If any should bill to a specific client org, hardcode its `org_id` (as `cron/temple-events-refresh` does). OpenAI moderation (`lib/moderation.ts`, `contentGuard`) and the Anthropic/Deepgram **health probes** (`lib/modelHealth.ts`, `lib/serviceHealth.ts`) are free/metadata endpoints — left unlogged. Admin-only internal tools (`reo_classify`, entity-analysis-deck) remain platform-scoped when no org is passed.
 

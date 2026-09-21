@@ -495,7 +495,7 @@ Creates dataset (`source: 'substack'`, description `{ type: 'substack', publicat
 #### `POST /api/substack-sources/fetch-posts`
 **Body:** `{ url, offset? }`
 **Response:** `{ publication, posts: SubstackPost[], base_url, has_more }`
-Calls `fetchPosts(baseUrl, 50, offset || 0)` → `https://{publication}.substack.com/api/v1/archive?sort=new&limit=50&offset={offset}`. On `offset === 0`, also fetches publication metadata.
+Calls `fetchPosts(baseUrl, 50, offset || 0)` → `https://{publication}.substack.com/api/v1/archive?sort=new&limit=50&offset={offset}`. On `offset === 0`, also fetches publication metadata. Every Substack request goes through `lib/safeFetch` (2026-09-14): the base URL is user-pasted and publications can live on custom domains, so it is an SSRF surface — `safeFetch` refuses non-http(s) schemes and private / loopback / link-local / cloud-metadata hosts, and re-validates each redirect hop. A blocked host surfaces as a normal fetch error in the wizard.
 
 #### `POST /api/substack-sources/download-comments`
 **Body:** `{ dataset_id, base_url, post_id, post_title?, post_date? }`

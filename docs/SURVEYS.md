@@ -245,6 +245,8 @@ effect at the bottom of the hook. Both of those placements are load-bearing —
 see ENGINEERING.md, "What the `react-hooks` v7 compiler actually accepts". When
 adding a new step, prefer that idiom to reintroducing a forward reference.
 
+**Session ids are WebCrypto (2026-09-15).** `resolveSessionId` mints `ses_` + `crypto.randomUUID()` through `lib/clientId.randomId` (was a `Math.random()` string). The id is the upsert key for a respondent's `responses` row and half of the per-(IP, session_id) rate-limit bucket, so it must not be guessable.
+
 **Per-mount initialisation.** Session id, device fingerprint, the hidden-field /
 URL-param capture and the one-response-per-device lock are `useState` lazy
 initialisers over module-scope factories (`resolveSessionId`,

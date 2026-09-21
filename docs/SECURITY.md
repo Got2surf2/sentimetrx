@@ -694,8 +694,10 @@ leak is reviewer-enforced until the wrapper assert lands.
     to `main` and weekly, since 2026-09-14
     (`.github/workflows/codeql.yml`); `tests/` and `scripts/oneoff`
     excluded. Alerts live in Security → Code scanning and annotate
-    PRs; **not yet a deploy gate** — becomes a required check once
-    the first-run backlog is triaged.
+    PRs. The first-run backlog was triaged to **0 open alerts** and
+    `CodeQL` became a **required status check on `main`** on
+    2026-09-21 (branch protection, alongside `typecheck + tests` and
+    the isolation job) — a PR that introduces an alert cannot merge.
 - **Penetration testing:** **annual** external pen test (ratified
   cadence) + after any security-relevant architecture change.
   First external pen test: scheduled for **post first paying

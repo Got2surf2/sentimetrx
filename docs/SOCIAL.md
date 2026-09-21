@@ -289,7 +289,7 @@ Builds the OAuth URL against `https://www.facebook.com/v19.0/dialog/oauth`:
        - `template` → post the template response.
        - `ai` → only fires when mode is `all`; calls `callAI({ tier:'fast', maxTokens:200, timeoutMs:15000 })` with the same brand-guard system prompt as the user-triggered ai-reply route.
      - On post: `POST /{comment_id}/replies` with `{ message }`, then update `our_reply` + `replied_at` locally.
-   - **No `social_moderation_log` writes from the cron** — only the user-action routes log there. Auto-actions are observable via `our_reply` (auto-reply) and `is_hidden` (auto-hide) on `social_comments`, plus `console.log` lines in the function output.
+   - **No `social_moderation_log` writes from the cron** — only the user-action routes log there. Auto-actions are observable via `our_reply` (auto-reply) and `is_hidden` (auto-hide) on `social_comments`, plus structured `lib/log` lines (`logInfo` / `logError`, tagged `social-sync`) in the function output — errors also raise a Sentry event carrying the request id and org (2026-09-14; the route no longer calls `console.*`, which is an ESLint error in `app/api` + `lib`).
 
 **Returns:** `{ ok: true, synced: number, connections: number }`.
 
@@ -748,7 +748,7 @@ const [postFilter, setPostFilter] = useState<Record<string, string>>({})
 ## 14. Error Handling Patterns
 
 ### Graph API failures
-- 4xx/5xx responses are logged to `console.error` and the route returns the error to the caller. No retries.
+- 4xx/5xx responses are logged through `lib/log.logError` (structured line + Sentry event with request id and org; since 2026-09-14) and the route returns the error to the caller. No retries.
 - AI-reply route degrades gracefully: if Graph posting fails after generation, returns `{ reply, posted: false, error }` so the UI can show the generated text and let the user post manually.
 - Cron sync continues to the next connection on per-connection failures; doesn't abort the run.
 

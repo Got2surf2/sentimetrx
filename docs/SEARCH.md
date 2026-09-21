@@ -173,6 +173,8 @@ if ((dataset as any).source === 'collection') {
 
 For non-collection datasets, `targets` is just the dataset itself. For collections, it's every member, with their per-member label that gets attached to result rows as `_collection_label`.
 
+**Single-tenant assertion (2026-09-14).** Before any member row is read into a candidate pool or an AI prompt, the route calls `assertDatasetsBelongToOrg(service, targetIds, dataset.org_id, 'datasets.search')` from `lib/aiOrgGuard.ts`. Step 1 proves the caller may see the ONE dataset in the URL; this proves every fanned-out member belongs to that same org. A violation throws `CrossOrgPromptError` (500 + Sentry) rather than quietly searching across tenants — see `docs/SECURITY.md` §8.
+
 #### Step 3 — AI query expansion (only when `ai=true`)
 
 ```typescript

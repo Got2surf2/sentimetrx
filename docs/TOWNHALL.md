@@ -463,7 +463,7 @@ When editing an active/paused session:
 
 ## Auth Model
 
-Route handlers in `app/api/townhall/sessions/[id]/*` use the inline helper `gateSessionAccess` (defined at the top of `sessions/[id]/route.ts`). It looks up the caller's `users.org_id` + `organizations.is_admin_org`, then verifies the session's `org_id` matches (or admin-org bypass). This is one of four parallel `gate*Access` helpers across the codebase queued for extraction to `lib/auth/gate.ts` — see `docs/SECURITY.md` Open TBD #11.
+Route handlers in `app/api/townhall/sessions/[id]/*` use `gateSessionAccess` (top of `sessions/[id]/route.ts`), which since 2026-09-14 is a thin wrapper over the shared resource gate: `gateResourceForUser(db, userId, 'pulseiq_session', sessionId)` from `lib/auth/gate.ts`. The shared gate resolves the caller's `users.org_id` + `organizations.is_admin_org`, resolves the session's `org_id`, and allows a match or the admin-org bypass; a miss is a 404 with the generic "This resource isn't available to your account." (never a 403 that confirms the id exists). The four parallel `gate*Access` helpers that used to be re-implemented per module were extracted there — `docs/SECURITY.md` item 11, landed.
 
 > **Cross-org write fix (2026-06-08):** two mutating routes authenticated the caller but skipped the org check entirely. `POST /api/townhall/themes/[id]` (topic moderation — approve/dismiss/pause/close/reopen) fetched the topic by bare id and paired the UPDATE with the topic's *own* `org_id` (tautological), with the legacy `townhall_themes` fallback having no org filter at all — so any logged-in user could moderate any tenant's topics by id (CRITICAL). `POST /api/townhall/sessions/[id]/duplicate` fetched the source session by bare id with no caller-org check (MEDIUM). Both now resolve the caller's `org_id`+`is_admin_org` and require `row.org_id === callerOrg || isAdmin`, returning 404 otherwise (legacy `townhall_themes` gates through its parent session's `org_id`). Regression coverage: `tests/integration/townhall-mutation-gate.test.ts`.
 
@@ -482,7 +482,7 @@ The public participant routes (`/api/townhall/chat`, `/api/townhall/join`, `/api
 | `app/pi/[sessionId]/TownHallChat.tsx` | Participant chat UI |
 | `app/pi/[sessionId]/live/page.tsx` | Live presenter screen |
 | `app/api/townhall/chat/route.ts` | Chat engine (~1100 lines) |
-| `app/api/townhall/sessions/[id]/route.ts` | Session CRUD + analytics + `gateSessionAccess` |
+| `app/api/townhall/sessions/[id]/route.ts` | Session CRUD + analytics + `gateSessionAccess` (wrapper over `lib/auth/gate.ts`) |
 | `app/api/townhall/sessions/[id]/export/route.ts` | CSV / XLSX / JSON / themes export |
 | `app/api/townhall/sessions/[id]/export/pptx/route.ts` | Branded PPTX export |
 | `app/api/townhall/live/[sessionId]/route.ts` | Public live-screen aggregate API (direct PostgREST) |
