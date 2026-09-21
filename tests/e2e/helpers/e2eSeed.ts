@@ -12,6 +12,7 @@
 // is hardcoded and rejected, so even a mis-set env can't write here.
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { testPassword } from '../../helpers/testPassword'
 
 const PROD_REF = 'foubvgcarhwzjqwaxnod' // www.sentimetrx.ai — NEVER seed here
 
@@ -89,7 +90,7 @@ export async function seedE2E(env: E2EEnv): Promise<SeededIds> {
   // the auth id, so an existing membership row is the cheap lookup — the TEST
   // project holds hundreds of isolation-suite users, so a single listUsers
   // page can miss ours. Paged scan only as a last resort.
-  const password = 'e2e-' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
+  const password = testPassword()
   let userId: string | undefined =
     (await admin.from('users').select('id').eq('email', E2E_EMAIL).maybeSingle()).data?.id
   if (!userId) {

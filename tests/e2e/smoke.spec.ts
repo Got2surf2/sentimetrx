@@ -76,4 +76,47 @@ test.describe('smoke — authed shell + analyze navigation', () => {
     await page.getByRole('button', { name: /Filters/ }).first().click()
     await expect(page.getByText('Location').first()).toBeVisible({ timeout: 20_000 })
   })
+
+  // No unit test renders a chart, so a charting-library upgrade can pass every
+  // other gate and still ship blank or untitled charts: Plotly 3 removed
+  // string titles and they fail SILENTLY (2026-09-20, Plotly 2.35 → 4.0).
+  test('Charts tab draws a real Plotly chart WITH its titles', async ({ page }) => {
+    test.setTimeout(150_000)
+    const id = state.datasetId!
+    const pageErrors: string[] = []
+    page.on('pageerror', e => pageErrors.push(e.message))
+    await page.goto(`/analyze/${id}/charts`)
+    // The seeded dataset is recreated each run, so analytics start uncomputed.
+    const compute = page.getByRole('button', { name: 'Compute analytics' })
+    const plot = page.locator('.js-plotly-plot').first()
+    await expect(compute.or(plot)).toBeVisible({ timeout: 30_000 })
+    if (await compute.isVisible()) await compute.click()
+    await expect(plot).toBeVisible({ timeout: 90_000 })
+    // Bar / Column over the seeded categorical field: chart title + y-axis title.
+    await expect(page.locator('.js-plotly-plot .gtitle').first()).toHaveText('Location', { timeout: 20_000 })
+    await expect(page.locator('.js-plotly-plot .ytitle').first()).toHaveText('Count')
+    await page.getByRole('button', { name: 'Treemap' }).click()
+    await expect(page.locator('.js-plotly-plot .gtitle').first()).toHaveText('Location', { timeout: 20_000 })
+    expect(pageErrors).toEqual([])
+  })
+
+  // lib/hardNavigate — the deliberate full page load after a mutation. The
+  // first Schema save on a new dataset (?new=1) must land on TextMine via a
+  // real document load, not a client-side route change.
+  test('first Schema save on a new dataset hard-navigates to TextMine', async ({ page }) => {
+    const id = state.datasetId!
+    await page.goto(`/analyze/${id}/settings?new=1`)
+    const save = page.getByRole('button', { name: 'Save Schema' })
+    await expect(save).toBeVisible({ timeout: 30_000 })
+    // Save stays disabled until the schema is dirty; confirming an
+    // auto-detected field is the real first-visit action.
+    await page.getByRole('button', { name: '✓', exact: true }).first().click()
+    await expect(save).toBeEnabled({ timeout: 10_000 })
+    await page.evaluate(() => { (window as unknown as { __beforeNav?: boolean }).__beforeNav = true })
+    await save.click()
+    await expect(page).toHaveURL(new RegExp(`/analyze/${id}/textmine`), { timeout: 20_000 })
+    await expect(page.getByText('Themes').first()).toBeVisible({ timeout: 30_000 })
+    // A client-side route change would keep window state; a document load wipes it.
+    expect(await page.evaluate(() => (window as unknown as { __beforeNav?: boolean }).__beforeNav)).toBeUndefined()
+  })
 })

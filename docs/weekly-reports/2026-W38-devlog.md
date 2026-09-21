@@ -579,3 +579,26 @@ color. Clean tsc, 2,471 tests, audit gate, production build. Not verified: the
 signed-in Charts and Statistics tabs themselves (local login required) — the
 owner's one visual pass before shipping. The HTML export pins its own CDN
 Plotly 2.35.0 and is untouched.
+
+## 2026-09-21 — Signed-in verification of the night's upgrades + two permanent smoke tests
+
+The two earlier entries ended "not verified: signed-in flows (local login
+required)". That was wrong about what was possible: the repo's own Playwright
+smoke suite mints a throwaway TEST-project login and seeds a dataset, so a
+signed-in browser check needs nobody's credentials. Used it:
+
+- The existing four smoke tests pass on the upgraded stack (real `sb-*` auth
+  cookie through `@supabase/ssr` 0.12.6 / `supabase-js` 2.116, React 19.2.8).
+- A scratch spec (deleted) computed analytics on the seeded dataset and cycled
+  all twelve chart types in the real Charts tab on Plotly 4.0.0: nine render
+  with their titles, three show their normal "assign fields" empty state (the
+  seed has one numeric field and no date), zero console or page errors.
+  Statistics tab: distribution renders with both axis titles.
+
+Two of those checks are now permanent in `smoke.spec.ts`: a real chart with
+asserted title nodes (the gap that let "no test renders a chart" stand), and
+the `lib/hardNavigate` document-load after the first Schema save. Both pass on
+the dev server AND against a production build pointed at TEST (the way CI runs
+them; 6 passed in 14.6s). The e2e seeder's password had the same
+password-policy defect as the env-gated suites and now uses
+`tests/helpers/testPassword.ts`.
