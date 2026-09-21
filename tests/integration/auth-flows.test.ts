@@ -36,6 +36,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { randomBytes } from 'node:crypto'
+import { testPassword } from '../helpers/testPassword'
 import { config as loadDotenv } from 'dotenv'
 
 loadDotenv({ path: '.env.local', override: false })
@@ -72,10 +73,10 @@ const aliasFor = (slot: string) =>
 // test verifies the invite-flow shape (admin.createUser → matching
 // public.users insert).
 const PRIMARY_EMAIL = aliasFor('a')
-const PRIMARY_PASSWORD = randomBytes(16).toString('hex')
+const PRIMARY_PASSWORD = testPassword()
 
 const CREATED_LATER_EMAIL = aliasFor('b')
-const CREATED_LATER_PASSWORD = randomBytes(16).toString('hex')
+const CREATED_LATER_PASSWORD = testPassword()
 
 let admin: SupabaseClient
 const ids: { client: string | null; org: string | null; primaryUser: string | null; createdLaterUser: string | null } = {

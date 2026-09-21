@@ -40,6 +40,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js'
 import { NextRequest } from 'next/server'
 import { randomBytes } from 'node:crypto'
+import { testPassword } from '../helpers/testPassword'
 import { config as loadDotenv } from 'dotenv'
 
 loadDotenv({ path: '.env.local', override: false })
@@ -81,8 +82,8 @@ vi.mock('@/lib/supabase/server', () => ({
   },
 }))
 
-const ORG_A_PASSWORD = randomBytes(16).toString('hex')
-const ORG_B_PASSWORD = randomBytes(16).toString('hex')
+const ORG_A_PASSWORD = testPassword()
+const ORG_B_PASSWORD = testPassword()
 const ORG_A_EMAIL = PREFIX + 'a@camprouttest.local'
 const ORG_B_EMAIL = PREFIX + 'b@camprouttest.local'
 

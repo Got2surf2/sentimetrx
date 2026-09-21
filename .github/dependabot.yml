@@ -46,6 +46,19 @@ updates:
         update-types: [version-update:semver-major]
       - dependency-name: isomorphic-dompurify
         update-types: [version-update:semver-major]
+      # ...and its MINORS move jsdom too: 2.28 → jsdom 27, 2.36 → jsdom 28
+      # (the 2026-09 prod group PR carried 2.36 and would have un-pinned jsdom
+      # with green CI). 2.26.0 is the last release on jsdom 26, so hold it
+      # exactly until the jsdom upgrade is done as its own project.
+      - dependency-name: isomorphic-dompurify
+        versions: [">2.26.0"]
+      # puppeteer-core drives the Chromium build that @sparticuz/chromium ships
+      # to Vercel; each puppeteer release targets one Chrome version (25.10 →
+      # Chrome 152, we ship Chromium 149). They move TOGETHER, by hand, with a
+      # production PDF export checked afterwards — five report routes 500 if
+      # the pair or its file tracing is wrong (ENGINEERING.md).
+      - dependency-name: puppeteer-core
+      - dependency-name: "@sparticuz/chromium"
       # Framework majors are upgrade PROJECTS (Next 16 took its own week with a
       # --webpack opt-out and a middleware→proxy rename), never a bot PR.
       - dependency-name: next

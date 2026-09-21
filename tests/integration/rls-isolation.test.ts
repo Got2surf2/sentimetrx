@@ -22,6 +22,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { randomBytes } from 'node:crypto'
+import { testPassword } from '../helpers/testPassword'
 import { config as loadDotenv } from 'dotenv'
 
 // Load .env.local explicitly — vitest doesn't pick it up automatically.
@@ -50,8 +51,8 @@ const describeMaybe = skip ? describe.skip : describe
 const RUN_ID = randomBytes(4).toString('hex')
 const PREFIX = '_rlstest_' + RUN_ID + '_'
 
-const ORG_A_PASSWORD = randomBytes(16).toString('hex')
-const ORG_B_PASSWORD = randomBytes(16).toString('hex')
+const ORG_A_PASSWORD = testPassword()
+const ORG_B_PASSWORD = testPassword()
 const ORG_A_EMAIL = PREFIX + 'a@rlstest.local'
 const ORG_B_EMAIL = PREFIX + 'b@rlstest.local'
 

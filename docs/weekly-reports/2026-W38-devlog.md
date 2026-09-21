@@ -520,3 +520,37 @@ and `actions/setup-node` v4 → v7 (GitHub had been force-running the v4 actions
 on Node 24 with a deprecation warning on every job), `gitleaks-action` v2 → v3;
 the diff is line-for-line the PR's. #41: `@testing-library/jest-dom` 6 → 7, dev
 only, consumed solely by `tests/setup.ts`; full suite green on it.
+
+## 2026-09-20 — Dependabot #38 applied on main: 13 of 15 production bumps; two held on purpose
+
+PR #38 was green on CI, and merging it as-is would still have been wrong twice:
+
+- **`isomorphic-dompurify` 2.26 → 2.36 un-pins jsdom.** The Dependabot ignore
+  only blocked its *major*; its minors move jsdom too (2.28 → jsdom 27, 2.36 →
+  jsdom 28). jsdom 26 is the deliberate CJS pin from the Next 16 upgrade — the
+  fix for the SSR `ERR_REQUIRE_ESM` blocker on the public `/s` and `/b` pages.
+  Held at exactly `2.26.0` (range made exact; Dependabot now ignores `>2.26.0`).
+  Newer Node may well load jsdom 28 fine — that is a project with a production
+  check of the public widgets, not a line in a group PR.
+- **`puppeteer-core` 25.1 → 25.10 targets Chrome 152; we ship `@sparticuz/chromium`
+  149.** The two arrived together and must move together, with a production PDF
+  export checked after (five report routes). Held; Dependabot now ignores both.
+
+Applied at the PR's exact versions: `@aws-sdk/*` 3.1127.0, `@sentry/nextjs`
+10.73.0, `@supabase/ssr` 0.12.6, `@supabase/supabase-js` 2.116.0,
+`@vercel/functions` 3.9.5, `@workflow/next` 4.1.9, `workflow` 4.8.5, `mammoth`
+1.12.2, `react`/`react-dom` 19.2.8, `unpdf` 1.8.1, `@types/react(-dom)`.
+`@supabase/ssr` was diffed 0.10.3 → 0.12.6: the cookie chunker and encoding
+are byte-identical (existing sessions stay readable); the changes are PKCE
+verifier slots and host-only cookie removal.
+
+Verified: clean tsc, 2,471 tests, audit gate, local production build, all five
+env-gated suites against the real TEST project (64 tests), and the
+admin-session harness + an unauthenticated `/dashboard` → `/login` redirect
+through `proxy.ts` on the dev server. Not verified: a signed-in browser session
+(local login required).
+
+Found on the way: the five env-gated suites could not run locally at all —
+their hex passwords fail the TEST project's password policy, and the failure
+presents as "tests skipped". Fixed with `tests/helpers/testPassword.ts`
+(TESTING.md has the detail).
