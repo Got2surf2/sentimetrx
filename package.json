@@ -44,7 +44,7 @@
     "@supabase/ssr": "^0.12.6",
     "@supabase/supabase-js": "^2.116.0",
     "@vercel/functions": "^3.9.5",
-    "@vercel/sandbox": "^2.0.2",
+    "@vercel/sandbox": "^3.3.0",
     "@workflow/next": "^4.1.9",
     "emoji-picker-element": "^1.29.1",
     "exceljs": "^4.4.0",
