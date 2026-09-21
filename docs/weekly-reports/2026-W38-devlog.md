@@ -446,3 +446,13 @@ the dev server (TEST project): expired-idle and expired-max stamps → 401
 Suspense, so curl never shows it; the first pass had placed it in the
 magic-link form, fixed). Item 8 (i) — the `aal2` MFA check behind an
 enrollment screen with a grace window — remains.
+
+## 2026-09-20 — Admin-session verify harness committed
+
+`docs/TESTING.md` already tells the reader to run
+`bash scripts/_adminSessionVerify.sh`, but the script was only staged and its
+stamp generator (`scripts/_adminStampGen.ts`) was gitignored by the
+underscore rule — a documented command that could not run from a clean
+checkout. Both are now tracked (the generator force-added; it prints stamps,
+never the key), and the script's hardcoded home-directory `cd` is now
+relative to the script. No app behavior change.
