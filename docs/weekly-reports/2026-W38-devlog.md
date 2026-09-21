@@ -511,3 +511,12 @@ Verified: clean tsc, 2,471 tests, audit gate, local production build (same two
 optional-provider warnings as before), eslint on the ten touched files with
 the new plugins — 0 hits on the new rule. Not verified: the signed-in flows
 themselves in a browser (the local site needs a login).
+
+## 2026-09-20 — Dependabot #37 + #41 applied on main (CI actions, jest-dom 7)
+
+Both PRs were green on their own CI. Applied by hand so every open Dependabot
+PR ships in one build rather than one build per merge. #37: `actions/checkout`
+and `actions/setup-node` v4 → v7 (GitHub had been force-running the v4 actions
+on Node 24 with a deprecation warning on every job), `gitleaks-action` v2 → v3;
+the diff is line-for-line the PR's. #41: `@testing-library/jest-dom` 6 → 7, dev
+only, consumed solely by `tests/setup.ts`; full suite green on it.
