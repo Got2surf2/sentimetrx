@@ -447,6 +447,15 @@ Watch list:
   list pages still paginate.
 - **Plotly bundle** is the biggest single chunk; only import on the
   charts page (`'plotly.js-dist-min'` via dynamic import).
+  **On Plotly 4 since 2026-09-20** (from 2.35). Plotly 3 REMOVED string
+  titles (`title: 'Count'`) and `titlefont` — they fail silently, the chart
+  just loses its title. ChartsModule's `PlotlyChart` wrapper converts string
+  layout/x/y titles to `{ text }`; anything the wrapper does not cover
+  (a second axis, a colorbar, a trace title) must be written as
+  `title: { text, font }`. Plotly 4 also picks inside-fill text color by WCAG
+  contrast (treemap / funnel / heatmap labels may be white where they were
+  dark). The standalone HTML export pins its own CDN build (2.35.0) and is
+  unaffected.
 
 **How we verify (interim — automation tracked as Open `<TBD>` 14):**
 - Bundle size: run `npm run build` and inspect the chunk table

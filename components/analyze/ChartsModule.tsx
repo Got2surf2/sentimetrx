@@ -2452,7 +2452,7 @@ function TimeSeriesInner({ analytics, schema, datasetId, dateField, metricField,
                 <div style={{ fontSize: 12, fontWeight: 700, color: sc.color, marginBottom: 4 }}>{sc.name}</div>
                 <PlotlyChart traces={sc.traces} layout={{
                   xaxis: { title: '', tickfont: { size: 9 } },
-                  yaxis: { title: metricField ? 'Avg' : (tsShowPercent ? '% share' : 'Count'), titlefont: { size: 10 }, tickfont: { size: 9 }, ...(tsShowPercent ? { ticksuffix: '%' } : {}) },
+                  yaxis: { title: { text: metricField ? 'Avg' : (tsShowPercent ? '% share' : 'Count'), font: { size: 10 }, standoff: 18 }, tickfont: { size: 9 }, ...(tsShowPercent ? { ticksuffix: '%' } : {}) },
                   height: 200, margin: { t: 10, b: 40, l: 40, r: 10 },
                 }} />
               </div>

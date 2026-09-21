@@ -554,3 +554,28 @@ Found on the way: the five env-gated suites could not run locally at all —
 their hex passwords fail the TEST project's password policy, and the failure
 presents as "tests skipped". Fixed with `tests/helpers/testPassword.ts`
 (TESTING.md has the detail).
+
+## 2026-09-20 — Dependabot #40 applied on main: Plotly 2.35 → 4.0
+
+Green CI on the PR proved nothing here — no test renders a chart. The real
+question was Plotly 3's removal of string titles and `titlefont`, which fail
+silently. Read against the code: ChartsModule's `PlotlyChart` wrapper already
+converts string layout/x/y titles to `{ text }`, and all five Statistics-tab
+layouts already use the object form. One site was exposed — the time-series
+small multiples passed `titlefont: { size: 10 }` — now `title: { text, font,
+standoff }`. No other removed attribute (`bardir`, `annotation.ref`,
+`transforms`, mapbox traces, `hsv()` colors, fractional `rgb()`) is used.
+
+Verified with a side-by-side render harness (scratch, not committed): nine
+figures built with the wrapper's exact merge logic and our palette — bar with
+outside text, treemap, funnel, heatmap with cell text, box, waterfall, scatter,
+the small multiple, centered-text bubbles — on 2.35.3 and 4.0.0 in Chrome. All
+render on 4.0 with every title present (16 title nodes read back from the DOM),
+no errors, no modebar (so v4's new default "Upload to Cloud" button never
+appears: `displayModeBar: false`), and `downloadImage`/`purge` still exist.
+Visible differences, both improvements: the tallest bar's outside label is no
+longer clipped, and treemap/heatmap inside-text flips to the higher-contrast
+color. Clean tsc, 2,471 tests, audit gate, production build. Not verified: the
+signed-in Charts and Statistics tabs themselves (local login required) — the
+owner's one visual pass before shipping. The HTML export pins its own CDN
+Plotly 2.35.0 and is untouched.

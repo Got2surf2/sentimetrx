@@ -1642,6 +1642,12 @@ Full module spec: **`docs/TAXONOMY.md`**. Summary of the analyze-surface integra
 Defined in `CHART_TYPE_DEFS` (`components/analyze/ChartsModule.tsx`). Slots are from
 `CHART_TYPE_SLOTS` in the same file.
 
+Rendered with **Plotly 4** (`plotly.js-dist-min`, dynamic import; upgraded from 2.35 on
+2026-09-20). Every chart goes through the file's `PlotlyChart` wrapper, which applies the shared
+base layout and converts string chart/axis titles to Plotly's `{ text }` form — Plotly 3+ silently
+drops a plain-string title. The modebar is off (`displayModeBar: false`). Title rules for anything
+the wrapper does not cover: ENGINEERING.md, "Plotly bundle".
+
 | Chart | Slots | Use Case |
 |-------|-------|----------|
 | Bar/Column (`bar`) | category (req), colorBy, value | Counts across categories |
