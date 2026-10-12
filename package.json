@@ -45,7 +45,7 @@
     "@supabase/supabase-js": "^2.116.0",
     "@vercel/functions": "^3.9.5",
     "@vercel/sandbox": "^2.0.2",
-    "@workflow/next": "^4.1.9",
+    "@workflow/next": "^4.1.15",
     "emoji-picker-element": "^1.29.1",
     "exceljs": "^4.4.0",
     "html-to-image": "^1.11.13",
@@ -63,7 +63,7 @@
     "server-only": "^0.0.1",
     "tus-js-client": "^4.3.1",
     "unpdf": "^1.8.1",
-    "workflow": "^4.8.5",
+    "workflow": "^4.8.11",
     "xlsx": "file:vendor/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
