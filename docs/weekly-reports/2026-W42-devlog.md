@@ -51,3 +51,32 @@ only fix is a `mammoth` downgrade to 0.3.x); **7 modules > 1,500 lines**
 (report-only per the rubric).
 
 The four reports are committed under `docs/weekly-reports/` as reviewed.
+
+## 2026-10-12 — Dependabot #51, #53, #54 landed by hand (one commit each)
+
+Finished the open bot PRs before the push so the queue ships as ONE build.
+Each at the PR's exact versions, installed with `npm install --before=<today−7d>`:
+a plain install floated seven transitive packages past the 7-day cooldown on
+#51 (incl. `@nestjs/*` 12.1.3 and `@xhmikosr/bin-wrapper` published today,
+`express` 5.3.0), which `--before` prevents without touching anything already
+locked. Lines superseded by newer landed versions were skipped (#54's `next`
+16.3.6 and `workflow` 4.8.9; #53's `eslint-config-next` is aligned to the
+locked 16.4.0 rather than moved backwards). #52 (dompurify 3.4.16) and #57
+(brace-expansion) were already covered by `0efb912b`.
+
+- **#51** workflow 4.8.11 / @workflow/next 4.1.15.
+- **#53** autoprefixer, docx (scripts/oneoff only), tsx, typescript-eslint.
+- **#54** AWS SDK ×3, @supabase/ssr 0.12.7 + supabase-js 2.117.2,
+  @vercel/functions, mammoth 1.13.0 (DOCX knowledge import — covered by a
+  real-docx round-trip test), Plotly 4.1.1, React/React DOM 19.3.0 + types.
+  React 19.3 read against our use: no Trusted Types CSP here; four
+  independent `startTransition` sites, where un-entangled transitions are
+  benign.
+
+Verified after each: tsc clean, 2,472 tests, audit gate PASS; full eslint
+0 errors / 166 warnings (= ceiling) after #53 and #54; after #54 a
+production build pointed at TEST + Playwright smoke 6/6 (signed-in auth on
+the new Supabase packages, real Plotly chart with titles). Held exactly:
+jsdom 26.1.0, isomorphic-dompurify 2.26.0, pptxgenjs 4.0.1, the
+puppeteer/chromium pair. Not exercised locally: real S3 uploads on the new
+AWS SDK (unit-mocked only) — check one recording upload after deploy.
