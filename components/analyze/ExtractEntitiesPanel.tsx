@@ -162,7 +162,7 @@ export default function ExtractEntitiesPanel({ datasetId, schemaDirty }: Props) 
 
   useEffect(function() {
     void loadPreview()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadPreview is recreated every render; datasetId/manageOpen are its triggers
   }, [datasetId, manageOpen])
 
   async function runDiscover() {

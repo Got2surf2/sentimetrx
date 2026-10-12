@@ -188,7 +188,7 @@ export default function CanvasShell({ initialMode, botOverride }: Props) {
       clearTimeout(timer)
       events.forEach(e => window.removeEventListener(e, poke))
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- idle timer re-arms on mode/reset/QR only; clearConversation is recreated every render
   }, [mode, resetKey, showQR])
 
   useEffect(() => {

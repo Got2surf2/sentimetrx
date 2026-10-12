@@ -10,5 +10,11 @@
     "package": "image-size",
     "reason": "Same root and same verification as GHSA-w3rx-r6r6-pgpr (JXL/HEIF parsers never loaded).",
     "reviewBy": "2027-03-01"
+  },
+  {
+    "ghsa": "GHSA-vfj7-8cjw-p6xm",
+    "package": "braces",
+    "reason": "No patched release exists (advisory range <=3.0.3 = latest). Reached only by build/dev tooling that expands repository-authored glob patterns, never user input: tailwindcss@3 content scanning (chokidar/micromatch/fast-glob), eslint-config-next, and @workflow/nest -> @swc/cli (NestJS CLI watcher; not imported by workflow/@workflow/next/@workflow/core runtime dist). Only npm fix is the Tailwind 4 major (open queue project). Verified 2026-10-12, ENGINEERING.md \"Dependabot + npm audit\".",
+    "reviewBy": "2027-01-15"
   }
 ]

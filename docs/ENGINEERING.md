@@ -1171,6 +1171,31 @@ run instead of opening a PR. Moved to `5.9.2` (the newest release past the 7-day
 cooldown). **A red "Dependabot Updates" run for a transitive package means: read
 our own `overrides` first.**
 
+**And a third time (2026-10-12)**: `overrides.piscina` = `5.2.0` and
+`overrides.devalue` = `5.9.2` — both exact, both later named vulnerable
+(GHSA-67c8-pqhq-4rmx critical, `< 5.3.2`; six devalue advisories `<= 5.9.2`).
+With `next` 16.3.5 and five other roots, `main` sat at **18 blocking
+advisories** for three weeks (nobody pushed, so CI never re-ran; the weekly
+governance reports W41/W42 caught it). Two structural changes, not another
+reminder: (1) the security-driven overrides are now **caret floors**
+(`^5.3.2`, `^5.9.4`, `^7.29.1`, `^3.1.8`, `brace-expansion@1: ^1.1.21`) so
+`npm audit fix` can move them past the next advisory instead of being held
+by them — keep exact pins only where an exact version is the point
+(`esbuild`, `vite`); (2) `scripts/audit-gate.ts` now reads `package.json`
+`overrides` and appends **"HELD BY OUR PIN overrides[...]"** to any blocking
+root our own pin covers, so the diagnosis is printed, not remembered.
+
+`braces` (GHSA-vfj7-8cjw-p6xm, high) is the one new acceptance: **no patched
+release exists** (range `<= 3.0.3` = latest), and every path to it expands
+repository-authored glob patterns, never user input — `tailwindcss@3` content
+scanning (`chokidar`/`micromatch`/`fast-glob`), `eslint-config-next`, and
+`@workflow/nest` → `@swc/cli` (a NestJS CLI watcher; no `braces`/`micromatch`
+import in the `workflow`, `@workflow/next` or `@workflow/core` runtime dist).
+npm's only "fix" is the Tailwind 4 major, an open queue project.
+`audit-allowlist.json` entry, `reviewBy` 2027-01-15. `devalue`/`undici` no
+longer need the `workflow@2` major that npm offered — the repointed in-major
+pins cleared them.
+
 ## Scratch scripts must not be able to break the build (2026-08-16)
 
 `tsconfig.json` excluded only `node_modules`, and `next build` type-checks the

@@ -659,9 +659,20 @@ guardrails, or knowledge base. Target ~$1–$3 per full pass.
 
 ## CI
 
-`.github/workflows/ci.yml` runs typecheck + Vitest on push to `main` and
-on every PR. Playwright is not in CI (real Supabase + login + dev server)
-— it's a manual local check. README has the badge.
+`.github/workflows/ci.yml` runs on push to `main` and on every PR. Jobs:
+**typecheck + tests** (dependency audit gate → typecheck → SQL tx-wrap guard →
+no-legacy-`dataset_rows` guard → lint ratchet → Vitest with the coverage gate),
+**multi-tenant isolation** (the env-gated RLS / egress / auth-flow suites against
+the TEST project, with a preflight that fails instead of silently skipping),
+**e2e smoke** (Playwright `smoke.spec.ts` against a production build pointed at
+TEST), **secret scan** (gitleaks), then **production deploy** only after all are
+green. README has the badge. (This section said "Playwright is not in CI" until
+2026-10-12 — stale since the smoke job landed.)
+
+The audit gate (`scripts/audit-gate.ts`) is pinned by `tests/unit/auditGate.test.ts`:
+roots vs collateral, severity floor, allowlist match + expiry, and (2026-10-12)
+the "HELD BY OUR PIN" hint naming a `package.json` `overrides` entry that covers a
+blocked root.
 
 ## Tracked test gaps
 

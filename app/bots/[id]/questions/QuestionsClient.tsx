@@ -194,7 +194,7 @@ export default function QuestionsClient({
 
   useEffect(() => {
     void refreshQuestions().finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial load once per agent; refreshQuestions is recreated every render
   }, [botId])
 
   // Parse a pasted block of external questions: one per line; tab- or
@@ -364,7 +364,7 @@ export default function QuestionsClient({
       setDraftLoading(false); setDraftError(false)
     }
     return () => { cancelled = true }
-  }, [reviewing, reviewIndex]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reviewing, reviewIndex]) // eslint-disable-line react-hooks/exhaustive-deps -- draft fetch keyed on the reviewed question only; questions/answerDraft updates must not refetch
 
   const counts = useMemo(() => {
     const open = questions.filter(q => q.status === 'open').length

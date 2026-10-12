@@ -2724,7 +2724,7 @@ export default function ChartsModule({ datasetId, schema, analytics, themeModel,
   var filteredRealSummaries = useMemo(function() {
     if (!_anyFilter || !_topRows.loaded || !analytics) return null
     return recomputeFilteredSummaries(_topRows.rows, fields, analytics.fieldSummaries || {}, _sampleScale)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- _filterIdSig stands in for _topRows.rows so the recount runs on filter change, not every render
   }, [_anyFilter, _topRows.loaded, _filterIdSig, fields, analytics, _sampleScale])
   useEffect(function() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async theme-counts fetch → state (external data sync)

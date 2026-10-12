@@ -49,7 +49,7 @@ export default function ReadoutClient() {
     } catch { setError('Failed to load readout') }
     finally { setLoading(false); setRefreshing(false) }
   }
-  useEffect(() => { void load() }, [botId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load() }, [botId]) // eslint-disable-line react-hooks/exhaustive-deps -- load once per agent; load is recreated every render
 
   async function download(kind: 'pdf' | 'pptx') {
     const set = kind === 'pdf' ? setPdfState : setPptxState

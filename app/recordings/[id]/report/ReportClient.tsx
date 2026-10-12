@@ -2949,7 +2949,7 @@ function AudioModal({ recordingId, segments, speakerNames, channelLabels, canEdi
     if (a.readyState >= 1) seekAndPlay()
     else a.addEventListener('loadedmetadata', seekAndPlay, { once: true })
     // rate intentionally omitted from deps — we don't want a rate change to re-seek.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rate omitted so a speed change does not re-seek (see comment above)
   }, [url, req.startSec, req.nonce])
 
   // Esc closes.

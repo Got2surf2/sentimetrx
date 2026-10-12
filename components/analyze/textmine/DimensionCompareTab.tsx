@@ -99,7 +99,7 @@ export default function DimensionCompareTab({ datasetId, catFields, fieldLabel, 
     })
     return { allCols, allSubs, colTotals, subTotals, grand }
     // labelFor depends on axis; recompute when axis changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- labelFor is derived from axis, which is listed (see comment above)
   }, [grid, smartAxes, axis, groupSort])
 
   const visibleSubs = showAll ? model.allSubs : model.allSubs.slice(0, MAX_VISIBLE)

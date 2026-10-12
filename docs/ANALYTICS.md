@@ -3217,3 +3217,15 @@ A `BEFORE INSERT` trigger (`drf_tsv_trigger`) loops every JSONB key in plpgsql w
 a regex per value to build the tsvector, then two GIN indexes (`data`, `tsv`) are
 maintained. A 52-column dataset pays ~9× a 4-column one. Not a bug — worth knowing
 before promising an upload time.
+
+## Omitted effect dependencies (2026-10-12)
+
+Effects that intentionally leave a value out of their dependency array carry a scoped `eslint-disable-next-line react-hooks/exhaustive-deps -- <reason>` naming why (2026-10-12; governance W39–W42 flagged the 36 that had no reason). The comments changed, no dependency array did. In this area:
+- **TextMine** (`TextMineModule`): the `?section=&view=` deep link applies **once**, after the entity catalog settles; the
+  availability guard and the `popstate` re-sync list the inputs of `sectionAvailable`/`viewsFor` rather than the
+  per-render functions; theme loading is keyed on the joined field list, not the array identity.
+- **Charts** (`ChartsModule`): filter-aware summaries recompute on the filtered-id signature (`_filterIdSig`), which
+  stands in for the row array, so a large recount runs on a filter change, not on every render.
+- **Saved views** (`ViewsBar`): a pending freeze captures once rows are in memory. **Entity extraction**
+  (`ExtractEntitiesPanel`) reloads on dataset / manage-panel change. **Entity/Dimension compare** tabs derive from
+  their data + axis inputs only.

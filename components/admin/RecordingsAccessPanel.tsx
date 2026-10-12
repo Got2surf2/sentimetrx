@@ -48,7 +48,7 @@ export default function RecordingsAccessPanel({ orgId, members }: Props) {
     }
   }
 
-  useEffect(() => { void load() }, [orgId])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load() }, [orgId])  // eslint-disable-line react-hooks/exhaustive-deps -- load once per org; load is recreated every render
 
   function flash(msg: string) {
     setStatus(msg)

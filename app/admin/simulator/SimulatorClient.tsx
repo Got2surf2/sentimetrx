@@ -112,8 +112,21 @@ function sentiment(score: number, max: number): string {
   return 'negative'
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function generatePayload(config: any, weights: number[]) {
+// The subset of a study's config the simulator reads (from GET /api/study/[guid]).
+interface SimConfig {
+  ratingScale?: { score: number; label: string }[]
+  npsEnabled?: boolean
+  experienceEnabled?: boolean
+  q3Enabled?: boolean
+  q4Enabled?: boolean
+  openingFlow?: { id: string; type: string }[]
+  questions?: { id: string; type: string; enabled?: boolean; options?: string[] }[]
+  psychographicBank?: { key: string; opts?: string[] }[]
+  psychoCount?: number
+  demographicFields?: { key: string; enabled?: boolean; options?: string[][] }[]
+}
+
+function generatePayload(config: SimConfig, weights: number[]) {
   const scale = config.ratingScale || [
     { score: 1, label: 'Poor' },
     { score: 2, label: 'Fair' },
@@ -128,8 +141,7 @@ function generatePayload(config: any, weights: number[]) {
   const npsOpt = scale.find((r: { score: number }) => r.score === nps) || { score: nps, label: 'Score ' + nps }
   const expOpt = scale.find((r: { score: number }) => r.score === exp) || { score: exp, label: 'Score ' + exp }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const payload: Record<string, any> = {
+  const payload: Record<string, unknown> = {
     agent: 'Simulator',
     timestamp: new Date().toISOString(),
   }
@@ -150,12 +162,10 @@ function generatePayload(config: any, weights: number[]) {
 
   // Opening flow open-ends
   if (config.openingFlow) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const opens = config.openingFlow.filter((f: any) => f.type === 'open_end')
+    const opens = config.openingFlow.filter(f => f.type === 'open_end')
     if (opens.length) {
       const oa: Record<string, string> = {}
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      opens.forEach((item: any) => { oa[item.id] = feedbackFor(exp, max) })
+      opens.forEach(item => { oa[item.id] = feedbackFor(exp, max) })
       payload.openingAnswers = oa
     }
   }
@@ -163,8 +173,7 @@ function generatePayload(config: any, weights: number[]) {
   // Custom questions
   if (config.questions) {
     const ca: Record<string, string | string[]> = {}
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    config.questions.filter((q: any) => q.enabled !== false && q.type !== 'hidden').forEach((q: any) => {
+    config.questions.filter(q => q.enabled !== false && q.type !== 'hidden').forEach(q => {
       if (q.type === 'open') ca[q.id] = pick([...POSITIVE, ...NEUTRAL, ...SUGGESTIONS])
       else if ((q.type === 'radio' || q.type === 'dropdown') && q.options?.length) ca[q.id] = pick(q.options)
       else if (q.type === 'checkbox' && q.options?.length) {
@@ -193,9 +202,8 @@ function generatePayload(config: any, weights: number[]) {
   // Demographics
   if (config.demographicFields) {
     const dm: Record<string, string> = {}
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    config.demographicFields.filter((d: any) => d.enabled).forEach((f: any) => {
-      if (f.options?.length) dm[f.key] = (pick(f.options) as string[])[0]
+    config.demographicFields.filter(d => d.enabled).forEach(f => {
+      if (f.options?.length) dm[f.key] = pick(f.options)[0]
       else if (DEMO[f.key]) dm[f.key] = pick(DEMO[f.key])
       else dm[f.key] = pick(DEMO.zip)
     })
@@ -261,8 +269,7 @@ export default function SimulatorClient() {
 
     // Fetch study
     addLog('Fetching study config...', 'info')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let config: any
+    let config: SimConfig
     try {
       const res = await fetch(`/api/study/${guid.trim()}`)
       if (!res.ok) throw new Error(`Study not found (${res.status})`)

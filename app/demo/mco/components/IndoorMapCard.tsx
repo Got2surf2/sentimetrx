@@ -183,7 +183,7 @@ export default function IndoorMapCard({ hint }: { hint: IndoorMapHint }) {
       .catch(e => { if (!aborted) { setError(String(e?.message || e)); setData(null) } })
       .finally(() => { if (!aborted) setLoading(false) })
     return () => { aborted = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch keyed on the hint fields actually sent; hint object identity changes every render
   }, [effectiveTerminal, hint.level, effectiveGate, hint.category, overrideMapId])
 
   const filtered = useMemo<ApiPlacemark[]>(() => {

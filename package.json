@@ -52,7 +52,7 @@
     "isomorphic-dompurify": "2.26.0",
     "lottie-web": "^5.13.0",
     "mammoth": "^1.12.2",
-    "next": "^16.2.7",
+    "next": "^16.4.0",
     "plotly.js-dist-min": "^4.0.0",
     "pptxgenjs": "^4.0.1",
     "puppeteer-core": "^25.1.0",
@@ -94,18 +94,18 @@
     "vitest": "^4.1.11"
   },
   "overrides": {
-    "undici": "^7.29.0",
-    "piscina": "5.2.0",
-    "devalue": "5.9.2",
+    "undici": "^7.29.1",
+    "piscina": "^5.3.2",
+    "devalue": "^5.9.4",
     "esbuild": "0.28.1",
     "vite": "8.0.16",
     "exceljs": {
       "uuid": "^11.1.1"
     },
     "postcss": "$postcss",
-    "fast-uri": "^3.1.5",
+    "fast-uri": "^3.1.8",
     "body-parser@1": "^1.20.6",
     "nanoid": "^5.1.16",
-    "brace-expansion@1": "^1.1.18"
+    "brace-expansion@1": "^1.1.21"
   }
 }

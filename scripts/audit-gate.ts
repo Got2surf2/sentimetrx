@@ -54,7 +54,17 @@ function ghsaFromUrl(url: string | undefined): string {
   return m ? m[0].toUpperCase() : ''
 }
 
-export function evaluateAudit(audit: unknown, allow: AllowEntry[], now: Date = new Date()): Verdict {
+// The `overrides` key(s) in package.json that pin `pkg` (bare or major-scoped,
+// e.g. "brace-expansion@1"). Three times a root sat at a vulnerable version
+// because our own override held it there (ENGINEERING.md, "It recurred") —
+// naming the pin in the failure turns that diagnosis from memory into output.
+export function overridePinsFor(pkg: string, overrides: Record<string, unknown> = {}): string[] {
+  return Object.entries(overrides)
+    .filter(([k]) => k === pkg || k.startsWith(pkg + '@'))
+    .map(([k, v]) => `overrides["${k}"] = ${JSON.stringify(v)}`)
+}
+
+export function evaluateAudit(audit: unknown, allow: AllowEntry[], now: Date = new Date(), overrides: Record<string, unknown> = {}): Verdict {
   const a = (audit || {}) as AuditJson
   const vulns = a.vulnerabilities || {}
   const failures: string[] = []
@@ -74,7 +84,9 @@ export function evaluateAudit(audit: unknown, allow: AllowEntry[], now: Date = n
       const adv: Advisory = { package: pkg, severity: sev, ghsa: ghsaFromUrl(r.url), title: r.title || '', range: r.range || '' }
       const entry = allow.find(e => e.ghsa.toUpperCase() === adv.ghsa && e.package === pkg)
       if (!entry) {
-        failures.push(`${sev.toUpperCase()} ${pkg} ${adv.ghsa || '(no GHSA id)'} — ${adv.title} [${adv.range}] — not allowlisted`)
+        const pins = overridePinsFor(pkg, overrides)
+        const held = pins.length ? ` — HELD BY OUR PIN ${pins.join(', ')}: repoint it past the range` : ''
+        failures.push(`${sev.toUpperCase()} ${pkg} ${adv.ghsa || '(no GHSA id)'} — ${adv.title} [${adv.range}] — not allowlisted${held}`)
       } else if (!/^\d{4}-\d{2}-\d{2}$/.test(entry.reviewBy) || entry.reviewBy < today) {
         failures.push(`${sev.toUpperCase()} ${pkg} ${adv.ghsa} — allowlist entry EXPIRED (reviewBy ${entry.reviewBy}); re-verify and move the date or fix the root`)
       } else {
@@ -103,7 +115,8 @@ function main() {
   const jsonIdx = args.indexOf('--json')
   const audit = jsonIdx >= 0 ? JSON.parse(readFileSync(args[jsonIdx + 1], 'utf8')) : runNpmAudit()
   const allow = JSON.parse(readFileSync(resolve(process.cwd(), 'audit-allowlist.json'), 'utf8')) as AllowEntry[]
-  const v = evaluateAudit(audit, allow)
+  const pkgJson = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8')) as { overrides?: Record<string, unknown> }
+  const v = evaluateAudit(audit, allow, new Date(), pkgJson.overrides)
 
   console.log(`npm audit totals: ${JSON.stringify(v.totals)}`)
   for (const adv of v.allowed) console.log(`  allowed  ${adv.severity.toUpperCase()} ${adv.package} ${adv.ghsa} — ${adv.title}`)

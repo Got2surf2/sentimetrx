@@ -113,7 +113,7 @@ export default function ParkingCard({ hint }: { hint: ParkingHint }) {
       })
       .finally(() => { if (!aborted) setLoading(false) })
     return () => { aborted = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the joined highlight list; the array identity changes every render
   }, [hint.highlight?.join(',')])
 
   // Use the most recent per-lot upstream timestamp as "last updated" so the

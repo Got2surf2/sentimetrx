@@ -664,7 +664,7 @@ export default function MicCheck({
     stopTest()
     const id = setTimeout(() => { void startTest() }, 0)
     return () => clearTimeout(id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restart only when an input constraint changes; startTest/stopTest are recreated every render
   }, [constraintKey])
 
   // Stop the test when the parent disables the panel (recording started) or unmounts.

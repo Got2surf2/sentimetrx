@@ -180,7 +180,7 @@ export default function ViewsBar({ datasetId, primaryDateField, schemaFields, em
   // Once rows are in memory, capture the frozen aggregates over the filtered set.
   useEffect(function() {
     if (pendingFreeze && rowsLoaded) { runCapture(pendingFreeze); setPendingFreeze(null) }
-  }, [pendingFreeze, rowsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pendingFreeze, rowsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps -- runCapture is recreated every render; fire only when the pending freeze can resolve
 
 
   function patchExpiry(snap: SnapshotRow, expires_at: string | null) {

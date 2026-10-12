@@ -57,7 +57,7 @@ export default function KbHealthClient() {
       else setChunks(Array.isArray(d?.chunks) ? d.chunks : [])
     } catch { setError('Failed to load knowledge base') }
   }
-  useEffect(() => { void load() }, [botId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load() }, [botId]) // eslint-disable-line react-hooks/exhaustive-deps -- load once per agent; load is recreated every render
 
   const stats = useMemo(() => {
     const list = chunks || []

@@ -1486,7 +1486,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
       setSection(sec)
       setView(vw && viewsFor(sec).indexOf(vw) >= 0 ? vw : 'overview')
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- apply the URL deep link once, after the entity catalog settles
   }, [entityCatalogLoading])
   // Guard: if the active section isn't actually available for this dataset
   // (e.g. a restored 'entities' but the catalog came back empty), fall back to
@@ -1495,7 +1495,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
   useEffect(function() {
     if (entityCatalogLoading) return
     if (!sectionAvailable(section)) { setSection('themes'); setView('overview') }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sectionAvailable is recreated every render; its inputs are listed
   }, [entityCatalogLoading, section, entityCatalogRows.length])
   // Back/forward: re-sync nav state from the URL (shallow history, no reload).
   useEffect(function() {
@@ -1510,7 +1510,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     }
     window.addEventListener('popstate', onPop)
     return function() { window.removeEventListener('popstate', onPop) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sectionAvailable/viewsFor are recreated every render; their inputs are listed
   }, [dimensionsEnabled, entityCatalogRows.length, datasetSource, outletCount, outletReportingEnabled])
 
   // Listen for Ana theme mutations and refetch theme model
@@ -1923,7 +1923,7 @@ export default function TextMineModule({ datasetId, schema, analytics, savedThem
     }
     // (strip-follow event is dispatched at the TOP of this effect, before the
     // early returns, so it can't be skipped on a bail-out transition)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the joined field list; array identity and fetch helpers change every render
   }, [effectiveFields.join('\u001F')])
 
   // ── Unified Comments filter ────────────────────────────────────────────────

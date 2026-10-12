@@ -95,7 +95,7 @@ export default function ReportClient() {
     } catch { setError('Failed to load study') }
     finally { setLoading(false); setRefreshing(false) }
   }
-  useEffect(() => { void load() }, [botId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load() }, [botId]) // eslint-disable-line react-hooks/exhaustive-deps -- load once per agent; load is recreated every render
 
   async function exportPptx() {
     setExporting(true)

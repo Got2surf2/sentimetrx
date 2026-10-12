@@ -405,7 +405,7 @@ export default function StepOpening({ draft, updateConfig, onNext, onBack }: Pro
     if (!c.openingFlow) {
       updateConfig({ openingFlow: deriveOpeningFlow(c) })
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time legacy-flag migration on mount
   }, [])
 
   const flow: OpeningFlowItem[] = c.openingFlow ?? deriveOpeningFlow(c)

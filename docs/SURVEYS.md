@@ -307,3 +307,7 @@ Drag-to-reorder behaviour is unchanged — note the file has a **second**
 `onDragEnd` in a later component, so all nine usages were checked to be inside
 `SurveyFlowPanel` before threading the handler.
 
+## Omitted effect dependencies (2026-10-12)
+
+Effects that intentionally leave a value out of their dependency array carry a scoped `eslint-disable-next-line react-hooks/exhaustive-deps -- <reason>` naming why (2026-10-12; governance W39–W42 flagged the 36 that had no reason). The comments changed, no dependency array did. In the creator, `StepClarifiers` fills the default clarifier and `StepOpening` migrates legacy flags to
+`openingFlow` — each exactly once, on mount.

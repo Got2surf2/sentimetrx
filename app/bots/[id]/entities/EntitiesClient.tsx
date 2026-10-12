@@ -119,7 +119,7 @@ export default function EntitiesClient({
   useEffect(() => {
     setLoading(true)
     void reload({ includeHidden: showHidden }).finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload is recreated every render; botId/showHidden are its only inputs
   }, [botId, showHidden])
 
   async function saveBrand() {

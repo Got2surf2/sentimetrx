@@ -70,7 +70,7 @@ export default function QRHandoffModal({ botId, sessionId, messages, onClose }: 
       }
     })()
     return () => { aborted = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mint the handoff URL once on mount
   }, [])
 
   return (

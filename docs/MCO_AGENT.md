@@ -490,3 +490,10 @@ Original §6.1 proposed extending the chat route to emit `ui_hints` inline. **Re
 3. **Easy to fold in later if desired** — once `chatCore.ts` settles, the extractor can move inside without breaking the response shape (the optional `ui_hints` field stays additive).
 
 The verbatim hint extractor system prompt from §10 is unchanged.
+
+## Omitted effect dependencies (2026-10-12)
+
+Effects that intentionally leave a value out of their dependency array carry a scoped `eslint-disable-next-line react-hooks/exhaustive-deps -- <reason>` naming why (2026-10-12; governance W39–W42 flagged the 36 that had no reason). The comments changed, no dependency array did. In the kiosk: `ChatPane` resets its thread only on a greeting/`resetKey` change and sends each tile
+`pendingMessage` once; `CanvasShell`'s 60s idle timer re-arms on mode / reset / QR-open only; `QRHandoffModal`
+mints its handoff URL once per open; `IndoorMapCard` and `ParkingCard` refetch on the hint fields they actually
+send (a hint object is new on every render).

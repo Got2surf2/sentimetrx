@@ -2,7 +2,7 @@
 // rules on npm-audit-shaped fixtures: roots vs collateral, severity floor,
 // allowlist match, and allowlist expiry.
 import { describe, it, expect } from 'vitest'
-import { evaluateAudit, type AllowEntry } from '../../scripts/audit-gate'
+import { evaluateAudit, overridePinsFor, type AllowEntry } from '../../scripts/audit-gate'
 
 const NOW = new Date('2026-09-14T12:00:00Z')
 
@@ -71,5 +71,14 @@ describe('audit gate', () => {
   it('still passes on the reviewBy date itself (inclusive)', () => {
     const edge: AllowEntry[] = [{ ...ALLOW[0], reviewBy: '2026-09-14' }]
     expect(evaluateAudit(audit({ ...root('image-size', 'high', 'GHSA-w3rx-r6r6-pgpr') }), edge, NOW).ok).toBe(true)
+  })
+
+  it('names our own overrides pin when it is what holds a blocked root (bare + major-scoped keys)', () => {
+    const overrides = { piscina: '5.2.0', 'brace-expansion@1': '^1.1.18', 'piscina-extra': '1.0.0' }
+    expect(overridePinsFor('piscina', overrides)).toEqual(['overrides["piscina"] = "5.2.0"'])
+    expect(overridePinsFor('brace-expansion', overrides)).toEqual(['overrides["brace-expansion@1"] = "^1.1.18"'])
+    const v = evaluateAudit(audit({ ...root('piscina', 'critical', 'GHSA-67c8-pqhq-4rmx') }), ALLOW, NOW, overrides)
+    expect(v.failures[0]).toMatch(/HELD BY OUR PIN overrides\["piscina"\] = "5\.2\.0"/)
+    expect(evaluateAudit(audit({ ...root('next', 'critical', 'GHSA-aaaa-bbbb-cccc') }), ALLOW, NOW, overrides).failures[0]).not.toMatch(/HELD BY/)
   })
 })

@@ -654,8 +654,7 @@ export default function NewSessionClient({ logoUrl, analyzeEnabled, campaignsEna
       const prev = c.content_safety || {}
       const cs = { profanity: true, slurs: true, threats: true, sexual: true, insults: true, spam: true, ...prev, ...partial }
       if (cs.enabled === undefined) cs.enabled = true
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return { ...c, content_safety: cs } as any
+      return { ...c, content_safety: cs } as TownHallConfig
     })
   }
 

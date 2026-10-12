@@ -1443,3 +1443,8 @@ timestamp in state would need a ticking clock to stay correct and would show a
 stale "2 days ago" until it fired. Where the same call appears in a **server
 component** the rule does not apply at all: those render once per request, so there
 is no re-render for the timestamp to be inconsistent with.
+
+## Omitted effect dependencies (2026-10-12)
+
+Effects that intentionally leave a value out of their dependency array carry a scoped `eslint-disable-next-line react-hooks/exhaustive-deps -- <reason>` naming why (2026-10-12; governance W39–W42 flagged the 36 that had no reason). The comments changed, no dependency array did. In this area: `MicCheck` reopens the preview stream only when an input constraint (device / AGC / echo /
+noise) changes mid-test; the report's audio player leaves playback `rate` out so a speed change does not re-seek.

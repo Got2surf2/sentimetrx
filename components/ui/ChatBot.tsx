@@ -251,7 +251,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
         body: JSON.stringify({ visitor_id: sessionId, source: eb.source || eb.site, medium: eb.medium, campaign: eb.campaign }),
       }).catch(() => {})
     } catch { /* beacon is best-effort */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- impression beacon fires exactly once per mount
   }, [])
 
   // When a non-English language is selected, fetch the greeting from the API in that language
@@ -329,7 +329,7 @@ export default function ChatBot({ config }: { config: ChatBotConfig }) {
       })
       .catch(() => { /* silently no-op — fresh-chat state remains */ })
     return () => { cancelled = true }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- transcript hydration runs once on mount
   }, [])
   const rootRef = useRef<HTMLDivElement>(null)
   const chatRef = useRef<HTMLDivElement>(null)

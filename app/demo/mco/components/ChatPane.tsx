@@ -104,7 +104,7 @@ export default function ChatPane({ greeting, chips: initialChips, placeholder, m
     setSessionId(newSessionId())
     onHintReceived?.(null)
     onMessagesChange?.([])
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only on greeting/resetKey change; parent callbacks are unstable inline props
   }, [greeting, resetKey])
 
   // Mirror messages out to the parent whenever they change.
@@ -129,7 +129,7 @@ export default function ChatPane({ greeting, chips: initialChips, placeholder, m
     if (!pendingMessage) return
     onPendingMessageConsumed?.()
     void send(pendingMessage)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per pendingMessage; send/onPendingMessageConsumed are recreated every render
   }, [pendingMessage])
 
   // Fire the extractor after a new assistant message lands. Fire-and-forget

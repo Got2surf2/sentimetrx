@@ -282,7 +282,7 @@ export default function EntityCompareTab({
       under.forEach(function(o) { lines.push('• "' + o.group + '" → "' + o.entityName + '": ' + o.thisPct + '% vs ' + o.restPct + '% baseline (z=' + o.z.toFixed(1) + ', n=' + o.groupTotal + ')') })
     }
     return lines.join('\n')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- derived from outliers + fields only; helpers are recreated every render
   }, [outliers, breakdownFields])
 
   // ── Visible entities (top-N by total matches, Show all bypasses cap) ──

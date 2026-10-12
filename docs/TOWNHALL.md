@@ -522,3 +522,8 @@ timestamp in state would need a ticking clock to stay correct and would show a
 stale "2 days ago" until it fired. Where the same call appears in a **server
 component** the rule does not apply at all: those render once per request, so there
 is no re-render for the timestamp to be inconsistent with.
+
+## Typed content-safety merge (2026-10-12)
+
+The creator's content-safety merge (`NewSessionClient.updateSafety`) returns a typed `TownHallConfig`; its
+former `as any` (and the `no-explicit-any` disable beside it) is gone (2026-10-12, governance W39–W42).

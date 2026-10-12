@@ -19,7 +19,7 @@ export default function StepClarifiers({ draft, updateConfig, onNext, onBack }: 
     if (!c.clarifiers?.default?.trim()) {
       updateConfig({ clarifiers: { ...c.clarifiers, default: DEFAULT_FALLBACK } })
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time default fill on mount
   }, [])
 
   // Keyword clarifier rows — any key in clarifiers except 'default'
