@@ -103,7 +103,7 @@
       "uuid": "^11.1.1"
     },
     "postcss": "$postcss",
-    "fast-uri": "^3.1.8",
+    "fast-uri": "^3.1.9",
     "body-parser@1": "^1.20.6",
     "nanoid": "^5.1.16",
     "brace-expansion@1": "^1.1.21"
