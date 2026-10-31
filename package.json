@@ -52,7 +52,7 @@
     "isomorphic-dompurify": "2.26.0",
     "lottie-web": "^5.13.0",
     "mammoth": "^1.13.0",
-    "next": "^16.4.0",
+    "next": "^16.4.3",
     "plotly.js-dist-min": "^4.1.1",
     "pptxgenjs": "^4.0.1",
     "puppeteer-core": "^25.1.0",
